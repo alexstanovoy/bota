@@ -2,9 +2,7 @@
 //! a hero makes standing in one, and the lotuses it holds and eats.
 
 use bota_core::rules::{self, Schedule};
-use bota_core::{
-    DOTA_LOTUS_POOLS, LOTUS_COOLDOWN, LOTUS_TAKE_RANGE, PLUCK_TICKS, POOL_MAX_LOTUSES, map_of,
-};
+use bota_core::{DOTA_LOTUS_POOLS, LOTUS_TAKE_RANGE, PLUCK_TICKS, POOL_MAX_LOTUSES, map_of};
 use bota_proto::{
     EventKind, Fixed, HeroId, ItemId, ItemSlot, LotusTier, MapId, ObjectiveKind, ObjectiveSet,
     Order, Pick, RejectReason, RuneSet, SlotId, Target, Team, UnitKind, Vec2,
@@ -346,7 +344,10 @@ fn a_hero_eats_a_lotus_at_once_for_125_health_and_mana_and_waits_five_seconds_fo
         world.validate_order(SlotId(0), None, &eat),
         Err(RejectReason::OnCooldown)
     );
-    run(&mut world, LOTUS_COOLDOWN);
+    run(
+        &mut world,
+        bota_core::ITEMS[ItemId::HEALING_LOTUS.0 as usize].cooldown,
+    );
     assert_eq!(world.validate_order(SlotId(0), None, &eat), Ok(()));
 }
 

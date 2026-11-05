@@ -1,14 +1,15 @@
 //! The Bottle at Dota 7.41f: bought, drunk, refilled at the fountain, and the
 //! place a hero keeps the rune it takes.
 
-use bota_core::{
-    BOTTLE_CHARGES, BOTTLE_COOLDOWN, BOTTLE_COST, BOTTLE_RUNE_TICKS, ModifierKind, rules,
-};
+use bota_core::{BOTTLE_RUNE_TICKS, ITEMS, ItemDef, ModifierKind, rules};
 use bota_proto::{
     EventKind, ItemId, ItemSlot, Order, RejectReason, RuneKind, SlotId, Target, Team, Vec2,
 };
 
 use crate::game::{Entity, ItemStack, World, wire_id};
+
+/// The Bottle's row of the catalog.
+const BOTTLE: ItemDef = ITEMS[ItemId::BOTTLE.0 as usize];
 
 use super::runes::{fraction, hero, lying, place, rune_match, rune_under_hero, step_at_minute};
 use super::support::*;
@@ -46,7 +47,7 @@ fn hp_mana(world: &World, hero: Entity) -> (i32, i32) {
 fn thirsty_hero() -> (World, Entity) {
     let mut world = rune_match(&sides());
     let taker = hero(&world, 0);
-    bottled(&mut world, taker, BOTTLE_CHARGES);
+    bottled(&mut world, taker, BOTTLE.charges);
     place(&mut world, taker, Vec2::from_ints(7000, 9000));
     let stats = *world.stats.get(taker).expect("stats");
     world.health.get_mut(taker).expect("hp").hp = fraction(stats.max_hp, 1, 2);
@@ -57,7 +58,7 @@ fn thirsty_hero() -> (World, Entity) {
 
 #[test]
 fn a_bottle_is_bought_for_675_gold_with_three_charges() {
-    let (mut world, hero) = a_hero_with_gold(BOTTLE_COST + 25);
+    let (mut world, hero) = a_hero_with_gold(BOTTLE.cost + 25);
     let events = advance_validated(
         &mut world,
         None,
@@ -74,7 +75,7 @@ fn a_bottle_is_bought_for_675_gold_with_three_charges() {
     )));
     let held = slot_of(&world, hero, 0).expect("bought into the first slot");
     assert_eq!(held.id, ItemId::BOTTLE);
-    assert_eq!(held.charges, BOTTLE_CHARGES);
+    assert_eq!(held.charges, BOTTLE.charges);
     assert_eq!(world.seats[0].gold, 25, "675 gold less");
     assert!(
         bota_core::shop_entries(bota_core::Catalogue::FULL)
@@ -98,7 +99,7 @@ fn a_drink_mends_110_health_and_60_mana_over_2_7_seconds_and_costs_a_charge() {
             ..
         }
     )));
-    assert_eq!(the_bottle(&world, taker).charges, BOTTLE_CHARGES - 1);
+    assert_eq!(the_bottle(&world, taker).charges, BOTTLE.charges - 1);
     assert!(carries(
         &world,
         taker,
@@ -143,7 +144,7 @@ fn a_bottle_waits_half_a_second_between_drinks_and_a_second_drink_refreshes_the_
         world.validate_order(SlotId(0), None, &drink()),
         Err(RejectReason::OnCooldown)
     );
-    run(&mut world, BOTTLE_COOLDOWN);
+    run(&mut world, BOTTLE.cooldown);
     advance_validated(&mut world, None, drink());
     let worn = world
         .modifiers
@@ -153,7 +154,7 @@ fn a_bottle_waits_half_a_second_between_drinks_and_a_second_drink_refreshes_the_
         .filter(|held| matches!(held.kind, ModifierKind::BottleRegeneration { .. }))
         .count();
     assert_eq!(worn, 1, "refreshed, not stacked");
-    assert_eq!(the_bottle(&world, taker).charges, BOTTLE_CHARGES - 2);
+    assert_eq!(the_bottle(&world, taker).charges, BOTTLE.charges - 2);
 }
 
 #[test]
@@ -200,7 +201,7 @@ fn a_blow_from_an_enemy_hero_ends_a_drink_but_a_creep_does_not() {
 fn a_bottle_is_drunk_by_an_allied_hero_within_350_and_not_a_farther_one() {
     let mut world = rune_match(&[Team::Radiant, Team::Radiant, Team::Dire]);
     let (one, ally) = (hero(&world, 0), hero(&world, 1));
-    bottled(&mut world, one, BOTTLE_CHARGES);
+    bottled(&mut world, one, BOTTLE.charges);
     place(&mut world, one, Vec2::from_ints(7000, 9000));
     place(&mut world, ally, Vec2::from_ints(7300, 9000));
     run(&mut world, 3);
@@ -226,7 +227,7 @@ fn a_bottle_is_drunk_by_an_allied_hero_within_350_and_not_a_farther_one() {
         }
     ));
     place(&mut world, ally, Vec2::from_ints(7500, 9000));
-    run(&mut world, BOTTLE_COOLDOWN + 85);
+    run(&mut world, BOTTLE.cooldown + 85);
     let before = the_bottle(&world, one).charges;
     seat_order(&mut world, order);
     assert_eq!(
@@ -257,7 +258,7 @@ fn an_empty_bottle_is_kept_and_filled_again_inside_the_fountain_one_second_after
     run(&mut world, rules::TICKS_PER_SECOND + 1);
     assert_eq!(
         the_bottle(&world, taker).charges,
-        BOTTLE_CHARGES,
+        BOTTLE.charges,
         "full again"
     );
 }
@@ -318,7 +319,7 @@ fn a_hero_with_a_bottle_stores_the_rune_it_takes_and_lets_it_out_when_it_uses_th
     )));
     assert!(carries(&world, taker, ModifierKind::RuneHaste));
     let after = the_bottle(&world, taker);
-    assert_eq!(after.charges, BOTTLE_CHARGES, "a power rune fills it");
+    assert_eq!(after.charges, BOTTLE.charges, "a power rune fills it");
     assert!(after.rune.is_none());
     assert!(
         !carries(
@@ -340,7 +341,7 @@ fn a_bottle_with_no_charge_left_still_lets_a_rune_out() {
     world.step();
     advance_validated(&mut world, None, drink());
     assert!(carries(&world, taker, ModifierKind::RuneArcane));
-    assert_eq!(the_bottle(&world, taker).charges, BOTTLE_CHARGES);
+    assert_eq!(the_bottle(&world, taker).charges, BOTTLE.charges);
 }
 
 #[test]
@@ -362,7 +363,7 @@ fn a_stored_water_rune_fills_two_charges_unless_the_bottle_was_full() {
 fn a_stored_bounty_rune_pays_what_it_was_worth_when_it_appeared() {
     let mut world = rune_match(&[Team::Radiant, Team::Dire]);
     let taker = hero(&world, 0);
-    bottled(&mut world, taker, BOTTLE_CHARGES);
+    bottled(&mut world, taker, BOTTLE.charges);
     step_at_minute(&mut world, 4, 0);
     let jungle = world.map.rune_spots[3].at;
     place(&mut world, taker, jungle);
@@ -445,7 +446,7 @@ fn a_stored_rune_takes_effect_by_itself_after_90_seconds() {
         }
     )));
     assert!(carries(&world, taker, ModifierKind::RuneArcane));
-    assert_eq!(the_bottle(&world, taker).charges, BOTTLE_CHARGES);
+    assert_eq!(the_bottle(&world, taker).charges, BOTTLE.charges);
 }
 
 #[test]

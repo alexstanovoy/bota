@@ -2,10 +2,9 @@
 //! does, and the Bottle that keeps one.
 
 use bota_core::{
-    BOTTLE_CHARGES, BOTTLE_LESSER_RUNE_CHARGES, BOTTLE_REFILL_PERIOD_TICKS, BOTTLE_RUNE_TICKS,
-    BOTTLE_TICKS, Drink, ModifierKind, POWER_ROTATION, RUNE_PICKUP_RANGE, RuneSpot, RuneSpotKind,
-    SHIELD_BARRIER_PCT, WATER_RUNE_HP, WATER_RUNE_MANA, bounty_rune_gold, rules, rune_ticks,
-    runes_due, side_index,
+    BOTTLE_LESSER_RUNE_CHARGES, BOTTLE_REFILL_PERIOD_TICKS, BOTTLE_RUNE_TICKS, Drink, ModifierKind,
+    POWER_ROTATION, RUNE_PICKUP_RANGE, RuneSpot, RuneSpotKind, SHIELD_BARRIER_PCT, WATER_RUNE_HP,
+    WATER_RUNE_MANA, bounty_rune_gold, rules, rune_ticks, runes_due, side_index,
 };
 use bota_proto::{
     EntityId, EventKind, Fixed, Inflictor, ItemId, RuneKind, RuneSet, Target, Team, Vec2,
@@ -202,7 +201,7 @@ impl World {
                 kind,
                 ticks_left: BOTTLE_RUNE_TICKS,
                 gold,
-                was_full: stack.charges >= BOTTLE_CHARGES,
+                was_full: stack.charges >= full_charges(stack.id),
             });
             let told = self.who_may_know(hero, self.team.get(hero).copied());
             self.events.push(Event {
@@ -351,14 +350,15 @@ impl World {
             .and_then(|bag| bag.slot_mut(slot))
             .and_then(Option::as_mut)
         {
+            let full = full_charges(stack.id);
             stack.rune = None;
             stack.touched = true;
             stack.charges = match rune.kind {
                 RuneKind::Water | RuneKind::Bounty if !rune.was_full => stack
                     .charges
                     .saturating_add(BOTTLE_LESSER_RUNE_CHARGES)
-                    .min(BOTTLE_CHARGES),
-                _ => BOTTLE_CHARGES,
+                    .min(full),
+                _ => full,
             };
         }
         self.activate_rune(user, rune.kind, rune.gold, true);
@@ -395,7 +395,7 @@ impl World {
                 },
                 Some(user),
                 Some(with),
-                Some(drink.ticks.min(BOTTLE_TICKS)),
+                Some(drink.ticks),
             ),
         );
         let missing = |max: Fixed, held: Fixed| (max - held).to_int().max(0);
@@ -480,8 +480,9 @@ impl World {
                 continue;
             }
             let Some(rune) = stack.rune else {
-                if in_fountain && stack.charges < BOTTLE_CHARGES {
-                    self.set_charges(hero, slot, BOTTLE_CHARGES);
+                let full = full_charges(stack.id);
+                if in_fountain && stack.charges < full {
+                    self.set_charges(hero, slot, full);
                 }
                 continue;
             };
@@ -602,4 +603,9 @@ fn jungle_spots(spots: &'static [RuneSpot]) -> impl Iterator<Item = usize> {
 /// Whether an item keeps runes.
 pub(crate) fn stores_runes(id: ItemId) -> bool {
     bota_core::item_def(id).is_some_and(|def| def.stores_runes())
+}
+
+/// The charges an item holds full: those it is bought with.
+fn full_charges(id: ItemId) -> u8 {
+    bota_core::item_def(id).map_or(0, |def| def.charges)
 }

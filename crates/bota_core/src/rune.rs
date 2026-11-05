@@ -12,8 +12,9 @@
 //! patch note after 7.41 touches a rune or the Bottle, and where a source
 //! disagrees with the install's, the line says which was taken.
 
-use bota_proto::{MAX_RUNES_AT_SPOT, MAX_SNAPSHOT_RUNES, RuneKind, RuneSet, Team, Vec2};
+use bota_proto::{ItemId, MAX_RUNES_AT_SPOT, MAX_SNAPSHOT_RUNES, RuneKind, RuneSet, Team, Vec2};
 
+use crate::ITEMS;
 use crate::rules::{self, Schedule, TICKS_PER_SECOND};
 
 /// The kinds of rune the simulation spawns and plays: what a match may ask
@@ -292,23 +293,8 @@ impl PowerCycle {
     }
 }
 
-// The Bottle (`item_bottle`) [I:2073-2118].
+// The Bottle (`item_bottle`) [I:2073-2118]: what it costs, holds and mends is its catalog row's.
 
-/// Gold a Bottle costs: `ItemCost` 675.
-pub const BOTTLE_COST: i32 = 675;
-/// Charges a Bottle holds at most: `max_charges` 3, and it is bought with
-/// `ItemInitialCharges` 3.
-pub const BOTTLE_CHARGES: u8 = 3;
-/// Health one charge mends over its time: `health_restore` 110.
-pub const BOTTLE_HP: i32 = 110;
-/// Mana one charge mends over its time: `mana_restore` 60.
-pub const BOTTLE_MANA: i32 = 60;
-/// Ticks one charge mends over: `restore_time` 2.7 s.
-pub const BOTTLE_TICKS: u32 = 81;
-/// Ticks between two uses: `AbilityCooldown` 0.5 s.
-pub const BOTTLE_COOLDOWN: u32 = 15;
-/// How far a drink reaches an allied hero: `AbilityCastRange` 350.
-pub const BOTTLE_RANGE: i32 = 350;
 /// How long a Bottle keeps a rune before it takes effect by itself:
 /// `rune_expire_time` 90 [I:2073-2118] [LIQ Bottle/Changelogs: 7.30e].
 pub const BOTTLE_RUNE_TICKS: u32 = 90 * TICKS_PER_SECOND;
@@ -325,7 +311,7 @@ pub const BOTTLE_LESSER_RUNE_CHARGES: u8 = 2;
 pub const BOTTLE_REFILL_PERIOD_TICKS: u32 = TICKS_PER_SECOND;
 
 const _: () = {
-    assert!(BOTTLE_LESSER_RUNE_CHARGES <= BOTTLE_CHARGES);
+    assert!(BOTTLE_LESSER_RUNE_CHARGES <= ITEMS[ItemId::BOTTLE.0 as usize].charges);
     assert!(INVISIBILITY_FADE_TICKS < INVISIBILITY_RUNE_TICKS);
     assert!(REGENERATION_DAMPED_PCT < REGENERATION_PCT);
     assert!(DOTA_RUNE_SPOTS.len() * MAX_RUNES_AT_SPOT <= MAX_SNAPSHOT_RUNES);

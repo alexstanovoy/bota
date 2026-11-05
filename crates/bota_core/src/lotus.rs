@@ -14,7 +14,7 @@
 use bota_proto::{ItemId, LotusTier, Vec2};
 
 use crate::rules::{self, Schedule, TICKS_PER_SECOND};
-use crate::{BARE_UNIT, Cadence, UnitDef};
+use crate::{BARE_UNIT, Cadence, ITEMS, UnitDef};
 use bota_proto::UnitKind;
 
 /// A pool's health [U]; it is invulnerable all the same [LIQ Lotus Pool].
@@ -102,50 +102,24 @@ pub const fn lotus_item(tier: LotusTier) -> ItemId {
 }
 
 /// Lotuses of a lower tier rounded up into the tier a pool grows from now
-/// on: three healing lotuses make a great one and two great ones a greater
-/// one, and one left over still makes one [PN 7.38; LIQ Lotus Pool: "All
-/// existing lower-tier Lotuses get rounded up and combined into a higher
-/// tier"].
+/// on, as many of each as its next tier's recipe takes (three healing
+/// lotuses make a great one, two great ones a greater one), and one left
+/// over still makes one [PN 7.38; LIQ Lotus Pool: "All existing lower-tier
+/// Lotuses get rounded up and combined into a higher tier"].
 pub const fn rounded_up(held: u8, from: LotusTier, to: LotusTier) -> u8 {
     let mut count = held;
-    let mut tier = from as u8;
-    while tier < to as u8 {
-        let per = if tier == LotusTier::Healing as u8 {
-            3
-        } else {
-            2
+    let mut tier = from;
+    while (tier as u8) < (to as u8) {
+        tier = match tier {
+            LotusTier::Healing => LotusTier::Great,
+            LotusTier::Great | LotusTier::Greater => LotusTier::Greater,
         };
-        count = count.div_ceil(per);
-        tier += 1;
+        let recipe = ITEMS[lotus_item(tier).0 as usize].charge_recipes[0];
+        count = count.div_ceil(recipe.len() as u8);
     }
     count
 }
 
-/// Health and mana a lotus mends each at once on use: 125, 400 and 900 [I
-/// `replenish_amount`].
-pub const fn lotus_replenish(tier: LotusTier) -> i32 {
-    match tier {
-        LotusTier::Healing => 125,
-        LotusTier::Great => 400,
-        LotusTier::Greater => 900,
-    }
-}
-
-/// How many lotuses of a tier combine into one of the next: three healing,
-/// two great [I `item_recipe_*_famango`, PN 7.33].
-pub const fn lotuses_to_combine(tier: LotusTier) -> u8 {
-    match tier {
-        LotusTier::Healing => 3,
-        LotusTier::Great => 2,
-        LotusTier::Greater => u8::MAX,
-    }
-}
-
-/// How far a hero eats a lotus at an ally: `AbilityCastRange` 400 [I].
-pub const LOTUS_RANGE: i32 = 400;
-/// Ticks between two lotuses eaten, whatever their tier, by one hero:
-/// `AbilityCooldown` 5, the shared cooldown `famango` [I].
-pub const LOTUS_COOLDOWN: u32 = 5 * TICKS_PER_SECOND;
 /// How near a hero must stand to take a lotus lying on the ground: 275
 /// [LIQ Healing Lotus: "a total 275 pick-up range, compared to the 150 range
 /// of all other items"].

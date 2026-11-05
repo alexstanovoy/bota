@@ -3,15 +3,13 @@
 //! what it does, and which of its values stand for which of bota's stats. Every number comes
 //! from the script by its Dota key; a number written here is bota's own, and says why.
 
-use bota_proto::{Aim, Attribute, Attributes, Fixed, ItemId, LotusTier};
+use bota_proto::{Aim, Attribute, Attributes, Fixed, ItemId};
 
 use super::items::*;
 use crate::{
-    AllyUse, BOTTLE_CHARGES, BOTTLE_COOLDOWN, BOTTLE_COST, BOTTLE_HP, BOTTLE_MANA, BOTTLE_RANGE,
-    BOTTLE_TICKS, Carried, Dec, DisassembleRule, Drink, Grenade, ItemData, ItemDef, LOTUS_COOLDOWN,
-    LOTUS_RANGE, LOTUS_TAKE_RANGE, Mend, NOTHING, OBSERVER_WARD, Odds, PLAIN, Pool, Recipe,
-    SENTRY_WARD, Scroll, Spends, Stock, UseSpec, hundredths_per_second, lotus_replenish, points,
-    points_with, rules,
+    AllyUse, Carried, Dec, DisassembleRule, Drink, Grenade, ItemData, ItemDef, LOTUS_TAKE_RANGE,
+    Mend, NOTHING, OBSERVER_WARD, Odds, PLAIN, Pool, Recipe, SENTRY_WARD, Scroll, Spends, Stock,
+    UseSpec, hundredths_per_second, points, points_with, rules,
 };
 
 /// The row of an item as its script gives it; a row of the catalog adds what bota does with it.
@@ -762,17 +760,6 @@ const fn lotus(name: &'static str, d: &ItemData) -> ItemDef {
     }
 }
 
-// The Bottle's numbers `rune.rs` names for the server are the script's.
-const _: () = {
-    assert!(BOTTLE_COST == ITEM_BOTTLE.cost);
-    assert!(BOTTLE_CHARGES == ITEM_BOTTLE.charges);
-    assert!(BOTTLE_COOLDOWN == ITEM_BOTTLE.cooldown.ticks());
-    assert!(BOTTLE_HP == int(&ITEM_BOTTLE, "health_restore"));
-    assert!(BOTTLE_MANA == int(&ITEM_BOTTLE, "mana_restore"));
-    assert!(BOTTLE_RANGE == ITEM_BOTTLE.cast_range);
-    assert!(BOTTLE_TICKS == ticks(&ITEM_BOTTLE, "restore_time"));
-};
-
 // The server beats a grenade's debuff once a second and reads a scroll's band
 // as a ring around a building: the script must say the same.
 const _: () = {
@@ -786,13 +773,4 @@ const _: () = {
     assert!(near < far);
     assert!(rules::SCROLL_LANDING_RINGS * rules::SCROLL_LANDING_STEP < far);
     assert!(ITEM_TPSCROLL.channel.ticks() < ITEM_TPSCROLL.cooldown.ticks());
-};
-
-// The lotus numbers `lotus.rs` names for the server are the script's.
-const _: () = {
-    assert!(LOTUS_RANGE == ITEM_FAMANGO.cast_range);
-    assert!(LOTUS_COOLDOWN == ITEM_FAMANGO.cooldown.ticks());
-    assert!(lotus_replenish(LotusTier::Healing) == int(&ITEM_FAMANGO, "replenish_amount"));
-    assert!(lotus_replenish(LotusTier::Great) == int(&ITEM_GREAT_FAMANGO, "replenish_amount"));
-    assert!(lotus_replenish(LotusTier::Greater) == int(&ITEM_GREATER_FAMANGO, "replenish_amount"));
 };
