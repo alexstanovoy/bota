@@ -5,7 +5,7 @@
 # tests (`unittest = DIR`: its test_*.py files, as `python3 -m unittest discover` finds them). Every file of the repository
 # says which groups a change to it runs:
 #   - a file a group's `paths` names runs that group, and a `[[route]]` names further groups for files several groups read;
-#     a group's `also_paths` add it to the groups of files something else names;
+#     a group's `also_paths` add it to the groups of files something else names (a "!pattern" there leaves files out);
 #   - a file of a crate not marked `routed` runs every group of the crate and of every crate depending on it (Cargo's
 #     dependencies, development ones too, and the crate's `dependents`); so does a file of a routed crate that a route sends
 #     to "@<crate>";
@@ -164,7 +164,7 @@ paths = [
     "crates/bota_server/src/spectators.rs",
     "crates/bota_server/src/replay.rs",
 ]
-groups = ["server_net", "server_launch", "server_transport", "server_matches", "radovid"]
+groups = ["server_net", "server_launch", "server_transport", "server_matches", "server_practice", "radovid"]
 
 [[route]]
 paths = ["crates/bota_server/src/game/systems/cast.rs"]
@@ -577,11 +577,10 @@ tests = [
 
 [[group]]
 name = "server_matches"
-about = "whole matches against the server binary: solo, NxM, the practice map, seats, clients, cheats, item catalogues"
+about = "whole matches against the server binary: solo, NxM, seats, clients, cheats, item catalogues"
 paths = [
     "crates/bota_server/tests/solo.rs",
     "crates/bota_server/tests/nxm.rs",
-    "crates/bota_server/tests/practice_map.rs",
     "crates/bota_server/tests/seated_start.rs",
     "crates/bota_server/tests/client.rs",
     "crates/bota_server/tests/cheats.rs",
@@ -590,12 +589,28 @@ paths = [
 tests = [
     { crate = "bota_server", target = "test:solo" },
     { crate = "bota_server", target = "test:nxm" },
-    { crate = "bota_server", target = "test:practice_map" },
     { crate = "bota_server", target = "test:seated_start" },
     { crate = "bota_server", target = "test:client" },
     { crate = "bota_server", target = "test:cheats" },
     { crate = "bota_server", target = "test:catalogue" },
 ]
+# Whole matches play every system: any change to the simulation's code runs them too (a change to its tests does not).
+also_paths = [
+    "crates/bota_server/src/game/**",
+    "crates/bota_server/src/engine/**",
+    "!crates/bota_server/src/game/tests/**",
+    "!crates/bota_server/src/game/systems/tests/**",
+    "!crates/bota_server/src/game/components/tests/**",
+    "!crates/bota_server/src/engine/tests.rs",
+]
+
+[[group]]
+name = "server_practice"
+# Half a minute or more: it runs in full, for the server around the game and for what everything shares, not for a
+# change to one game system.
+about = "the practice map's whole matches: waves on three lanes, stocked camps, Pudge"
+paths = ["crates/bota_server/tests/practice_map.rs"]
+tests = [{ crate = "bota_server", target = "test:practice_map" }]
 
 [[group]]
 name = "server_profile"

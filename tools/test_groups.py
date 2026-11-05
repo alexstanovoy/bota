@@ -201,7 +201,11 @@ class Router:
         self.route_paths = routes
         self.routes = [([glob_regex(p) for p in paths], targets) for paths, targets in routes]
         self.owned = [([glob_regex(p) for p in group.paths], group.name) for group in groups]
-        self.also = [([glob_regex(p) for p in group.also_paths], group.name) for group in groups]
+        self.also = [
+            ([glob_regex(p) for p in group.also_paths if not p.startswith("!")],
+             [glob_regex(p[1:]) for p in group.also_paths if p.startswith("!")], group.name)
+            for group in groups
+        ]
 
     def above(self, crate: str, launched: bool = True) -> set[str]:
         """The crate and every crate depending on it: by Cargo, and with `launched` by a declared `dependents` too."""
@@ -257,7 +261,7 @@ class Router:
             named = True
         if not named:
             return None
-        groups |= {name for patterns, name in self.also if any(p.match(path) for p in patterns)}
+        groups |= {name for take, leave, name in self.also if any(p.match(path) for p in take) and not any(p.match(path) for p in leave)}
         return groups, everything
 
 
@@ -474,7 +478,7 @@ def check_names(groups: list[Group], router: Router) -> list[str]:
 
 
 def check_patterns(groups: list[Group], router: Router, every_file: list[str]) -> list[str]:
-    owners = [(group.paths + group.also_paths, f"group {group.name}") for group in groups]
+    owners = [(group.paths + [p.removeprefix("!") for p in group.also_paths], f"group {group.name}") for group in groups]
     owners += [(paths, "a route") for paths, _ in router.route_paths]
     problems = []
     for paths, owner in owners:

@@ -20,8 +20,16 @@ def groups_of(*paths):
 
 
 class Routing(unittest.TestCase):
-    def test_a_game_system_runs_its_group_and_the_pins(self):
-        self.assertEqual(groups_of(f"{SERVER}/game/systems/walk.rs"), {"game_movement", "game_determinism"})
+    def test_a_game_system_runs_its_group_the_pins_and_the_whole_matches_but_not_the_practice_map(self):
+        self.assertEqual(groups_of(f"{SERVER}/game/systems/walk.rs"), {"game_movement", "game_determinism", "server_matches"})
+
+    def test_a_change_to_a_game_test_runs_no_whole_match(self):
+        self.assertEqual(groups_of(f"{SERVER}/game/systems/tests/pierce.rs"), {"game_combat", "game_determinism"})
+
+    def test_the_practice_map_runs_for_the_server_around_the_game_and_for_what_everything_shares(self):
+        self.assertIn("server_practice", groups_of(f"{SERVER}/net/conn.rs"))
+        self.assertIn("server_practice", groups_of(f"{SERVER}/game/world.rs"))
+        self.assertIn("server_practice", groups_of("crates/bota_core/src/lib.rs"))
 
     def test_a_game_test_file_runs_its_group_and_the_pins(self):
         self.assertEqual(groups_of(f"{SERVER}/game/tests/runes.rs"), {"game_objectives", "game_determinism"})
