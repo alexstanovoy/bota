@@ -19,13 +19,22 @@ set -uo pipefail
 cd -- "$(git rev-parse --show-toplevel)" || exit 2
 # shellcheck source=tools/stamp.sh
 . "$(dirname -- "${BASH_SOURCE[0]}")/stamp.sh"
+# shellcheck source=tools/steps.sh
+. "$(dirname -- "${BASH_SOURCE[0]}")/steps.sh"
 base=${1:-${PRECHECK_BASE:-$(default_base)}}
 if [ "${PRECHECK_ALL:-0}" = 1 ]; then selection=--all; else selection="--base $base"; fi
 
 record=$(git rev-parse --git-path precheck-failed)
 started=$SECONDS
-step() { local name=$1 t=$SECONDS; shift; echo "== $name"; "$@" || { echo "PRECHECK-FAIL $name ($((SECONDS - t)) s)"; return 1; }; echo "   $name $((SECONDS - t)) s"; }
-has() { case " $1 " in *" $2 "*) return 0 ;; esac; return 1; }
+step() { local name=$1 t=$SECONDS; shift; echo "== $name"; "$@" < /dev/null || { echo "PRECHECK-FAIL $name ($((SECONDS - t)) s)"; return 1; }; echo "   $name $((SECONDS - t)) s"; }
+run_steps() { # the lines of lint_steps or wasm_steps (tools/steps.sh) on stdin: the needed steps
+    local name need reason command words
+    while IFS=$'\t' read -r name need reason command; do
+        read -ra words <<< "$command"
+        [ "$need" = 1 ] || continue
+        step "$name" "${words[@]}" || return 1
+    done
+}
 
 # shellcheck disable=SC2086
 plan=$(python3 tools/test_groups.py plan $selection) || { echo "PRECHECK-FAIL plan" >&2; exit 2; }
@@ -33,7 +42,7 @@ groups=$(sed -n 's/^groups *//p' <<< "$plan")
 crates=$(sed -n 's/^crates *//p' <<< "$plan")
 scope=$(sed -n 's/^scope //p' <<< "$plan")
 # the stamp names the tree checked and the selection it was checked with (tools/stamp.sh)
-tree=$(tree_key)
+tree=$(tree_key) || exit 2
 if [ -z "$groups" ] && [ -z "$crates" ]; then
     echo "precheck: no crate and no test group touched"
     stamp_put "$tree-$scope" precheck
@@ -42,14 +51,7 @@ if [ -z "$groups" ] && [ -z "$crates" ]; then
 fi
 echo "precheck: crates ${crates:-none}; groups ${groups:-none}"
 
-lint=(); for c in $crates; do [ "$c" = bota_radovid ] || lint+=(-p "$c"); done
-if [ ${#lint[@]} -gt 0 ]; then step clippy cargo clippy "${lint[@]}" --all-targets -- -D warnings || exit 1; fi
-if has "$crates" bota_radovid; then
-    step "clippy (bota_radovid)" cargo clippy -p bota_radovid --all-targets --features e2e -- -D warnings || exit 1
-fi
-if has "$crates" bota_client_core; then
-    step "clippy (bota_client_core ui)" cargo clippy -p bota_client_core --all-targets --features ui -- -D warnings || exit 1
-fi
+run_steps < <(lint_steps "$crates") || exit 1
 # shellcheck disable=SC2086
 step test-groups python3 tools/test_groups.py check $selection || exit 1
 
@@ -67,14 +69,9 @@ run_groups() { # the groups that failed last time first, then the rest
 }
 if [ -n "$groups" ]; then step test run_groups || exit 1; fi
 
-if has "$crates" bota_client_core; then
-    step wasm cargo check --target wasm32-unknown-unknown -p bota_client_core -p bota_proto --features bota_client_core/ui || exit 1
-    step "wasm (web)" cargo check --target wasm32-unknown-unknown -p bota_client_core --features bota_client_core/web || exit 1
-fi
-if has "$crates" bota_radovid; then
-    step "wasm (bota_radovid)" cargo check --target wasm32-unknown-unknown -p bota_radovid --features web || exit 1
-fi
-if [ "$(tree_key)" != "$tree" ]; then
+run_steps < <(wasm_steps "$crates") || exit 1
+now=$(tree_key) || exit 2
+if [ "$now" != "$tree" ]; then
     echo "PRECHECK-FAIL the tree changed while the precheck ran (git status --short):"
     git status --short
     exit 1

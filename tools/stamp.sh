@@ -11,8 +11,15 @@
 #   gate ok <time>            tools/gate.sh passed what the change affects
 #   gate-full ok <time>       tools/gate.sh passed in full (GATE_FULL=1)
 
-tree_key() {
-    local idx real_idx rs
+tree_key() { # fails, saying why, when cargo fmt cannot read the crates (their Rust would drop out of the key)
+    local idx real_idx formatted
+    formatted=$(mktemp)
+    if ! cargo fmt --all -- --emit stdout > "$formatted" 2> "$formatted.err"; then
+        echo "stamp: \`cargo fmt --all\` failed, so this tree has no key:" >&2
+        cat "$formatted.err" >&2
+        rm -f "$formatted" "$formatted.err"
+        return 1
+    fi
     idx=$(mktemp) && rm -f "$idx"
     real_idx=$(git rev-parse --git-path index)
     {
@@ -29,9 +36,9 @@ tree_key() {
             # the Rust of the workspace crates as `cargo fmt --all` writes it below; the rest (fuzz/, the importer) as stored
             git ls-files -s | grep -vE $'\tcrates/.*\\.rs$'
         )
-        cargo fmt --all -- --emit stdout 2> /dev/null
+        cat "$formatted"
     } | sha256sum | cut -c1-32
-    rm -f "$idx"
+    rm -f "$idx" "$formatted" "$formatted.err"
 }
 
 stamp_file() { # key

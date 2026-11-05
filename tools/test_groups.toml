@@ -541,7 +541,8 @@ tests = [{ crate = "bota_server", target = "lib", filters = [
 [[group]]
 name = "server_net"
 about = "connections, the game loop, lobbies, picks, chat, spectators, replays as the server writes them"
-paths = ["crates/bota_server/tests/wire/**"]
+# the wire helpers and the test certificate the net tests share with the end-to-end ones
+paths = ["crates/bota_server/tests/wire/**", "crates/bota_server/tests/tls/**"]
 tests = [{ crate = "bota_server", target = "lib", filters = ["net::", "game_loop::", "replay::"] }]
 
 [[group]]
@@ -552,6 +553,7 @@ paths = [
     "crates/bota_server/tests/startup.rs",
     "crates/bota_server/tests/launcher.rs",
     "crates/bota_server/tests/replay_cap.rs",
+    "crates/bota_server/tests/tls/**",
 ]
 tests = [
     { crate = "bota_server", target = "bin:bota_server" },
@@ -610,6 +612,8 @@ name = "server_practice"
 # change to one game system.
 about = "the practice map's whole matches: waves on three lanes, stocked camps, Pudge"
 paths = ["crates/bota_server/tests/practice_map.rs"]
+# the only whole matches of waves on three lanes and stocked camps
+also_paths = ["crates/bota_server/src/game/systems/wave.rs", "crates/bota_server/src/game/systems/jungle.rs"]
 tests = [{ crate = "bota_server", target = "test:practice_map" }]
 
 [[group]]

@@ -56,6 +56,14 @@ class Routing(unittest.TestCase):
     def test_a_server_change_lints_the_server_only(self):
         self.assertEqual(test_groups.plan(ROUTER, [f"{SERVER}/net/conn.rs"])[1], {"bota_server"})
 
+    def test_the_test_certificate_runs_every_group_that_reads_it(self):
+        self.assertTrue({"server_net", "server_launch", "server_transport"} <= groups_of("crates/bota_server/tests/tls/cert.pem"))
+
+    def test_waves_and_camps_run_the_practice_map(self):
+        self.assertIn("server_practice", groups_of(f"{SERVER}/game/systems/wave.rs"))
+        self.assertIn("server_practice", groups_of(f"{SERVER}/game/systems/jungle.rs"))
+        self.assertNotIn("server_practice", groups_of(f"{SERVER}/game/systems/walk.rs"))
+
     def test_globs_match_within_a_directory_with_one_star_and_across_with_two(self):
         self.assertTrue(test_groups.glob_regex("tools/*.sh").match("tools/gate.sh"))
         self.assertFalse(test_groups.glob_regex("tools/*.sh").match("tools/import_items/x.sh"))
@@ -87,17 +95,75 @@ class Selection(unittest.TestCase):
         self.assertTrue(test_groups.plan_report(ROUTER, "a" * 40, [f"{SERVER}/net/conn.rs"])[-1].startswith("scope affected-"))
 
 
-class Guards(unittest.TestCase):
-    def in_scratch(self, manifest):
+class Partition(unittest.TestCase):
+    """check's verdicts on the tests a build holds (the listing libtest would give, made up here)."""
+
+    BUILD = next(s.build for g in GROUPS if g.name == "game_movement" for s in g.selectors)
+
+    def assess(self, groups, *names):
+        listed = test_groups.Listed({"lib": list(names)}, {"lib": test_groups.ROOT / SERVER / "lib.rs"})
+        return test_groups.assess(groups, ROUTER, {self.BUILD: listed})
+
+    def group(self, name, *filters):
+        return test_groups.Group(name, [], [], [test_groups.Selector(self.BUILD, "lib", filters, (), (), ())], [])
+
+    def test_this_repositorys_movement_test_is_in_its_group(self):
+        self.assertEqual(self.assess([self.group("game_movement", "game::tests::movement::")], "game::tests::movement::a_walk"), [])
+
+    def test_a_test_in_two_groups_fails(self):
+        groups = [self.group("game_movement", "game::tests::movement::"), self.group("game_combat", "::movement::")]
+        problems = self.assess(groups, "game::tests::movement::a_walk")
+        self.assertIn("bota_server lib game::tests::movement::a_walk: in 2 groups ['game_combat', 'game_movement'], must be in exactly one", problems)
+
+    def test_a_test_in_no_group_fails(self):
+        groups = [self.group("game_movement", "game::tests::movement::")]
+        problems = self.assess(groups, "game::tests::movement::a_walk", "game::tests::new_system::a_rule")
+        self.assertEqual(problems, ["bota_server lib game::tests::new_system::a_rule: in 0 groups [], must be in exactly one"])
+
+    def test_a_test_whose_file_does_not_run_its_group_fails(self):
+        problems = self.assess([self.group("game_lanes", "game::tests::movement::")], "game::tests::movement::a_walk")
+        self.assertEqual(problems, [f"{SERVER}/game/tests/movement.rs: holds game::tests::movement::a_walk of group game_lanes, but a change to it does not run that group"])
+
+    def test_a_filter_that_selects_nothing_fails(self):
+        groups = [self.group("game_movement", "game::tests::movement::", "game::tests::gone::")]
+        self.assertEqual(self.assess(groups, "game::tests::movement::a_walk"), ["group game_movement: the filter game::tests::gone:: selects no test"])
+
+    def test_filters_without_a_target_are_refused(self):
+        entry = {"name": "loose", "tests": [{"crate": "bota_server", "filters": ["net::"]}]}
+        with self.assertRaisesRegex(test_groups.Failure, "filters bota_server without a target"):
+            test_groups.load_group(entry, CRATES)
+
+
+class Running(unittest.TestCase):
+    def test_a_run_of_fewer_tests_than_its_groups_select_fails_and_is_recorded(self):
         scratch = tempfile.TemporaryDirectory()
         self.addCleanup(scratch.cleanup)
-        (Path(scratch.name) / "Cargo.toml").write_text(manifest)
+        record = Path(scratch.name) / "failed"
+        result = "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out"
+        with open(Path(scratch.name) / "out", "w") as out:
+            stdout, sys.stdout = sys.stdout, out
+            try:
+                passed = test_groups.execute([sys.executable, "-c", f"print({result!r})"], {}, 2, {"core"}, record)
+            finally:
+                sys.stdout = stdout
+        self.assertFalse(passed)
+        self.assertEqual(record.read_text(), "core\n")
+        self.assertIn("it ran 1 tests where its groups select 2", (Path(scratch.name) / "out").read_text())
+
+
+class Guards(unittest.TestCase):
+    def in_scratch(self, files):
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        for name, text in files.items():
+            (Path(scratch.name) / name).parent.mkdir(parents=True, exist_ok=True)
+            (Path(scratch.name) / name).write_text(text)
         root = test_groups.ROOT
         test_groups.ROOT = Path(scratch.name)
         self.addCleanup(setattr, test_groups, "ROOT", root)
 
     def test_a_test_target_with_its_own_harness_is_refused(self):
-        self.in_scratch('[package]\nname = "x"\n[[test]]\nname = "custom"\nharness = false\n')
+        self.in_scratch({"Cargo.toml": '[package]\nname = "x"\n[[test]]\nname = "custom"\nharness = false\n'})
         problems = test_groups.check_harnesses(CRATES, GROUPS, ["Cargo.toml"])
         self.assertEqual(problems, ["Cargo.toml: test custom has a harness of its own, which no group can list"])
 
@@ -105,6 +171,16 @@ class Guards(unittest.TestCase):
         without_commands = [test_groups.Group(g.name, g.paths, g.also_paths, g.selectors, []) for g in GROUPS]
         problems = test_groups.check_harnesses(CRATES, without_commands, [])
         self.assertEqual(problems, ["bota_server: bench dummy is run by no group's command (tools/test_groups.toml)"])
+
+    def test_a_test_where_no_group_runs_is_refused(self):
+        self.in_scratch({"fuzz/src/lib.rs": "#[cfg(test)]\nmod tests {}\n", "scripts/test_seeds.py": "def test_seeds():\n    pass\n"})
+        self.assertEqual(test_groups.check_markers(ROUTER, ["fuzz/src/lib.rs", "scripts/test_seeds.py"]), [
+            "fuzz/src/lib.rs: holds tests (#[cfg(test)]) but a change to it runs no group, so none runs them",
+            "scripts/test_seeds.py: holds tests (def test_) but a change to it runs no group, so none runs them",
+        ])
+
+    def test_this_repository_has_no_test_where_no_group_runs(self):
+        self.assertEqual(test_groups.check_markers(ROUTER, test_groups.files()), [])
 
     def test_this_repository_has_no_unlistable_target(self):
         self.assertEqual(test_groups.check_harnesses(CRATES, GROUPS, test_groups.files()), [])

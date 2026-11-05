@@ -29,6 +29,8 @@ logs=${GATE_LOGS:-$here/temp/gate}
 mkdir -p "$logs"
 # shellcheck source=tools/stamp.sh
 . "$here/tools/stamp.sh"
+# shellcheck source=tools/steps.sh
+. "$here/tools/steps.sh"
 base=${GATE_BASE:-$(default_base)}
 if [ "${GATE_FULL:-0}" = 1 ]; then mode=gate-full what=full selection=--all; else mode=gate what=affected selection="--base $base"; fi
 # shellcheck disable=SC2086
@@ -45,7 +47,7 @@ scope=$(sed -n 's/^scope //p' <<< "$plan")
 # affected one too). A stamp names the tree and the selection: what it was compared with and what that selected.
 # GATE_PRECHECKED=1 and GATE_AGAIN=1 skip the two checks, for a head that is gated on behalf of something else (a merge,
 # a consumer check) and was checked elsewhere.
-tree=$(tree_key)
+tree=$(tree_key) || exit 2
 key=$tree-$scope
 if [ "${GATE_PRECHECKED:-0}" != 1 ] && [ -z "$(stamp_has "$key" precheck)$(stamp_has "$tree-full" precheck)" ]; then
     echo "gate: no passing precheck for this tree and selection ($what). Run tools/precheck.sh first (it checks what the change touches, in minutes; this gate is the confirmation, not the place to find errors)." >&2
@@ -76,18 +78,13 @@ installs() { # the Dota 2 installs the importer would find, as heatel looks for 
     done
 }
 
-has() { # list word: success when word is in the space separated list
-    case " $1 " in *" $2 "*) return 0 ;; esac
-    return 1
-}
-
 step() { # name command...
     local name=$1
     shift
     case "$skip" in *" $name "*) echo "== $name: skipped"; skipped=1; return 0 ;; esac
     echo "== $name"
     local began=$SECONDS
-    "$@" > "$logs/$name.log" 2>&1
+    "$@" > "$logs/$name.log" 2>&1 < /dev/null
     local rc=$?
     # GATE_STEP_LOG=FILE: one line per step (time, repository directory, step, seconds, exit code), to see where a gate spends its minutes
     [ -z "${GATE_STEP_LOG:-}" ] || printf '%s\t%s\t%s\t%s\t%s\n' "$(date +%FT%T)" "$(basename -- "$here")" "$name" "$((SECONDS - began))" "$rc" >> "$GATE_STEP_LOG"
@@ -105,17 +102,20 @@ step_if() { # condition reason name command...: the step when the condition hold
     if eval "$condition"; then step "$@"; else echo "== $1: not affected ($reason)"; fi
 }
 
+run_steps() { # the lines of lint_steps or wasm_steps (tools/steps.sh) on stdin: the needed steps run, the others are named
+    local name need reason command words
+    while IFS=$'\t' read -r name need reason command; do
+        read -ra words <<< "$command"
+        if [ "$need" = 1 ]; then step "$name" "${words[@]}"; else echo "== $name: not affected ($reason)"; fi
+    done
+}
+
 step ignored-audit tools/ignored_audit.sh
 # shellcheck disable=SC2086
 step test-groups python3 tools/test_groups.py check $selection
 step_if '[ "$fuzz" = 1 ]' "no crate and no fuzz target changed" fuzz-check fuzz/fuzz.sh check
-lint=(); for c in $crates; do [ "$c" = bota_radovid ] || lint+=(-p "$c"); done
-step_if '[ ${#lint[@]} -gt 0 ]' "no crate changed" clippy cargo clippy "${lint[@]}" --all-targets -- -D warnings
-step_if 'has "$crates" bota_radovid' "bota_radovid and what it builds on are unchanged" clippy-radovid cargo clippy -p bota_radovid --all-targets --features e2e -- -D warnings
-step_if 'has "$crates" bota_client_core' "bota_client_core and what it builds on are unchanged" clippy-ui cargo clippy -p bota_client_core --all-targets --features ui -- -D warnings
-step_if 'has "$crates" bota_client_core' "bota_client_core and what it builds on are unchanged" wasm cargo check --target wasm32-unknown-unknown -p bota_client_core -p bota_proto --features bota_client_core/ui
-step_if 'has "$crates" bota_radovid' "bota_radovid and what it builds on are unchanged" wasm-radovid cargo check --target wasm32-unknown-unknown -p bota_radovid --features web
-step_if 'has "$crates" bota_client_core' "bota_client_core and what it builds on are unchanged" wasm-web cargo check --target wasm32-unknown-unknown -p bota_client_core --features bota_client_core/web
+run_steps < <(lint_steps "$crates")
+run_steps < <(wasm_steps "$crates")
 if has "$groups" import_items && [ -z "$(installs)" ]; then
     echo "GATE-FAIL test (group import_items runs, and there is no Dota 2 install: the committed item table cannot be checked against it)"
     exit 1
@@ -136,7 +136,8 @@ if [ "$skipped" = 1 ]; then
     exit 1
 fi
 # What passed is what was checked: a tree changed by a step or by hand meanwhile gets no stamp.
-if [ "$(tree_key)" != "$tree" ]; then
+now=$(tree_key) || exit 2
+if [ "$now" != "$tree" ]; then
     echo "GATE-FAIL the tree changed while the gate ran (git status --short):"
     git status --short
     exit 1

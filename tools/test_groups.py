@@ -173,6 +173,8 @@ def load_group(entry: dict, crates: dict[str, Crate]) -> Group:
             build = Build(test["unittest"], UNITTEST, ())
             selectors.append(Selector(build, UNITTEST, (), (), (), ()))
             continue
+        if test.get("filters") and not test.get("target"):
+            raise Failure(f"test_groups.toml: group {entry['name']} filters {test['crate']} without a target: name the target the filters are for")
         crate = crates.get(test["crate"])
         if crate is None:
             raise Failure(f"test_groups.toml: group {entry['name']} names crate {test['crate']}, which has no [crate] table")
@@ -431,6 +433,7 @@ def check(crates: dict[str, Crate], groups: list[Group], router: Router, paths: 
     problems += check_patterns(groups, router, every_file)
     problems += [f"{path}: no group and no route names it (tools/test_groups.toml)" for path in every_file if router.route(path) is None]
     problems += check_harnesses(crates, groups, every_file)
+    problems += check_markers(router, every_file)
     scope = set(crates) if paths is None else set()
     for path in paths or []:
         routed = router.route(path)
@@ -441,6 +444,24 @@ def check(crates: dict[str, Crate], groups: list[Group], router: Router, paths: 
         if crate is not None:
             scope |= router.above(crate.name)
     return problems + check_tests(crates, groups, router, scope)
+
+
+# What a test is written with, in Rust and in Python: a file holding one must run some group.
+TEST_MARKERS = {".rs": ("#[test]", "#[cfg(test)]"), ".py": ("def test_", "unittest.TestCase")}
+
+
+def check_markers(router: Router, every_file: list[str]) -> list[str]:
+    """A file a route sends to no group (fuzz/, scripts/) may hold no test: no group would run it."""
+    problems = []
+    for path in every_file:
+        markers = TEST_MARKERS.get(Path(path).suffix)
+        routed = router.route(path)
+        if not markers or routed is None or routed[0] or not (ROOT / path).is_file():
+            continue
+        found = [m for m in markers if m in (ROOT / path).read_text(errors="replace")]
+        if found:
+            problems.append(f"{path}: holds tests ({', '.join(found)}) but a change to it runs no group, so none runs them")
+    return problems
 
 
 def check_harnesses(crates: dict[str, Crate], groups: list[Group], every_file: list[str]) -> list[str]:
@@ -494,11 +515,15 @@ def check_tests(crates: dict[str, Crate], groups: list[Group], router: Router, s
     change to the file it is written in runs that group."""
     builds = {s.build for g in groups for s in g.selectors if s.build.crate in scope or s.build.profile == UNITTEST}
     builds |= {Build(c, crates[c].profile, crates[c].all_features) for c in scope}
+    return assess(groups, router, {build: list_build(crates, build) for build in sorted(builds, key=str)})
+
+
+def assess(groups: list[Group], router: Router, listings: dict[Build, Listed]) -> list[str]:
+    """check_tests on the tests each build holds: each in exactly one group, its file routed to that group, every filter used."""
     owners: dict[tuple[str, str, str], set[str]] = {}
     files_of: dict[tuple[str, str, str], Path] = {}
     problems = []
-    for build in sorted(builds, key=str):
-        listed = list_build(crates, build)
+    for build, listed in listings.items():
         for target, names in listed.tests.items():
             for name in names:
                 key = (build.crate, target, name)

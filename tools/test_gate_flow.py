@@ -14,6 +14,8 @@ INSTALL = ".steam/steam/steamapps/common/dota 2 beta/game/dota/pak01_dir.vpk"
 CARGO = """#!/usr/bin/env python3
 import os, sys
 if sys.argv[1:2] == ["fmt"] and "--emit" in sys.argv:
+    if os.environ.get("FLOW_FMT_FAILS"):
+        sys.exit("error: expected item, found `}`")
     print("fn sample() {}")
 with open(os.environ["FLOW_TRACE"], "a") as trace:
     print("cargo", *sys.argv[1:], file=trace)
@@ -44,6 +46,9 @@ elif arguments[0] == "check" and os.environ.get("FLOW_CHECK_FAILS"):
     sys.exit("test-groups: a test in no group")
 elif arguments[0] == "run" and os.environ.get("FLOW_MUTATES"):
     Path("mutation.txt").write_text("written while the checks ran")
+elif arguments[0] == "run" and os.environ.get("FLOW_FAILS") in arguments:
+    Path(arguments[arguments.index("--record") + 1]).write_text(os.environ["FLOW_FAILS"] + "\\n")
+    sys.exit(1)
 """
 
 
@@ -55,7 +60,7 @@ class GateFlow(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         self.root = Path(directory.name)
         self.repo = self.root / "repo"
-        for name in ("gate.sh", "precheck.sh", "stamp.sh"):
+        for name in ("gate.sh", "precheck.sh", "stamp.sh", "steps.sh"):
             self.write(f"tools/{name}", (TOOLS / name).read_text(), executable=True)
         self.write("tools/test_groups.py", GROUPS)
         self.write("tools/ignored_audit.sh", "#!/bin/sh\n", executable=True)
@@ -165,6 +170,16 @@ class GateFlow(unittest.TestCase):
         self.passes("gate")
         self.passes("precheck", FLOW_GROUPS="import_items")
         self.refused("gate", 1, "no Dota 2 install", FLOW_GROUPS="import_items")
+
+    def test_the_groups_that_failed_run_first_next_time(self):
+        self.refused("precheck", 1, "PRECHECK-FAIL test", FLOW_GROUPS="core server", FLOW_FAILS="server")
+        self.trace.write_text("")
+        self.passes("precheck", FLOW_GROUPS="core server")
+        runs = [line.split()[-1] for line in self.trace.read_text().splitlines() if line.startswith("test_groups run")]
+        self.assertEqual(runs, ["server", "core"])
+
+    def test_a_tree_cargo_fmt_cannot_read_has_no_stamp(self):
+        self.refused("precheck", 2, "`cargo fmt --all` failed", FLOW_FMT_FAILS="1")
 
     def test_without_its_base_the_precheck_fails_closed(self):
         self.git("update-ref", "-d", "refs/remotes/origin/main")  # and there is no main either
