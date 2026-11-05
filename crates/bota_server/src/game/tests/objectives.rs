@@ -435,6 +435,73 @@ fn a_lit_watcher_sees_for_its_side_by_day_and_night_for_seven_minutes() {
 }
 
 #[test]
+fn a_move_beside_the_shrine_watcher_routes_to_its_far_side_on_both_maps() {
+    for map in [MapId(0), MapId(2)] {
+        let mut world = watcher_path_match(map);
+        let at = map_of(map).watchers[9];
+        let unit = hero(&world, 0);
+        let goal = at + Vec2::from_ints(50, 0);
+        place_hero(&mut world, 0, at + Vec2::from_ints(-300, 0));
+        let collision = world.hull.get(unit).expect("a hero hull").collision;
+        assert!(
+            world.clearance.point_clear(goal, collision),
+            "the destination is open ground"
+        );
+        give(
+            &mut world,
+            &[(
+                0,
+                Order::Move {
+                    target: Target::Pos(goal),
+                },
+            )],
+        );
+        run(&mut world, 8 * rules::TICKS_PER_SECOND);
+        let pos = world.transform.get(unit).expect("standing").pos;
+        assert!(
+            pos.within(goal, rules::units(24)),
+            "map {map:?}: stuck at {pos:?}, goal {goal:?}"
+        );
+    }
+}
+
+fn watcher_path_match(map: MapId) -> World {
+    let mut cfg = config();
+    cfg.map = map;
+    cfg.objectives = bota_core::SIMULATED_OBJECTIVES;
+    cfg.picks = vec![Pick {
+        slot: SlotId(0),
+        team: Team::Radiant,
+        hero: HeroId::SHADOW_FIEND,
+    }];
+    let mut world = World::for_match(&cfg, cfg.rng());
+    world.clock_shift.game = world.schedule().horn;
+    world
+}
+
+#[test]
+fn objectives_block_path_planning_after_spawn_on_both_maps() {
+    for map in [MapId(0), MapId(2)] {
+        let world = watcher_path_match(map);
+        for unit in world.entities.iter() {
+            let kind = *world.kind.get(unit).expect("a kind");
+            if !matches!(
+                kind,
+                UnitKind::Watcher | UnitKind::Shrine | UnitKind::Outpost | UnitKind::LotusPool
+            ) {
+                continue;
+            }
+            assert!(world.alive(unit));
+            let pos = world.transform.get(unit).expect("standing").pos;
+            assert!(
+                !world.clearance.point_clear(pos, bota_proto::Fixed::ZERO),
+                "map {map:?}: a live {kind:?} at {pos:?} must block planning"
+            );
+        }
+    }
+}
+
+#[test]
 fn the_other_side_puts_a_lit_watcher_out_for_two_minutes() {
     let (mut world, watcher) = a_watcher_and_its_lighter();
     let at = world.transform.get(watcher).expect("standing").pos;

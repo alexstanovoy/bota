@@ -67,6 +67,8 @@ impl World {
             world.stand_up_courier(seat);
         }
         world.settle();
+        // Passability ignores dead structures; stats must fill new bodies' pools first.
+        world.lay_passability();
         world
     }
 

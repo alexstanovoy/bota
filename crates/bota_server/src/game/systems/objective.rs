@@ -22,6 +22,7 @@ impl World {
     /// Stands up the objectives the match's rules ask for, at the places
     /// the map holds: each Outpost with its home side, each Watcher and each
     /// Shrine of the neutral team.
+    /// Their passability must be laid after [`World::settle`] initializes health.
     pub(crate) fn stand_up_objectives(&mut self, objectives: ObjectiveSet) {
         self.objectives = objectives;
         let map = self.map;
@@ -72,9 +73,6 @@ impl World {
                     },
                 );
             }
-        }
-        if !objectives.is_empty() {
-            self.lay_passability();
         }
     }
 
