@@ -97,8 +97,10 @@ const PREFIX_DIGESTS: [u64; ITEM_COUNT + 1] = {
     digests
 };
 
-/// FNV-1a, written to by value so it runs at compile time.
+/// FNV-1a, written to by value so it runs at compile time. A digest left
+/// unused is a field left out of it.
 #[derive(Clone, Copy)]
+#[must_use]
 struct Fnv(u64);
 
 impl Fnv {
@@ -334,7 +336,7 @@ impl Fnv {
 /// What an item is to a match: every field of its row but the words that
 /// name it. Taking the row apart field by field makes a field added to
 /// [`ItemDef`] fail to build here until it is digested too.
-const fn item_digest(def: &ItemDef) -> u64 {
+pub(crate) const fn item_digest(def: &ItemDef) -> u64 {
     let ItemDef {
         id,
         key,
@@ -410,7 +412,8 @@ const fn item_digest(def: &ItemDef) -> u64 {
         Spends::One => 1,
         Spends::All => 2,
     };
-    fnv.flag(retired)
+    let fnv = fnv
+        .flag(retired)
         .aim(aim)
         .int(cast_range as i64)
         .u64(behavior.bits() as u64)
