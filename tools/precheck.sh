@@ -23,9 +23,16 @@ wasm_checks=(
     "cargo check --target wasm32-unknown-unknown -p bota_client_core -p bota_proto --features bota_client_core/ui"
     "cargo check --target wasm32-unknown-unknown -p bota_client_core --features bota_client_core/web"
 )
-# per crate, extra clippy runs (a feature the plain run does not build)
+# per crate, extra clippy runs (a feature the plain run does not build; bota_radovid is empty without its features)
 extra_clippy() { # crate
-    case $1 in bota_client_core) echo "cargo clippy -p bota_client_core --all-targets --features ui -- -D warnings" ;; esac
+    case $1 in
+        bota_client_core) echo "cargo clippy -p bota_client_core --all-targets --features ui -- -D warnings" ;;
+        bota_radovid) echo "cargo clippy -p bota_radovid --all-targets --features e2e -- -D warnings" ;;
+    esac
+}
+# per crate, its own browser build check (the same as tools/gate.sh)
+extra_wasm() { # crate
+    case $1 in bota_radovid) echo "cargo check --target wasm32-unknown-unknown -p bota_radovid --features web" ;; esac
 }
 extra_test() { # crate
     case $1 in bota_client_core) echo "cargo test -p bota_client_core --features ui --profile test-release" ;; esac
@@ -130,6 +137,9 @@ for c in $plan; do
         for w in "${wasm_checks[@]}"; do step wasm bash -c "$w" || exit 1; done
         break ;;
     esac
+done
+for c in $plan; do
+    e=$(extra_wasm "$c"); [ -z "$e" ] || step "wasm ($c)" bash -c "$e" || exit 1
 done
 stamp_put "$(tree_key)" precheck
 echo "PRECHECK-OK ($((SECONDS - started)) s)"
