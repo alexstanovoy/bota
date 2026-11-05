@@ -60,7 +60,9 @@ impl App {
         self.channel_holds_orders() && !self.leaves_channel_be(issued.order)
     }
 
-    /// Whether a cast or a use goes off beside a channel.
+    /// Whether a cast or a use leaves a channel be: only one that ignores
+    /// channels does. An immediate one breaks a channel it does not ignore,
+    /// as the server has it.
     fn leaves_channel_be(&self, order: Order) -> bool {
         let Some(hero) = self.view().and_then(|view| view.unit(self.my_hero()?)) else {
             return false;
@@ -70,10 +72,10 @@ impl App {
                 .abilities
                 .get(usize::from(slot.0))
                 .and_then(|held| bota_core::ability_def(held.id))
-                .is_some_and(|def| def.immediate || def.ignores_channel),
+                .is_some_and(|def| def.ignores_channel),
             Order::Use { slot, .. } => crate::orders::item_in(hero, slot)
                 .and_then(|held| bota_core::item_def(held.id))
-                .is_some_and(|def| def.immediate || def.ignores_channel),
+                .is_some_and(|def| def.ignores_channel),
             _ => false,
         }
     }

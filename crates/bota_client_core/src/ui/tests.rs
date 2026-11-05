@@ -777,6 +777,52 @@ fn a_teleport_holds_orders_back_by_its_own_option_alone() {
     }
 }
 
+/// An immediate use breaks a channel it does not ignore, as the server has it: "Require Stop" keeps
+/// a Bottle back while a channel runs, and lets the Phase Boots, which ignore it, go through.
+#[test]
+fn a_channel_that_wants_stop_keeps_back_an_immediate_use_it_does_not_ignore() {
+    use crate::ui::intent::Intent;
+    use crate::ui::slots::Slot;
+    let mut app = a_started_app();
+    app.channel_stops = ChannelStops {
+        teleport: false,
+        channels: true,
+    };
+    let mut hero = owned(1, UnitKind::Hero, Some(SlotId(0)));
+    hero.statuses.bits |= StatusFlags::CHANNELLING;
+    let held = |id| {
+        Some(ItemView {
+            id,
+            ..an_item(Some(3), 0, 0, Some(bota_proto::Aim::Own))
+        })
+    };
+    hero.items[0] = held(ItemId::BOTTLE);
+    hero.items[1] = held(ItemId::PHASE_BOOTS);
+    let id = hero.id;
+    app.handle(snapshot_of(
+        10,
+        vec![hero],
+        vec![a_seat(SlotId(0), Some(id))],
+    ));
+    let sent = |app: &App| app.shown_orders.last().map(|shown| shown.order);
+    app.act(Intent::Press {
+        slot: Slot::Item(0),
+        ctrl: false,
+    });
+    assert_eq!(sent(&app), None, "the Bottle would break the channel");
+    app.act(Intent::Press {
+        slot: Slot::Item(1),
+        ctrl: false,
+    });
+    assert_eq!(
+        sent(&app),
+        Some(Order::Use {
+            slot: bota_proto::ItemSlot(1),
+            target: Target::None
+        })
+    );
+}
+
 #[test]
 fn a_cast_point_shortens_while_a_feast_runs_on_a_hero_with_the_talent() {
     let mut app = a_started_app();
