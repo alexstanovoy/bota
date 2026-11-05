@@ -3,13 +3,17 @@
 
     tools/test_groups.py check [--base REV | --all]   every test in exactly one group, every file routed, at most 30 groups
     tools/test_groups.py plan [--base REV | --all]    the groups and crates the change since the merge-base with REV affects
-    tools/test_groups.py run [--record FILE] GROUP... the groups' tests and commands, stopping at the first failure
+    tools/test_groups.py run [--record FILE] [--jobs N] GROUP...
+                                                      the groups' tests and commands, N at a time (default 4,
+                                                      TEST_GROUPS_JOBS), stopping at the first failure
 
 REV defaults to origin/main (main where there is no origin). `check` lists the tests of the crates the change can touch
 (every crate with --all) by building their test targets in each build the groups use and with all their features; a crate
-outside the change keeps the tests and the groups it had at the merge-base, which passed. `run` checks that every cargo
-invocation ran exactly as many tests as its groups select, so this selection and libtest's own cannot drift apart.
-`plan` prints three lines: `groups NAME...`, `crates NAME...` (the workspace crates to lint) and `fuzz 0|1`.
+outside the change keeps the tests and the groups it had at the merge-base, which passed. `run` runs the test binaries
+the listing built directly, several at once and the longest of the last run first (target/test-groups-seconds.json), and
+checks that each ran exactly as many tests as its groups select, so this selection and libtest's own cannot drift apart.
+`plan` prints four lines: `groups NAME...`, `crates NAME...` (the workspace crates to lint), `fuzz 0|1` and `scope`
+(what a stamp of the check names besides the tree).
 """
 
 import argparse
@@ -17,8 +21,10 @@ import hashlib
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
+import threading
 import time
 import tomllib
 from dataclasses import dataclass, field
@@ -88,6 +94,7 @@ class Listed:
 
     tests: dict[str, list[str]]
     roots: dict[str, Path]
+    executables: dict[str, Path] = field(default_factory=dict)
 
 
 def git(*args: str) -> str:
@@ -370,6 +377,7 @@ def list_build(crates: dict[str, Crate], build: Build) -> Listed:
         listing = subprocess.run([message["executable"], "--list", "--format", "terse"], cwd=ROOT / crate.directory, capture_output=True, text=True, check=True)
         listed.tests[name] = tests_of(listing.stdout)
         listed.roots[name] = Path(target["src_path"])
+        listed.executables[name] = Path(message["executable"])
     if has_doc:
         doc = subprocess.run(cargo_test(crates, build) + ["--doc", "--", "--list", "--format", "terse"], cwd=ROOT, capture_output=True, text=True)
         if doc.returncode != 0:
@@ -553,22 +561,31 @@ def unused_filters(group: Group, selector: Selector, hits: list[tuple[str, str]]
     return [f"group {group.name}: the filter {f} selects no test" for f in selector.filters if not any(f in n for _, n in hits)]
 
 
+# How many test binaries run at once unless --jobs or TEST_GROUPS_JOBS says otherwise (each runs its tests on libtest's own
+# threads, RUST_TEST_THREADS). Measured on the full run (32 threads, RUST_TEST_THREADS=16): 1 at a time 209 s, 2 93 s, 4 59 s,
+# 6 60 s, 8 70 s; at 4 the run waits on its longest binary (tests/malformed.rs), and the processes peak under 1.1 GB.
+JOBS = 4
+
+
 @dataclass
 class Invocation:
+    """One process of a run: a prebuilt test binary with its filters, or a cargo or unittest command."""
+
+    key: str  # what the run's timing history knows it by
     command: list[str]
+    cwd: Path
     env: dict[str, str]
-    expected: int
+    expected: int | None  # the tests it must run (None: a command that runs no libtest tests)
     groups: set[str]
 
 
 def invocations(crates: dict[str, Crate], chosen: list[Group]) -> list[Invocation]:
-    """The cargo runs of the chosen groups: per build, environment and extra arguments, the targets run whole in one run, and
-    the targets run with filters in one run per filter set; doc tests apart (cargo runs them on their own)."""
+    """The processes of the chosen groups: per build, environment and extra arguments, each test binary once with the union of
+    its groups' filters (none when a group takes it whole), the doc tests through cargo, the unittest suites through Python."""
     keyed: dict[tuple, dict[str, tuple[set[str] | None, set[str]]]] = {}
     for group in chosen:
         for selector in group.selectors:
-            key = (selector.build, selector.args, selector.env)
-            targets = keyed.setdefault(key, {})
+            targets = keyed.setdefault((selector.build, selector.args, selector.env), {})
             for target in [selector.target] if selector.target else ["*"]:
                 filters, owners = targets.get(target, (set(), set()))
                 merged = None if filters is None or not selector.filters else filters | set(selector.filters)
@@ -578,93 +595,138 @@ def invocations(crates: dict[str, Crate], chosen: list[Group]) -> list[Invocatio
         listed = list_build(crates, build)
         if build.profile == UNITTEST:
             owners = {o for _, owned in targets.values() for o in owned}
-            runs.append(Invocation(unittest_command(build.crate), {}, len(listed.tests[UNITTEST]), owners))
+            runs.append(Invocation(f"unittest {build.crate}", unittest_command(build.crate), ROOT, {}, len(listed.tests[UNITTEST]), owners))
             continue
         if "*" in targets:  # the whole crate
-            filters, owners = targets.pop("*")
+            _, owners = targets.pop("*")
             targets = {t: (None, owners | targets.get(t, (None, set()))[1]) for t in listed.tests}
-        plain = sorted(t for t, (f, _) in targets.items() if f is None and t != "doc")
-        batches = [(plain, None)] if plain else []
-        batches += [([t], f) for t, (f, _) in sorted(targets.items()) if f is not None and t != "doc"]
-        if "doc" in targets:
-            batches.append((["doc"], targets["doc"][0]))
-        for names, filters in batches:
-            runs.append(invocation(crates, build, args, dict(env), listed, names, filters, {o for t in names for o in targets[t][1]}))
+        for target, (filters, owners) in sorted(targets.items()):
+            runs.append(invocation(crates, build, args, dict(env), listed, target, sorted(filters or ()), owners))
     return runs
 
 
-def invocation(crates, build, args, env, listed, names, filters, owners) -> Invocation:
-    flags = []
-    for target in names:
-        if target == "doc":
-            flags.append("--doc")
-        elif target == "lib":
-            flags.append("--lib")
-        else:
-            kind, name = target.split(":", 1)
-            flags += [f"--{kind}", name]
-    selector = Selector(build, None, tuple(sorted(filters or ())), (), (), ())
-    expected = sum(1 for t in names for n in listed.tests.get(t, []) if selects(selector, t, n))
-    command = cargo_test(crates, build) + flags + ["--", *sorted(filters or ()), *args]
-    return Invocation(command, env, expected, owners)
+def invocation(crates, build, args, env, listed, target, filters, owners) -> Invocation:
+    selector = Selector(build, None, tuple(filters), (), (), ())
+    expected = sum(1 for n in listed.tests.get(target, []) if selects(selector, target, n))
+    key = " ".join([build.crate, build.profile, ",".join(build.features), target, *filters, *args])
+    if target == "doc":  # rustdoc builds and runs them: only cargo can
+        return Invocation(key, cargo_test(crates, build) + ["--doc", "--", *filters, *args], ROOT, env, expected, owners)
+    crate = crates[build.crate]
+    # as `cargo test` runs a test binary: from its crate's directory, told where that is
+    env |= {"CARGO_MANIFEST_DIR": str(ROOT / crate.directory), "CARGO_PKG_NAME": crate.name}
+    command = [str(listed.executables[target]), *filters, *args]
+    return Invocation(key, command, ROOT / crate.directory, env, expected, owners)
 
 
 def target_directory() -> str:
     return metadata(None)["target_directory"]
 
 
-def run(crates: dict[str, Crate], chosen: list[Group], record: Path | None) -> bool:
-    """Runs the chosen groups, stopping at the first failure; `record` gets the names of the groups that failed."""
+def run(crates: dict[str, Crate], chosen: list[Group], record: Path | None, jobs: int) -> bool:
+    """Runs the chosen groups: their `before` commands one after another, then their test binaries, doc tests and commands
+    `jobs` at a time, the longest of the last run first, stopping at the first failure; `record` gets the failed groups."""
     began = time.monotonic()
-    done_before: set[tuple[str, ...]] = set()
     places = {"target_dir": target_directory()}
-    for group in chosen:
-        for selector in group.selectors:
-            for command in selector.before:
-                if command not in done_before:
-                    done_before.add(command)
-                    if not execute(list(command), {}, None, {group.name}, record):
-                        return False
-    for each in invocations(crates, chosen):
-        env = {k: v.format(**places) for k, v in each.env.items()}
-        if not execute(each.command, env, each.expected, each.groups, record):
+    befores = {command: group.name for group in reversed(chosen) for s in group.selectors for command in s.before}
+    for command, name in befores.items():
+        if not Pool(1, record).run([Invocation(" ".join(command), list(command), ROOT, {}, None, {name})]):
             return False
-    for group in chosen:
-        for command in group.commands:
-            if not execute(command, {}, None, {group.name}, record):
-                return False
-    print(f"test-groups: {len(chosen)} groups passed in {time.monotonic() - began:.0f} s: {' '.join(g.name for g in chosen)}")
-    return True
+    runs = [
+        Invocation(each.key, each.command, each.cwd, {k: v.format(**places) for k, v in each.env.items()}, each.expected, each.groups)
+        for each in invocations(crates, chosen)
+    ]
+    runs += [Invocation(" ".join(c), c, ROOT, {}, None, {group.name}) for group in chosen for c in group.commands]
+    history = Path(places["target_dir"]) / "test-groups-seconds.json"
+    try:
+        seconds = json.loads(history.read_text())
+    except (OSError, ValueError):
+        seconds = {}
+    runs.sort(key=lambda each: -seconds.get(each.key, float("inf")))
+    pool = Pool(jobs, record)
+    passed = pool.run(runs)
+    history.write_text(json.dumps(seconds | pool.seconds, indent=0, sort_keys=True))
+    if passed:
+        print(f"test-groups: {len(chosen)} groups passed in {time.monotonic() - began:.0f} s ({jobs} at a time): {' '.join(g.name for g in chosen)}")
+    return passed
 
 
-def execute(command: list[str], env: dict[str, str], expected: int | None, groups: set[str], record: Path | None) -> bool:
-    shown = " ".join(f"{k}={v}" for k, v in env.items()) + (" " if env else "") + " ".join(command)
-    print(f"test-groups: [{' '.join(sorted(groups))}] {shown}", flush=True)
-    began = time.monotonic()
-    process = subprocess.Popen(command, cwd=ROOT, env=os.environ | env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+class Pool:
+    """Runs invocations a few at a time, each in a process group of its own; the first failure stops the rest."""
+
+    def __init__(self, jobs: int, record: Path | None):
+        self.slots = threading.Semaphore(jobs)
+        self.record = record
+        self.lock = threading.Lock()
+        self.running: dict[int, subprocess.Popen] = {}
+        self.failed = False
+        self.seconds: dict[str, float] = {}
+
+    def run(self, runs: list[Invocation]) -> bool:
+        threads = []
+        for each in runs:
+            self.slots.acquire()
+            if self.failed:
+                self.slots.release()
+                break
+            thread = threading.Thread(target=self.execute, args=(each,))
+            thread.start()
+            threads.append(thread)
+        for thread in threads:
+            thread.join()
+        return not self.failed
+
+    def execute(self, each: Invocation) -> None:
+        try:
+            shown = " ".join(f"{k}={v}" for k, v in each.env.items() if not k.startswith("CARGO_")) + " " + " ".join(each.command)
+            print(f"test-groups: [{' '.join(sorted(each.groups))}] {shown.strip()}", flush=True)
+            began = time.monotonic()
+            process = subprocess.Popen(each.command, cwd=each.cwd, env=os.environ | each.env, stdout=subprocess.PIPE,
+                                       stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, text=True, start_new_session=True)
+            with self.lock:
+                self.running[process.pid] = process
+            output, _ = process.communicate()
+            with self.lock:
+                del self.running[process.pid]
+                self.report(each, output, process.returncode, time.monotonic() - began)
+        finally:
+            self.slots.release()
+
+    def report(self, each: Invocation, output: str, status: int, seconds: float) -> None:
+        """Under the lock: the invocation's output whole, its verdict, and on a failure the others stopped."""
+        if self.failed and status != 0:
+            return  # stopped because another one failed
+        sys.stdout.write(output)
+        problem = problem_of(output, status, each.expected)
+        if problem is None:
+            self.seconds[each.key] = round(seconds, 1)
+            print(f"test-groups: {seconds:.0f} s [{' '.join(sorted(each.groups))}]", flush=True)
+            return
+        print(f"test-groups: FAILED after {seconds:.0f} s ({problem}): groups {' '.join(sorted(each.groups))}", flush=True)
+        self.failed = True
+        if self.record is not None:
+            self.record.write_text("\n".join(sorted(each.groups)) + "\n")
+        for process in self.running.values():
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+
+def problem_of(output: str, status: int, expected: int | None) -> str | None:
+    """Why a finished invocation failed, None when it passed: its exit code, or a count of tests other than its groups'."""
+    if status != 0:
+        return f"exit code {status}"
     ran = 0
-    for line in process.stdout:
-        sys.stdout.write(line)
+    for line in output.splitlines():
         found = re.match(r"test result: \w+\. (\d+) passed; (\d+) failed; (\d+) ignored; (\d+) measured", line)
         if found:
             ran += sum(int(n) for n in found.groups())
         found = re.match(r"Ran (\d+) tests? in ", line)  # unittest
         if found:
             ran += int(found.group(1))
-    status = process.wait()
-    seconds = time.monotonic() - began
-    problem = None
-    if status != 0:
-        problem = f"exit code {status}"
-    elif expected is not None and ran != expected:
-        problem = f"it ran {ran} tests where its groups select {expected} (the selection and libtest's disagree)"
-    if problem is None:
-        print(f"test-groups: {seconds:.0f} s", flush=True)
-        return True
-    print(f"test-groups: FAILED after {seconds:.0f} s ({problem}): groups {' '.join(sorted(groups))}", flush=True)
-    if record is not None:
-        record.write_text("\n".join(sorted(groups)) + "\n")
-    return False
+    if expected is not None and ran != expected:
+        return f"it ran {ran} tests where its groups select {expected} (the selection and libtest's disagree)"
+    return None
 
 
 def main() -> int:
@@ -676,6 +738,8 @@ def main() -> int:
         each.add_argument("--all", action="store_true", help="everything, whatever changed")
     running = sub.add_parser("run")
     running.add_argument("--record", type=Path, help="write the names of the groups that failed here")
+    running.add_argument("--jobs", type=int, default=int(os.environ.get("TEST_GROUPS_JOBS", JOBS)),
+                         help=f"test binaries at once (default TEST_GROUPS_JOBS, else {JOBS})")
     running.add_argument("groups", nargs="+")
     options = parser.parse_args()
     try:
@@ -685,7 +749,9 @@ def main() -> int:
             unknown = [n for n in options.groups if n not in router.names]
             if unknown:
                 raise Failure(f"no such group: {' '.join(unknown)} (groups: {' '.join(router.names)})")
-            return 0 if run(crates, [g for g in groups if g.name in options.groups], options.record) else 1
+            if options.jobs < 1:
+                raise Failure(f"--jobs {options.jobs}: at least one")
+            return 0 if run(crates, [g for g in groups if g.name in options.groups], options.record, options.jobs) else 1
         merge_base, paths = (None, None) if options.all else changed(options.base or default_base())
         if options.action == "plan":
             print("\n".join(plan_report(router, merge_base, paths)))

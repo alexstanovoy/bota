@@ -3,6 +3,7 @@
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -135,20 +136,44 @@ class Partition(unittest.TestCase):
 
 
 class Running(unittest.TestCase):
-    def test_a_run_of_fewer_tests_than_its_groups_select_fails_and_is_recorded(self):
+    def pool(self, *runs, jobs=2):
         scratch = tempfile.TemporaryDirectory()
         self.addCleanup(scratch.cleanup)
         record = Path(scratch.name) / "failed"
-        result = "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out"
+        pool = test_groups.Pool(jobs, record)
         with open(Path(scratch.name) / "out", "w") as out:
             stdout, sys.stdout = sys.stdout, out
             try:
-                passed = test_groups.execute([sys.executable, "-c", f"print({result!r})"], {}, 2, {"core"}, record)
+                passed = pool.run(list(runs))
             finally:
                 sys.stdout = stdout
+        return passed, record.read_text() if record.exists() else "", (Path(scratch.name) / "out").read_text()
+
+    def python(self, group, code, expected=None):
+        return test_groups.Invocation(group, [sys.executable, "-c", code], Path.cwd(), {}, expected, {group})
+
+    def test_a_run_of_fewer_tests_than_its_groups_select_fails_and_is_recorded(self):
+        result = "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out"
+        passed, record, out = self.pool(self.python("core", f"print({result!r})", expected=2))
         self.assertFalse(passed)
-        self.assertEqual(record.read_text(), "core\n")
-        self.assertIn("it ran 1 tests where its groups select 2", (Path(scratch.name) / "out").read_text())
+        self.assertEqual(record, "core\n")
+        self.assertIn("it ran 1 tests where its groups select 2", out)
+
+    def test_the_first_failure_stops_the_runs_in_flight_and_the_rest(self):
+        began = time.monotonic()
+        passed, record, _ = self.pool(
+            self.python("slow", "import time; time.sleep(60)"),
+            self.python("broken", "raise SystemExit(3)"),
+            self.python("never", "import time; time.sleep(60)"),
+        )
+        self.assertFalse(passed)
+        self.assertEqual(record, "broken\n")
+        self.assertLess(time.monotonic() - began, 30)
+
+    def test_runs_at_once_pass_together(self):
+        passed, _, out = self.pool(*[self.python(f"g{n}", "import time; time.sleep(1)") for n in range(4)], jobs=4)
+        self.assertTrue(passed)
+        self.assertEqual(out.count("test-groups: 1 s"), 4)
 
 
 class Guards(unittest.TestCase):

@@ -177,7 +177,7 @@ stops at the first failure, prints `GATE-OK`, and fails when a step can't run. B
 Every test is in exactly one of the groups of `tools/test_groups.toml`, which follow the crates and the game's
 subsystems, and every file says which groups a change to it runs. `tools/test_groups.py check` proves both from
 libtest's own test lists (a change checks the crates it can touch; `--all` checks every crate and build),
-`plan` turns a change into groups and `run GROUP...` runs them.
+`plan` turns a change into groups and `run GROUP...` runs them, four test binaries at a time (`TEST_GROUPS_JOBS`).
 
 What the main suites cover:
 
