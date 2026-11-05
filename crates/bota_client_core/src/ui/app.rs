@@ -296,6 +296,8 @@ pub struct Cue {
     /// The hero a hero's cue is about (the attacker, the one struck for,
     /// the one fallen): sounds are a hero's own.
     pub hero: Option<bota_proto::HeroId>,
+    /// The unit a hero's blow lands on.
+    pub target: Option<EntityId>,
 }
 
 /// Why an ally is no target of a click that attacks allies, which Dota's
@@ -1074,12 +1076,25 @@ impl App {
         gain: f32,
         at: Option<(f32, f32)>,
     ) {
+        self.cue_blow(hero, kind, gain, at, None);
+    }
+
+    /// A cue about a hero's blow on `target`.
+    pub fn cue_blow(
+        &mut self,
+        hero: Option<bota_proto::HeroId>,
+        kind: CueKind,
+        gain: f32,
+        at: Option<(f32, f32)>,
+        target: Option<EntityId>,
+    ) {
         if self.cues.len() < MAX_CUES {
             self.cues.push(Cue {
                 kind,
                 gain,
                 at,
                 hero,
+                target,
             });
         }
     }

@@ -1279,6 +1279,33 @@ fn a_hero_falling_cues_its_death_for_that_hero() {
     );
 }
 
+#[test]
+fn our_blow_cues_the_unit_it_lands_on() {
+    let (mut app, us, theirs) = a_duel_app();
+    app.cues.clear();
+    app.handle(bota_proto::ServerMsg::Events {
+        tick: 10,
+        events: vec![EventKind::Damaged {
+            source: Some(us),
+            target: theirs,
+            amount: 50,
+            kind: bota_proto::DamageKind::Physical,
+            inflictor: None,
+        }],
+    });
+    app.pump(0.0);
+    let cue = app
+        .cues
+        .iter()
+        .find(|cue| cue.kind == crate::ui::app::CueKind::Hit)
+        .expect("a blow landed");
+    assert_eq!(
+        cue.target,
+        Some(theirs),
+        "the blow is on the unit it lands on"
+    );
+}
+
 /// A Radiant view of the duel's two seats, the Dire seat's creep score as
 /// given.
 fn a_radiant_view_scoring_dire(score: Option<bota_proto::CreepScore>) -> bota_proto::ServerMsg {

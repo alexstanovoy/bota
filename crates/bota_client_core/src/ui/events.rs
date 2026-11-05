@@ -157,7 +157,7 @@ impl App {
         let ears = self.ears();
         if source.is_some() && source == ears && kind == DamageKind::Physical {
             let hero = source.and_then(|id| self.freshest(id)).and_then(|u| u.hero);
-            self.cue_of(hero, CueKind::Hit, 0.55, None);
+            self.cue_blow(hero, CueKind::Hit, 0.55, None, Some(target));
         }
         let by_tower = source
             .and_then(|id| self.freshest(id))
