@@ -348,6 +348,38 @@ fn lit_for(world: &World, watcher: Entity) -> Option<Team> {
 }
 
 #[test]
+fn a_watcher_channel_takes_one_second_even_with_an_opponent_beside_it() {
+    let (mut world, watcher) = a_watcher_and_its_lighter();
+    let at = world.transform.get(watcher).expect("standing").pos;
+    place_hero(&mut world, 1, at + Vec2::from_ints(-100, 0));
+    for (slot, before, after) in [
+        (0, None, Some(Team::Radiant)),
+        (1, Some(Team::Radiant), None),
+    ] {
+        give(&mut world, &[(slot, attack(watcher))]);
+        let caster = hero(&world, slot);
+        for _ in 0..rules::TICKS_PER_SECOND {
+            if world.is_channelling(caster) {
+                break;
+            }
+            world.step();
+        }
+        assert!(world.is_channelling(caster), "the interaction starts");
+        assert_eq!(lit_for(&world, watcher), before);
+        run(&mut world, rules::TICKS_PER_SECOND - 1);
+        assert!(
+            world.is_channelling(caster),
+            "not finished before one second"
+        );
+        assert_eq!(lit_for(&world, watcher), before);
+        world.step();
+        assert!(!world.is_channelling(caster), "finished at one second");
+        assert_eq!(lit_for(&world, watcher), after);
+    }
+    assert!(world.wears(watcher, ModifierKind::LampOff));
+}
+
+#[test]
 fn a_lit_watcher_sees_for_its_side_by_day_and_night_for_seven_minutes() {
     let (mut world, watcher) = a_watcher_and_its_lighter();
     let at = world.transform.get(watcher).expect("standing").pos;
