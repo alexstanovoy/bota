@@ -454,7 +454,8 @@ pub enum ClientMsg {
     /// Leaves the match for good, as Dota's LEAVE GAME: a seat that sends it while the match is
     /// being played leaves it, and its team loses at once (the game is then reported as
     /// won by the others, naming the leaver). Once the match is decided it changes nothing.
-    /// Ignored in the lobby, where closing the connection frees the seat.
+    /// A seat that sends it in the lobby (the picks) cancels the match, as Dota cancels one
+    /// abandoned during hero selection: nobody plays it, and there is no result.
     LeaveGame,
     /// Asks the server to answer at once with [`ServerMsg::Echo`] naming the same `id`, so the
     /// sender can time the round trip of the connection. The server's network side answers it

@@ -169,9 +169,10 @@ pub enum MatchEnd {
         /// The replay was closed short of the match's end (its size cap, a failed write).
         replay_truncated: bool,
     },
-    /// Nobody played it: no seat was held when the lobby ran out of time, or
-    /// every seat was empty for good or for longer than allowed. There is no
-    /// result.
+    /// Nobody played it: no seat was held when the lobby ran out of time, a seat
+    /// left for good during the picks (Dota cancels a match abandoned in hero
+    /// selection), or every seat was empty for good or for longer than allowed.
+    /// There is no result.
     Abandoned,
 }
 
@@ -273,6 +274,7 @@ fn run_inner(
         started: Instant::now(),
         delayed,
         pick_clock: PickClock::Waiting,
+        left_in_lobby: None,
         world_tick: Arc::new(AtomicU32::new(0)),
         #[cfg(test)]
         start_gate: hooks.start_gate,
@@ -457,6 +459,9 @@ struct Server {
     world_tick: Arc<AtomicU32>,
     /// The hero selection clock; runs in the lobby phase only.
     pick_clock: PickClock,
+    /// The seat whose holder left for good during the picks ([`ClientMsg::LeaveGame`]): the
+    /// match is cancelled, as Dota cancels one abandoned during hero selection.
+    left_in_lobby: Option<SlotId>,
     /// What each connection may still say.
     rates: Rates,
     /// The lines the replay is yet to be given, in the order taken in.
@@ -980,6 +985,13 @@ impl Server {
                 self.record_heard(&mut replay);
                 self.replay = replay;
             }
+            if let Some(slot) = self.left_in_lobby {
+                eprintln!(
+                    "bota_server: seat {} left for good during the picks; the match is cancelled",
+                    slot.0
+                );
+                return None;
+            }
         }
     }
 
@@ -1025,8 +1037,14 @@ impl Server {
             ClientMsg::Say(line) => self.say(id, line, None),
             ClientMsg::Compress(_) => self.compress(id),
             ClientMsg::Catalogue(told) => self.hear_catalogue(id, told, None),
+            // A seat left for good before the match begins: nobody plays it, as Dota cancels a
+            // match abandoned during hero selection.
+            ClientMsg::LeaveGame => {
+                if let Some(seat) = self.roster.seat_of(id) {
+                    self.left_in_lobby = Some(seat.slot);
+                }
+            }
             ClientMsg::Order { .. }
-            | ClientMsg::LeaveGame
             | ClientMsg::Ack { .. }
             | ClientMsg::ViewAs { .. }
             | ClientMsg::Pong
