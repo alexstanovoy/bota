@@ -295,4 +295,15 @@ mod tests {
             assert_eq!(recorded, fresh);
         }
     }
+    /// A capped replay stops its stream short of the cap by the room the
+    /// longest trailer a recorder may write takes, so the file with its
+    /// trailer stays within the cap.
+    #[test]
+    fn the_longest_trailer_fits_the_room_a_capped_replay_leaves_it() {
+        use bota_replay::limits::{END_RESERVE_BYTES, MAX_META_BYTES};
+        let longest = vec![0u8; MAX_META_BYTES + END_RESERVE_BYTES];
+        let trailer =
+            bota_replay::trailer::frame(&longest).expect("the longest file a trailer takes");
+        assert!(trailer.len() as u64 <= super::TRAILER_RESERVE);
+    }
 }
