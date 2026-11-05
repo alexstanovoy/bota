@@ -60,7 +60,7 @@ const TRAILER_RESERVE: u64 =
 ///
 /// Recording stops, with a line on stderr, when a write fails or the file nears its size cap;
 /// the match goes on. At the cap the stream is closed whole, so the replay plays up to the
-/// last record it holds. [`ReplayWriter::truncated`] tells that records were left out.
+/// last record it holds. [`ReplayWriter::finish`] tells whether records were left out.
 pub struct ReplayWriter {
     out: Option<Encoder<'static, BufWriter<Counted>>>,
     written: Arc<AtomicU64>,
@@ -140,11 +140,6 @@ impl ReplayWriter {
             meta: None,
             trailer: false,
         }
-    }
-
-    /// Whether records were left out of the file: a write failed or the size cap was reached.
-    pub fn truncated(&self) -> bool {
-        self.truncated
     }
 
     /// Appends one record.

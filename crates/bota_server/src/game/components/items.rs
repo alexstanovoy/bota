@@ -76,21 +76,6 @@ impl ItemStack {
         })
     }
 
-    /// What [`ItemStack::disassemble_until`] reads when nothing has ended the
-    /// window of a build: ten seconds from its being combined, which the tick
-    /// it was bought at (set at the combine) names. Zero for any other stack.
-    pub fn default_window(&self) -> u32 {
-        match item_def(self.id) {
-            Some(def)
-                if !def.components.is_empty()
-                    && def.disassemble == bota_core::DisassembleRule::Window =>
-            {
-                self.bought_tick + bota_core::rules::DISASSEMBLY_WINDOW_TICKS
-            }
-            _ => 0,
-        }
-    }
-
     /// `charges` of an item that comes for nothing, as a lotus does: touched, so
     /// that no purchase window refunds it.
     pub fn granted(id: ItemId, owner: SlotId, tick: u32, charges: u8) -> Self {

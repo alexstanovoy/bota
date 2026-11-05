@@ -221,16 +221,6 @@ pub fn place_purchase<P: HeldItem>(
     Some(berths)
 }
 
-/// Whether the `parts` a seat buys fit where they go: [`place_purchase`] finds them berths.
-pub fn purchase_fits<P: HeldItem>(
-    buyer: SlotId,
-    parts: &[ItemId],
-    bag: Option<&Shelf<'_, P>>,
-    stash: &Shelf<'_, P>,
-) -> bool {
-    place_purchase(buyer, parts, bag, stash).is_some()
-}
-
 /// A stack's counts: what the rules of stacking move between two stacks. A Ward Dispenser's
 /// Observer Wards are its `charges`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

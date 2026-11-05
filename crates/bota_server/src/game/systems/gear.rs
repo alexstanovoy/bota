@@ -477,12 +477,6 @@ impl World {
         true
     }
 
-    /// Whether a purchase fits at its current destination, independent of affordability.
-    pub fn purchase_fits(&self, slot: SlotId, item: ItemId) -> bool {
-        self.purchase_plan(slot, item)
-            .is_some_and(|plan| plan.berths.is_some())
-    }
-
     /// Plans a known item's purchase into the seat hero's bag or stash: the
     /// stash alone while the hero lies dead or away from its shop.
     pub(crate) fn purchase_plan(&self, slot: SlotId, item: ItemId) -> Option<PurchasePlan> {
