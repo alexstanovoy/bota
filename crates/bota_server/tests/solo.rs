@@ -44,6 +44,7 @@ fn opts(map: MapId, files: Option<(PathBuf, PathBuf)>) -> ServerOpts {
         max_connections: None,
         map,
         cheats: true,
+        lobby_cheats: false,
         immortal_structures: false,
         // The scripted match fells a hero.
         immortal_heroes: !scripted,

@@ -33,6 +33,7 @@ fn opts() -> ServerOpts {
         max_connections: None,
         map: MapId(0),
         cheats: true,
+        lobby_cheats: false,
         immortal_structures: false,
         immortal_heroes: true,
         objectives: None,

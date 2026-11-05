@@ -331,6 +331,7 @@ fn realtime(seed: u64) -> ServerOpts {
         ack_timeout_ticks: 150,
         idle_timeout: None,
         cheats: false,
+        lobby_cheats: false,
         immortal_structures: false,
         immortal_heroes: false,
         objectives: None,

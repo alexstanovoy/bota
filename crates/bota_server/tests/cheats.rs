@@ -4,7 +4,8 @@
 //! match without cheats refuses every one; the replay records that cheats
 //! were on and every cheat used; and a match of several reserved seats (what the
 //! matchmaking service launches for people playing each other) cannot be started with them,
-//! while one reserved seat (a service's Demo Hero) can.
+//! while one reserved seat (a service's Demo Hero) and a lobby whose owner turned them on
+//! (`--lobby-cheats`) can.
 
 use std::net::TcpListener;
 use std::path::PathBuf;
@@ -46,6 +47,7 @@ fn opts(cheats: bool, replay: Option<PathBuf>) -> ServerOpts {
         max_connections: None,
         map: MapId(1),
         cheats,
+        lobby_cheats: false,
         immortal_structures: false,
         immortal_heroes: false,
         objectives: None,
@@ -376,7 +378,7 @@ fn a_match_without_cheats_refuses_every_command() {
 }
 
 #[test]
-fn a_match_of_several_reserved_seats_cannot_have_cheats() {
+fn several_reserved_seats_cheat_only_in_a_lobby_that_turned_them_on() {
     let mut reserved = opts(true, None);
     reserved.players = 2;
     reserved.reserved = (0..2)
@@ -395,7 +397,15 @@ fn a_match_of_several_reserved_seats_cannot_have_cheats() {
         check_opts(&reserved).is_err(),
         "matchmaking's matches stay clean"
     );
+    // A lobby whose owner turned cheats on, as the service says with --lobby-cheats.
+    reserved.lobby_cheats = true;
+    assert!(check_opts(&reserved).is_ok(), "a lobby's match may cheat");
     reserved.cheats = false;
+    assert!(
+        check_opts(&reserved).is_err(),
+        "lobby cheats without cheats are no option"
+    );
+    reserved.lobby_cheats = false;
     assert!(check_opts(&reserved).is_ok());
     // A lone reserved seat has nobody to cheat against: a Demo Hero.
     let mut demo = opts(true, None);

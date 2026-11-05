@@ -195,6 +195,11 @@ struct Args {
     /// several reserved seats, which a matchmaking service sets for people playing each other.
     #[arg(long)]
     cheats: bool,
+    /// Honour cheat orders in a matchmaking service's lobby whose owner turned them on, every
+    /// seat told before readying: as --cheats, and allowed with several reserved seats. The
+    /// service adds it only for such a lobby, never for a queued match.
+    #[arg(long)]
+    lobby_cheats: bool,
     /// Structures take damage but never fall: no tower-loss ending, for practice.
     #[arg(long)]
     immortal_structures: bool,
@@ -408,7 +413,8 @@ fn server_opts(args: &Args) -> std::io::Result<ServerOpts> {
         ack_timeout_ticks: args.ack_timeout_ticks,
         idle_timeout: (args.idle_timeout_secs > 0)
             .then(|| Duration::from_secs(args.idle_timeout_secs)),
-        cheats: args.cheats,
+        cheats: args.cheats || args.lobby_cheats,
+        lobby_cheats: args.lobby_cheats,
         immortal_structures: args.immortal_structures,
         immortal_heroes: args.immortal_heroes,
         objectives: args.objectives,

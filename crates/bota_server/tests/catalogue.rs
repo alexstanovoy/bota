@@ -76,6 +76,7 @@ fn seats(replay: PathBuf, players: u8) -> ServerOpts {
         max_connections: None,
         map: MapId(1),
         cheats: true,
+        lobby_cheats: false,
         immortal_structures: false,
         immortal_heroes: false,
         objectives: None,

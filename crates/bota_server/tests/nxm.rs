@@ -52,6 +52,7 @@ fn opts(players: u8, reserved: Vec<ReservedSeat>, replay: Option<PathBuf>) -> Se
         max_connections: None,
         map: FULL_MAP,
         cheats,
+        lobby_cheats: false,
         immortal_structures: false,
         immortal_heroes: cheats,
         objectives: None,

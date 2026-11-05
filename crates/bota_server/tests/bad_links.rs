@@ -47,6 +47,7 @@ fn opts(mode: TickMode, tick_rate: u16) -> ServerOpts {
         max_connections: None,
         map: MapId(2),
         cheats: false,
+        lobby_cheats: false,
         immortal_structures: false,
         immortal_heroes: false,
         objectives: None,

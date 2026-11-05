@@ -95,6 +95,10 @@ pub struct ServerOpts {
     pub map: MapId,
     /// Whether cheat orders are honoured.
     pub cheats: bool,
+    /// Cheats with several reserved seats: a matchmaking service's lobby whose owner turned them
+    /// on, every seat told before readying (`--lobby-cheats`). Without it, several reserved seats
+    /// are people playing each other, whose matches never cheat.
+    pub lobby_cheats: bool,
     /// Whether structures keep at least 1 hp and never fall.
     pub immortal_structures: bool,
     /// Whether heroes keep at least 1 hp and never die.
@@ -332,11 +336,17 @@ pub fn check_opts(opts: &ServerOpts) -> Result<(), String> {
     }
     // Cheats are for a match with nobody to cheat against: one its host starts for itself, or
     // one reserved seat (a service's Demo Hero). Two or more reserved seats are what a
-    // matchmaking service launches for people playing each other, whose matches never cheat.
-    if opts.cheats && opts.reserved.len() > 1 {
+    // matchmaking service launches for people playing each other, whose matches never cheat,
+    // unless it says the match is a lobby's whose owner turned them on for everyone.
+    if opts.cheats && opts.reserved.len() > 1 && !opts.lobby_cheats {
         return Err(
-            "cheats are for a local match or one reserved seat: not with several".to_owned(),
+            "cheats are for a local match, one reserved seat or a lobby's (--lobby-cheats): \
+             not with several reserved seats"
+                .to_owned(),
         );
+    }
+    if opts.lobby_cheats && !opts.cheats {
+        return Err("lobby cheats are cheats: --lobby-cheats turns them on".to_owned());
     }
     // Reserved seats are exactly the lineup, and a dummy is a seat nobody holds.
     if opts.seated_start && (!opts.reserved.is_empty() || opts.dummy_seat) {
