@@ -421,7 +421,7 @@ impl World {
             self.move_unit_to(unit, at);
             self.fill_pools(unit);
         } else {
-            self.raise_hero(seat, at);
+            self.raise_fallen_hero(seat, at);
         }
     }
 

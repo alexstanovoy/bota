@@ -380,7 +380,7 @@ impl World {
             if let Some(book) = book {
                 book.auto_attribute_bonus(level);
             }
-            self.raise_courier(seat);
+            self.level_courier(seat);
             if let Some(unit) = self.seats[seat].unit {
                 self.level.insert(unit, Level(level));
                 events.push(Event {
@@ -413,7 +413,7 @@ impl World {
     /// Stands a seat's fallen hero up at its fountain now.
     pub(crate) fn respawn(&mut self, index: usize) {
         let at = hero_spawn_pos(self.map, self.seats[index].team);
-        self.raise_hero(index, at);
+        self.raise_fallen_hero(index, at);
         let Some(hero) = self.seats[index].unit else {
             return;
         };

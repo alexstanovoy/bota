@@ -195,7 +195,7 @@ impl World {
     /// in hand: the same entity that fell. Where it stands up and what it
     /// wears for it are the caller's: the fountain's invulnerability for a
     /// respawn, nothing for an Aegis's rising.
-    pub(crate) fn raise_hero(&mut self, index: usize, at: Vec2) {
+    pub(crate) fn raise_fallen_hero(&mut self, index: usize, at: Vec2) {
         let Some(hero) = self.seats[index].unit else {
             return;
         };
@@ -274,7 +274,7 @@ impl World {
 
     /// Stands a seat's fallen courier up at `at`, full, phased and on no
     /// errand, as it first stood.
-    pub(crate) fn raise_courier_up(&mut self, index: usize, at: Vec2) {
+    pub(crate) fn raise_fallen_courier(&mut self, index: usize, at: Vec2) {
         let Some(courier) = self.seats[index].courier else {
             return;
         };

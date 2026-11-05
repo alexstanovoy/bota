@@ -19,7 +19,7 @@ impl World {
         let at = hero_spawn_pos(self.map, side);
         let courier = match self.seats[seat].courier {
             Some(courier) => {
-                self.raise_courier_up(seat, at);
+                self.raise_fallen_courier(seat, at);
                 courier
             }
             None => {
@@ -32,14 +32,14 @@ impl World {
         if self.seats[seat].level >= rules::COURIER_FLYING_LEVEL {
             self.put_flight(courier);
         }
-        self.raise_courier(seat);
+        self.level_courier(seat);
     }
 
     /// Brings a seat's courier to its owner's level, as Dota's courier
     /// levels with its owner: the pace and the bounty each level adds, the
     /// abilities the level opens, and flight from
     /// [`rules::COURIER_FLYING_LEVEL`] on.
-    pub(crate) fn raise_courier(&mut self, seat: usize) {
+    pub(crate) fn level_courier(&mut self, seat: usize) {
         let Some(courier) = self.seats[seat].courier else {
             return;
         };
