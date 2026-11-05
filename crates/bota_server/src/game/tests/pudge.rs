@@ -10,6 +10,50 @@ use bota_proto::{
 use super::support::*;
 
 #[test]
+fn a_hook_travels_its_full_range_for_nearby_self_and_far_aims() {
+    for offset in [
+        Vec2::ZERO,
+        Vec2::from_ints(20, 0),
+        Vec2::from_ints(100, 100),
+        Vec2::from_ints(0, -200),
+        Vec2::from_ints(rules::HOOK_RANGE + 200, 0),
+        Vec2 {
+            x: Fixed { raw: 1 },
+            y: Fixed { raw: 1 },
+        },
+    ] {
+        let (mut world, pudge, _) = pudge_and_a_mark(4000);
+        let home = world.pos(pudge).expect("Pudge stands");
+        cast(&mut world, 0, Target::Pos(home + offset));
+        let mut furthest = 0;
+        let mut launch = None;
+        for _ in 0..100 {
+            world.step();
+            for entity in world
+                .entities
+                .iter()
+                .filter(|entity| world.hook.get(*entity).is_some())
+            {
+                // A far point can first be approached under the existing
+                // cast-range rules. Travel starts at the actual throw.
+                let from =
+                    *launch.get_or_insert_with(|| world.pos(pudge).expect("caster at launch"));
+                furthest =
+                    furthest.max(from.distance_squared(world.pos(entity).expect("Hook flies")));
+            }
+        }
+        assert!(
+            furthest >= Fixed::from_int(rules::HOOK_RANGE - 1).squared_raw(),
+            "Hook reaches its full range for aim {offset:?}, not merely the clicked point"
+        );
+        assert!(
+            furthest <= Fixed::from_int(rules::HOOK_RANGE + 1).squared_raw(),
+            "Hook stays within its range"
+        );
+    }
+}
+
+#[test]
 fn a_hook_catches_what_it_flies_into_and_drags_it_home() {
     let (mut world, pudge, mark) = pudge_and_a_hero_mark(600);
     let full = world.health.get(mark).expect("standing").hp;

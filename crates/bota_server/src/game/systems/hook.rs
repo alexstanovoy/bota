@@ -1,23 +1,31 @@
 //! Throwing a hook, and what it drags back.
 
-use bota_core::{ModifierKind, facing_towards, kind_def, move_towards, per_tick, rules};
+use bota_core::{
+    ModifierKind, facing_towards, kind_def, move_towards, per_tick, point_ahead, point_along, rules,
+};
 use bota_proto::{AbilityId, DamageKind, Fixed, Inflictor, Target, Vec2};
 
-use crate::game::{Hook, Modifier, World};
+use crate::game::{Hook, Modifier, Transform, World};
 
 use crate::engine::Entity;
 
 impl World {
-    /// Throws a hook at a spot, no further out than it reaches.
+    /// Throws a hook in the aimed direction, always to its full reach.
     pub fn cast_hook(&mut self, caster: Entity, level: usize, target: Target) -> bool {
         let Target::Pos(pos) = target else {
             return false;
         };
-        let (Some(from), Some(side)) = (self.pos(caster), self.team.get(caster).copied()) else {
+        let (Some(&Transform { pos: from, facing }), Some(side)) =
+            (self.transform.get(caster), self.team.get(caster).copied())
+        else {
             return false;
         };
         let reach = rules::units(rules::HOOK_RANGE);
-        let aim = move_towards(from, pos, reach);
+        let aim = if pos == from {
+            point_ahead(from, facing, reach)
+        } else {
+            point_along(from, pos, reach)
+        };
         let damage_amp_bp = self.outgoing_damage_amp_bp(Some(caster), DamageKind::Pure);
         let hook = self.spawn_placed(from, facing_towards(from, aim), side);
         let links = std::array::from_fn(|_| self.spawn_mark(AbilityId::MEAT_HOOK, caster, from, 0));
@@ -84,8 +92,11 @@ impl World {
                 self.hook.insert(entity, hook);
                 continue;
             }
-            let next = move_towards(at, hook.aim, step);
-            hook.reach_left -= step;
+            // The final tick cannot spend more than the remaining range,
+            // including when a tiny aim vector rounds its endpoint outward.
+            let flight = step.min(hook.reach_left);
+            let next = move_towards(at, hook.aim, flight);
+            hook.reach_left -= flight;
             self.put_at(entity, next, hook.aim);
             self.lay_chain(&hook, home, next);
             if let Some(caught) = self.caught_at(entity, hook.owner, next, hook.radius) {
