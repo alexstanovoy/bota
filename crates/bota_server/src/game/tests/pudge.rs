@@ -11,7 +11,7 @@ use super::support::*;
 
 #[test]
 fn a_hook_catches_what_it_flies_into_and_drags_it_home() {
-    let (mut world, pudge, mark) = pudge_and_a_mark(600);
+    let (mut world, pudge, mark) = pudge_and_a_hero_mark(600);
     let full = world.health.get(mark).expect("standing").hp;
     let home = world.transform.get(pudge).expect("standing").pos;
     cast(&mut world, 0, Target::Pos(Vec2::from_ints(6000, 5000)));
@@ -31,6 +31,187 @@ fn a_hook_catches_what_it_flies_into_and_drags_it_home() {
         world.health.get(mark).expect("standing").hp < full,
         "and an enemy feels it"
     );
+}
+
+#[test]
+fn a_hook_executes_non_ancient_creeps_and_passes_ancients() {
+    let lane = [
+        &bota_core::MELEE_CREEP,
+        &bota_core::FLAGBEARER_CREEP,
+        &bota_core::RANGED_CREEP,
+        &bota_core::SIEGE_CREEP,
+        &bota_core::SUPER_MELEE_CREEP,
+        &bota_core::MEGA_MELEE_CREEP,
+        &bota_core::SUPER_RANGED_CREEP,
+        &bota_core::MEGA_RANGED_CREEP,
+        &bota_core::SUPER_SIEGE_CREEP,
+    ];
+    for def in lane
+        .into_iter()
+        .chain(bota_core::NEUTRALS.iter().map(|row| &row.def))
+    {
+        let (mut world, pudge, old) = pudge_and_a_mark(600);
+        world.despawn(old);
+        let creep = world.spawn_unit(def, Team::Dire, Vec2::from_ints(5600, 5000));
+        world.put_modifier(
+            creep,
+            Modifier::new(ModifierKind::Stunned, None, None, Some(120)),
+        );
+        world.settle();
+        let before = world.health.get(creep).expect("a live creep").hp;
+        let damage_bounty = (!def.ancient).then(|| damage_kill_bounty(&world, pudge, creep));
+        cast(&mut world, 0, Target::Pos(Vec2::from_ints(6000, 5000)));
+        until_the_hook_flies(&mut world);
+        world.put_modifier(
+            pudge,
+            Modifier::new(ModifierKind::Stunned, None, None, Some(120)),
+        );
+        let events: Vec<_> = (0..80).flat_map(|_| world.step()).collect();
+        if def.ancient {
+            assert_eq!(
+                world.health.get(creep).expect("an ancient stays").hp,
+                before
+            );
+            assert_eq!(world.pos(creep), Some(Vec2::from_ints(5600, 5000)));
+        } else {
+            assert!(
+                !world.alive(creep),
+                "Hook executes {:?}, even at {before:?} hp",
+                def.kind
+            );
+            assert!(events.iter().any(|event| matches!(event.kind,
+                bota_proto::EventKind::Died { unit, killer: Some(killer), bounty: Some(bounty), .. }
+                    if unit == wire_id(creep) && killer == wire_id(pudge) && Some(bounty) == damage_bounty
+            )), "ordinary death credit and bounty");
+            assert!(!events.iter().any(|event| matches!(event.kind,
+                bota_proto::EventKind::Damaged { target, inflictor: Some(Inflictor::Ability(AbilityId::MEAT_HOOK)), .. }
+                    if target == wire_id(creep)
+            )), "HP removal is not spell damage");
+        }
+    }
+}
+
+fn damage_kill_bounty(world: &World, source: Entity, target: Entity) -> i32 {
+    let mut control = world.clone();
+    let damage = control
+        .health
+        .get(target)
+        .expect("a living target")
+        .hp
+        .to_int()
+        + 1;
+    control.push_hit(
+        Some(source),
+        target,
+        damage,
+        bota_proto::DamageKind::Pure,
+        None,
+    );
+    control
+        .step()
+        .into_iter()
+        .find_map(|event| match event.kind {
+            bota_proto::EventKind::Died {
+                unit,
+                killer: Some(killer),
+                bounty,
+                ..
+            } if unit == wire_id(target) && killer == wire_id(source) => bounty,
+            _ => None,
+        })
+        .expect("ordinary damage pays the killing hero")
+}
+
+#[test]
+fn a_hook_execution_leaves_camp_mates_asleep_but_a_damage_kill_wakes_them() {
+    let (mut world, pudge, old) = pudge_and_a_mark(4000);
+    world.despawn(old);
+    let center = Vec2::from_ints(6000, 5000);
+    let victim = world.spawn_neutral(bota_core::NeutralKind::Kobold, center, 0, 0);
+    let mates = [-200, 200].map(|offset| {
+        world.spawn_neutral(
+            bota_core::NeutralKind::Kobold,
+            center + Vec2::from_ints(0, offset),
+            0,
+            0,
+        )
+    });
+    world.settle();
+    assert!(
+        mates
+            .iter()
+            .all(|mate| !world.neutral_ai.get(*mate).expect("camp AI").awake)
+    );
+    let mut damage = world.clone();
+    damage.push_hit(
+        Some(pudge),
+        victim,
+        100_000,
+        bota_proto::DamageKind::Pure,
+        None,
+    );
+    damage.step();
+    let damage_wake = mates.map(|mate| damage.neutral_ai.get(mate).expect("camp AI").awake);
+    assert_eq!(
+        damage_wake,
+        [true, true],
+        "a damage kill wakes nearby camp mates"
+    );
+    cast(&mut world, 0, Target::Pos(center));
+    for _ in 0..80 {
+        if !world.alive(victim) {
+            break;
+        }
+        world.step();
+    }
+    assert!(!world.alive(victim), "Hook executed the neutral");
+    assert_eq!(
+        mates.map(|mate| world.neutral_ai.get(mate).expect("camp AI").awake),
+        [false, false],
+        "point-target HP removal leaves camp mates asleep"
+    );
+}
+
+#[test]
+fn a_hook_saves_an_allied_creep_without_damage_or_execution() {
+    let (mut world, pudge, creep) = pudge_and_a_mark(600);
+    world.set_team(creep, Team::Radiant);
+    world.put_modifier(
+        creep,
+        Modifier::new(ModifierKind::Stunned, None, None, Some(120)),
+    );
+    let before = world.health.get(creep).expect("a live ally").hp;
+    cast(&mut world, 0, Target::Pos(Vec2::from_ints(6000, 5000)));
+    run(&mut world, 80);
+    assert_eq!(world.health.get(creep).expect("ally survives").hp, before);
+    assert!(world.pos(creep).expect("ally stands").within(
+        world.pos(pudge).expect("Pudge stands"),
+        Fixed::from_int(200)
+    ));
+}
+
+#[test]
+fn a_hook_passes_invulnerable_and_fortified_creeps_of_either_side() {
+    for protection in [ModifierKind::Shielded, ModifierKind::Fortified] {
+        for side in [Team::Radiant, Team::Dire] {
+            let (mut world, pudge, creep) = pudge_and_a_mark(600);
+            world.set_team(creep, side);
+            for kind in [protection, ModifierKind::Stunned] {
+                world.put_modifier(creep, Modifier::new(kind, None, None, Some(120)));
+            }
+            world.settle();
+            let before = world.pos(creep);
+            cast(&mut world, 0, Target::Pos(Vec2::from_ints(6000, 5000)));
+            until_the_hook_flies(&mut world);
+            world.put_modifier(
+                pudge,
+                Modifier::new(ModifierKind::Stunned, None, None, Some(120)),
+            );
+            run(&mut world, 80);
+            assert!(world.alive(creep), "protected creep lives");
+            assert_eq!(world.pos(creep), before, "Hook passes protected creeps");
+        }
+    }
 }
 
 #[test]
@@ -442,6 +623,16 @@ fn a_flesh_heap_outlives_the_death_of_the_one_carrying_it() {
     );
 }
 
+/// A hero target exercises Hook's damage and pull instead of creep execution.
+fn pudge_and_a_hero_mark(apart: i32) -> (World, Entity, Entity) {
+    let (mut world, pudge, creep) = pudge_and_a_mark(apart);
+    world.despawn(creep);
+    let at = world.pos(pudge).expect("Pudge stands") + Vec2::from_ints(apart, 0);
+    let hero = world.spawn_hero(Team::Dire, at, SlotId(1), HeroId::SHADOW_FIEND);
+    world.settle();
+    (world, pudge, hero)
+}
+
 /// Steps until the hook has left Pudge: its cast point is over.
 fn until_the_hook_flies(world: &mut World) {
     for _ in 0..rules::HOOK_CAST_POINT_MS / 30 + 2 {
@@ -495,7 +686,7 @@ fn heap(world: &World, hero: Entity) -> u32 {
 
 #[test]
 fn a_hook_costs_120_mana_waits_18_seconds_and_deals_150_pure_damage_at_its_first_level() {
-    let (mut world, pudge, mark) = pudge_and_a_mark(600);
+    let (mut world, pudge, mark) = pudge_and_a_hero_mark(600);
     let full = world.health.get(mark).expect("standing").hp.to_int();
     world.fill_pools(pudge);
     let mana = world.mana.get(pudge).expect("has mana").mana;
@@ -506,16 +697,33 @@ fn a_hook_costs_120_mana_waits_18_seconds_and_deals_150_pure_damage_at_its_first
         Fixed::from_int(120),
         "the hook costs 120 mana"
     );
+    let mut impact = None;
     for _ in 0..200 {
-        world.step();
+        for event in world.step() {
+            if let bota_proto::EventKind::Damaged {
+                target,
+                amount,
+                kind,
+                inflictor: Some(Inflictor::Ability(AbilityId::MEAT_HOOK)),
+                ..
+            } = event.kind
+                && target == wire_id(mark)
+            {
+                impact = Some((
+                    amount,
+                    kind,
+                    world.health.get(mark).expect("standing").hp.to_int(),
+                ));
+            }
+        }
         if !hook_flying(&world) {
             break;
         }
     }
     assert_eq!(
-        world.health.get(mark).expect("standing").hp.to_int(),
-        full - 150,
-        "an enemy takes 150, whatever armor it wears"
+        impact,
+        Some((150, bota_proto::DamageKind::Pure, full - 150)),
+        "a hero takes 150 pure damage at impact, before its later regeneration"
     );
     let waiting = world.abilities.get(pudge).expect("a kit").slots[0].cooldown;
     assert!(
@@ -626,7 +834,7 @@ fn a_courier_is_spell_immune_rot_and_hook_pass_it_by_and_only_dismember_holds_it
         world.settle();
         courier
     };
-    // The hook flies through the courier to the creep beyond.
+    // The hook flies through the courier and executes the non-ancient creep beyond.
     let (mut world, _pudge, mark) = pudge_and_a_mark(600);
     let courier = enemy_courier(&mut world);
     assert!(
@@ -646,10 +854,9 @@ fn a_courier_is_spell_immune_rot_and_hook_pass_it_by_and_only_dismember_holds_it
         Some(courier_at),
         "the hook passed it by"
     );
-    assert_ne!(
-        world.pos(mark),
-        Some(Vec2::from_ints(5600, 5000)),
-        "and caught what lay beyond"
+    assert!(
+        !world.alive(mark),
+        "and executed the non-ancient creep beyond"
     );
     // The rot neither slows nor burns it.
     let (mut world, pudge, _) = pudge_and_a_mark(600);

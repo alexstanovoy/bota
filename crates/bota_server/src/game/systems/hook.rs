@@ -89,24 +89,43 @@ impl World {
             self.put_at(entity, next, hook.aim);
             self.lay_chain(&hook, home, next);
             if let Some(caught) = self.caught_at(entity, hook.owner, next, hook.radius) {
-                hook.caught = Some(caught);
-                hook.returning = true;
-                if self.team.get(caught).copied() != self.team.get(hook.owner).copied() {
-                    self.push_hit_with_amp(
-                        Some(hook.owner),
-                        caught,
-                        hook.damage,
-                        DamageKind::Pure,
-                        hook.damage_amp_bp,
-                        Some(Inflictor::Ability(AbilityId::MEAT_HOOK)),
-                    );
-                }
+                self.hook_hit(&mut hook, caught);
             } else if next == hook.aim || hook.reach_left <= Fixed::ZERO {
                 hook.returning = true;
             }
             self.hook.insert(entity, hook);
         }
         self.recycle_entity_snapshot(entities);
+    }
+
+    fn hook_hit(&mut self, hook: &mut Hook, caught: Entity) {
+        hook.returning = true;
+        let enemy = self.team.get(caught) != self.team.get(hook.owner);
+        if enemy
+            && self
+                .kind
+                .get(caught)
+                .is_some_and(|kind| kind_def(*kind).creep)
+        {
+            // A point-target HP removal is neither damage nor a unit-target
+            // cast, so nearby camp mates stay asleep. Sources:
+            // https://liquipedia.net/dota2/Pudge
+            // https://liquipedia.net/dota2/Neutral_Creeps#Drawing_Aggro
+            self.kill_by_hp_removal(hook.owner, caught);
+            return;
+        }
+        hook.caught = Some(caught);
+        if !enemy {
+            return;
+        }
+        self.push_hit_with_amp(
+            Some(hook.owner),
+            caught,
+            hook.damage,
+            DamageKind::Pure,
+            hook.damage_amp_bp,
+            Some(Inflictor::Ability(AbilityId::MEAT_HOOK)),
+        );
     }
 
     /// What a hook catches where it now flies.
@@ -121,10 +140,7 @@ impl World {
             if other == hook || other == owner || !self.alive(other) {
                 continue;
             }
-            let Some(kind) = self.kind.get(other).copied() else {
-                continue;
-            };
-            if kind_def(kind).fixed || !self.spell_reaches(AbilityId::MEAT_HOOK, other) {
+            if !self.latches_onto(other) {
                 continue;
             }
             let Some(spot) = self.pos(other) else {
@@ -140,6 +156,27 @@ impl World {
             }
         }
         best.map(|(_, caught)| caught)
+    }
+
+    fn latches_onto(&self, unit: Entity) -> bool {
+        let Some(&kind) = self.kind.get(unit) else {
+            return false;
+        };
+        // Valve's Pudge notes say Hook passes through ancient units:
+        // https://www.dota2.com/datafeed/herodata?language=english&hero_id=14
+        // https://liquipedia.net/dota2/Pudge#Meat_Hook
+        if kind_def(kind).fixed || self.def.get(unit).is_some_and(|def| def.0.ancient) {
+            return false;
+        }
+        if kind_def(kind).creep
+            && self
+                .stats
+                .get(unit)
+                .is_some_and(|stats| stats.invulnerable || stats.glyph)
+        {
+            return false;
+        }
+        self.spell_reaches(AbilityId::MEAT_HOOK, unit)
     }
 
     /// Moves a hook and turns it the way it is going.

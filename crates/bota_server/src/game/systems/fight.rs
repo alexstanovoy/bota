@@ -9,6 +9,23 @@ use crate::game::{
 };
 
 impl World {
+    /// An instant kill by HP removal: no damage, mitigation or damage
+    /// reactions, with the ordinary death and bounty path still credited.
+    pub(crate) fn kill_by_hp_removal(&mut self, source: Entity, target: Entity) {
+        if !self.alive(target) {
+            return;
+        }
+        self.health
+            .get_mut(target)
+            .expect("a living unit has health")
+            .hp = Fixed::ZERO;
+        let fallen = vec![(target, Some(source))];
+        self.avenge(&fallen);
+        let mut events = Vec::new();
+        self.bury(fallen, &mut events);
+        self.events.extend(events);
+    }
+
     /// Whether an entity is still standing.
     pub fn alive(&self, entity: Entity) -> bool {
         self.entities.contains(entity)
