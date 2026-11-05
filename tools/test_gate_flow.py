@@ -170,11 +170,16 @@ class GateFlow(unittest.TestCase):
         self.git("update-ref", "-d", "refs/remotes/origin/main")  # and there is no main either
         self.refused("precheck", 2, "PRECHECK-FAIL plan")
 
-    def test_a_documents_only_change_passes_the_gate_without_running_checks(self):
+    def test_a_documents_only_change_passes_the_gate_at_once_and_is_stamped(self):
+        # The documents-only path once printed GATE-OK and then died on an unset variable, unstamped.
         (self.repo / "crates/sample/src/extra.rs").unlink()
         self.write("README.md", "bota, a simulator\n")
         self.passes("precheck")
-        self.assertIn("documents only", self.passes("gate").stdout)
+        self.git("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-qam", "words")
+        self.trace.write_text("")
+        self.assertIn("GATE-OK (documents only", self.passes("gate", GATE_PRECHECKED="1").stdout)
+        self.assertNotIn("test_groups check", self.trace.read_text())
+        self.refused("gate", 3, "already passed", GATE_PRECHECKED="1")
 
 
 if __name__ == "__main__":
