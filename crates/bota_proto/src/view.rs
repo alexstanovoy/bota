@@ -371,6 +371,10 @@ pub struct UnitView {
     /// courier, a ward): a blow may take a share of a hit there, which the
     /// whole [`hp`](Self::hp) does not tell. Absent for any other unit.
     pub hit_health: Option<Fixed>,
+    /// Extra sight this unit grants the named team, independently of its own
+    /// sight and allegiance: the receiving team and its current radius.
+    /// Told to the receiving side and to viewers of the whole map.
+    pub vision_grant: Option<(Team, Fixed)>,
 }
 
 /// A cast in its cast point.

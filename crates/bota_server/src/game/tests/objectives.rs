@@ -429,6 +429,31 @@ fn the_other_side_puts_a_lit_watcher_out_for_two_minutes() {
     assert_eq!(lit_for(&world, watcher), Some(Team::Dire));
 }
 
+#[test]
+fn a_watchers_vision_grant_is_told_only_to_its_recipient_and_full_view() {
+    let (mut world, watcher) = a_watcher_and_its_lighter();
+    assert!(light(&mut world, 0, watcher));
+    let grant = Some((Team::Radiant, rules::units(WATCHER_DAY_VISION)));
+    assert_eq!(
+        shown(&world, Some(Team::Radiant), watcher).vision_grant,
+        grant
+    );
+    assert_eq!(shown(&world, None, watcher).vision_grant, grant);
+    assert_eq!(shown(&world, Some(Team::Dire), watcher).vision_grant, None);
+}
+
+#[test]
+fn disabling_a_watcher_removes_the_vision_grant_from_every_view() {
+    let (mut world, watcher) = a_watcher_and_its_lighter();
+    let at = world.transform.get(watcher).expect("standing").pos;
+    assert!(light(&mut world, 0, watcher));
+    place_hero(&mut world, 1, at + Vec2::from_ints(-100, 0));
+    assert!(light(&mut world, 1, watcher));
+    for viewer in [None, Some(Team::Radiant), Some(Team::Dire)] {
+        assert_eq!(shown(&world, viewer, watcher).vision_grant, None);
+    }
+}
+
 /// The western Shrine, the clock `ahead` ticks before its activation `n`,
 /// and every hero far from it.
 fn the_shrine_before(activation: u32, ahead: u32, sides: &[Team]) -> (World, Entity) {

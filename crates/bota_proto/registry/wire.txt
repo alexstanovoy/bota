@@ -642,6 +642,7 @@ field StoredRune 0 kind: RuneKind
 field StoredRune 1 ticks_left: u32
 field WorldView 16 runes: Vec<RuneView>
 field UnitView 41 hit_health: Option<Fixed>
+field UnitView 42 vision_grant: Option<(Team, Fixed)>
 variant EventKind 19 LotusGrown {}
 field EventKind::LotusGrown 0 pool: EntityId
 field EventKind::LotusGrown 1 tier: LotusTier

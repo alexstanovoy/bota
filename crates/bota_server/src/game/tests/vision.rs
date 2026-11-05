@@ -515,6 +515,59 @@ fn the_client_pictures_the_servers_sight_cell_for_cell() {
     assert!(differ.is_empty(), "the client differs at {differ:?}");
 }
 
+#[test]
+fn a_dire_grant_lights_only_dires_cells_as_the_server_sees_them() {
+    use crate::game::Modifier;
+    use bota_client_core::{MatchStatic, SightGround};
+    use bota_core::{ModifierKind, WATCHER, WATCHER_DAY_VISION, WATCHER_NIGHT_VISION};
+
+    let mut world = World::on_map(map_of(MapId(0)));
+    let buildings: Vec<_> = world.entities.iter().collect();
+    for building in buildings {
+        world.despawn(building);
+    }
+    let at = bota_core::DOTA_WATCHERS[4];
+    let watcher = world.spawn_unit(&WATCHER, Team::Neutral, at);
+    world.put_modifier(
+        watcher,
+        Modifier::new(
+            ModifierKind::VisionGrant {
+                side: Team::Dire,
+                day: WATCHER_DAY_VISION,
+                night: WATCHER_NIGHT_VISION,
+            },
+            None,
+            None,
+            None,
+        ),
+    );
+    world.settle();
+    let mut config = config();
+    config.map = MapId(0);
+    let statics = MatchStatic::new(&config.info()).expect("the match");
+    for side in [Team::Dire, Team::Radiant] {
+        let view = world.view(side);
+        let ground = SightGround::lay(&statics, Some(&view)).expect("the sight grid");
+        let n = rules::GRID_CELLS;
+        let mut lit = vec![false; n * n];
+        ground.lit(&view, side, &mut lit);
+        for (index, &client) in lit.iter().enumerate() {
+            let point = CellGrid::cell_center((index % n, index / n));
+            assert_eq!(
+                client,
+                world.can_see_point(side, point),
+                "{side:?} at {point:?}"
+            );
+            assert_eq!(
+                client,
+                ground.sees(&view, side, point),
+                "point and grid agree"
+            );
+        }
+        assert_eq!(lit.iter().any(|lit| *lit), side == Team::Dire);
+    }
+}
+
 /// Whether a side is told of a unit, and how far its own hero sees, as the
 /// side's view of the current tick says.
 fn told_and_hero_sight(world: &World, mark: Entity) -> (bool, i32) {

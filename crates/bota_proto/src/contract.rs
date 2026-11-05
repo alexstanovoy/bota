@@ -494,8 +494,10 @@
 //! (`bota_core::time_of_day`), the same for every viewer and every match.
 //! The pregame is night, the first day breaks at the horn and each half of
 //! the day lasts five minutes. What a unit sees by at the moment rides in its
-//! [`UnitView::vision_radius`](crate::UnitView::vision_radius), and a client
-//! draws its fog from that.
+//! [`UnitView::vision_radius`](crate::UnitView::vision_radius). Sight granted to
+//! another team rides separately in [`UnitView::vision_grant`](crate::UnitView::vision_grant),
+//! so a neutral objective can light that team's fog without changing allegiance.
+//! Only the receiving side and viewers of the whole map are told the grant.
 //!
 //! # Names
 //!

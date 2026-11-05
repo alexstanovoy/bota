@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use bota_core::{CellGrid, SightBlock, rules};
-use bota_proto::{Team, UnitView, Vec2, WorldView};
+use bota_proto::{Fixed, Team, UnitView, Vec2, WorldView};
 
 use crate::match_static::MatchStatic;
 
@@ -74,47 +74,61 @@ impl SightGround {
     }
 
     /// Marks in `lit`, one entry per cell row-major from the south-west,
-    /// every cell a unit of `team` in `view` sees. Leaves `lit` as it is
+    /// every cell `team` sees through units and grants in `view`. Leaves `lit` as it is
     /// when it is not one entry per cell.
     pub fn lit(&self, view: &WorldView, team: Team, lit: &mut [bool]) {
         if lit.len() != rules::GRID_CELLS * rules::GRID_CELLS {
             return;
         }
         lit.fill(false);
-        for unit in viewers(view, team) {
+        for (unit, radius) in viewers(view, team) {
             let Some((cx, cy)) = CellGrid::cell_of(unit.pos) else {
                 continue;
             };
-            let reach = (unit.vision_radius.to_int() / rules::GRID_CELL_SIZE + 1) as usize;
+            let reach = (radius.to_int() / rules::GRID_CELL_SIZE + 1) as usize;
             let tier = self.statics.ground_tier(unit.pos);
             let last = rules::GRID_CELLS - 1;
             for y in cy.saturating_sub(reach)..=(cy + reach).min(last) {
                 for x in cx.saturating_sub(reach)..=(cx + reach).min(last) {
                     let slot = &mut lit[y * rules::GRID_CELLS + x];
                     if !*slot {
-                        *slot = self.sees_from(unit, tier, CellGrid::cell_center((x, y)));
+                        *slot =
+                            self.sees_from(unit.pos, radius, tier, CellGrid::cell_center((x, y)));
                     }
                 }
             }
         }
     }
 
-    /// Whether a unit of `team` in `view` sees a point.
+    /// Whether `team` sees a point through units and grants in `view`.
     pub fn sees(&self, view: &WorldView, team: Team, at: Vec2) -> bool {
-        viewers(view, team).any(|unit| self.sees_from(unit, self.statics.ground_tier(unit.pos), at))
+        viewers(view, team).any(|(unit, radius)| {
+            self.sees_from(unit.pos, radius, self.statics.ground_tier(unit.pos), at)
+        })
     }
 
     /// The server's rule for one viewer and one point: inside its vision,
     /// on ground no higher than its own, along a line nothing stops.
-    fn sees_from(&self, unit: &UnitView, tier: u8, at: Vec2) -> bool {
-        unit.pos.within(at, unit.vision_radius)
+    fn sees_from(&self, from: Vec2, radius: Fixed, tier: u8, at: Vec2) -> bool {
+        from.within(at, radius)
             && self.statics.ground_tier(at) <= tier
-            && self.block.clear(unit.pos, tier, at)
+            && self.block.clear(from, tier, at)
     }
 }
 
-fn viewers(view: &WorldView, team: Team) -> impl Iterator<Item = &UnitView> {
-    view.units
-        .iter()
-        .filter(move |unit| unit.team == team && unit.vision_radius.raw > 0)
+/// A grant contributes sight only to the team it names.
+fn viewers(view: &WorldView, team: Team) -> impl Iterator<Item = (&UnitView, Fixed)> {
+    view.units.iter().filter_map(move |unit| {
+        let own = if unit.team == team {
+            unit.vision_radius
+        } else {
+            Fixed::ZERO
+        };
+        let grant = unit
+            .vision_grant
+            .filter(|(side, _)| *side == team)
+            .map_or(Fixed::ZERO, |(_, radius)| radius);
+        let radius = own.max(grant);
+        (radius > Fixed::ZERO).then_some((unit, radius))
+    })
 }

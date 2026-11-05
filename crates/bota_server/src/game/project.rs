@@ -473,6 +473,7 @@ impl World {
         {
             wear_sheet(&mut unit, hero);
         }
+        unit.vision_grant = unit.vision_grant.filter(|(side, _)| Some(*side) == viewer);
         keep_to_its_side(&mut unit);
         Some(unit)
     }
@@ -526,6 +527,7 @@ impl World {
             collision: hull.map_or(Fixed::ZERO, |h| h.collision),
             bound: hull.map_or(Fixed::ZERO, |h| h.bound),
             vision_radius: stats.vision,
+            vision_grant: stats.vision_grant,
             true_sight_radius: stats.true_sight,
             statuses: StatusFlags {
                 bits: self.statuses_of(entity, stats),

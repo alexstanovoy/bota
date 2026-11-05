@@ -123,6 +123,7 @@ fn a_unit() -> UnitView {
         status_resist: Fixed::ZERO,
         evasion: Fixed::ZERO,
         hit_health: None,
+        vision_grant: None,
         seen_by: None,
         attack_range: Fixed::from_int(600),
         attack_time: 1700,
