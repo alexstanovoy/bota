@@ -4,7 +4,7 @@
 //! instead of matching on the kind, so a new kind is one proto variant and
 //! one row.
 
-use bota_proto::{AbilityId, UnitKind};
+use bota_proto::{AbilityId, HeroId, NeutralId, ProjectileModel, UnitKind};
 
 use crate::{AttackClass, PriorityOrder, TargetClass, rules};
 
@@ -263,4 +263,23 @@ const fn row(kind: UnitKind) -> usize {
 #[inline]
 pub const fn kind_def(kind: UnitKind) -> &'static KindDef {
     &UNIT_KINDS[row(kind)]
+}
+
+/// How a unit's attack missile looks: Dota's `ProjectileModel` of its kind,
+/// a hero's by its `hero` (an illusion's by the hero it copies) and a
+/// neutral's by its `neutral`; none for a unit that throws none.
+pub fn projectile_model(
+    kind: UnitKind,
+    hero: Option<HeroId>,
+    neutral: Option<NeutralId>,
+) -> Option<ProjectileModel> {
+    Some(match kind {
+        UnitKind::CreepRanged => ProjectileModel::RangedCreep,
+        UnitKind::CreepSiege => ProjectileModel::SiegeCreep,
+        UnitKind::Tower => ProjectileModel::Tower,
+        UnitKind::Fountain => ProjectileModel::Fountain,
+        UnitKind::Hero => ProjectileModel::Hero(hero?),
+        UnitKind::CreepNeutral => ProjectileModel::Neutral(neutral?),
+        _ => return None,
+    })
 }

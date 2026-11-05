@@ -12,7 +12,7 @@ use bota_core::{
     carried_pierces, cast_point_ms, cross, facing_gap, facing_towards, kind_def, rules,
 };
 use bota_proto::{
-    Aim, DamageKind, Fixed, Inflictor, ItemId, ItemSlot, ProjectileModel, Team, UnitKind, Vec2,
+    Aim, DamageKind, Fixed, Inflictor, ItemId, ItemSlot, ProjectileModel, Team, Vec2,
 };
 
 use super::hitting::entity_slot;
@@ -898,18 +898,12 @@ impl World {
     /// thrower's kind of unit, an illusion's its hero's. None for a unit that
     /// throws none.
     fn missile_model(&self, attacker: Entity) -> Option<ProjectileModel> {
-        Some(match *self.kind.get(attacker)? {
-            UnitKind::CreepRanged => ProjectileModel::RangedCreep,
-            UnitKind::CreepSiege => ProjectileModel::SiegeCreep,
-            UnitKind::Tower => ProjectileModel::Tower,
-            UnitKind::Fountain => ProjectileModel::Fountain,
-            UnitKind::Hero => {
-                let shows_as = self.illusion.get(attacker).map_or(attacker, |i| i.of);
-                ProjectileModel::Hero(*self.hero.get(shows_as)?)
-            }
-            UnitKind::CreepNeutral => ProjectileModel::Neutral(self.neutral.get(attacker)?.id()),
-            _ => return None,
-        })
+        let shows_as = self.illusion.get(attacker).map_or(attacker, |i| i.of);
+        bota_core::projectile_model(
+            *self.kind.get(attacker)?,
+            self.hero.get(shows_as).copied(),
+            self.neutral.get(attacker).map(|neutral| neutral.id()),
+        )
     }
 
     /// What a swing adds to its least damage: a whole number drawn evenly

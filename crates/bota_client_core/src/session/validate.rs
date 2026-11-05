@@ -429,18 +429,9 @@ fn projectiles(view: &WorldView) -> Result<(), SessionError> {
     Ok(())
 }
 
-/// How a unit's attack missile looks: Dota's `ProjectileModel` of its kind,
-/// an illusion's as its hero's; none for a unit that throws none.
+/// How a unit's attack missile looks, as the server throws it.
 fn thrown_by(unit: &bota_proto::UnitView) -> Option<ProjectileModel> {
-    Some(match unit.kind {
-        UnitKind::CreepRanged => ProjectileModel::RangedCreep,
-        UnitKind::CreepSiege => ProjectileModel::SiegeCreep,
-        UnitKind::Tower => ProjectileModel::Tower,
-        UnitKind::Fountain => ProjectileModel::Fountain,
-        UnitKind::Hero => ProjectileModel::Hero(unit.hero?),
-        UnitKind::CreepNeutral => ProjectileModel::Neutral(unit.neutral?),
-        _ => return None,
-    })
+    bota_core::projectile_model(unit.kind, unit.hero, unit.neutral)
 }
 
 /// Aggro entries sorted strictly by unit, naming visible units only, their timers within the
