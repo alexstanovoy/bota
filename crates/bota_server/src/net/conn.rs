@@ -12,7 +12,7 @@ use bota_proto::{
     ClientMsg, EventKind, LEN_PREFIX, PlayerId, ServerMsg, decode_payload, encode_frame_to_vec,
 };
 
-use crate::net::{Allowance, Breach, FrameSource, FrameStream, Outbox, ReadEnd, Split};
+use crate::net::{Allowance, Breach, FrameSource, FrameStream, Outbox, Parting, ReadEnd, Split};
 
 /// Everything that reaches the server thread from the network.
 pub enum NetEvent {
@@ -39,8 +39,6 @@ pub struct Connection {
     outbox: Arc<Outbox>,
     /// Ticks queued for the peer; each adds to its allowance.
     ticks_sent: Arc<AtomicU32>,
-    /// The thread draining `outbox` onto the socket; taken once joined.
-    writer: Option<thread::JoinHandle<()>>,
 }
 
 impl Connection {
@@ -68,7 +66,7 @@ impl Connection {
         let outbox = Outbox::new();
         let reader_outbox = Arc::clone(&outbox);
         let writer_outbox = Arc::clone(&outbox);
-        let writer = thread::Builder::new().spawn(move || writer_outbox.run_writer(sink))?;
+        thread::Builder::new().spawn(move || writer_outbox.run_writer(sink))?;
         let ticks_sent = Arc::new(AtomicU32::new(0));
         let allowance = Allowance::new(messages_per_sec, Arc::clone(&ticks_sent), Instant::now());
         let opened = Instant::now();
@@ -78,7 +76,6 @@ impl Connection {
             socket,
             outbox,
             ticks_sent,
-            writer: Some(writer),
         };
         if let Err(error) = thread::Builder::new().spawn(move || {
             read_loop(
@@ -123,17 +120,17 @@ impl Connection {
         self.outbox.push_tick(snapshot, tick, events);
     }
 
-    /// Stops sending and waits for what is queued to reach the socket.
-    pub fn close_and_wait(&mut self) {
-        self.close();
-        if let Some(writer) = self.writer.take() {
-            let _ = writer.join();
-        }
+    /// Ends the connection at the end of the match: waits for what is queued
+    /// to reach the socket, and reads on until the peer hangs up.
+    pub fn close_and_wait(&self) {
+        self.outbox.close(Parting::MatchOver);
+        self.outbox.wait_sent();
     }
 
-    /// Stops sending and lets the writer drain and hang up.
+    /// Lets the peer go: the writer drains what is queued and hangs up, and
+    /// the connection is read on for a bounded while only.
     pub fn close(&self) {
-        self.outbox.close();
+        self.outbox.close(Parting::LetGo);
     }
 
     /// Drops the connection of a peer that is gone or hopeless, without a
@@ -156,9 +153,10 @@ impl Connection {
 /// line and not the tick.
 ///
 /// Once the server stops listening, the reader still drains the connection
-/// until the peer hangs up: a socket closed with bytes unread resets the
-/// connection, and the peer would lose what it has not read yet, the end of
-/// the match among it.
+/// until the peer hangs up, or, for a peer let go, until the writer shuts the
+/// reading side a while after its own hang-up: a socket closed with bytes
+/// unread resets the connection, and the peer would lose what it has not
+/// read yet, the end of the match among it.
 fn read_loop(
     id: PlayerId,
     mut source: Box<dyn FrameSource>,
@@ -210,6 +208,7 @@ fn read_loop(
             Some(breach) => NetEvent::Breached(id, breach),
         });
     }
+    outbox.reader_ended();
 }
 
 /// How long an accept loop rests after a failed accept, so a lasting

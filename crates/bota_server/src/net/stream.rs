@@ -84,7 +84,8 @@ pub trait FrameSink: Send {
     /// nothing for the idle timeout or the connection broke.
     fn send_frames(&mut self, frames: Vec<u8>) -> io::Result<()>;
     /// Ends the sending side once what was sent has gone out; the peer
-    /// reads to the end, and the reader goes on until the peer hangs up.
+    /// reads to the end, and the reader goes on until the peer hangs up or
+    /// the writer shuts the reading side.
     fn hang_up(&mut self);
     /// Ends the reading side, so the connection's reader reports the peer
     /// gone.

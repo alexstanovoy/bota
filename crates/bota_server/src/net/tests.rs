@@ -550,6 +550,36 @@ fn a_stranger_that_never_says_hello_is_let_go_and_frees_its_place() {
     assert_eq!(slot, Some(SlotId(0)));
 }
 
+/// A peer let go must not keep its connection by talking on: once the server has hung up, it reads
+/// on for a bounded while only, so dropped connections cannot pile up past `max_connections`.
+#[test]
+fn a_stranger_let_go_that_talks_on_is_cut_off() {
+    let mut opts = realtime(13);
+    opts.max_connections = Some(1);
+    let addr = start_server(opts);
+    let mut stranger = TestClient::connect(addr);
+    let started = Instant::now();
+    let pong = encode_frame_to_vec(&ClientMsg::Pong).expect("encode");
+    let mut buf = [0u8; 65536];
+    while let Ok(n @ 1..) = stranger.stream.read(&mut buf) {
+        assert!(started.elapsed() < HANG_GUARD, "the stranger is kept");
+        stranger.reader.push(&buf[..n]);
+        while let Some(msg) = stranger.reader.next_message().expect("decode") {
+            if msg == ServerMsg::Ping {
+                let _ = stranger.stream.write_all(&pong);
+            }
+        }
+    }
+    // Let go, it answers pings that no longer come, as often as a live client would.
+    while stranger.stream.write_all(&pong).is_ok() {
+        assert!(
+            started.elapsed() < HANG_GUARD,
+            "the server reads a stranger it let go for ever"
+        );
+        thread::sleep(Duration::from_millis(100));
+    }
+}
+
 #[test]
 fn a_delayed_order_takes_effect_late_and_its_delay_is_told() {
     const DELAY: u32 = 3;
@@ -690,7 +720,7 @@ fn a_slow_reader_skips_snapshots_but_no_tick_and_no_event() {
     for tick in 2..=6 {
         outbox.push_tick(bulky_snapshot(tick), tick, events(tick));
     }
-    outbox.close();
+    outbox.close(crate::net::Parting::MatchOver);
     let mut seen = Vec::new();
     loop {
         match client.recv() {

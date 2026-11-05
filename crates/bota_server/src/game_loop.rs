@@ -1295,8 +1295,8 @@ impl Server {
     }
 
     /// Ends every connection once what is queued for it has gone out.
-    fn close_all(&mut self) {
-        for conn in &mut self.conns {
+    fn close_all(&self) {
+        for conn in &self.conns {
             conn.close_and_wait();
         }
     }

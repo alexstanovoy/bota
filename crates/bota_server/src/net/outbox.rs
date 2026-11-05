@@ -1,7 +1,7 @@
 //! The outgoing side of one connection.
 
 use std::collections::VecDeque;
-use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 use bota_proto::{
@@ -14,6 +14,22 @@ use crate::net::deflate::Deflater;
 
 /// How often the writer sends [`ServerMsg::Ping`], whatever else it sends.
 pub const PING_INTERVAL: Duration = Duration::from_secs(1);
+
+/// How long a connection the server lets go is read on after its hang-up, for the peer to read
+/// to the end and hang up too: a socket closed with bytes unread resets the connection, and the
+/// peer would lose what it has not read yet. A peer still talking then is cut off, so a peer let
+/// go cannot keep its connection (and its thread) by talking on.
+const LINGER: Duration = Duration::from_secs(10);
+
+/// How a connection the server closes parts, once what is queued has gone out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Parting {
+    /// A peer let go while the server runs on: read on for at most [`LINGER`].
+    LetGo,
+    /// The end of the match: read on until the peer hangs up, however long its line takes to
+    /// deliver the end. The server takes no one after it, so nothing piles up.
+    MatchOver,
+}
 
 /// Frames waiting to leave on one connection.
 ///
@@ -37,26 +53,32 @@ pub const PING_INTERVAL: Duration = Duration::from_secs(1);
 pub struct Outbox {
     state: Mutex<OutboxState>,
     wake: Condvar,
+    /// Wakes whoever waits for the writer to be done sending or for the reader to end.
+    parting: Condvar,
 }
 
 struct OutboxState {
     queue: VecDeque<Queued>,
     /// Frames that go out before the queue: answers to probes.
     urgent: VecDeque<Vec<u8>>,
-    /// Drain what is queued, then hang up.
-    closed: bool,
+    /// Drain what is queued, then hang up and part so.
+    closed: Option<Parting>,
     /// Drop what is queued and stop at once: the peer is gone or hopeless.
     aborted: bool,
     /// Whether a tick was ever queued: the first one is kept whole.
     ticked: bool,
+    /// The writer sends no more: it hung up, or stopped.
+    sent: bool,
+    /// The connection's reader has ended.
+    reader_ended: bool,
 }
 
 /// What the writer does next.
 enum Step {
     Send(Queued),
     Ping,
-    /// The queue is drained after a close: hang up.
-    HangUp,
+    /// The queue is drained after a close: hang up, and part so.
+    HangUp(Parting),
     Abort,
 }
 
@@ -98,11 +120,14 @@ impl Outbox {
             state: Mutex::new(OutboxState {
                 queue: VecDeque::new(),
                 urgent: VecDeque::new(),
-                closed: false,
+                closed: None,
                 aborted: false,
                 ticked: false,
+                sent: false,
+                reader_ended: false,
             }),
             wake: Condvar::new(),
+            parting: Condvar::new(),
         })
     }
 
@@ -116,7 +141,7 @@ impl Outbox {
     /// Dropped when the peer already lags that many.
     pub fn push_urgent(&self, bytes: Vec<u8>) {
         let mut state = self.lock();
-        if state.closed || state.aborted || state.urgent.len() >= URGENT_LIMIT {
+        if state.closed.is_some() || state.aborted || state.urgent.len() >= URGENT_LIMIT {
             return;
         }
         state.urgent.push_back(bytes);
@@ -148,7 +173,7 @@ impl Outbox {
 
     fn enqueue(&self, mut entry: Queued) {
         let mut state = self.lock();
-        if state.closed || state.aborted {
+        if state.closed.is_some() || state.aborted {
             return;
         }
         if let Queued::Tick(newer) = &mut entry {
@@ -183,9 +208,9 @@ impl Outbox {
         self.wake.notify_one();
     }
 
-    /// Lets the writer drain what is queued, then stop.
-    pub fn close(&self) {
-        self.lock().closed = true;
+    /// Lets the writer drain what is queued, then hang up and part as `parting` says.
+    pub fn close(&self, parting: Parting) {
+        self.lock().closed = Some(parting);
         self.wake.notify_one();
     }
 
@@ -197,6 +222,21 @@ impl Outbox {
         state.urgent.clear();
         drop(state);
         self.wake.notify_one();
+    }
+
+    /// Waits until the writer sends no more: after a [`close`](Outbox::close), what was queued
+    /// has reached the socket.
+    pub fn wait_sent(&self) {
+        let mut state = self.lock();
+        while !state.sent {
+            state = self.parting.wait(state).expect("outbox lock");
+        }
+    }
+
+    /// Tells a writer that reads on after its hang-up that the reader has ended.
+    pub fn reader_ended(&self) {
+        self.lock().reader_ended = true;
+        self.parting.notify_all();
     }
 
     /// Whether nothing waits for the writer: it has taken all there was.
@@ -227,8 +267,8 @@ impl Outbox {
             if let Some(entry) = state.queue.pop_front() {
                 return Step::Send(entry);
             }
-            if state.closed {
-                return Step::HangUp;
+            if let Some(parting) = state.closed {
+                return Step::HangUp(parting);
             }
             state = self
                 .wake
@@ -238,11 +278,40 @@ impl Outbox {
         }
     }
 
+    /// Marks the writer done sending, and wakes whoever waits for it. A lock
+    /// poisoned by a writer's panic still marks it.
+    fn mark_sent(&self) {
+        self.state
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .sent = true;
+        self.parting.notify_all();
+    }
+
+    /// Waits after a hang-up for the reader to end, at most [`LINGER`].
+    fn linger(&self) {
+        let until = Instant::now() + LINGER;
+        let mut state = self.lock();
+        while !state.reader_ended {
+            let Some(left) = until.checked_duration_since(Instant::now()) else {
+                return;
+            };
+            state = self
+                .parting
+                .wait_timeout(state, left)
+                .expect("outbox lock")
+                .0;
+        }
+    }
+
     /// The writer thread body: drains frames into the sink until the outbox
-    /// closes and empties, then hangs up. When the outbox is aborted or the
-    /// sink fails, it shuts the connection's reading side, so the
-    /// connection's reader reports the peer gone.
+    /// closes and empties, then hangs up and lets the reader drain the
+    /// connection, for at most [`LINGER`] when the peer is let go. Then, or at
+    /// once when the outbox is aborted or the sink fails, it shuts the
+    /// connection's reading side, so the connection's reader reports the peer
+    /// gone.
     pub fn run_writer(self: &Arc<Outbox>, mut sink: Box<dyn FrameSink>) {
+        let _sent = SentOnExit(self);
         let ping = encode_frame_to_vec(&ServerMsg::Ping).expect("a ping encodes");
         let mut ping_due = Instant::now() + PING_INTERVAL;
         let mut deflater = None;
@@ -262,9 +331,14 @@ impl Outbox {
                     ping_due = Instant::now() + PING_INTERVAL;
                     Some(ping.clone())
                 }
-                Step::HangUp => {
+                Step::HangUp(parting) => {
                     sink.hang_up();
-                    return;
+                    self.mark_sent();
+                    if parting == Parting::MatchOver {
+                        return;
+                    }
+                    self.linger();
+                    break;
                 }
                 Step::Abort => break,
             };
@@ -277,6 +351,16 @@ impl Outbox {
             }
         }
         sink.shut_read();
+    }
+}
+
+/// Marks the writer done sending however it stops, a panic included, so
+/// nobody waits for it for ever.
+struct SentOnExit<'a>(&'a Outbox);
+
+impl Drop for SentOnExit<'_> {
+    fn drop(&mut self) {
+        self.0.mark_sent();
     }
 }
 
