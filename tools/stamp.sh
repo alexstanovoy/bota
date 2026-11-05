@@ -6,7 +6,7 @@
 # `cargo fmt` writes them. So a change that only formats keeps the stamp, and the same content in another checkout of this
 # repository has the same stamp. Stamps live in the repository's common git directory, one file per tree:
 #   precheck ok <time>        tools/precheck.sh passed
-#   gate ok <time>            tools/gate.sh passed (gate-lean for its lean run)
+#   gate ok <time>            tools/gate.sh passed
 
 tree_key() {
     local idx real_idx rs

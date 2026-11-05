@@ -34,7 +34,7 @@ if [ "${GATE_AGAIN:-0}" != 1 ] && [ -n "$(stamp_has "$tree" gate)" ]; then
 fi
 if only_docs_changed "${GATE_BASE:-main}"; then
     echo "GATE-OK (documents only: nothing to confirm)"
-    stamp_put "$tree" "$mode"
+    stamp_put "$tree" gate
     exit 0
 fi
 skip=" ${GATE_SKIP:-} "
