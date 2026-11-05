@@ -26,6 +26,11 @@ pub const POWER_RUNES: RuneSet = RuneSet::ALL
     .without(RuneSet::of(RuneKind::Water))
     .without(RuneSet::of(RuneKind::Bounty));
 
+/// The power runes the river's rotation draws from: all of [`POWER_RUNES`]
+/// but the Illusion Rune, held out until its illusions are done for the
+/// clients. The map still has spots for it, so a match may still ask for it.
+pub const POWER_ROTATION: RuneSet = POWER_RUNES.without(RuneSet::of(RuneKind::Illusion));
+
 /// Where a rune spot lies on the map.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RuneSpotKind {
@@ -264,7 +269,7 @@ impl PowerCycle {
     /// Draws the next power rune among the `enabled` kinds, `draw(n)` giving a
     /// number below `n`. Answers nothing when no power rune is enabled.
     pub fn draw(&mut self, enabled: RuneSet, mut draw: impl FnMut(u32) -> u32) -> Option<RuneKind> {
-        let power = enabled.and(POWER_RUNES);
+        let power = enabled.and(POWER_ROTATION);
         if power.is_empty() {
             return None;
         }

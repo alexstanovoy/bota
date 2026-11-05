@@ -7,7 +7,7 @@
 
 use bota_core::{
     AMPLIFY_DAMAGE_PCT, AMPLIFY_SPELL_AMP_BP, ARCANE_COOLDOWN_CUT_BP, ARCANE_MANA_CUT_BP,
-    HASTE_RUNE_SPEED, ILLUSION_DEALT_BP, ILLUSION_RANGED_TAKEN_BP, ModifierKind, POWER_RUNES,
+    HASTE_RUNE_SPEED, ILLUSION_DEALT_BP, ILLUSION_RANGED_TAKEN_BP, ModifierKind, POWER_ROTATION,
     SHIELD_RUNE_TICKS, WATER_RUNE_HP, WATER_RUNE_MANA, map_of, rules,
 };
 use bota_proto::{
@@ -245,7 +245,7 @@ fn a_power_rune_comes_every_two_minutes_from_six_to_a_river_spot_and_never_repea
         "none before six minutes"
     );
     let mut kinds = Vec::new();
-    for round in 0..14 {
+    for round in 0..18 {
         let events = step_at_minute(&mut world, 6 + 2 * round, 0);
         let power: Vec<(RuneKind, Vec2)> = spawned(&events)
             .into_iter()
@@ -260,15 +260,23 @@ fn a_power_rune_comes_every_two_minutes_from_six_to_a_river_spot_and_never_repea
         assert_eq!(lone.len(), 1, "and the last one went");
         kinds.push(power[0].0);
     }
-    for cycle in kinds.chunks(7) {
+    let cycle_len = POWER_ROTATION.iter().count();
+    for cycle in kinds.chunks(cycle_len) {
         let mut seen = RuneSet::NONE;
         for kind in cycle {
             assert!(!seen.has(*kind), "{kind:?} twice in a cycle: {kinds:?}");
             seen = seen.with(*kind);
         }
-        assert_eq!(seen.bits, POWER_RUNES.bits, "all seven kinds in a cycle");
+        assert_eq!(
+            seen.bits, POWER_ROTATION.bits,
+            "all {cycle_len} kinds in a cycle"
+        );
     }
-    assert_ne!(kinds[6], kinds[7], "a new cycle never opens with the last");
+    assert_ne!(
+        kinds[cycle_len - 1],
+        kinds[cycle_len],
+        "a new cycle never opens with the last"
+    );
 }
 
 #[test]
@@ -285,6 +293,44 @@ fn both_river_spots_get_power_runes_over_a_match() {
         );
     }
     assert_eq!(at_spots.len(), 2, "drawn between the two");
+}
+
+#[test]
+fn an_illusion_rune_never_spawns_from_the_river_while_every_other_power_kind_does() {
+    let mut world = rune_match(&radiant_and_dire());
+    assert!(
+        world.runes.has(RuneKind::Illusion),
+        "the match asks for Illusion Runes"
+    );
+    let mut power = Vec::new();
+    for round in 0..28 {
+        let events = step_at_minute(&mut world, 6 + 2 * round, 0);
+        power.extend(
+            spawned(&events)
+                .into_iter()
+                .map(|(kind, _)| kind)
+                .filter(|kind| kind.is_power()),
+        );
+    }
+    assert_eq!(
+        power.len(),
+        28,
+        "a power rune every two minutes, six to sixty"
+    );
+    assert!(
+        !power.contains(&RuneKind::Illusion),
+        "no Illusion Rune spawns: {power:?}"
+    );
+    for kind in [
+        RuneKind::Haste,
+        RuneKind::AmplifyDamage,
+        RuneKind::Arcane,
+        RuneKind::Regeneration,
+        RuneKind::Invisibility,
+        RuneKind::Shield,
+    ] {
+        assert!(power.contains(&kind), "{kind:?} still spawns: {power:?}");
+    }
 }
 
 #[test]

@@ -3,7 +3,7 @@
 
 use bota_core::{
     BOTTLE_CHARGES, BOTTLE_LESSER_RUNE_CHARGES, BOTTLE_REFILL_PERIOD_TICKS, BOTTLE_RUNE_TICKS,
-    BOTTLE_TICKS, Drink, ModifierKind, POWER_RUNES, RUNE_PICKUP_RANGE, RuneSpot, RuneSpotKind,
+    BOTTLE_TICKS, Drink, ModifierKind, POWER_ROTATION, RUNE_PICKUP_RANGE, RuneSpot, RuneSpotKind,
     SHIELD_BARRIER_PCT, WATER_RUNE_HP, WATER_RUNE_MANA, bounty_rune_gold, rules, rune_ticks,
     runes_due, side_index,
 };
@@ -86,7 +86,7 @@ impl World {
     /// at random, both from a stream of this spawn's own.
     fn put_power_rune(&mut self) {
         let river: Vec<usize> = river_spots(self.map.rune_spots).collect();
-        if river.is_empty() || self.runes.and(POWER_RUNES).is_empty() {
+        if river.is_empty() || self.runes.and(POWER_ROTATION).is_empty() {
             return;
         }
         let key = EntityId {
