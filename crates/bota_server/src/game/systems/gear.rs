@@ -1140,8 +1140,14 @@ impl World {
         None
     }
 
-    /// The stack in one of a seat's slots: the unit's bag, then the stash.
-    fn stack_at(&self, unit: Entity, seat: &crate::game::Seat, at: usize) -> Option<ItemStack> {
+    /// The stack in one of a seat's slots: the stash's, else the unit's bag
+    /// (a hero that lies dead carries its own still).
+    pub(crate) fn stack_at(
+        &self,
+        unit: Entity,
+        seat: &crate::game::Seat,
+        at: usize,
+    ) -> Option<ItemStack> {
         if in_stash(at) {
             seat.stash.slots.get(at - BAG_SLOTS).copied().flatten()
         } else {
@@ -1348,7 +1354,12 @@ impl World {
         }
     }
 
-    fn slot_mut(&mut self, unit: Entity, seat: usize, slot: usize) -> Option<&mut ItemStack> {
+    pub(crate) fn slot_mut(
+        &mut self,
+        unit: Entity,
+        seat: usize,
+        slot: usize,
+    ) -> Option<&mut ItemStack> {
         self.slot_of(unit, seat, slot)?.as_mut()
     }
 

@@ -16,16 +16,7 @@ fn local(at: usize) -> usize {
 }
 
 impl World {
-    /// The stack in one of a seat's slots: the stash's, else the unit's bag
-    /// (a hero that lies dead carries its own still).
-    fn stack_in(&self, unit: Entity, seat: &Seat, at: usize) -> Option<ItemStack> {
-        if in_stash(at) {
-            return seat.stash.slots.get(at - BAG_SLOTS).copied().flatten();
-        }
-        self.held_in_bag(unit, at)
-    }
-
-    /// The bag a slot belongs to, as [`World::stack_in`] reads it.
+    /// The bag a slot belongs to, as [`World::stack_at`] reads it.
     fn bag_in(&mut self, seat: usize, unit: Entity, at: usize) -> Option<&mut Inventory> {
         if in_stash(at) {
             return Some(&mut self.seats[seat].stash);
@@ -43,7 +34,7 @@ impl World {
         at: usize,
     ) -> Result<(), RejectReason> {
         let held = self
-            .stack_in(unit, seat, at)
+            .stack_at(unit, seat, at)
             .ok_or(RejectReason::EmptySlot)?;
         if held.owner != seat.slot {
             return Err(RejectReason::NotYourItem);
@@ -65,7 +56,7 @@ impl World {
         at: usize,
     ) -> Result<(), RejectReason> {
         let held = self
-            .stack_in(unit, seat, at)
+            .stack_at(unit, seat, at)
             .ok_or(RejectReason::EmptySlot)?;
         if held.owner != seat.slot {
             return Err(RejectReason::NotYourItem);
@@ -89,7 +80,7 @@ impl World {
         {
             return false;
         }
-        let Some(built) = self.stack_in(unit, &self.seats[seat], at) else {
+        let Some(built) = self.stack_at(unit, &self.seats[seat], at) else {
             return false;
         };
         let mut parts = self.parts_of_build(&built).into_iter();
@@ -179,11 +170,7 @@ impl World {
         if self.lock_refusal(unit, &self.seats[seat], at).is_err() {
             return false;
         }
-        let Some(stack) = self
-            .bag_in(seat, unit, at)
-            .and_then(|bag| bag.slot_mut(local(at)))
-            .and_then(Option::as_mut)
-        else {
+        let Some(stack) = self.slot_mut(unit, seat, at) else {
             return false;
         };
         stack.locked = locked;
