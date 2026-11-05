@@ -1,0 +1,595 @@
+# The test groups of this repository, read by tools/test_groups.py (its header says how they are used).
+#
+# Every test (unit, integration, doc and ignored) is in exactly one group: a group selects tests by crate, build (profile and
+# features), target and libtest name filters (substrings, as libtest matches them). Every file of the repository says which
+# groups a change to it runs:
+#   - a file a group's `paths` names runs that group, and a `[[route]]` names further groups for files several groups read;
+#     a group's `also_paths` add it to the groups of files something else names;
+#   - a file of a crate not marked `routed` runs every group of the crate and of every crate depending on it (Cargo's
+#     dependencies, development ones too, and the crate's `dependents`); so does a file of a routed crate that a route sends
+#     to "@<crate>";
+#   - a file of a routed crate (bota_server) must be named by a group or a route: `check` fails on one that is not;
+#   - a file outside the crates must be named too: "*" runs every group, an empty list none.
+# Group names in a route may end in "*" (every group of that prefix). `check` fails on a pattern that names no file, a
+# filter that selects no test, a test in no group or in two, a group with no test and more than 30 groups.
+
+[crate.bota_proto]
+[crate.bota_core]
+[crate.bota_replay]
+
+[crate.bota_client_core]
+# `web` is the browser's (wasm32 only; the gate's wasm steps check it).
+features = ["ui", "websocket"]
+wasm_only_features = ["web"]
+
+[crate.bota_radovid]
+features = ["e2e"]
+wasm_only_features = ["web"]
+
+[crate.bota_server]
+routed = true
+# bota_radovid's end-to-end tests launch the release bota_server.
+dependents = ["bota_radovid"]
+
+[crate.import_items]
+manifest = "tools/import_items/Cargo.toml"
+profile = "release"
+
+# Files outside the crates.
+[[route]]
+paths = ["Cargo.toml", "Cargo.lock", "tools/*.sh", "tools/test_groups.py", "tools/test_groups.toml"]
+groups = ["*"]
+
+[[route]]
+# Documents, the licence, the fuzz targets (the gate's fuzz-check builds them), the PGO script; deny.toml is the gate's
+# deny step, which always runs.
+paths = ["**.md", "LICENSE", ".gitignore", "deny.toml", "fuzz/**", "scripts/**"]
+groups = []
+
+# bota_proto, bota_core, bota_replay and bota_client_core: each crate is one group, and a change to any of them runs
+# everything above it.
+[[group]]
+name = "proto"
+about = "the wire: messages, codecs, the registry, fixed-point math; also as the product builds it (no overflow checks)"
+tests = [{ crate = "bota_proto" }, { crate = "bota_proto", profile = "release" }]
+
+[[group]]
+name = "core"
+about = "the rules and data every crate shares"
+tests = [{ crate = "bota_core" }]
+
+[[group]]
+name = "replay"
+about = "replay metadata"
+tests = [{ crate = "bota_replay" }]
+
+[[group]]
+name = "client_core"
+about = "what clients share: sessions, sockets, replay files, the UI model"
+tests = [{ crate = "bota_client_core" }]
+
+[[group]]
+name = "radovid"
+about = "a real radovid in-process, matching players and launching the release bota_server"
+tests = [{ crate = "bota_radovid", env = { BOTA_SERVER_BIN = "{target_dir}/release/bota_server" }, before = [
+    ["cargo", "build", "--release", "-p", "bota_server"],
+] }]
+
+[[group]]
+name = "import_items"
+about = "the item importer: its own checks, and that the committed item table is what a Dota 2 install gives"
+paths = ["crates/bota_core/src/data/items.rs"]
+tests = [{ crate = "import_items", args = ["--include-ignored"] }]
+
+# bota_server: the simulation (game_*) and the server around it (server_*). A file of one game system runs its group and
+# game_determinism (the pins and the bench digests, which catch any change of the simulation); what the whole world is
+# made of runs everything.
+[[route]]
+paths = [
+    "crates/bota_server/Cargo.toml",
+    "crates/bota_server/src/lib.rs",
+    # the game loop and the local match: the game's tests play through them too
+    "crates/bota_server/src/game_loop.rs",
+    "crates/bota_server/src/game_loop/**",
+    "crates/bota_server/src/local.rs",
+    "crates/bota_server/src/engine/**",
+    "crates/bota_server/src/game/mod.rs",
+    "crates/bota_server/src/game/world.rs",
+    "crates/bota_server/src/game/world_tables.rs",
+    "crates/bota_server/src/game/match_world.rs",
+    "crates/bota_server/src/game/hash.rs",
+    "crates/bota_server/src/game/rng.rs",
+    "crates/bota_server/src/game/seat.rs",
+    "crates/bota_server/src/game/handles.rs",
+    "crates/bota_server/src/game/delay.rs",
+    "crates/bota_server/src/game/project.rs",
+    "crates/bota_server/src/game/spots.rs",
+    "crates/bota_server/src/game/bodies.rs",
+    "crates/bota_server/src/game/systems/mod.rs",
+    "crates/bota_server/src/game/systems/spawn.rs",
+    "crates/bota_server/src/game/systems/actions.rs",
+    "crates/bota_server/src/game/systems/modifiers.rs",
+    "crates/bota_server/src/game/systems/stats.rs",
+    "crates/bota_server/src/game/components/mod.rs",
+    "crates/bota_server/src/game/components/action.rs",
+    "crates/bota_server/src/game/components/def.rs",
+    "crates/bota_server/src/game/components/expiry.rs",
+    "crates/bota_server/src/game/components/loot.rs",
+    "crates/bota_server/src/game/components/mark.rs",
+    "crates/bota_server/src/game/components/modifiers.rs",
+    "crates/bota_server/src/game/components/stats.rs",
+    "crates/bota_server/src/game/components/target.rs",
+    "crates/bota_server/src/game/components/transform.rs",
+    "crates/bota_server/src/game/components/vitals.rs",
+    "crates/bota_server/src/game/config/mod.rs",
+    "crates/bota_server/src/game/config/match_config.rs",
+    "crates/bota_server/src/game/config/map_terrain.rs",
+    "crates/bota_server/src/game/config/place.rs",
+    "crates/bota_server/src/game/config/secrets.rs",
+    "crates/bota_server/src/game/config/terrain.rs",
+    "crates/bota_server/src/game/config/trees.rs",
+]
+groups = ["@bota_server"]
+
+[[route]]
+# test support every game group uses
+paths = ["crates/bota_server/src/game/tests/mod.rs", "crates/bota_server/src/game/tests/support.rs"]
+groups = ["game_*"]
+
+[[route]]
+paths = ["crates/bota_server/src/game/systems/tests/mod.rs", "crates/bota_server/src/game/systems/tests/support.rs"]
+groups = ["game_combat", "game_abilities", "game_heroes", "game_match"]
+
+[[route]]
+paths = ["crates/bota_server/src/game/components/tests/mod.rs", "crates/bota_server/src/game/components/tests/fixtures.rs"]
+groups = ["game_world", "game_movement", "game_items"]
+
+[[route]]
+# the server around the simulation: whatever a connection, a launch or a match over the wire goes through
+paths = [
+    "crates/bota_server/src/main.rs",
+    "crates/bota_server/src/net/**",
+    "crates/bota_server/src/lobby.rs",
+    "crates/bota_server/src/chat.rs",
+    "crates/bota_server/src/pick_clock.rs",
+    "crates/bota_server/src/spectators.rs",
+    "crates/bota_server/src/replay.rs",
+]
+groups = ["server_net", "server_launch", "server_transport", "server_matches", "radovid"]
+
+[[route]]
+paths = ["crates/bota_server/src/game/systems/cast.rs"]
+groups = ["game_abilities", "game_heroes", "game_items", "game_neutrals"]
+
+[[route]]
+paths = [
+    "crates/bota_server/src/game/systems/missile.rs",
+    "crates/bota_server/src/game/components/projectile.rs",
+    "crates/bota_server/src/game/systems/hitting.rs",
+]
+groups = ["game_combat", "game_abilities", "game_heroes", "game_neutrals"]
+
+[[route]]
+paths = [
+    "crates/bota_server/src/game/systems/lane_ai.rs",
+    "crates/bota_server/src/game/systems/target.rs",
+    "crates/bota_server/src/game/systems/rouse.rs",
+    "crates/bota_server/src/game/systems/fight.rs",
+    "crates/bota_server/src/game/components/ai.rs",
+]
+groups = ["game_combat", "game_lanes", "game_neutrals", "game_match"]
+
+[[route]]
+paths = [
+    "crates/bota_server/src/game/systems/gear.rs",
+    "crates/bota_server/src/game/components/items.rs",
+    "crates/bota_server/src/game/systems/regen.rs",
+]
+groups = ["game_items", "game_abilities"]
+
+[[route]]
+paths = [
+    "crates/bota_server/src/game/components/abilities.rs",
+    "crates/bota_server/src/game/components/casting.rs",
+    "crates/bota_server/src/game/config/ability.rs",
+]
+groups = ["game_abilities", "game_heroes", "game_neutrals"]
+
+[[route]]
+paths = [
+    "crates/bota_server/src/game/systems/rune.rs",
+    "crates/bota_server/src/game/components/rune.rs",
+    "crates/bota_server/src/game/systems/econ.rs",
+]
+groups = ["game_objectives", "game_items", "game_match"]
+
+[[route]]
+paths = [
+    "crates/bota_server/src/game/systems/trees.rs",
+    "crates/bota_server/src/game/forest.rs",
+    "crates/bota_server/src/game/systems/ward.rs",
+]
+groups = ["game_movement", "game_vision", "game_items"]
+
+[[route]]
+paths = ["crates/bota_server/src/game/systems/illusion.rs", "crates/bota_server/src/game/components/illusion.rs"]
+groups = ["game_combat", "game_items", "game_objectives"]
+
+[[route]]
+paths = ["crates/bota_server/src/game/components/orders.rs", "crates/bota_server/src/game/components/push.rs"]
+groups = ["game_movement", "game_combat", "game_neutrals"]
+
+[[group]]
+name = "game_world"
+about = "the world's frame: the entity tables, the fingerprint, handles and ids, order delay, the core rules"
+paths = [
+    "crates/bota_server/src/game/tests/hash.rs",
+    "crates/bota_server/src/game/tests/ids.rs",
+    "crates/bota_server/src/game/tests/handles.rs",
+    "crates/bota_server/src/game/tests/delay.rs",
+    "crates/bota_server/src/game/tests/fillers.rs",
+    "crates/bota_server/src/game/tests/core_rules.rs",
+    "crates/bota_server/src/game/components/tests/validation.rs",
+    "crates/bota_server/src/game/components/tests/protocol.rs",
+]
+tests = [{ crate = "bota_server", target = "lib", filters = [
+    "engine::tests::",
+    "game::world::",
+    "game::tests::hash::",
+    "game::tests::ids::",
+    "game::tests::handles::",
+    "game::tests::delay::",
+    "game::tests::fillers::",
+    "game::tests::core_rules::",
+    "game::components::tests::validation::",
+    "game::components::tests::protocol::",
+] }]
+
+[[group]]
+name = "game_determinism"
+about = "the pins (whole matches replay their fingerprints) and the dummy bench's digests: any change of the simulation"
+paths = ["crates/bota_server/src/game/tests/determinism.rs", "crates/bota_server/benches/**"]
+# a change there runs this group as well, but does not count as naming the file: each still needs a group of its own
+also_paths = [
+    "crates/bota_server/src/game/**",
+    "crates/bota_server/src/engine/**",
+    "crates/bota_server/src/profile/**",
+]
+tests = [{ crate = "bota_server", target = "lib", filters = ["game::tests::determinism::"] }]
+# the bench's digest checks (criterion's --test mode), on the product build
+commands = [["cargo", "bench", "-q", "-p", "bota_server", "--bench", "dummy", "--", "--test"]]
+
+[[group]]
+name = "game_movement"
+about = "walking: routes, the short pather, turning, the ground and the forest, orders and their queue"
+paths = [
+    "crates/bota_server/src/game/systems/walk.rs",
+    "crates/bota_server/src/game/systems/ground.rs",
+    "crates/bota_server/src/game/systems/queue.rs",
+    "crates/bota_server/src/game/path.rs",
+    "crates/bota_server/src/game/stretch.rs",
+    "crates/bota_server/src/game/clearance.rs",
+    "crates/bota_server/src/game/ground.rs",
+    "crates/bota_server/src/game/components/movement.rs",
+    "crates/bota_server/src/game/tests/movement.rs",
+    "crates/bota_server/src/game/tests/turning.rs",
+    "crates/bota_server/src/game/tests/forest_paths.rs",
+    "crates/bota_server/src/game/tests/tree_gaps.rs",
+    "crates/bota_server/src/game/tests/orders.rs",
+    "crates/bota_server/src/game/tests/queue.rs",
+    "crates/bota_server/src/game/components/tests/movement.rs",
+]
+tests = [{ crate = "bota_server", target = "lib", filters = [
+    "game::path::",
+    "game::tests::movement::",
+    "game::tests::turning::",
+    "game::tests::forest_paths::",
+    "game::tests::tree_gaps::",
+    "game::tests::orders::",
+    "game::tests::queue::",
+    "game::components::tests::movement::",
+] }]
+
+[[group]]
+name = "game_combat"
+about = "attacks and blows, evasion and piercing, who a unit fights, illusions"
+paths = [
+    "crates/bota_server/src/game/components/hit.rs",
+    "crates/bota_server/src/game/tests/attacks.rs",
+    "crates/bota_server/src/game/tests/attack_classes.rs",
+    "crates/bota_server/src/game/tests/aggro_view.rs",
+    "crates/bota_server/src/game/tests/target_retention.rs",
+    "crates/bota_server/src/game/tests/illusions.rs",
+    "crates/bota_server/src/game/systems/tests/evasion.rs",
+    "crates/bota_server/src/game/systems/tests/pierce.rs",
+    "crates/bota_server/src/game/systems/tests/actions.rs",
+]
+tests = [{ crate = "bota_server", target = "lib", filters = [
+    "game::tests::attacks::",
+    "game::tests::attack_classes::",
+    "game::tests::aggro_view::",
+    "game::tests::target_retention::",
+    "game::tests::illusions::",
+    "game::systems::tests::evasion::",
+    "game::systems::tests::pierce::",
+    "game::systems::tests::actions::",
+] }]
+
+[[group]]
+name = "game_abilities"
+about = "casting, applied stat changes, auras, talents, a hero's numbers, spawn modifiers"
+paths = [
+    "crates/bota_server/src/game/systems/applied.rs",
+    "crates/bota_server/src/game/systems/aura.rs",
+    "crates/bota_server/src/game/components/applied.rs",
+    "crates/bota_server/src/game/components/growth.rs",
+    "crates/bota_server/src/game/config/spawn_modifier.rs",
+    "crates/bota_server/src/game/tests/cast.rs",
+    "crates/bota_server/src/game/tests/auras.rs",
+    "crates/bota_server/src/game/tests/talents.rs",
+    "crates/bota_server/src/game/tests/stats.rs",
+    "crates/bota_server/src/game/systems/tests/cast.rs",
+    "crates/bota_server/src/game/systems/tests/applied.rs",
+    "crates/bota_server/src/game/systems/tests/spawn_modifier.rs",
+]
+tests = [{ crate = "bota_server", target = "lib", filters = [
+    "game::tests::cast::",
+    "game::tests::auras::",
+    "game::tests::talents::",
+    "game::tests::stats::",
+    "game::systems::tests::cast::",
+    "game::systems::tests::applied::",
+    "game::systems::tests::spawn_modifier::",
+] }]
+
+[[group]]
+name = "game_heroes"
+about = "the heroes' own abilities: Shadow Fiend (razes, souls, feast, requiem) and Pudge (hook, rot, dismember)"
+paths = [
+    "crates/bota_server/src/game/systems/fiend.rs",
+    "crates/bota_server/src/game/systems/feast.rs",
+    "crates/bota_server/src/game/systems/pudge.rs",
+    "crates/bota_server/src/game/systems/hook.rs",
+    "crates/bota_server/src/game/components/feast.rs",
+    "crates/bota_server/src/game/components/hook.rs",
+    "crates/bota_server/src/game/components/requiem_line.rs",
+    "crates/bota_server/src/game/tests/fiend.rs",
+    "crates/bota_server/src/game/tests/feast.rs",
+    "crates/bota_server/src/game/tests/pudge.rs",
+    "crates/bota_server/src/game/systems/tests/raze/**",
+]
+tests = [{ crate = "bota_server", target = "lib", filters = [
+    "game::tests::fiend::",
+    "game::tests::feast::",
+    "game::tests::pudge::",
+    "game::systems::tests::raze::",
+] }]
+
+[[group]]
+name = "game_items"
+about = "items: buying, selling, combining and taking apart, using them, the courier, scrolls, grenades, bottles"
+paths = [
+    "crates/bota_server/src/game/systems/handling.rs",
+    "crates/bota_server/src/game/systems/disassemble.rs",
+    "crates/bota_server/src/game/systems/courier.rs",
+    "crates/bota_server/src/game/systems/grenade.rs",
+    "crates/bota_server/src/game/systems/teleport.rs",
+    "crates/bota_server/src/game/components/handling.rs",
+    "crates/bota_server/src/game/components/courier.rs",
+    "crates/bota_server/src/game/components/grenade.rs",
+    "crates/bota_server/src/game/config/item.rs",
+    "crates/bota_server/src/game/tests/items.rs",
+    "crates/bota_server/src/game/tests/item_numbers.rs",
+    "crates/bota_server/src/game/tests/combining.rs",
+    "crates/bota_server/src/game/tests/disassembly.rs",
+    "crates/bota_server/src/game/tests/bottle.rs",
+    "crates/bota_server/src/game/tests/stacking.rs",
+    "crates/bota_server/src/game/tests/ally_use.rs",
+    "crates/bota_server/src/game/tests/shop.rs",
+    "crates/bota_server/src/game/tests/dead_shop.rs",
+    "crates/bota_server/src/game/tests/purchase_rules.rs",
+    "crates/bota_server/src/game/tests/courier.rs",
+    "crates/bota_server/src/game/tests/grenade.rs",
+    "crates/bota_server/src/game/tests/town_portal.rs",
+    "crates/bota_server/src/game/components/tests/use_and_regen.rs",
+    "crates/bota_server/src/game/components/tests/buying.rs",
+    "crates/bota_server/src/game/components/tests/sale.rs",
+    "crates/bota_server/src/game/components/tests/courier.rs",
+]
+tests = [{ crate = "bota_server", target = "lib", filters = [
+    "game::tests::items::",
+    "game::tests::item_numbers::",
+    "game::tests::combining::",
+    "game::tests::disassembly::",
+    "game::tests::bottle::",
+    "game::tests::stacking::",
+    "game::tests::ally_use::",
+    "game::tests::shop::",
+    "game::tests::dead_shop::",
+    "game::tests::purchase_rules::",
+    "game::tests::courier::",
+    "game::tests::grenade::",
+    "game::tests::town_portal::",
+    "game::components::tests::use_and_regen::",
+    "game::components::tests::buying::",
+    "game::components::tests::sale::",
+    "game::components::tests::courier::",
+] }]
+
+[[group]]
+name = "game_vision"
+about = "who sees what: fog, blockers, wards"
+paths = [
+    "crates/bota_server/src/game/systems/visibility.rs",
+    "crates/bota_server/src/game/components/vision.rs",
+    "crates/bota_server/src/game/vision.rs",
+    "crates/bota_server/src/game/config/blockers.rs",
+    "crates/bota_server/src/game/tests/vision.rs",
+    "crates/bota_server/src/game/tests/wards.rs",
+    "crates/bota_server/src/game/tests/ward_stacks.rs",
+]
+tests = [{ crate = "bota_server", target = "lib", filters = [
+    "game::tests::vision::",
+    "game::tests::wards::",
+    "game::tests::ward_stacks::",
+] }]
+
+[[group]]
+name = "game_lanes"
+about = "the lanes: waves, creep AI, towers and buildings, backdoor protection, the Glyph"
+paths = [
+    "crates/bota_server/src/game/systems/wave.rs",
+    "crates/bota_server/src/game/systems/guard.rs",
+    "crates/bota_server/src/game/systems/backdoor.rs",
+    "crates/bota_server/src/game/systems/glyph.rs",
+    "crates/bota_server/src/game/components/glyph.rs",
+    "crates/bota_server/src/game/tests/waves.rs",
+    "crates/bota_server/src/game/tests/creep_ai.rs",
+    "crates/bota_server/src/game/tests/towers.rs",
+    "crates/bota_server/src/game/tests/buildings.rs",
+    "crates/bota_server/src/game/tests/backdoor.rs",
+    "crates/bota_server/src/game/tests/glyph.rs",
+]
+tests = [{ crate = "bota_server", target = "lib", filters = [
+    "game::tests::waves::",
+    "game::tests::creep_ai::",
+    "game::tests::towers::",
+    "game::tests::buildings::",
+    "game::tests::backdoor::",
+    "game::tests::glyph::",
+] }]
+
+[[group]]
+name = "game_neutrals"
+about = "the jungle: camps, the neutrals' spells, passives and deaths"
+paths = [
+    "crates/bota_server/src/game/systems/jungle.rs",
+    "crates/bota_server/src/game/systems/neutral_cast.rs",
+    "crates/bota_server/src/game/systems/cast_rule.rs",
+    "crates/bota_server/src/game/systems/spell.rs",
+    "crates/bota_server/src/game/systems/spell_call.rs",
+    "crates/bota_server/src/game/systems/spell_strike.rs",
+    "crates/bota_server/src/game/systems/spell_tick.rs",
+    "crates/bota_server/src/game/systems/strike.rs",
+    "crates/bota_server/src/game/systems/throe.rs",
+    "crates/bota_server/src/game/systems/bubble.rs",
+    "crates/bota_server/src/game/components/chain.rs",
+    "crates/bota_server/src/game/tests/jungle.rs",
+    "crates/bota_server/src/game/tests/neutral_casts.rs",
+    "crates/bota_server/src/game/tests/neutral_passives.rs",
+]
+tests = [{ crate = "bota_server", target = "lib", filters = [
+    "game::tests::jungle::",
+    "game::tests::neutral_casts::",
+    "game::tests::neutral_passives::",
+] }]
+
+[[group]]
+name = "game_objectives"
+about = "the map's objectives: runes, Lotus Pools, Outposts, Watchers, Shrines"
+paths = [
+    "crates/bota_server/src/game/systems/lotus.rs",
+    "crates/bota_server/src/game/systems/objective.rs",
+    "crates/bota_server/src/game/systems/shrine.rs",
+    "crates/bota_server/src/game/components/objective.rs",
+    "crates/bota_server/src/game/tests/runes.rs",
+    "crates/bota_server/src/game/tests/lotus.rs",
+    "crates/bota_server/src/game/tests/objectives.rs",
+]
+tests = [{ crate = "bota_server", target = "lib", filters = [
+    "game::tests::runes::",
+    "game::tests::lotus::",
+    "game::tests::objectives::",
+] }]
+
+[[group]]
+name = "game_match"
+about = "a match as a whole: its flow, the maps, gold and bounties, economic events, cheats, a side's view, local matches"
+paths = [
+    "crates/bota_server/src/game/systems/cheats.rs",
+    "crates/bota_server/src/game/config/economy_event.rs",
+    "crates/bota_server/examples/**",
+    "crates/bota_server/src/game/tests/match_flow.rs",
+    "crates/bota_server/src/game/tests/client.rs",
+    "crates/bota_server/src/game/tests/local.rs",
+    "crates/bota_server/src/game/tests/map2.rs",
+    "crates/bota_server/src/game/tests/bounty.rs",
+    "crates/bota_server/src/game/tests/economy_events.rs",
+    "crates/bota_server/src/game/systems/tests/cheats.rs",
+    "crates/bota_server/src/game/systems/tests/cheat_commands.rs",
+]
+tests = [{ crate = "bota_server", target = "lib", filters = [
+    "game::tests::match_flow::",
+    "game::tests::client::",
+    "game::tests::local::",
+    "game::tests::map2::",
+    "game::tests::bounty::",
+    "game::tests::economy_events::",
+    "game::systems::tests::cheats::",
+    "game::systems::tests::cheat_commands::",
+] }]
+
+[[group]]
+name = "server_net"
+about = "connections, the game loop, lobbies, picks, chat, spectators, replays as the server writes them"
+paths = ["crates/bota_server/tests/wire/**"]
+tests = [{ crate = "bota_server", target = "lib", filters = ["net::", "game_loop::", "replay::"] }]
+
+[[group]]
+name = "server_launch"
+about = "the server binary: its arguments, starting up, a launched match's lifecycle and exit"
+paths = [
+    "crates/bota_server/src/map_cli_tests.rs",
+    "crates/bota_server/tests/startup.rs",
+    "crates/bota_server/tests/launcher.rs",
+    "crates/bota_server/tests/replay_cap.rs",
+]
+tests = [
+    { crate = "bota_server", target = "bin:bota_server" },
+    { crate = "bota_server", target = "test:startup" },
+    { crate = "bota_server", target = "test:launcher" },
+    { crate = "bota_server", target = "test:replay_cap" },
+]
+
+[[group]]
+name = "server_transport"
+about = "the wire end to end: TCP, WebSocket and TLS links, slow, broken and hostile peers"
+paths = [
+    "crates/bota_server/tests/malformed.rs",
+    "crates/bota_server/tests/bad_links.rs",
+    "crates/bota_server/tests/wire/**",
+    "crates/bota_server/tests/proxy/**",
+    "crates/bota_server/tests/tls/**",
+]
+tests = [
+    { crate = "bota_server", target = "test:malformed" },
+    { crate = "bota_server", target = "test:bad_links" },
+]
+
+[[group]]
+name = "server_matches"
+about = "whole matches against the server binary: solo, NxM, the practice map, seats, clients, cheats, item catalogues"
+paths = [
+    "crates/bota_server/tests/solo.rs",
+    "crates/bota_server/tests/nxm.rs",
+    "crates/bota_server/tests/practice_map.rs",
+    "crates/bota_server/tests/seated_start.rs",
+    "crates/bota_server/tests/client.rs",
+    "crates/bota_server/tests/cheats.rs",
+    "crates/bota_server/tests/catalogue.rs",
+]
+tests = [
+    { crate = "bota_server", target = "test:solo" },
+    { crate = "bota_server", target = "test:nxm" },
+    { crate = "bota_server", target = "test:practice_map" },
+    { crate = "bota_server", target = "test:seated_start" },
+    { crate = "bota_server", target = "test:client" },
+    { crate = "bota_server", target = "test:cheats" },
+    { crate = "bota_server", target = "test:catalogue" },
+]
+
+[[group]]
+name = "server_profile"
+about = "the tick's phase timing, which only the phase-profile feature builds"
+paths = ["crates/bota_server/src/profile/**"]
+tests = [{ crate = "bota_server", features = ["phase-profile"], target = "lib", filters = ["profile::"] }]

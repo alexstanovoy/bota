@@ -6,7 +6,8 @@
 # `cargo fmt` writes them. So a change that only formats keeps the stamp, and the same content in another checkout of this
 # repository has the same stamp. Stamps live in the repository's common git directory, one file per tree:
 #   precheck ok <time>        tools/precheck.sh passed
-#   gate ok <time>            tools/gate.sh passed
+#   gate ok <time>            tools/gate.sh passed what the change affects
+#   gate-full ok <time>       tools/gate.sh passed in full (GATE_FULL=1)
 
 tree_key() {
     local idx real_idx rs
@@ -50,4 +51,8 @@ only_docs_changed() { # base: success when something changed since the merge-bas
     mb=$(git merge-base HEAD "$1" 2> /dev/null) || return 1
     files=$({ git diff --name-only "$mb"; git ls-files --others --exclude-standard; } | sort -u)
     [ -n "$files" ] && ! grep -qvE '\.md$|^docs/|^temp/|^LICENSE' <<< "$files"
+}
+
+default_base() { # what a change is measured against: origin/main, or main where there is no origin
+    if git rev-parse -q --verify origin/main > /dev/null; then echo origin/main; else echo main; fi
 }

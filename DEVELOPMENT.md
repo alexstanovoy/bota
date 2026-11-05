@@ -150,11 +150,17 @@ Chat never enters the simulation or a tick's hash. A client may ask for its conn
 
 ## Tests
 
-`tools/precheck.sh` is the quick loop: clippy and the tests of the crates you touched and their dependents. It stamps
-a green tree. `tools/gate.sh` is the merge gate; its header lists the steps: clippy, the wasm checks, all tests in
-the `test-release` profile, the bota_radovid end-to-end tests, the bench digest checks, `cargo deny check`, the item
-importer (`tools/import_items`, which checks the committed item table against a Dota 2 install) and fmt. It stops at
-the first failure, prints `GATE-OK`, and fails when a step can't run.
+`tools/precheck.sh` is the quick loop: clippy and the tests the change since the merge-base with `origin/main` can
+affect. It stamps a green tree. `tools/gate.sh` is the merge gate; its header lists the steps: clippy, the wasm checks,
+the tests in the `test-release` profile, the bota_radovid end-to-end tests, the bench digest checks, `cargo deny check`,
+the item importer (`tools/import_items`, which checks the committed item table against a Dota 2 install) and fmt. It
+stops at the first failure, prints `GATE-OK`, and fails when a step can't run. Both run what the change can affect;
+`GATE_FULL=1` (`PRECHECK_ALL=1`) runs everything, for releases and after a batch of changes.
+
+Every test is in exactly one of the groups of `tools/test_groups.toml`, which follow the crates and the game's
+subsystems, and every file says which groups a change to it runs. `tools/test_groups.py check` proves both from
+libtest's own test lists (a change checks the crates it can touch; `--all` checks every crate and build),
+`plan` turns a change into groups and `run GROUP...` runs them.
 
 What the main suites cover:
 

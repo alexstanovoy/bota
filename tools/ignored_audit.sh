@@ -10,7 +10,7 @@ cd "$here"
 bad=0
 while IFS= read -r file; do
     case "$file" in
-        tools/import_items/src/main.rs) ;;                     # gate step import: cargo test -- --include-ignored
+        tools/import_items/src/main.rs) ;;                     # group import_items (tools/test_groups.toml): --include-ignored
         crates/bota_server/src/game/tests/determinism.rs) ;;   # print_pins, print_blind_pins: recorders (cargo test print_pins -- --ignored --nocapture)
         *) echo "ignored_audit: $file has ignored tests that no gate step runs"; bad=1 ;;
     esac
