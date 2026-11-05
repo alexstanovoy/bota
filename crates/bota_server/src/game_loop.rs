@@ -867,33 +867,34 @@ impl Server {
         }
     }
 
+    /// When a lobby opened at `opened` starts the match whoever is ready, and
+    /// when it gives up on a match nobody joined; none for a wait too long to
+    /// reach.
+    fn lobby_deadlines(&self, opened: Instant) -> (Option<Instant>, Option<Instant>) {
+        let start_by = self
+            .opts
+            .start_after
+            .and_then(|after| opened.checked_add(after));
+        let abandon_by = (self.opts.abandon_unjoined)
+            .then(|| self.opts.start_after.unwrap_or(UNJOINED_AFTER))
+            .and_then(|after| opened.checked_add(after));
+        (start_by, abandon_by)
+    }
+
     /// Collects seats and picks until everyone is ready, or until the time
     /// set for it runs out. Nothing when the time ran out with no seat held
     /// and such a match is to be abandoned.
     fn lobby_phase(&mut self) -> Option<MatchConfig> {
-        // A wait too long to reach is no deadline at all.
-        let started = self.started;
         #[cfg(test)]
         let mut gated = self.start_gate.take();
-        #[allow(unused_mut)] // the gate (tests) moves it
-        let mut start_by = self
-            .opts
-            .start_after
-            .and_then(|after| started.checked_add(after));
-        #[allow(unused_mut)]
-        let mut abandon_by = (self.opts.abandon_unjoined)
-            .then(|| self.opts.start_after.unwrap_or(UNJOINED_AFTER))
-            .and_then(|after| started.checked_add(after));
+        #[allow(unused_mut)] // the gate (tests) moves them
+        let (mut start_by, mut abandon_by) = self.lobby_deadlines(self.started);
         loop {
             #[cfg(test)]
             let polled = {
                 if gated.as_ref().is_some_and(|gate| gate.try_recv().is_ok()) {
                     gated = None;
-                    let opened = Instant::now();
-                    start_by = self.opts.start_after.and_then(|a| opened.checked_add(a));
-                    abandon_by = (self.opts.abandon_unjoined)
-                        .then(|| self.opts.start_after.unwrap_or(UNJOINED_AFTER))
-                        .and_then(|after| opened.checked_add(after));
+                    (start_by, abandon_by) = self.lobby_deadlines(Instant::now());
                 }
                 // Held: no deadline of the lobby's own, only a look at the gate now and then.
                 gated.as_ref().map(|_| {
