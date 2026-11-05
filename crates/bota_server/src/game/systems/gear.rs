@@ -597,12 +597,24 @@ impl World {
         {
             return false;
         }
-        let letting_out_a_rune = stack.rune.is_some();
-        let wait_on = def.wait_key.unwrap_or(stack.id);
         let cost = self.item_mana_cost(entity, stack.id);
         if !self.use_effect(entity, slot, (stack.id, def), target) {
             return false;
         }
+        self.pay_for_use(entity, slot, &stack, def, cost);
+        true
+    }
+
+    /// Pays for a use that went off: its mana and health, its cooldown or
+    /// shared wait, and its charges. `used` is the stack as it was before.
+    fn pay_for_use(
+        &mut self,
+        entity: Entity,
+        slot: usize,
+        used: &ItemStack,
+        def: &ItemDef,
+        cost: i32,
+    ) {
         if cost > 0
             && let Some(pool) = self.mana.get_mut(entity)
         {
@@ -613,9 +625,9 @@ impl World {
         {
             pool.hp = (pool.hp - Fixed::from_int(def.health_cost)).max(Fixed::ONE);
         }
-        let cooldown = self.item_cooldown(entity, stack.id);
+        let cooldown = self.item_cooldown(entity, used.id);
         if def.shared_wait {
-            self.owe_wait(entity, wait_on, cooldown);
+            self.owe_wait(entity, def.wait_key.unwrap_or(used.id), cooldown);
         }
         if let Some(bag) = self.inventory.get_mut(entity)
             && let Some(held) = bag.slot_mut(slot)
@@ -625,7 +637,7 @@ impl World {
             stack.touched = true;
             stack.disassemble_until = 0;
             // A use that lets a rune out spent nothing: the rune refilled it.
-            let spends = if letting_out_a_rune {
+            let spends = if used.rune.is_some() {
                 Spends::Nothing
             } else {
                 def.spends
@@ -645,7 +657,6 @@ impl World {
                 *held = None;
             }
         }
-        true
     }
 
     /// Whether a unit may use a stack at all: one just out of the backpack
