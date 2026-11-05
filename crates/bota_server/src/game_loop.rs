@@ -314,6 +314,8 @@ pub fn check_opts(opts: &ServerOpts) -> Result<(), String> {
         0 => usize::from(opts.players),
         n => n,
     };
+    crate::game::check_order_delays(&opts.order_delays, seats)
+        .map_err(|error| error.to_string())?;
     let offered = opts
         .heroes
         .as_ref()
@@ -1186,7 +1188,7 @@ impl Server {
         };
         let mut inbox = Inbox {
             line: DelayLine::new(&cfg, &self.opts.order_delays)
-                .expect("the command line checked the order delays"),
+                .expect("check_opts checked the order delays"),
             acked: vec![0; self.roster.seats.len()],
             handles: Handles::new(&cfg, &world),
             left: Vec::new(),

@@ -11,7 +11,7 @@ use clap::{Parser, ValueEnum};
 use bota_core::rules;
 use bota_proto::{HeroId, Role, SeatKey, Team, encode_frame_to_vec};
 use bota_server::chat::{ChatOpts, SeatChat};
-use bota_server::game::{OrderDelay, check_order_delays};
+use bota_server::game::OrderDelay;
 use bota_server::game_loop::{
     DEFAULT_IDLE_TIMEOUT, DEFAULT_SPECTATORS_PER_SEAT, MatchEnd, ServerOpts, check_opts, run,
 };
@@ -515,7 +515,6 @@ fn order_delays(args: &Args, players: u8) -> Result<Vec<OrderDelay>, String> {
         .zip(jitters)
         .map(|(base, jitter)| OrderDelay { base, jitter })
         .collect();
-    check_order_delays(&delays, seats).map_err(|error| error.to_string())?;
     Ok(delays)
 }
 

@@ -580,6 +580,18 @@ fn a_stranger_let_go_that_talks_on_is_cut_off() {
     }
 }
 
+/// Order delays are options like any other: a library caller's that do not fit the seats are
+/// refused before the server listens, not found wrong once the match starts.
+#[test]
+fn order_delays_for_other_seats_are_refused_with_the_options() {
+    let mut opts = realtime(14);
+    opts.order_delays = vec![OrderDelay { base: 1, jitter: 0 }; 3];
+    assert_eq!(
+        crate::game_loop::check_opts(&opts),
+        Err("3 order delays for 2 seats; give one for all or one per seat".to_owned())
+    );
+}
+
 #[test]
 fn a_delayed_order_takes_effect_late_and_its_delay_is_told() {
     const DELAY: u32 = 3;
