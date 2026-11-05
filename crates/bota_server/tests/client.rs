@@ -57,6 +57,39 @@ fn opts() -> ServerOpts {
     }
 }
 
+/// A participant joining before the match starts is told the map and its trees right after the
+/// welcome, ahead of the lobby and the match start, and the match start states the same list: a
+/// client builds the scenery before the hero is picked.
+#[test]
+fn a_participant_joining_before_the_start_is_told_the_trees_the_match_will_state() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
+    let address = listener.local_addr().expect("bound").to_string();
+    thread::spawn(move || run(listener, opts()));
+    let (mut link, _) =
+        Link::join(&address, "scenery", HeroId::SHADOW_FIEND, None).expect("a seat");
+    let (mut told, mut order) = (None, Vec::new());
+    let info = loop {
+        match link.recv().expect("the server speaks") {
+            Some(ServerMsg::Scenery { map, trees }) => {
+                order.push("Scenery");
+                told = Some((map, trees));
+            }
+            Some(ServerMsg::LobbyState { .. }) => order.push("LobbyState"),
+            Some(ServerMsg::MatchStart { info }) => break info,
+            _ => {}
+        }
+    };
+    let (map, trees) = told.expect("the trees were told before the start");
+    assert_eq!(
+        order.first(),
+        Some(&"Scenery"),
+        "told ahead of the lobby: {order:?}"
+    );
+    assert_eq!(map, info.map, "the map");
+    assert!(!trees.is_empty(), "the map has trees");
+    assert_eq!(trees, info.trees, "the match states the trees it was told");
+}
+
 #[test]
 fn the_attack_move_bot_plays_a_lockstep_match_to_its_end() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("a port");

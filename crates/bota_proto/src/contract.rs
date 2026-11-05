@@ -414,6 +414,14 @@
 //!
 //! # Before the match
 //!
+//! Every connection admitted before the match starts, in whatever role (a seat, a spectator, a
+//! referee), is sent [`ServerMsg::Scenery`] right after `Welcome`: the map and its trees, the
+//! list `MatchStart` states again, so that a client builds the scenery before the heroes are
+//! picked. It names the map before the start, which the lobby does not; the map is public to
+//! whoever may join. A `MatchStart` that states another map or other trees is the server's
+//! breach of the contract, and a client refuses it; a `Scenery` after the start is a stream
+//! error.
+//!
 //! Once every seat is held the selection clock runs (`--pick-secs`, Dota's
 //! 60 s): [`LobbyState::pick`](crate::ServerMsg::LobbyState) says how many
 //! milliseconds are left when it is sent, and is sent again whenever the

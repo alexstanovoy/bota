@@ -236,7 +236,22 @@ fn run_inner(
             "bota_server: --spectators open: anyone may watch the whole map live; for local use only"
         );
     }
+    let trees = crate::game::tree_positions(
+        bota_core::map_of(opts.map),
+        crate::game::terrain_of(bota_core::map_of(opts.map)),
+    );
+    assert!(
+        trees.len() <= bota_proto::limits::MAX_STATIC_TREES,
+        "the map holds {} trees, more than the wire carries ({})",
+        trees.len(),
+        bota_proto::limits::MAX_STATIC_TREES
+    );
+    let scenery = ServerMsg::Scenery {
+        map: opts.map,
+        trees,
+    };
     let mut server = Server {
+        scenery,
         rates: Rates::new(Instant::now()),
         heard: Vec::new(),
         replay,
@@ -413,6 +428,8 @@ enum Admission {
 
 struct Server {
     opts: ServerOpts,
+    /// The map and its trees, told to whoever joins before the match starts.
+    scenery: ServerMsg,
     secrets: MatchSecrets,
     started: Instant,
     /// Tests only: the lobby's clock (the time to start the match, the time to give up on
@@ -798,8 +815,9 @@ impl Server {
                 tick_rate: rules::TICKS_PER_SECOND as u16,
                 mode: self.opts.mode,
             });
-            if let Some(cfg) = info {
-                conn.send(&ServerMsg::MatchStart { info: cfg.info() });
+            match info {
+                Some(cfg) => conn.send(&ServerMsg::MatchStart { info: cfg.info() }),
+                None => conn.send(&self.scenery),
             }
         }
         true

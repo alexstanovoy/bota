@@ -1,6 +1,6 @@
 //! One connection's way into a match: the lobby, the start, then the session.
 
-use bota_proto::{ServerMsg, SlotId, Team};
+use bota_proto::{MapId, ServerMsg, SlotId, Team, Vec2};
 
 use crate::chat::{Hearer, heard_fits};
 use crate::handshake::Seated;
@@ -34,6 +34,8 @@ pub struct Seat {
     resuming: bool,
     /// The lobby's seats and their sides, as last told, for checking chat.
     lobby_seats: Vec<(SlotId, Team)>,
+    /// The map and trees the server told on joining, which the match start must state again.
+    scenery: Option<(MapId, Vec<Vec2>)>,
 }
 
 impl Seat {
@@ -46,6 +48,7 @@ impl Seat {
             before_start: 0,
             resuming: false,
             lobby_seats: Vec::new(),
+            scenery: None,
         }
     }
 
@@ -58,6 +61,7 @@ impl Seat {
             before_start: 0,
             resuming: false,
             lobby_seats: Vec::new(),
+            scenery: None,
         }
     }
 
@@ -108,6 +112,13 @@ impl Seat {
                     seated.player = player_id;
                     seated.slot = slot;
                 }
+                return Ok(Ingested::Passed(Box::new(msg)));
+            }
+            ServerMsg::Scenery { map, ref trees } => {
+                if self.scenery.is_some() {
+                    return Err(SessionError::Stream("server sent Scenery twice").into());
+                }
+                self.scenery = Some((map, trees.clone()));
                 return Ok(Ingested::Passed(Box::new(msg)));
             }
             ServerMsg::LobbyState { ref slots, .. } => {
@@ -182,6 +193,12 @@ impl Seat {
     }
 
     fn start(&mut self, info: &bota_proto::MatchInfo) -> Result<Ingested, SessionError> {
+        // What the client built before the start, from the scenery, must be what the match is.
+        if let Some((map, trees)) = &self.scenery
+            && (*map != info.map || *trees != info.trees)
+        {
+            return Err(SessionError::Stream("server told another scenery"));
+        }
         let session = match &self.seated {
             Some(seated) => ClientSession::start(seated, info, self.options)?,
             None => ClientSession::spectator(MatchStatic::new(info)?, self.options),
@@ -199,6 +216,11 @@ impl Seat {
         self.seated.as_ref()
     }
 
+    /// The map and trees the server told on joining, until the match starts and states them.
+    pub fn scenery(&self) -> Option<(MapId, &[Vec2])> {
+        self.scenery.as_ref().map(|(map, trees)| (*map, &trees[..]))
+    }
+
     /// The session, once the match has started.
     pub const fn session(&self) -> Option<&ClientSession> {
         self.session.as_ref()
@@ -209,3 +231,6 @@ impl Seat {
         self.session.as_mut()
     }
 }
+
+#[cfg(test)]
+mod tests;

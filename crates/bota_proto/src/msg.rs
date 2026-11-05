@@ -634,6 +634,19 @@ pub enum ServerMsg {
         /// monotonic clock.
         at_us: u64,
     },
+    /// The map and its trees, sent right after [`ServerMsg::Welcome`] to a participant who joins
+    /// before the match starts, so that a client builds the scenery before the hero is picked.
+    /// The trees are those [`MatchInfo::trees`] states, in the same order. A participant who
+    /// joins a match under way is sent [`ServerMsg::MatchStart`] instead.
+    Scenery {
+        /// Which map the match is played on.
+        map: MapId,
+        /// Every tree the map starts with.
+        #[serde(
+            deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_STATIC_TREES }>"
+        )]
+        trees: Vec<Vec2>,
+    },
 }
 
 /// What a replay file is, and which wire recorded it: its first record.

@@ -660,3 +660,6 @@ field PoolView 2 lotuses: u8
 field PoolView 3 next_in: Option<u32>
 variant UnitKind 16 LotusPool
 field WorldView 17 pools: Vec<PoolView>
+variant ServerMsg 17 Scenery {}
+field ServerMsg::Scenery 0 map: MapId
+field ServerMsg::Scenery 1 trees: Vec<Vec2>

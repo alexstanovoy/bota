@@ -806,6 +806,10 @@ pub fn all_server_msgs() -> Vec<ServerMsg> {
             tick: 5401,
             at_us: 9_000_000_123,
         },
+        ServerMsg::Scenery {
+            map: MapId(2),
+            trees: vec![Vec2::from_ints(128, -256), Vec2::from_ints(7552, 9024)],
+        },
     ]
 }
 
@@ -894,5 +898,6 @@ pub fn server_msg_name(msg: &ServerMsg) -> &'static str {
         ServerMsg::Compressed(_) => "Compressed",
         ServerMsg::Echo { .. } => "Echo",
         ServerMsg::OrderReceived { .. } => "OrderReceived",
+        ServerMsg::Scenery { .. } => "Scenery",
     }
 }

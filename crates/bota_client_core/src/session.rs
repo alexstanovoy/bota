@@ -232,6 +232,9 @@ impl ClientSession {
             ServerMsg::MatchStart { .. } => {
                 Err(SessionError::Stream("server sent repeated MatchStart").into())
             }
+            ServerMsg::Scenery { .. } => {
+                Err(SessionError::Stream("server sent Scenery after MatchStart").into())
+            }
             ServerMsg::WireMismatch { server_fingerprint } => Err(SessionError::WireMismatch {
                 server: server_fingerprint,
             }

@@ -582,9 +582,20 @@ impl App {
         self.seat.session().map_or(&[], |s| s.statics().terrain())
     }
 
-    /// Every tree the map starts with.
+    /// Whether the trees are known: the match started, or the server told them on joining. A map
+    /// without trees is known to have none.
+    pub fn trees_known(&self) -> bool {
+        self.seat.session().is_some() || self.seat.scenery().is_some()
+    }
+
+    /// Every tree the map starts with: the match's, once it started; before, those the server
+    /// told on joining.
     pub fn trees(&self) -> &[Vec2] {
-        self.seat.session().map_or(&[], |s| s.statics().trees())
+        match (self.seat.session(), self.seat.scenery()) {
+            (Some(session), _) => session.statics().trees(),
+            (None, Some((_, trees))) => trees,
+            (None, None) => &[],
+        }
     }
 
     /// Sequence number of the latest order given.
