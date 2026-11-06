@@ -134,6 +134,8 @@ world_tables! {
         pub hook: Hook;
         /// What each entity that is an ability's mark shows.
         pub mark: Mark;
+        /// The sight each FOW viewer gives its side.
+        pub viewer: crate::game::Viewer;
         /// The line of a requiem each entity that is one is flying.
         pub requiem_line: RequiemLine;
         /// The chain of damage each entity that is one is leaping along.
@@ -862,7 +864,13 @@ impl World {
 
     /// Who sees what, from where everything stands.
     fn refresh_sight(&mut self) {
-        let scroll_sights: Vec<(Team, Vec2, i32, bool)> = self.temporary_sights().collect();
+        let scroll_sights: Vec<(Team, Vec2, i32, bool)> = self
+            .temporary_sights()
+            .chain(
+                self.fow_viewer_sights()
+                    .map(|(side, at, radius)| (side, at, radius, true)),
+            )
+            .collect();
         visibility_system(SightCx {
             pits: self.map.boss_zones,
             entities: &self.entities,

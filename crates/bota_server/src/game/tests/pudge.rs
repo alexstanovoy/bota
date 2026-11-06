@@ -1166,6 +1166,49 @@ fn a_hook_passes_an_invulnerable_hero_by() {
     assert_eq!(world.pos(hero), Some(at), "and it stands where it stood");
 }
 
+/// A hook's latch shows its side the spot it latched on, unobstructed, for 4 s (`vision_radius`
+/// 500, `vision_duration` 4; Valve 2011-09-09: "Meat Hook now properly gives 500 flying vision
+/// for 4 seconds at location where a unit is hooked").
+#[test]
+fn a_hook_shows_its_side_where_it_latched_for_four_seconds() {
+    let (mut world, pudge, _mark) = pudge_and_a_hero_mark(1200);
+    let home = world.pos(pudge).expect("Pudge stands");
+    // A Dire watcher of the spot, beyond Pudge's own sight, that nothing else of his side sees.
+    let spot = home + Vec2::from_ints(1200, 0);
+    let watcher = world.spawn_hero(
+        Team::Dire,
+        spot + Vec2::from_ints(0, 300),
+        SlotId(2),
+        HeroId::SHADOW_FIEND,
+    );
+    world.put_modifier(
+        watcher,
+        Modifier::new(ModifierKind::Stunned, None, None, Some(400)),
+    );
+    world.settle();
+    world.step();
+    let seen = |world: &World| {
+        world
+            .visibility
+            .get(watcher)
+            .is_some_and(|seen| seen.by(Team::Radiant))
+    };
+    assert!(!seen(&world), "out of Pudge's sight before the hook");
+    cast(&mut world, 0, Target::Pos(spot));
+    until_the_hook_flies(&mut world);
+    for _ in 0..rules::TICKS_PER_SECOND {
+        if hook_holds(&world) {
+            break;
+        }
+        world.step();
+    }
+    assert!(hook_holds(&world), "the hook latches on the mark");
+    run(&mut world, 3 * rules::TICKS_PER_SECOND);
+    assert!(seen(&world), "seen three seconds on");
+    run(&mut world, 2 * rules::TICKS_PER_SECOND);
+    assert!(!seen(&world), "and no more past four");
+}
+
 /// Whether a flying hook holds something.
 fn hook_holds(world: &World) -> bool {
     world

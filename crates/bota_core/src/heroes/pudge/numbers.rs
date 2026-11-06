@@ -20,6 +20,11 @@ pub const HOOK_COOLDOWN: [u32; 4] = ticks_of(PUDGE_MEAT_HOOK.cooldown);
 pub const HOOK_CAST_POINT_MS: u32 = PUDGE_MEAT_HOOK.cast_point[0].0;
 /// How far the hook flies, in world units: its cast range.
 pub const HOOK_RANGE: i32 = PUDGE_MEAT_HOOK.cast_range[0];
+/// How far its side sees around where the hook latched, unobstructed, in world units: its
+/// `vision_radius`.
+pub const HOOK_VISION_RADIUS: i32 = PUDGE_MEAT_HOOK.value("vision_radius").first().int();
+/// Ticks its side sees there: its `vision_duration`.
+pub const HOOK_VISION_TICKS: u32 = PUDGE_MEAT_HOOK.value("vision_duration").ticks::<1>()[0];
 /// How fast the hook flies, in world units a second.
 pub const HOOK_SPEED: i32 = PUDGE_MEAT_HOOK.value("hook_speed").first().int();
 /// How wide the hook catches, in world units.

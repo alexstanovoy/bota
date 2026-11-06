@@ -125,8 +125,8 @@ impl World {
         self.recycle_entity_snapshot(entities);
     }
 
-    /// The hook latches: its thrower's followthrough lifts at once (Dota 7.34), and what it
-    /// caught is executed, or held and hurt.
+    /// The hook latches: its thrower's followthrough lifts at once (Dota 7.34), its side sees
+    /// the spot, and what it caught is executed, or held and hurt.
     fn hook_hit(&mut self, hook: &mut Hook, caught: Entity) {
         hook.returning = true;
         self.take_modifier(
@@ -134,6 +134,15 @@ impl World {
             ModifierKind::HookFollowthrough,
             Some(hook.owner),
         );
+        // Its side sees where it latched for a while.
+        if let (Some(at), Some(side)) = (self.pos(caught), self.team.get(hook.owner).copied()) {
+            self.add_fow_viewer(
+                side,
+                at,
+                rules::HOOK_VISION_RADIUS,
+                rules::HOOK_VISION_TICKS,
+            );
+        }
         let enemy = self.team.get(caught) != self.team.get(hook.owner);
         // An illusion is a creep to the hook (Dota 7.34: "Now instantly kills illusions").
         let executed = self.wears_illusion(caught)

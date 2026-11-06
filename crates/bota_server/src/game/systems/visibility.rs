@@ -1,11 +1,11 @@
 //! Working out who sees what.
 
 use bota_core::{CellGrid, SightBlock, kind_def, rules};
-use bota_proto::{Fixed, Target, Team, UnitKind, Vec2};
+use bota_proto::{Angle, Fixed, Target, Team, UnitKind, Vec2};
 
 use crate::game::{
-    Entity, EntityAllocator, EventVisibility, Exposure, ExposureCell, Ground, Spots, Stats, Table,
-    Transform, Visibility, World,
+    Entity, EntityAllocator, EventVisibility, Expiry, Exposure, ExposureCell, Ground, Spots, Stats,
+    Table, Transform, Viewer, Visibility, World,
 };
 
 /// What working out sight reads and writes.
@@ -22,7 +22,8 @@ pub struct SightCx<'a> {
     pub sight_block: &'a SightBlock,
     /// Sight strikes showed the sides struck at.
     pub exposure: &'a Table<Exposure>,
-    /// Where a Town Portal Scroll shows its side the ground it lands on.
+    /// Sight shown around a spot for a while, unobstructed where it flies: where a Town
+    /// Portal Scroll lands, a reincarnation's, and every FOW viewer.
     pub scroll_sights: &'a [(Team, Vec2, i32, bool)],
     /// The tick being worked out, for which of that sight still shows.
     pub tick: u32,
@@ -399,6 +400,24 @@ fn reveal(side: Team, at: Vec2, radius: i32, flying: bool, ground: &Ground) -> S
         true_sight: Fixed::ZERO,
         tier: ground.tier(at),
         flying,
+    }
+}
+
+impl World {
+    /// Gives a side unobstructed sight `radius` around `at` for `ticks`:
+    /// Dota's FOW viewer, which a hook's latch or a dismember's hold leaves.
+    pub fn add_fow_viewer(&mut self, side: Team, at: Vec2, radius: i32, ticks: u32) {
+        let viewer = self.spawn_placed(at, Angle::default(), side);
+        self.viewer.insert(viewer, Viewer { side, radius });
+        self.expiry.insert(viewer, Expiry { ticks_left: ticks });
+    }
+
+    /// The sight every FOW viewer gives, as a side, a spot and a radius.
+    pub fn fow_viewer_sights(&self) -> impl Iterator<Item = (Team, Vec2, i32)> + '_ {
+        self.entities.iter().filter_map(|entity| {
+            let viewer = self.viewer.get(entity)?;
+            Some((viewer.side, self.pos(entity)?, viewer.radius))
+        })
     }
 }
 

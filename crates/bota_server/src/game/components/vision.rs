@@ -55,6 +55,18 @@ pub struct ExposureCell {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Exposure(pub [Option<ExposureCell>; 3]);
 
+/// Sight a side is given around a spot for a while, by nothing that stands
+/// there: Dota's FOW viewer (`AddFOWViewer`), unobstructed. The entity that
+/// holds it is placed at the spot and runs out with its expiry.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Viewer {
+    /// The side that sees.
+    pub side: Team,
+    /// How far it sees, in world units.
+    pub radius: i32,
+}
+
 state_hash!(Visibility(0));
+state_hash!(Viewer { side, radius });
 state_hash!(ExposureCell { at, until, flying });
 state_hash!(Exposure(0));
