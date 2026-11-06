@@ -210,3 +210,43 @@ paths additionally observe the model's release, flight height and resumed facing
 passive-block-during-channel regression protects the distinct animation state. The legacy
 Twin Gate/Night Stalker fix has no current gate sequence to reproduce; artificial daytime
 is tested against the current walking journey instead.
+
+## Pit placement, sight and ward targets
+
+Valve [7.31d](https://www.dota2.com/patches/7.31d) makes Roshan attack wards when no other
+unit is in melee reach and destroy susceptible wards with one attack. The current unit
+mechanics designate Observer and Sentry Wards for destruction. Their unit data carries the
+response; the attack record retains it through impact. Banner keeps its ordinary non-hero
+hit count, and ward attacks never roll Bash. The
+[7.36b Bug Fixes](https://store.steampowered.com/news/app/570/view/4176605502420155695)
+explicitly exempt Serpent Wards from instant destruction and count Roshan as a hero against
+them. Those units are absent; that specific interaction remains deferred, with a distinct
+hero-hit response available in the unit policy.
+
+[Current pit limitations](https://liquipedia.net/dota2/Roshan) also forbid Branch planting
+and suppress courier sight inside either pit. Pit blindness applies to ground and flying
+couriers, the snapshot's sight radius, and live point/event queries. It ends immediately
+outside. Frontend point and fog-grid shading apply the same pit boundary; a real
+metadata/snapshot test crosses each installed sloping boundary within one terrain cell,
+then moves the viewer onto the target side as a positive control. The placement predicate belongs to the use definition and is shared by completion
+and preview: Ward, Dispenser and Banner consult the installed ward-exclusion volumes;
+Plant Tree consults the pit volumes. Invalid completion consumes nothing. The headless
+placement test observes forbidden previews for all five items, then allowed previews for
+the same items on ordinary ground.
+
+The pit attack limitation still applies while Roshan walks: the attacker must stand in
+either pit even when Roshan is outside. Abilities retain their separate targeting rules.
+
+| Valve fix | Additional regression |
+| --- | --- |
+| [2011-12-15](https://store.steampowered.com/oldnews/7021): buying while dead must put the purchase in stash; the note explicitly names Aegis. | `shopping_during_aegis_reincarnation_keeps_the_purchase_in_stash_after_return` buys during the absence and checks it after the return away from shops. |
+| [2013-03-14](https://store.steampowered.com/oldnews/10145): “Fixed Cheese not stacking in inventory” and its missing cooldown. | `cheese_from_two_separate_ground_pickups_combines_into_one_charged_stack` uses two physical arrivals; the existing Cheese-use scenario checks its independent cooldown. |
+| [2012-04-12](https://store.steampowered.com/oldnews/7733): “Fixed Roshan not disabling Blink Dagger.” | `roshans_actual_attack_and_slam_stop_drinks_and_disable_blink` uses his actual autonomous attack and Slam, requiring positive damage and a disabled Blink. |
+| [7.33b](https://store.steampowered.com/news/app/570/view/3703690760958334829): Roshan kill should capture Watchers. | Superseded by [7.34](https://www.dota2.com/patches/7.34). `killing_roshan_does_not_capture_any_watchers_after_734_removed_that_reward` enables Watchers and verifies their ownership stays unchanged. |
+
+The [7.41f cave fix](https://store.steampowered.com/news/app/570/view/677383425371407609)
+and [August 2025 pit fixes](https://store.steampowered.com/news/app/570/view/536611691635409378)
+give no repaired coordinates. Those exact hiding spots remain unverified. The simulator
+uses the installed 7.41f terrain and compiled pit volumes, with explicit attack and vision
+boundary tests; that evidence establishes the current geometry source and rules, rather
+than an exact reproduction of the undocumented old spots.

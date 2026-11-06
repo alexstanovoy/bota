@@ -386,3 +386,17 @@ pub fn pit_sight_clear(pits: &[PitZone], from: Vec2, to: Vec2) -> bool {
     pits.iter()
         .all(|pit| pit.contains(from) == pit.contains(to))
 }
+
+/// The ordinary sight this body supplies from its current position.
+pub fn pit_vision(
+    radius: bota_proto::Fixed,
+    pit_blind: bool,
+    at: Vec2,
+    pits: &[PitZone],
+) -> bota_proto::Fixed {
+    if pit_blind && pits.iter().any(|zone| zone.contains(at)) {
+        bota_proto::Fixed::ZERO
+    } else {
+        radius
+    }
+}

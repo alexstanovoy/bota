@@ -183,6 +183,8 @@ pub struct NeutralDef {
 pub struct HomeDef {
     /// Whether this autonomous neutral may acquire couriers.
     pub attacks_couriers: bool,
+    /// Prefer designated wards in attack reach over chasing other targets.
+    pub wards_first: bool,
     /// A hostile unit this close wakes it.
     pub aggro_range: i32,
     /// A blow struck from within this range wakes it.
@@ -208,6 +210,7 @@ pub struct HomeDef {
 /// How the jungle's creeps hold their camps.
 pub const JUNGLE_HOME: HomeDef = HomeDef {
     attacks_couriers: false,
+    wards_first: false,
     aggro_range: rules::NEUTRAL_AGGRO_RANGE,
     damage_aggro_range: rules::NEUTRAL_DAMAGE_AGGRO_RANGE,
     aggro_spread: rules::NEUTRAL_AGGRO_SPREAD,

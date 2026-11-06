@@ -702,3 +702,42 @@ fn the_view_reports_the_regeneration_the_server_applies() {
     assert_eq!(salved.raw, served(&world).0);
     assert!(salved > plain_hp, "the salve shows in the view");
 }
+
+#[test]
+fn roshans_actual_attack_and_slam_stop_drinks_and_disable_blink() {
+    use crate::game::UnitOrder;
+    use bota_core::NeutralKind;
+    for spell in [false, true] {
+        let mut world = World::new();
+        let at = Vec2::from_ints(5000, 5000);
+        let boss = world.spawn_neutral_home(NeutralKind::Roshan, at, None, 0);
+        let drinker = a_drinker(
+            &mut world,
+            at + Vec2::from_ints(if spell { 250 } else { 100 }, 0),
+        );
+        world.set_order(drinker, UnitOrder::Stand);
+        assert_eq!(blink_wait(&world, drinker), 0);
+        if spell {
+            for offset in [Vec2::from_ints(0, 200), Vec2::from_ints(0, -200)] {
+                let creep = world.spawn_unit(&MELEE_CREEP, Team::Dire, at + offset);
+                world.set_order(creep, UnitOrder::Stand);
+            }
+            world.neutral_ai.get_mut(boss).expect("mind").awake = true;
+            world.set_target(boss, drinker);
+            world.settle();
+            let mut slammed = false;
+            for _ in 0..60 {
+                let events = world.step();
+                slammed|=events.iter().any(|e|matches!(e.kind(),EventKind::Damaged{source:Some(source),target,kind:DamageKind::Magical,..} if source==wire_id(boss)&&target==wire_id(drinker)));
+                if slammed {
+                    break;
+                }
+            }
+            assert!(slammed, "the real autonomous Slam lands");
+        } else {
+            assert!(one_swing_takes(&mut world, boss, drinker) > 0);
+        }
+        assert_eq!(drinks(&world, drinker), (false, false));
+        assert!(blink_wait(&world, drinker) > 0);
+    }
+}

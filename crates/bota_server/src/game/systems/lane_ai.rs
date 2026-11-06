@@ -276,6 +276,9 @@ impl World {
         if self.neutral.get(entity).is_some() && self.disarmed(entity) {
             return None;
         }
+        if let Some(ward) = self.ward_before_chase(entity, candidates) {
+            return Some(ward);
+        }
         if let Some(mut ai) = self.neutral_ai.get(entity).copied()
             && let Some(by) = ai.roused_by.take()
         {
@@ -380,6 +383,39 @@ impl World {
             self.tick + rules::ORDER_AGGRO_HOLD_TICKS
         };
         self.lane_ai.insert(creep, ai);
+    }
+
+    /// A designated ward is taken only while no other target is in attack reach.
+    fn ward_before_chase(&self, seeker: Entity, candidates: &Candidates) -> Option<Entity> {
+        if !self.neutral.get(seeker)?.neutral().home.wards_first {
+            return None;
+        }
+        if self
+            .neutral_ai
+            .get(seeker)
+            .is_some_and(|ai| !ai.awake && ai.roused_by.is_none())
+        {
+            return None;
+        }
+        let from = self.pos(seeker)?;
+        let reach = self.stats.get(seeker)?.attack_range
+            + bota_core::rules::units(bota_core::rules::WARD_MELEE_RANGE_BONUS);
+        let mut closest = None;
+        for other in self.near(seeker, from, reach, candidates) {
+            if !self.in_reach(seeker, other) || !self.hostile(seeker, other) {
+                continue;
+            }
+            if self
+                .stats
+                .get(other)
+                .is_none_or(|s| s.ward_response.is_none())
+            {
+                return None;
+            }
+            let key = (from.distance_squared(self.pos(other)?), other);
+            closest = Some(closest.map_or(key, |old| key.min(old)));
+        }
+        closest.map(|(_, unit)| unit)
     }
 
     /// Where a candidate sits by what it is. Lower is taken first.

@@ -1411,3 +1411,104 @@ fn every_kind_of_unit_sees_within_the_farthest_sight_there_is() {
     assert!(turned.is_some(), "the day turns");
     world.settle();
 }
+
+/// A walkable cell crossed by a sloping installed pit edge: its center is on the
+/// requested side and a nearby viewer is on the other, without a terrain-height change.
+fn pit_boundary_pair(
+    world: &World,
+    zone: &bota_core::PitZone,
+    target_inside: bool,
+) -> (Vec2, Vec2, (usize, usize)) {
+    let corners: Vec<_> = zone
+        .corners
+        .iter()
+        .filter_map(|p| CellGrid::cell_of(*p))
+        .collect();
+    let low_x = corners
+        .iter()
+        .map(|p| p.0)
+        .min()
+        .expect("pit")
+        .saturating_sub(1);
+    let high_x = (corners.iter().map(|p| p.0).max().expect("pit") + 1).min(rules::GRID_CELLS - 1);
+    let low_y = corners
+        .iter()
+        .map(|p| p.1)
+        .min()
+        .expect("pit")
+        .saturating_sub(1);
+    let high_y = (corners.iter().map(|p| p.1).max().expect("pit") + 1).min(rules::GRID_CELLS - 1);
+    let half = rules::GRID_CELL_SIZE / 2 - 1;
+    for y in low_y..=high_y {
+        for x in low_x..=high_x {
+            let at = CellGrid::cell_center((x, y));
+            if zone.contains(at) != target_inside || !world.clearance.stands_clear(at) {
+                continue;
+            }
+            for (dx, dy) in [(-half, -half), (-half, half), (half, -half), (half, half)] {
+                let from = at + Vec2::from_ints(dx, dy);
+                if zone.contains(from) != target_inside && world.clearance.stands_clear(from) {
+                    return (from, at, (x, y));
+                }
+            }
+        }
+    }
+    panic!("installed pit has no walkable same-cell boundary pair for inside={target_inside}");
+}
+
+#[test]
+fn pit_client_fog_matches_server_point_and_grid_sight_across_each_boundary_in_both_directions() {
+    use bota_client_core::{AckPolicy, ClientSession, MatchStatic, SessionOptions, SightGround};
+    let map = map_of(MapId(0));
+    let mut cfg = config();
+    cfg.map = MapId(0);
+    let statics = MatchStatic::new(&cfg.info()).expect("real full-map metadata");
+    for zone in map.boss_zones {
+        for target_inside in [false, true] {
+            let mut world = World::on_map(map);
+            let others: Vec<_> = world.entities.iter().collect();
+            for unit in others {
+                world.despawn(unit);
+            }
+            let (from, at, cell) = pit_boundary_pair(&world, zone, target_inside);
+            assert_eq!(CellGrid::cell_of(from), Some(cell));
+            assert_eq!(world.ground.tier(from), world.ground.tier(at));
+            let hero = seated_hero(&mut world, from, HeroId::SHADOW_FIEND);
+            world.settle();
+            assert!(!world.can_see_point(Team::Radiant, at));
+            assert!(world.can_see_point(Team::Radiant, from));
+            let mut session = ClientSession::spectator(
+                std::sync::Arc::clone(&statics),
+                SessionOptions {
+                    ack: AckPolicy::Never,
+                    ..SessionOptions::default()
+                },
+            );
+            session
+                .ingest_snapshot(world.view(Team::Radiant), &mut ())
+                .expect("server snapshot");
+            let view = session.current().expect("snapshot");
+            let ground = SightGround::lay(session.statics(), Some(view)).expect("client sight");
+            assert!(
+                !ground.sees(view, Team::Radiant, at),
+                "client point query must respect the pit edge"
+            );
+            let mut lit = vec![false; rules::GRID_CELLS * rules::GRID_CELLS];
+            ground.lit(view, Team::Radiant, &mut lit);
+            assert!(
+                !lit[cell.1 * rules::GRID_CELLS + cell.0],
+                "the rendered fog cell stays dark"
+            );
+            world.transform.get_mut(hero).expect("hero").pos = at;
+            world.step();
+            assert!(world.can_see_point(Team::Radiant, at));
+            session
+                .ingest_snapshot(world.view(Team::Radiant), &mut ())
+                .expect("next snapshot");
+            let view = session.current().expect("snapshot");
+            assert!(ground.sees(view, Team::Radiant, at));
+            ground.lit(view, Team::Radiant, &mut lit);
+            assert!(lit[cell.1 * rules::GRID_CELLS + cell.0]);
+        }
+    }
+}

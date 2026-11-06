@@ -111,6 +111,21 @@ impl App {
             .flatten()
     }
 
+    /// Whether the map permits a placement preview at this point.
+    pub fn placement_allowed(&self, slot: Slot, at: (f32, f32)) -> bool {
+        match slot {
+            Slot::Ability(_) => true,
+            Slot::Item(slot) => self
+                .item_in(slot)
+                .and_then(|item| bota_core::item_def(item.id))
+                .zip(self.session())
+                .is_some_and(|(def, session)| {
+                    def.effect
+                        .placement_allowed(session.map(), super::intent::world_vec(at))
+                }),
+        }
+    }
+
     /// What sits in one item slot of the panel.
     ///
     /// The bag slots are the commanded unit's, a courier's as readily as the

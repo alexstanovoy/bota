@@ -49,6 +49,15 @@ pub enum BackdoorWatch {
     InBase,
 }
 
+/// How a ward receives an attack from a neutral whose policy clears wards.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WardResponse {
+    /// Count its attack as a hero's, as for Serpent Wards since 7.36b.
+    Hero,
+    /// One hit destroys it, as for Observer and Sentry Wards since 7.31d.
+    Destroyed,
+}
+
 /// The plain form of one kind of unit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct UnitDef {
@@ -108,6 +117,10 @@ pub struct UnitDef {
     pub true_sight: i32,
     /// Whether the other side sees it only through true sight.
     pub hides: bool,
+    /// Ordinary vision is suppressed inside a boss pit.
+    pub pit_blind: bool,
+    /// The special response to a neutral whose policy clears wards.
+    pub ward_response: Option<WardResponse>,
     /// Whether it flies: closed ground is nothing to it.
     pub flies: bool,
     /// Trees are passable; terrain, structures and ground vision still apply.
@@ -204,6 +217,8 @@ pub(crate) const BARE_UNIT: UnitDef = UnitDef {
     night_vision: 0,
     true_sight: 0,
     hides: false,
+    pit_blind: false,
+    ward_response: None,
     flies: false,
     tree_walking: false,
     forced_move_immune: false,
@@ -557,6 +572,7 @@ pub const FOUNTAIN: UnitDef = UnitDef {
 /// on (`modifier_courier_flying`); `modifier_courier_passive_bonus` adds to
 /// its pace and its bounty with every level (Liquipedia, Courier).
 pub const COURIER: UnitDef = UnitDef {
+    pit_blind: true,
     kind: UnitKind::Courier,
     porter: true,
     unbounded_pace: true,
@@ -595,6 +611,7 @@ pub const COURIER_ABILITIES: [AbilityId; 5] = [
 
 /// An observer ward: it sees far and the other side cannot see it.
 pub const OBSERVER_WARD: UnitDef = UnitDef {
+    ward_response: Some(WardResponse::Destroyed),
     kind: UnitKind::Ward,
     max_hp: rules::WARD_HP,
     hit_count: Some(rules::WARD_HITS),
@@ -606,6 +623,7 @@ pub const OBSERVER_WARD: UnitDef = UnitDef {
 
 /// A sentry ward: it sees nothing of itself, and what it gives is true sight.
 pub const SENTRY_WARD: UnitDef = UnitDef {
+    ward_response: Some(WardResponse::Destroyed),
     kind: UnitKind::Ward,
     max_hp: rules::WARD_HP,
     hit_count: Some(rules::WARD_HITS),

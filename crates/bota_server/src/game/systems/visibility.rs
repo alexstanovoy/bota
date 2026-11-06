@@ -157,7 +157,9 @@ pub fn visibility_system(cx: SightCx<'_>) {
             entity,
             team: team.get(entity).copied(),
             at,
-            vision: stats.map_or(Fixed::ZERO, |s| s.vision),
+            vision: stats.zip(at).map_or(Fixed::ZERO, |(s, at)| {
+                bota_core::pit_vision(s.vision, s.pit_blind, at, pits)
+            }),
             true_sight: stats.map_or(Fixed::ZERO, |s| s.true_sight),
             kind: kind.get(entity).copied(),
             hides: stats.is_some_and(|s| s.hides),
@@ -508,7 +510,15 @@ impl World {
                     return false;
                 };
                 let (reach, flies) = if self.team.get(entity) == Some(&team) {
-                    (stats.vision, stats.flies)
+                    (
+                        bota_core::pit_vision(
+                            stats.vision,
+                            stats.pit_blind,
+                            from,
+                            self.map.boss_zones,
+                        ),
+                        stats.flies,
+                    )
                 } else {
                     match stats.vision_grant {
                         Some((side, reach)) if side == team => (reach, false),

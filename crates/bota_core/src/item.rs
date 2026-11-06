@@ -875,3 +875,16 @@ pub struct Recovery {
     pub health_pct: i32,
     pub mana_pct: i32,
 }
+
+impl UseSpec {
+    /// Map exclusions are independent of range, terrain and current inventory.
+    pub fn placement_allowed(self, map: &crate::MapDef, at: bota_proto::Vec2) -> bool {
+        match self {
+            Self::Ward { .. } | Self::Dispense => {
+                !map.no_wards.iter().any(|zone| zone.contains(at))
+            }
+            Self::PlantTree { .. } => !map.boss_zones.iter().any(|zone| zone.contains(at)),
+            _ => true,
+        }
+    }
+}

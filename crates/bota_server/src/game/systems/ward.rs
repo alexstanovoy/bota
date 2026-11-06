@@ -46,9 +46,13 @@ impl World {
         let (Some(side), Some(from)) = (self.team.get(user).copied(), self.pos(user)) else {
             return false;
         };
+        let placement = UseSpec::Ward {
+            units: std::slice::from_ref(def),
+            ticks,
+        };
         if !from.within(pos, rules::units(range))
             || !self.clearance.stands_clear(pos)
-            || self.map.no_wards.iter().any(|zone| zone.contains(pos))
+            || !placement.placement_allowed(self.map, pos)
         {
             return false;
         }

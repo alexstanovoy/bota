@@ -73,6 +73,7 @@ pub const ROSHAN: UnitDef = UnitDef {
 /// LIQ Neutral Creeps].
 pub const ROSHAN_HOME: HomeDef = HomeDef {
     attacks_couriers: true,
+    wards_first: true,
     aggro_range: 140,
     damage_aggro_range: 1800,
     aggro_spread: 0,

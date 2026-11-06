@@ -862,7 +862,18 @@ impl World {
                 } else {
                     *kind
                 };
-                Striker::of(kind, stats.projectile_speed.is_some())
+                let ward_response = self
+                    .neutral
+                    .get(attacker)
+                    .filter(|n| n.neutral().home.wards_first)
+                    .and_then(|_| self.stats.get(on)?.ward_response);
+                match ward_response {
+                    Some(bota_core::WardResponse::Destroyed) => Striker::Lethal,
+                    Some(bota_core::WardResponse::Hero) => {
+                        Striker::of(UnitKind::Hero, stats.projectile_speed.is_some())
+                    }
+                    None => Striker::of(kind, stats.projectile_speed.is_some()),
+                }
             }
             Some(_) => Striker::Illusion,
             None => Striker::Other,

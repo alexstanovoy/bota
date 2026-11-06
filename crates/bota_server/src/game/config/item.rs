@@ -82,6 +82,11 @@ impl World {
         (item, def): (ItemId, &ItemDef),
         target: Target,
     ) -> bool {
+        if let Target::Pos(at) = target
+            && !def.effect.placement_allowed(self.map, at)
+        {
+            return false;
+        }
         let with = Inflictor::Item(item);
         match def.effect {
             UseSpec::Refresh { items } => self.refresh_cooldowns(user, items),

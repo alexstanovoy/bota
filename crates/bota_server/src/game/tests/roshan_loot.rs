@@ -572,3 +572,107 @@ fn a_banner_preserves_its_level_when_picked_up_dropped_and_taken_again() {
         3
     );
 }
+
+#[test]
+fn shopping_during_aegis_reincarnation_keeps_the_purchase_in_stash_after_return() {
+    use bota_core::rules;
+    use bota_proto::{Order, Vec2};
+    let mut world = match_with_roshan();
+    kill(&mut world);
+    let (hero, _) = take_aegis(&mut world);
+    let at = Vec2::from_ints(9000, 9000);
+    world.transform.get_mut(hero).expect("hero").pos = at;
+    world.seats[0].gold = 5000;
+    world.settle();
+    world.push_hit(None, hero, 100000, DamageKind::Pure, None);
+    world.step();
+    assert!(world.seats[0].reincarnating_at.is_some());
+    let before = world.seats[0].gold;
+    seat_order(
+        &mut world,
+        Order::Buy {
+            item: ItemId::TANGO,
+        },
+    );
+    assert!(world.seats[0].gold < before, "the purchase succeeded");
+    assert!(
+        world.seats[0]
+            .stash
+            .slots
+            .iter()
+            .flatten()
+            .any(|s| s.id == ItemId::TANGO)
+    );
+    run(&mut world, 5 * rules::TICKS_PER_SECOND + 2);
+    assert!(world.alive(hero));
+    assert_eq!(world.pos(hero), Some(at));
+    assert!(
+        world.seats[0]
+            .stash
+            .slots
+            .iter()
+            .flatten()
+            .any(|s| s.id == ItemId::TANGO)
+    );
+    assert!(
+        !world
+            .inventory
+            .get(hero)
+            .expect("bag")
+            .held()
+            .any(|s| s.id == ItemId::TANGO)
+    );
+}
+
+#[test]
+fn cheese_from_two_separate_ground_pickups_combines_into_one_charged_stack() {
+    use bota_proto::{Order, Target, Vec2};
+    let (mut world, hero) = match_hero();
+    let at = world.pos(hero).expect("hero");
+    for _ in 0..2 {
+        let dropped = world.lay_loot(
+            crate::game::ItemStack::dropped(ItemId::CHEESE).expect("Cheese"),
+            at + Vec2::from_ints(40, 0),
+        );
+        world.settle();
+        seat_order(
+            &mut world,
+            Order::Take {
+                target: Target::Unit(crate::game::wire_id(dropped)),
+            },
+        );
+        run(&mut world, 3);
+        assert!(!world.entities.contains(dropped));
+    }
+    let stacks: Vec<_> = world
+        .inventory
+        .get(hero)
+        .expect("bag")
+        .held()
+        .filter(|s| s.id == ItemId::CHEESE)
+        .collect();
+    assert_eq!(stacks.len(), 1);
+    assert_eq!(stacks[0].charges, 2);
+}
+
+#[test]
+fn killing_roshan_does_not_capture_any_watchers_after_734_removed_that_reward() {
+    use bota_proto::UnitKind;
+    let mut cfg = config();
+    cfg.map = MapId(0);
+    cfg.objectives = ObjectiveSet::of(ObjectiveKind::Roshan).with(ObjectiveKind::Watchers);
+    let mut world = World::for_match(&cfg, cfg.rng());
+    world.creeps_halted = true;
+    let owners = |world: &World| {
+        world
+            .entities
+            .iter()
+            .filter(|u| world.kind.get(*u) == Some(&UnitKind::Watcher))
+            .map(|u| (u, world.team.get(u).copied()))
+            .collect::<Vec<_>>()
+    };
+    let before = owners(&world);
+    assert!(!before.is_empty());
+    kill(&mut world);
+    assert_eq!(owners(&world), before);
+}

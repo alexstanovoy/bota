@@ -577,7 +577,12 @@ impl World {
                 .map(|_| health.map_or(Fixed::ZERO, |h| h.hp).max(Fixed::ZERO)),
             collision: hull.map_or(Fixed::ZERO, |h| h.collision),
             bound: hull.map_or(Fixed::ZERO, |h| h.bound),
-            vision_radius: stats.vision,
+            vision_radius: bota_core::pit_vision(
+                stats.vision,
+                stats.pit_blind,
+                transform.pos,
+                self.map.boss_zones,
+            ),
             vision_grant: stats.vision_grant,
             cast_rates: self.cast_rates_shown(viewer, entity, stats),
             lit_for: self.lit_for(entity),

@@ -111,6 +111,11 @@ impl SightGround {
     /// on ground no higher than its own, along a line nothing stops.
     fn sees_from(&self, from: Vec2, radius: Fixed, tier: u8, at: Vec2) -> bool {
         from.within(at, radius)
+            && bota_core::pit_sight_clear(
+                bota_core::map_of(self.statics.metadata().map).boss_zones,
+                from,
+                at,
+            )
             && self.statics.ground_tier(at) <= tier
             && self.block.clear(from, tier, at)
     }

@@ -15,6 +15,8 @@ pub enum Striker {
     Other,
     /// An illusion attack; still counts as an ordinary creep against hit-count health.
     Illusion,
+    /// An attack that destroys a susceptible hit-count body in one hit.
+    Lethal,
 }
 
 impl Striker {
@@ -49,6 +51,7 @@ impl HitCount {
     /// and one fewer never does, and none for anything no swing dealt.
     pub const fn taken(self, by: Option<Striker>, max_hp: Fixed) -> Fixed {
         let hits = match by {
+            Some(Striker::Lethal) => 1,
             Some(Striker::MeleeHero) => self.melee_hero,
             Some(Striker::RangedHero) => self.ranged_hero,
             Some(Striker::Other | Striker::Illusion) => self.other,

@@ -2732,3 +2732,159 @@ fn migration_a_stale_previous_killer_provoker_cannot_trigger_roar_during_a_pit_t
     assert!(world.migrating(boss));
     assert!(!roared);
 }
+
+#[test]
+fn pit_a_courier_has_no_ground_or_flying_vision_inside_either_pit() {
+    use bota_core::{COURIER, MAPS, MELEE_CREEP, ROSHAN_DAY_PIT, ROSHAN_NIGHT_PIT, UnitDef};
+    use bota_proto::{Team, Vec2};
+    const FLYER: UnitDef = UnitDef {
+        flies: true,
+        ..COURIER
+    };
+    for pit in [ROSHAN_DAY_PIT, ROSHAN_NIGHT_PIT] {
+        for def in [&COURIER, &FLYER] {
+            let mut world = World::new();
+            world.map = &MAPS[0];
+            let courier = world.spawn_unit(def, Team::Radiant, pit);
+            let mark = world.spawn_unit(&MELEE_CREEP, Team::Dire, pit + Vec2::from_ints(100, 0));
+            world.settle();
+            assert!(
+                !world.can_see(Team::Radiant, mark),
+                "a courier cannot scout inside a pit"
+            );
+            assert!(
+                !world.can_see_point(Team::Radiant, pit + Vec2::from_ints(100, 0)),
+                "live point and event queries must also be blind"
+            );
+            assert_eq!(
+                world
+                    .view(Team::Radiant)
+                    .unit(crate::game::wire_id(courier))
+                    .expect("own courier")
+                    .vision_radius,
+                bota_proto::Fixed::ZERO,
+                "the client receives the same blind sight radius"
+            );
+            let outside = Vec2::from_ints(5000, 5000);
+            assert!(!world.map.boss_zones.iter().any(|z| z.contains(outside)));
+            world.transform.get_mut(courier).expect("courier").pos = outside;
+            world.transform.get_mut(mark).expect("mark").pos = outside + Vec2::from_ints(32, 0);
+            assert_eq!(
+                world.ground.tier(outside),
+                world.ground.tier(outside + Vec2::from_ints(32, 0))
+            );
+            world.settle();
+            assert!(
+                world.can_see(Team::Radiant, mark),
+                "sight returns after leaving the pit"
+            );
+            assert!(world.can_see_point(Team::Radiant, outside + Vec2::from_ints(32, 0)));
+        }
+    }
+}
+
+#[test]
+fn pit_branches_cannot_plant_a_tree_inside_either_pit_or_spend_a_charge() {
+    use bota_core::{MAPS, ROSHAN_DAY_PIT, ROSHAN_NIGHT_PIT};
+    use bota_proto::{HeroId, ItemId, ItemSlot, Order, Target, Vec2};
+    for pit in [ROSHAN_DAY_PIT, ROSHAN_NIGHT_PIT] {
+        let mut world = World::new();
+        world.map = &MAPS[0];
+        let hero = seated_hero(
+            &mut world,
+            pit + Vec2::from_ints(50, 0),
+            HeroId::SHADOW_FIEND,
+        );
+        hand_item(&mut world, hero, ItemId::IRON_BRANCH, 1);
+        let at = pit + Vec2::from_ints(100, 0);
+        assert!(world.clearance.stands_clear(at));
+        seat_order(
+            &mut world,
+            Order::Use {
+                slot: ItemSlot(0),
+                target: Target::Pos(at),
+            },
+        );
+        run(&mut world, 5);
+        assert!(world.trees.planted().is_empty());
+        assert_eq!(
+            slot_of(&world, hero, 0).map(|s| s.id),
+            Some(ItemId::IRON_BRANCH)
+        );
+        let outside = Vec2::from_ints(9000, 9000);
+        world.transform.get_mut(hero).expect("hero").pos = outside;
+        world.settle();
+        seat_order(
+            &mut world,
+            Order::Use {
+                slot: ItemSlot(0),
+                target: Target::Pos(outside + Vec2::from_ints(100, 0)),
+            },
+        );
+        run(&mut world, 5);
+        assert_eq!(
+            world.trees.planted().len(),
+            1,
+            "the same branch works on ordinary ground"
+        );
+        assert!(slot_of(&world, hero, 0).is_none());
+    }
+}
+
+#[test]
+fn pit_roshan_destroys_observer_and_sentry_wards_in_one_hit_but_deals_ordinary_hit_damage_to_a_banner()
+ {
+    use bota_core::{BANNERS, NeutralKind, OBSERVER_WARD, SENTRY_WARD};
+    use bota_proto::{EventKind, Team, Vec2};
+    for (def, destroyed) in [
+        (&OBSERVER_WARD, true),
+        (&SENTRY_WARD, true),
+        (&BANNERS[0], false),
+    ] {
+        let mut world = World::new();
+        let at = Vec2::from_ints(5000, 5000);
+        let boss = world.spawn_neutral_home(NeutralKind::Roshan, at, None, 0);
+        world.spawn_unit(&SENTRY_WARD, Team::Neutral, at + Vec2::from_ints(-100, 0));
+        let ward = world.spawn_unit(def, Team::Radiant, at + Vec2::from_ints(100, 0));
+        world.settle();
+        assert!(world.can_see(Team::Neutral, ward));
+        let mut struck = false;
+        for _ in 0..90 {
+            let events = world.step();
+            if events.iter().any(|e|matches!(e.kind(),EventKind::Damaged{target,..} if target==crate::game::wire_id(ward))){struck=true;break;}
+        }
+        assert!(struck, "the autonomous attack lands");
+        assert_eq!(!world.alive(ward), destroyed);
+        if !destroyed {
+            assert_eq!(world.health.get(ward).expect("banner").hp.to_int(), 23);
+        }
+        assert!(world.alive(boss));
+    }
+}
+
+#[test]
+fn pit_roshan_clears_a_visible_ward_before_chasing_a_distant_provoker_but_prefers_heroes_in_attack_range()
+ {
+    use crate::game::UnitOrder;
+    use bota_core::{NeutralKind, SENTRY_WARD};
+    use bota_proto::{HeroId, Team, Vec2};
+    for near in [false, true] {
+        let mut world = World::new();
+        let at = Vec2::from_ints(5000, 5000);
+        let boss = world.spawn_neutral_home(NeutralKind::Roshan, at, None, 0);
+        world.spawn_unit(&SENTRY_WARD, Team::Neutral, at + Vec2::from_ints(-100, 0));
+        let ward = world.spawn_unit(&SENTRY_WARD, Team::Radiant, at + Vec2::from_ints(100, 0));
+        let hero = seated_hero(
+            &mut world,
+            at + Vec2::from_ints(if near { 120 } else { 450 }, 100),
+            HeroId::SHADOW_FIEND,
+        );
+        world.set_order(hero, UnitOrder::Stand);
+        world.neutral_ai.get_mut(boss).expect("mind").awake = true;
+        world.neutral_ai.get_mut(boss).expect("mind").roused_by = Some(hero);
+        world.set_target(boss, hero);
+        world.settle();
+        world.step();
+        assert_eq!(world.target_of(boss), Some(if near { hero } else { ward }));
+    }
+}
