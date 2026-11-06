@@ -1,6 +1,7 @@
 use std::io;
 use bota_client_core::{ClientSession, Ingested, Outcome, Seat, Seated, SessionOptions, Transport};
-use bota_proto::{ClientMsg, ServerMsg};
+use bota_proto::{ClientMsg, ServerMsg, Order, Target};
+use bota_client_core::IssuedOrder;
 use super::NativeTeam;
 use crate::TeamTurn;
 
@@ -28,7 +29,7 @@ pub fn play_team<T: Transport>(connections: Vec<(T, Seated)>, worker: &mut Nativ
             last = Some(tick);
             decide(worker, newest, &mut result, &mut warned)
         } else { None };
-        for connection in &mut connections { send_turn(connection, turn.as_ref(), &mut result)?; }
+        for connection in &mut connections { send_turn(connection, turn.as_ref(), &mut result, worker.retired())?; }
     }
     Err(io::Error::other("match exceeded the protocol tick range"))
 }
@@ -65,8 +66,9 @@ fn decide(worker: &mut NativeTeam, session: &ClientSession, result: &mut TeamOut
     }
 }
 
-fn send_turn<T: Transport>(connection: &mut Connection<T>, turn: Option<&TeamTurn>, result: &mut TeamOutcome) -> io::Result<()> {
+fn send_turn<T: Transport>(connection: &mut Connection<T>, turn: Option<&TeamTurn>, result: &mut TeamOutcome, retired: bool) -> io::Result<()> {
     let session = connection.seat.session_mut().expect("a complete tick");
+    if retired { stand(&mut connection.transport, session, result)?; }
     if let Some(bot) = turn.and_then(|turn| turn.bots.iter().find(|bot| bot.slot == connection.seated.slot)) {
         for &order in &bot.orders {
             if session.own_hero().is_none() && order.unit.is_none() && bota_core::order_needs_body(order.order) { connection.unsent = connection.unsent.saturating_add(1); continue; }
@@ -97,4 +99,18 @@ fn collect_tick<T: Transport>(connection: &mut Connection<T>) -> io::Result<()> 
         }
     }
     Err(io::Error::other("server sent too many messages without a complete tick"))
+}
+
+// Retirement is a host decision, so it uses only ordinary stop orders for the controlled bodies.
+fn stand(transport: &mut impl Transport, session: &mut ClientSession, result: &mut TeamOutcome) -> io::Result<()> {
+    let stop=Order::Move { target: Target::None };
+    let hero=session.own_hero().map(|_|IssuedOrder::hero(stop));
+    let courier=session.own_courier().map(|unit|IssuedOrder::courier(unit.id,stop));
+    for order in [hero,courier].into_iter().flatten() {
+        if session.ledger().repeats(order) {continue;}
+        let outgoing=session.issue(order).map_err(|error|io::Error::other(error.to_string()))?;
+        transport.send(&outgoing.message())?;
+        result.orders_sent+=1;
+    }
+    Ok(())
 }
