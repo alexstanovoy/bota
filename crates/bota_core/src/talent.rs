@@ -29,7 +29,7 @@ pub enum Talent {
     FeastCastSpeed,
     /// [`TALENT_ARMOR`] more armor.
     Armor,
-    /// Spell lifesteal. bota models no spell lifesteal yet: learned, it does nothing.
+    /// [`TALENT_SPELL_LIFESTEAL_PCT`] more spell lifesteal.
     SpellLifesteal,
     /// The rot slows more. This and the Pudge talents below give what their bonuses in his
     /// imported values say, by the talent's key
@@ -103,8 +103,8 @@ pub const TALENT_ARMOR: i32 = crate::heroes_data::SPECIAL_BONUS_ARMOR_5
     .first()
     .int();
 
-/// Percent of spell damage the generic `special_bonus_spell_lifesteal_8` would heal: its
-/// imported `value`.
+/// Percent of spell damage the generic `special_bonus_spell_lifesteal_8` heals: its imported
+/// `value`.
 pub const TALENT_SPELL_LIFESTEAL_PCT: i32 = crate::heroes_data::SPECIAL_BONUS_SPELL_LIFESTEAL_8
     .value("value")
     .first()

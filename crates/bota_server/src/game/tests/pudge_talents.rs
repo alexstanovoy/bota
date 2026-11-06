@@ -15,6 +15,7 @@ use super::support::*;
 const ROT_SLOW: u8 = 0;
 const ARMOR: u8 = 1;
 const HOOK_DAMAGE: u8 = 2;
+const SPELL_LIFESTEAL: u8 = 3;
 const HOOK_COOLDOWN: u8 = 4;
 const DISMEMBER_DURATION: u8 = 5;
 const FLESH_HEAP: u8 = 6;
@@ -219,5 +220,31 @@ fn the_dismember_damage_talent_bites_harder() {
     assert!(
         (after - 1..=after + 1).contains(&taken.to_int()),
         "the take-hold bite takes {after} after resistance: took {taken}"
+    );
+}
+
+/// What the take-hold bite of a dismember on the mark heals Pudge, by talent.
+fn take_hold_heal(talent: Option<u8>) -> i32 {
+    let (mut world, pudge, mark) = talented(150, talent);
+    world.health.insert(
+        pudge,
+        crate::game::Health {
+            hp: Fixed::from_int(300),
+        },
+    );
+    world.step();
+    let start = world.health.get(pudge).expect("standing").hp;
+    dismember(&mut world, mark);
+    (world.health.get(pudge).expect("standing").hp - start).to_int()
+}
+
+/// `special_bonus_spell_lifesteal_8`: his spells heal him by 8% of what they take of a hero,
+/// on top of what a dismember heals by itself.
+#[test]
+fn the_spell_lifesteal_talent_heals_eight_percent_of_a_spells_damage() {
+    let (without, with) = (take_hold_heal(None), take_hold_heal(Some(SPELL_LIFESTEAL)));
+    assert!(
+        (2..=4).contains(&(with - without)),
+        "a bite of some forty after resistance heals three more: {without} without, {with} with"
     );
 }

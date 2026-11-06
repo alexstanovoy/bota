@@ -3,9 +3,9 @@
 use bota_core::{
     AMPLIFY_DAMAGE_PCT, AMPLIFY_SPELL_AMP_BP, ARCANE_COOLDOWN_CUT_BP, ARCANE_MANA_CUT_BP, Buff,
     Carried, Growth, HASTE_RUNE_SPEED, INVISIBILITY_FADE_TICKS, ModifierKind, NeutralAbility, Odds,
-    Regen, Stat, TALENT_ARMOR, Talent, UnitDef, ability_def, agility_armor, agility_attack_speed,
-    cut_rate, fixed, intelligence_magic_resist_bp, item_def, primary_damage, regen, rules,
-    soul_damage, spell_buff,
+    Regen, Stat, TALENT_ARMOR, TALENT_SPELL_LIFESTEAL_PCT, Talent, UnitDef, ability_def,
+    agility_armor, agility_attack_speed, cut_rate, fixed, intelligence_magic_resist_bp, item_def,
+    primary_damage, regen, rules, soul_damage, spell_buff,
 };
 use bota_proto::{AbilityId, Attributes, Fixed, ModifierSpec};
 
@@ -149,6 +149,9 @@ pub fn derive_stats(cx: StatsCx<'_>) {
                 Attributes::all(rules::ATTRIBUTE_BONUS_POINTS * i32::from(book.attribute_bonus));
             if book.has_talent(Talent::Armor) {
                 now.armor += kept(illusion, Fixed::from_int(TALENT_ARMOR));
+            }
+            if book.has_talent(Talent::SpellLifesteal) {
+                now.spell_lifesteal_pct += TALENT_SPELL_LIFESTEAL_PCT;
             }
         }
         // A Break leaves the flesh heap whole, and the souls held work on:
