@@ -27,6 +27,24 @@ pub enum Talent {
     /// Cast points [`rules::TALENT_FEAST_CAST_POINT_PCT`] of their length
     /// while a feast runs.
     FeastCastSpeed,
+    /// [`TALENT_ARMOR`] more armor.
+    Armor,
+    /// Spell lifesteal. bota models no spell lifesteal yet: learned, it does nothing.
+    SpellLifesteal,
+    /// The rot slows more. This and the Pudge talents below give what their bonuses in his
+    /// imported values say, by the talent's key
+    /// ([`AbilityValue::talented`](crate::AbilityValue::talented)).
+    RotSlow,
+    /// The hook deals more.
+    HookDamage,
+    /// The hook waits less.
+    HookCooldown,
+    /// A dismember holds longer and bites more often.
+    DismemberDuration,
+    /// The flesh heap's stacks and the meat shield's block are worth more.
+    FleshHeapBonuses,
+    /// A dismember bites harder.
+    DismemberDamage,
 }
 
 impl Talent {
@@ -44,6 +62,14 @@ impl Talent {
             Talent::NecroSoulCap => "special_bonus_unique_nevermore_1",
             Talent::RazeAttackDamage => "special_bonus_unique_nevermore_raze_procsattacks",
             Talent::FeastCastSpeed => "special_bonus_unique_nevermore_frenzy_castspeed",
+            Talent::Armor => "special_bonus_armor_5",
+            Talent::SpellLifesteal => "special_bonus_spell_lifesteal_8",
+            Talent::RotSlow => "special_bonus_unique_pudge_4",
+            Talent::HookDamage => "special_bonus_unique_pudge_7",
+            Talent::HookCooldown => "special_bonus_unique_pudge_5",
+            Talent::DismemberDuration => "special_bonus_unique_pudge_6",
+            Talent::FleshHeapBonuses => "special_bonus_unique_pudge_1",
+            Talent::DismemberDamage => "special_bonus_unique_pudge_3",
         }
     }
 }
@@ -69,6 +95,27 @@ pub fn talent_floor(slot: TalentSlot, learned: Talents) -> u8 {
 #[inline]
 pub const fn attribute_bonus_floor(level: u8) -> u8 {
     rules::ATTRIBUTE_BONUS_LEVELS_APART * (level + 1)
+}
+
+/// Armor the generic `special_bonus_armor_5` gives: its imported `value`.
+pub const TALENT_ARMOR: i32 = crate::heroes_data::SPECIAL_BONUS_ARMOR_5
+    .value("value")
+    .first()
+    .int();
+
+/// Percent of spell damage the generic `special_bonus_spell_lifesteal_8` would heal: its
+/// imported `value`.
+pub const TALENT_SPELL_LIFESTEAL_PCT: i32 = crate::heroes_data::SPECIAL_BONUS_SPELL_LIFESTEAL_8
+    .value("value")
+    .first()
+    .int();
+
+/// Whether a hero with a tree has learned the talent whose Dota key is `key`.
+#[inline]
+pub fn has_talent_key(tree: &TalentTree, learned: Talents, key: &str) -> bool {
+    tree.iter()
+        .enumerate()
+        .any(|(at, held)| held.key() == key && learned.has(TalentSlot(at as u8)))
 }
 
 /// Whether a hero with a tree has learned a talent.

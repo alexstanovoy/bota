@@ -184,9 +184,10 @@ impl StateHash for ModifierKind {
                 fnv.u8(14);
                 fnv.u8(level);
             }
-            ModifierKind::Rotting { level } => {
+            ModifierKind::Rotting { level, slow_pct } => {
                 fnv.u8(32);
                 fnv.u8(level);
+                fnv.u8(slow_pct);
             }
             ModifierKind::Feared => fnv.u8(15),
             ModifierKind::BloodGrenade { since } => {
@@ -231,9 +232,15 @@ impl StateHash for ModifierKind {
                 fnv.u8(level);
                 fnv.u32(u32::from(amount));
             }
-            ModifierKind::Dismembered { level } => {
+            ModifierKind::Dismembered {
+                level,
+                bites,
+                channel_ms,
+            } => {
                 fnv.u8(22);
                 fnv.u8(level);
+                fnv.u8(bites);
+                fnv.u32(u32::from(channel_ms));
             }
             ModifierKind::MeatShield { amount } => hash_tagged(fnv, 23, &[amount]),
             ModifierKind::VisionGrant { side, day, night } => {

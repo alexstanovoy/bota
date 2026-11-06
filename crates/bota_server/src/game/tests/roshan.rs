@@ -474,7 +474,7 @@ fn spell_block_spends_dismembers_mana_and_cooldown_without_starting_a_channel() 
     }
     assert!(world.mana.get(hero).expect("paid").mana < mana - Fixed::from_int(90));
     assert!(world.abilities.get(hero).expect("book").slots[3].cooldown > 0);
-    assert!(!world.wears(boss, ModifierKind::Dismembered { level: 0 }));
+    assert!(!dismembered(&world, boss));
     assert!(!world.is_casting(hero));
     assert!(events.iter().any(|e| matches!(
         e.kind(),
@@ -483,6 +483,15 @@ fn spell_block_spends_dismembers_mana_and_cooldown_without_starting_a_channel() 
             ..
         }
     )));
+}
+
+/// Whether a dismember holds a unit, whatever its level, bites and channel.
+fn dismembered(world: &World, unit: crate::game::Entity) -> bool {
+    world.modifiers.get(unit).is_some_and(|on_it| {
+        on_it
+            .active()
+            .any(|held| matches!(held.kind, bota_core::ModifierKind::Dismembered { .. }))
+    })
 }
 
 fn roshan_spell_block_slot(world: &World, boss: crate::game::Entity) -> usize {
@@ -921,7 +930,7 @@ fn spell_block_ignores_invalid_targets_and_becomes_ready_after_fifteen_seconds()
 
 #[test]
 fn dismember_refuses_without_spending_when_pit_sight_disappears_before_its_cast_point() {
-    use bota_core::{ModifierKind, OBSERVER_WARD};
+    use bota_core::OBSERVER_WARD;
     use bota_proto::{AbilitySlot, HeroId, Target, Team, Vec2};
     let mut cfg = config();
     cfg.map = MapId(0);
@@ -981,7 +990,7 @@ fn dismember_refuses_without_spending_when_pit_sight_disappears_before_its_cast_
             .cooldown,
         0
     );
-    assert!(!world.wears(boss, ModifierKind::Dismembered { level: 0 }));
+    assert!(!dismembered(&world, boss));
 }
 
 #[test]
@@ -1555,7 +1564,14 @@ fn roars_strong_dispel_cancels_a_normal_dismember_without_a_final_pull_or_bite()
         world.step();
     }
     assert!(world.is_channelling(hero));
-    assert!(world.wears(boss, ModifierKind::Dismembered { level: 0 }));
+    assert!(world.wears(
+        boss,
+        ModifierKind::Dismembered {
+            level: 0,
+            bites: 6,
+            channel_ms: 2750,
+        }
+    ));
     let slot = world
         .abilities
         .get(boss)

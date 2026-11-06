@@ -1,7 +1,8 @@
 //! What is on a unit: putting it on, doing its work each tick, taking it off.
 
 use bota_core::{
-    ModifierKind, Stat, breaks_regen, dismember_bite_tick, item_def, kind_def, rules, spell_buff,
+    ModifierKind, Ms, Stat, breaks_regen, dismember_bite_tick, item_def, kind_def, rules,
+    spell_buff,
 };
 use bota_proto::{AbilityId, DamageKind, Fixed, Inflictor, ItemId, Team};
 
@@ -265,7 +266,7 @@ impl World {
                         }
                     }
                     ModifierKind::Rot { level } => self.rot(entity, level, on_beat),
-                    ModifierKind::Rotting { level } => {
+                    ModifierKind::Rotting { level, .. } => {
                         if on_beat && self.alive(entity) {
                             self.push_hit(
                                 modifier.source,
@@ -281,20 +282,30 @@ impl World {
                         level,
                         amount,
                     } => self.spell_pulse(entity, modifier, (ability, level, amount)),
-                    ModifierKind::Dismembered { level } => {
-                        let duration = modifier.ticks_total.unwrap_or(rules::DISMEMBER_TICKS);
+                    ModifierKind::Dismembered {
+                        level,
+                        bites,
+                        channel_ms,
+                    } => {
+                        // The bites share the channel as long as it holds: a
+                        // channel status resistance shortened, shortened alike.
+                        let (bites, channel) = (u32::from(bites), Ms(u32::from(channel_ms)));
+                        let duration = modifier.ticks_total.unwrap_or(channel.ticks());
                         let held_for = duration.saturating_sub(modifier.ticks_left.unwrap_or(0));
-                        let bites = 1..rules::DISMEMBER_BITES;
-                        if bites
-                            .map(|bite| {
-                                (dismember_bite_tick(bite) * duration)
-                                    .div_ceil(rules::DISMEMBER_TICKS)
-                            })
-                            .any(|tick| tick == held_for)
+                        let lands = |bite| {
+                            (dismember_bite_tick(bite, bites, channel) * duration)
+                                .div_ceil(channel.ticks().max(1))
+                                == held_for
+                        };
+                        if (1..bites).any(lands)
                             && let Some(holder) = modifier.source
                             && self.alive(entity)
                         {
-                            self.dismember_bites(holder, entity, usize::from(level));
+                            self.dismember_bites(
+                                holder,
+                                entity,
+                                (usize::from(level), bites, channel),
+                            );
                         }
                     }
                     ModifierKind::Laid { item, since } => {
@@ -348,6 +359,12 @@ impl World {
             transform.pos = at;
         }
         let with = Some(Inflictor::Ability(AbilityId::ROT));
+        // What the owner's talents make of the level's slow, as Dota's rot
+        // writes it: a change of speed.
+        let slow = -self
+            .talented(owner, AbilityId::ROT, "rot_slow", usize::from(level))
+            .int();
+        let slow_pct = u8::try_from(slow.clamp(0, 100)).expect("a percent");
         if on_beat && self.above_last_point(owner) {
             self.push_sparing(
                 None,
@@ -377,7 +394,7 @@ impl World {
             if self.team.get(other).copied() != Some(side)
                 && self.spell_reaches(AbilityId::ROT, other)
             {
-                let rotting = ModifierKind::Rotting { level };
+                let rotting = ModifierKind::Rotting { level, slow_pct };
                 self.put_modifier(other, Modifier::new(rotting, Some(owner), with, Some(2)));
             }
         }

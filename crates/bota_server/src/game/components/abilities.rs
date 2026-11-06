@@ -1,7 +1,8 @@
 //! What an entity can cast.
 
 use bota_core::{
-    Talent, TalentTree, ability_def, attribute_bonus_floor, learn_group, level_floor, rules,
+    Dec, Talent, TalentTree, ability_data, ability_def, attribute_bonus_floor, has_talent_key,
+    learn_group, level_floor, rules,
 };
 use bota_proto::{AbilityId, Talents};
 
@@ -37,6 +38,18 @@ impl AbilityBook {
     pub fn has_talent(&self, talent: Talent) -> bool {
         self.tree
             .is_some_and(|tree| bota_core::has_talent(tree, self.talents, talent))
+    }
+
+    /// The value `name` of the imported ability `key` at `level` (from zero), with the bonus of
+    /// every talent learned here: what Dota's talents do to the values of an ability.
+    pub fn talented(&self, key: &str, name: &str, level: usize) -> Dec {
+        let value = ability_data(key)
+            .and_then(|data| data.find(name))
+            .unwrap_or_else(|| panic!("{key} has no imported value {name}"));
+        value.talented(level, |bonus| {
+            self.tree
+                .is_some_and(|tree| has_talent_key(tree, self.talents, bonus))
+        })
     }
 
     /// Skill points spent: on abilities and the Attribute Bonus. Talents

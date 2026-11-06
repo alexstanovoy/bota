@@ -344,7 +344,14 @@ fn the_rot_burns_and_slows_what_stands_in_it_and_lifts_when_switched_off() {
         "what stands in it burns"
     );
     assert!(
-        carries(&world, mark, ModifierKind::Rotting { level: 0 }),
+        carries(
+            &world,
+            mark,
+            ModifierKind::Rotting {
+                level: 0,
+                slow_pct: 14,
+            }
+        ),
         "and is slowed while it stands there"
     );
     cast(&mut world, 1, Target::None);
@@ -354,7 +361,14 @@ fn the_rot_burns_and_slows_what_stands_in_it_and_lifts_when_switched_off() {
     );
     run(&mut world, 3);
     assert!(
-        !carries(&world, mark, ModifierKind::Rotting { level: 0 }),
+        !carries(
+            &world,
+            mark,
+            ModifierKind::Rotting {
+                level: 0,
+                slow_pct: 14,
+            }
+        ),
         "and nothing is left slowed"
     );
 }
@@ -894,7 +908,14 @@ fn the_rot_leaves_a_tower_standing_in_it_untouched() {
     cast(&mut world, 1, Target::None);
     run(&mut world, rules::TICKS_PER_SECOND);
     assert!(
-        !carries(&world, tower, ModifierKind::Rotting { level: 3 }),
+        !carries(
+            &world,
+            tower,
+            ModifierKind::Rotting {
+                level: 3,
+                slow_pct: 32,
+            }
+        ),
         "the rot lays nothing on a building"
     );
     assert_eq!(
@@ -926,7 +947,7 @@ fn pudge_and_a_tower(apart: i32) -> (World, Entity, Entity) {
 }
 
 /// A hero target exercises Hook's damage and pull instead of creep execution.
-fn pudge_and_a_hero_mark(apart: i32) -> (World, Entity, Entity) {
+pub(super) fn pudge_and_a_hero_mark(apart: i32) -> (World, Entity, Entity) {
     let (mut world, pudge, creep) = pudge_and_a_mark(apart);
     world.despawn(creep);
     let at = world.pos(pudge).expect("Pudge stands") + Vec2::from_ints(apart, 0);
@@ -936,7 +957,7 @@ fn pudge_and_a_hero_mark(apart: i32) -> (World, Entity, Entity) {
 }
 
 /// Steps until the hook has left Pudge: its cast point is over.
-fn until_the_hook_flies(world: &mut World) {
+pub(super) fn until_the_hook_flies(world: &mut World) {
     for _ in 0..rules::HOOK_CAST_POINT_MS / 30 + 2 {
         if hook_flying(world) {
             return;
@@ -947,7 +968,7 @@ fn until_the_hook_flies(world: &mut World) {
 }
 
 /// Orders a dismember and steps until its cast point is over and it holds.
-fn dismember(world: &mut World, mark: Entity) {
+pub(super) fn dismember(world: &mut World, mark: Entity) {
     cast(world, 3, Target::Unit(wire_id(mark)));
     for _ in 0..rules::DISMEMBER_CAST_POINT_MS / 30 + 2 {
         if mark_is_held(world, mark) {
@@ -966,7 +987,7 @@ fn mark_is_held(world: &World, mark: Entity) -> bool {
 }
 
 /// Pudge alone on an empty world at (5000, 5000), settled and one tick on.
-fn a_lone_pudge() -> (World, Entity) {
+pub(super) fn a_lone_pudge() -> (World, Entity) {
     let mut world = World::new();
     let pudge = world.spawn_hero(
         Team::Radiant,
@@ -979,7 +1000,7 @@ fn a_lone_pudge() -> (World, Entity) {
     (world, pudge)
 }
 
-fn heap(world: &World, hero: Entity) -> u32 {
+pub(super) fn heap(world: &World, hero: Entity) -> u32 {
     world
         .modifiers
         .get(hero)
@@ -1046,7 +1067,13 @@ fn a_dismember_bites_six_times_by_strength_pulls_and_heals_by_what_it_takes() {
     world.health.insert(pudge, health(300));
     world.step();
     let strength = world.stats.get(pudge).expect("settled").attributes.strength;
-    let bite = bota_core::dismember_bite_damage(0, strength);
+    let bite = bota_core::dismember_bite_damage(
+        bota_core::Dec::of("80"),
+        bota_core::Dec::of("0.3"),
+        strength,
+        bota_core::Ms::secs("2.75"),
+        6,
+    );
     assert_eq!(
         bite,
         ((Fixed::from_int(80) + strength * Fixed::from_ratio(3, 10))
@@ -1170,7 +1197,10 @@ fn a_courier_is_spell_immune_rot_and_hook_pass_it_by_and_only_dismember_holds_it
     assert!(!carries(
         &world,
         courier,
-        ModifierKind::Rotting { level: 0 }
+        ModifierKind::Rotting {
+            level: 0,
+            slow_pct: 14,
+        }
     ));
     assert_eq!(
         world.stats.get(courier).map(|stats| stats.move_speed),

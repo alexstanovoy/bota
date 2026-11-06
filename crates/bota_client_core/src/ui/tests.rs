@@ -1300,13 +1300,13 @@ fn a_unit_is_drawn_between_two_ticks_and_jumps_are_not_drawn_out() {
     );
 }
 
-/// The one talent tree is Shadow Fiend's, whatever id the hero list gives him.
+/// The talent trees are Shadow Fiend's and Pudge's, whatever ids the hero list gives them.
 #[test]
-fn the_talent_tree_is_shadow_fiends() {
+fn the_talent_trees_are_shadow_fiends_and_pudges() {
     for (id, hero) in bota_core::HEROES.iter().enumerate() {
         assert_eq!(
             crate::catalog::has_talents(id as u16),
-            hero.name == "Shadow Fiend",
+            matches!(hero.name, "Shadow Fiend" | "Pudge"),
             "{}",
             hero.name
         );

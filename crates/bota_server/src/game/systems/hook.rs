@@ -48,7 +48,9 @@ impl World {
                 speed: Fixed::from_int(rules::HOOK_SPEED),
                 reach_left: reach,
                 radius: rules::units(rules::HOOK_RADIUS),
-                damage: rules::HOOK_DAMAGE[level],
+                damage: self
+                    .talented(caster, AbilityId::MEAT_HOOK, "damage", level)
+                    .int(),
                 damage_amp_bp,
                 caught: None,
                 returning: false,

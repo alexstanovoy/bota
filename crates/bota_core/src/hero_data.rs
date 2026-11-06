@@ -197,12 +197,40 @@ impl AbilityData {
     }
 }
 
+/// The imported row of the ability `key`: an imported hero's ability, or a generic talent.
+pub fn ability_data(key: &str) -> Option<&'static AbilityData> {
+    ABILITY_ROWS.iter().copied().find(|row| row.key == key)
+}
+
+impl AbilityData {
+    /// The value of `key`, if the ability has one.
+    pub fn find(&self, key: &str) -> Option<&'static AbilityValue> {
+        self.values.iter().find(|value| value.name == key)
+    }
+}
+
+/// The number of a level list at `level`, counted from zero; a shorter list holds its last.
+const fn level_of(levels: &[Dec], level: usize) -> Dec {
+    assert!(!levels.is_empty(), "a value without a number");
+    let last = levels.len() - 1;
+    levels[if level < last { level } else { last }]
+}
+
 impl AbilityValue {
     /// The number at level `level`, counted from zero.
     pub const fn at(&self, level: usize) -> Dec {
-        assert!(!self.levels.is_empty(), "a value without a number");
-        let last = self.levels.len() - 1;
-        self.levels[if level < last { level } else { last }]
+        level_of(self.levels, level)
+    }
+
+    /// The number at `level` with the bonus of every key `learned` holds for applied in the
+    /// script's order: what a hero that has learned those talents gets.
+    pub fn talented(&self, level: usize, learned: impl Fn(&str) -> bool) -> Dec {
+        self.bonuses
+            .iter()
+            .filter(|(key, _)| learned(key))
+            .fold(self.at(level), |value, (_, bonus)| {
+                bonus.applied(value, level)
+            })
     }
 
     /// The first level's number.
@@ -258,6 +286,16 @@ impl AbilityValue {
 }
 
 impl Bonus {
+    /// What it makes of `value` at `level`, counted from zero.
+    pub const fn applied(self, value: Dec, level: usize) -> Dec {
+        match self {
+            Bonus::Add(levels) => Dec(value.0 + level_of(levels, level).0),
+            Bonus::Times(factor) => Dec((value.0 as i64 * factor.0 as i64 / 1000) as i32),
+            Bonus::Set(levels) => level_of(levels, level),
+            Bonus::Percent(pct) => Dec(value.0 + (value.0 as i64 * pct.0 as i64 / 100_000) as i32),
+        }
+    }
+
     /// What an [`Add`](Bonus::Add) adds at its first level. Fails the build for another kind.
     pub const fn added(self) -> Dec {
         match self {

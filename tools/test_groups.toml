@@ -364,7 +364,7 @@ tests = [{ crate = "bota_server", target = "lib", filters = [
 
 [[group]]
 name = "game_heroes"
-about = "the heroes' own abilities: Shadow Fiend (razes, souls, feast, requiem) and Pudge (hook, rot, dismember)"
+about = "the heroes' own abilities: Shadow Fiend (razes, souls, feast, requiem) and Pudge (hook, rot, dismember, talents)"
 paths = [
     "crates/bota_server/src/game/systems/fiend.rs",
     "crates/bota_server/src/game/systems/feast.rs",
@@ -376,12 +376,14 @@ paths = [
     "crates/bota_server/src/game/tests/fiend.rs",
     "crates/bota_server/src/game/tests/feast.rs",
     "crates/bota_server/src/game/tests/pudge.rs",
+    "crates/bota_server/src/game/tests/pudge_talents.rs",
     "crates/bota_server/src/game/systems/tests/raze/**",
 ]
 tests = [{ crate = "bota_server", target = "lib", filters = [
     "game::tests::fiend::",
     "game::tests::feast::",
     "game::tests::pudge::",
+    "game::tests::pudge_talents::",
     "game::systems::tests::raze::",
 ] }]
 

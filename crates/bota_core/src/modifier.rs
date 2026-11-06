@@ -135,6 +135,10 @@ pub enum ModifierKind {
     Dismembered {
         /// The dismember's level, counted from zero.
         level: u8,
+        /// Bites it takes in all, the first as it takes hold.
+        bites: u8,
+        /// Milliseconds of its channel, which the bites share.
+        channel_ms: u16,
     },
     /// Takes `amount` off every blow that reaches it.
     MeatShield {
@@ -154,11 +158,13 @@ pub enum ModifierKind {
         level: u8,
     },
     /// Standing in an enemy's rot, as Dota's `modifier_pudge_rot` on them:
-    /// burned on the beat by whoever's rot it is, and slowed, by the rot's
-    /// level.
+    /// burned on the beat by whoever's rot it is, by the rot's level, and
+    /// slowed by what the rot's owner slows.
     Rotting {
         /// The rot's level, counted from zero.
         level: u8,
+        /// Percent of speed it takes.
+        slow_pct: u8,
     },
     /// Runs from whoever put it on, and neither swings nor casts, until it
     /// lifts.

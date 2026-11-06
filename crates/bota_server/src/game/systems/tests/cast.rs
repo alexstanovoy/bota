@@ -77,7 +77,16 @@ fn carries_from(world: &World, entity: Entity, kind: ModifierKind, by: Entity) -
 fn dismember_parts(world: &World, pudge: Entity, mark: Entity) -> [bool; 2] {
     [
         carries_from(world, mark, ModifierKind::Stunned, pudge),
-        carries_from(world, mark, ModifierKind::Dismembered { level: 0 }, pudge),
+        carries_from(
+            world,
+            mark,
+            ModifierKind::Dismembered {
+                level: 0,
+                bites: 6,
+                channel_ms: 2750,
+            },
+            pudge,
+        ),
     ]
 }
 

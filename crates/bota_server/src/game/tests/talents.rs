@@ -226,11 +226,14 @@ fn the_other_talent_of_a_tier_opens_at_twenty_seven() {
 
 #[test]
 fn a_hero_without_a_tree_learns_none() {
-    let mut cfg = config();
-    cfg.picks[0].hero = HeroId::PUDGE;
+    let cfg = config();
     let mut world = World::for_match(&cfg, cfg.rng());
     let xp = rules::XP_THRESHOLDS[24];
     world.grant_xp(0, xp, &mut Vec::new());
+    world.step();
+    // Every hero bota plays has a tree, so the match's one hero stands in by losing its own.
+    let hero = world.seats[0].unit.expect("stood up");
+    world.abilities.get_mut(hero).expect("a kit").tree = None;
     world.step();
     assert_eq!(ask_talent(&mut world, 0), Err(RejectReason::CannotLearn));
     assert_eq!(

@@ -95,17 +95,27 @@ pub fn ability_damage_projection(
             continuous(f64::from(pick(&rules::ROT_DAMAGE_PER_SECOND, level)) * seconds)
         }
         AbilityId::DISMEMBER => {
-            let bites = (0..rules::DISMEMBER_BITES)
+            let at = rank.min(rules::DISMEMBER_DAMAGE_PER_SECOND.len() - 1);
+            let dismember =
+                bota_core::ability_data("pudge_dismember").expect("Pudge's dismember is imported");
+            let channel = dismember.value("AbilityChannelTime").at(at).secs();
+            let bites = u32::try_from(dismember.value("ticks").at(at).int())
+                .expect("a dismember bites a handful of times");
+            let landed = (0..bites)
                 .filter(|&bite| {
-                    f64::from(bota_core::heroes::pudge::dismember_bite_tick(bite))
-                        < seconds * f64::from(rules::TICKS_PER_SECOND)
+                    f64::from(bota_core::heroes::pudge::dismember_bite_tick(
+                        bite, bites, channel,
+                    )) < seconds * f64::from(rules::TICKS_PER_SECOND)
                 })
                 .count();
             let bite = bota_core::heroes::pudge::dismember_bite_damage(
-                rank.min(rules::DISMEMBER_DAMAGE_PER_SECOND.len() - 1),
+                dismember.value("dismember_damage").at(at),
+                dismember.value("strength_damage").at(at),
                 actor.attributes.strength,
+                channel,
+                bites,
             );
-            hit(f64::from(bite) * bites as f64, DamageKind::Magical)
+            hit(f64::from(bite) * landed as f64, DamageKind::Magical)
         }
         _ => None,
     }

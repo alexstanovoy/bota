@@ -793,7 +793,10 @@ fn kill_credit_flesh_heap_uses_credit_and_debuffs_outside_radius_and_nearby_deat
                 world.put_modifier(
                     victim,
                     Modifier::new(
-                        ModifierKind::Rotting { level: 1 },
+                        ModifierKind::Rotting {
+                            level: 1,
+                            slow_pct: 20,
+                        },
                         Some(ours[0]),
                         None,
                         Some(90),

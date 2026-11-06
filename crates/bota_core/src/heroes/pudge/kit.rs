@@ -15,8 +15,8 @@ use crate::heroes_data::{
 use crate::item_data::str_eq;
 use crate::unit::NO_GROWTH;
 use crate::{
-    AbilityData, AbilityDef, Behavior, Growth, HERO, HeroDef, Pierces, TargetFilter, TargetTeam,
-    UnitDef, UnitTargets, fixed, per_tick_of,
+    AbilityData, AbilityDef, Behavior, Growth, HERO, HeroDef, Pierces, Talent, TalentTree,
+    TargetFilter, TargetTeam, UnitDef, UnitTargets, fixed, per_tick_of,
 };
 
 /// Pudge: heavy, slow, and swings by hand, at his script's numbers. His backswing the script
@@ -59,7 +59,30 @@ pub const PUDGE: UnitDef = UnitDef {
 
 const _: () = assert!(DATA.melee, "Pudge swings by hand: no projectile");
 
-/// Pudge's hero row: his body and slots, the flesh heap as his innate and no
+/// Pudge's talents, in his script's order.
+pub const PUDGE_TALENTS: TalentTree = [
+    Talent::RotSlow,
+    Talent::Armor,
+    Talent::HookDamage,
+    Talent::SpellLifesteal,
+    Talent::HookCooldown,
+    Talent::DismemberDuration,
+    Talent::FleshHeapBonuses,
+    Talent::DismemberDamage,
+];
+
+const _: () = {
+    let mut at = 0;
+    while at < PUDGE_TALENTS.len() {
+        assert!(
+            str_eq(PUDGE_TALENTS[at].key(), DATA.talents[at]),
+            "the script's tree"
+        );
+        at += 1;
+    }
+};
+
+/// Pudge's hero row: his body and slots, the flesh heap as his innate and his
 /// talents.
 pub const HERO_DEF: HeroDef = HeroDef {
     id: HeroId::PUDGE,
@@ -73,7 +96,7 @@ pub const HERO_DEF: HeroDef = HeroDef {
         AbilityId::DISMEMBER,
     ],
     innate: Some(AbilityId::FLESH_HEAP),
-    talents: None,
+    talents: Some(&PUDGE_TALENTS),
 };
 
 pub const MEAT_HOOK: AbilityDef = AbilityDef {

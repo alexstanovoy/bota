@@ -52,6 +52,7 @@ mod objectives;
 mod on_attack;
 mod orders;
 mod pudge;
+mod pudge_talents;
 mod purchase_rules;
 mod queue;
 mod runes;

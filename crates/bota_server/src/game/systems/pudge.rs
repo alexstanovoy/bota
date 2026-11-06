@@ -1,7 +1,7 @@
 //! The rot, the dismember, the meat shield and what the flesh heap keeps.
 
 use bota_core::{
-    ModifierKind, ability_def, dismember_bite_damage, hero_def, move_towards, per_tick, rules,
+    ModifierKind, Ms, ability_def, dismember_bite_damage, hero_def, move_towards, per_tick, rules,
 };
 use bota_proto::{AbilityId, DamageKind, Fixed, Inflictor, Target};
 
@@ -67,35 +67,50 @@ impl World {
         }
         let level = usize::from(self.carried_level(caster, AbilityId::DISMEMBER).max(1) - 1);
         let with = Some(Inflictor::Ability(AbilityId::DISMEMBER));
+        let channel = self
+            .talented(caster, AbilityId::DISMEMBER, "AbilityChannelTime", level)
+            .secs();
         self.put_modifier(
             on,
             Modifier::new(
                 ModifierKind::Stunned,
                 Some(caster),
                 with,
-                Some(rules::DISMEMBER_TICKS),
+                Some(channel.ticks()),
             ),
         );
-        let held = ModifierKind::Dismembered { level: level as u8 };
+        let bites = self
+            .talented(caster, AbilityId::DISMEMBER, "ticks", level)
+            .int();
+        let held = ModifierKind::Dismembered {
+            level: level as u8,
+            bites: u8::try_from(bites).expect("a dismember bites a handful of times"),
+            channel_ms: u16::try_from(channel.0).expect("a dismember holds for seconds"),
+        };
         self.put_modifier(
             on,
-            Modifier::new(held, Some(caster), with, Some(rules::DISMEMBER_TICKS)),
+            Modifier::new(held, Some(caster), with, Some(channel.ticks())),
         );
-        self.dismember_bites(caster, on, level);
+        self.dismember_bites(caster, on, (level, bites as u32, channel));
         if let Some(at) = self.pos(on) {
             self.spawn_mark(AbilityId::DISMEMBER, caster, at, 0);
         }
         true
     }
 
-    /// One bite of a dismember: magic damage by the holder's strength, which
-    /// heals the holder by what it takes.
-    pub fn dismember_bites(&mut self, caster: Entity, on: Entity, level: usize) {
+    /// One bite of a dismember of `level` (from zero) that bites `bites`
+    /// times over `channel`: magic damage by the holder's strength, which heals
+    /// the holder by what it takes. Its numbers are the holder's, talents and
+    /// all.
+    pub fn dismember_bites(&mut self, caster: Entity, on: Entity, held: (usize, u32, Ms)) {
+        let (level, bites, channel) = held;
         let strength = self
             .stats
             .get(caster)
             .map_or(Fixed::ZERO, |stats| stats.attributes.strength);
-        let amount = dismember_bite_damage(level, strength);
+        let per_second = self.talented(caster, AbilityId::DISMEMBER, "dismember_damage", level);
+        let factor = self.talented(caster, AbilityId::DISMEMBER, "strength_damage", level);
+        let amount = dismember_bite_damage(per_second, factor, strength, channel, bites);
         self.push_hit_with_effect(
             Some(caster),
             on,
@@ -135,10 +150,13 @@ impl World {
         self.forget_walk(on);
     }
 
-    /// Puts a meat shield on its caster for the level's time.
+    /// Puts a meat shield on its caster for the level's time, blocking what
+    /// the caster's talents make of the level's block.
     pub fn cast_meat_shield(&mut self, caster: Entity, level: usize) -> bool {
         let block = ModifierKind::MeatShield {
-            amount: rules::MEAT_SHIELD_BLOCK[level],
+            amount: self
+                .talented(caster, AbilityId::MEAT_SHIELD, "damage_block", level)
+                .int(),
         };
         let ticks = rules::MEAT_SHIELD_TICKS[level];
         let with = Some(Inflictor::Ability(AbilityId::MEAT_SHIELD));
@@ -183,7 +201,12 @@ impl World {
         }
         if let Some(on) = self.dismember_mark(target) {
             self.take_modifier(on, ModifierKind::Stunned, Some(caster));
-            self.take_modifier(on, ModifierKind::Dismembered { level: 0 }, Some(caster));
+            let any = ModifierKind::Dismembered {
+                level: 0,
+                bites: 0,
+                channel_ms: 0,
+            };
+            self.take_modifier(on, any, Some(caster));
         }
     }
 

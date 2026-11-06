@@ -93,3 +93,66 @@ pub const HOOK_FOLLOWTHROUGH_TICKS: u32 = {
         .int();
     crate::Ms((HOOK_RANGE * percent * 10 / HOOK_SPEED) as u32).ticks()
 };
+/// What Pudge's talents give, read from their bonuses in his values, for the clients to word.
+/// The server applies the bonuses themselves
+/// ([`AbilityValue::talented`](crate::AbilityValue::talented)).
+///
+/// Percent the rot slows more: `special_bonus_unique_pudge_4` on `rot_slow`.
+pub const TALENT_ROT_SLOW_PCT: i32 = -PUDGE_ROT
+    .value("rot_slow")
+    .bonus("special_bonus_unique_pudge_4")
+    .added()
+    .int();
+/// Damage the hook deals more: `special_bonus_unique_pudge_7` on `damage`.
+pub const TALENT_HOOK_DAMAGE: i32 = PUDGE_MEAT_HOOK
+    .value("damage")
+    .bonus("special_bonus_unique_pudge_7")
+    .added()
+    .int();
+/// Ticks the hook waits less: `special_bonus_unique_pudge_5` on its cooldown.
+pub const TALENT_HOOK_COOLDOWN_TICKS: u32 = {
+    let added = PUDGE_MEAT_HOOK
+        .value("AbilityCooldown")
+        .bonus("special_bonus_unique_pudge_5")
+        .added();
+    crate::Dec(-added.0).secs().ticks()
+};
+/// How much longer a dismember holds, and bites it takes more: `special_bonus_unique_pudge_6`.
+pub const TALENT_DISMEMBER_CHANNEL: crate::Ms = PUDGE_DISMEMBER
+    .value("AbilityChannelTime")
+    .bonus("special_bonus_unique_pudge_6")
+    .added()
+    .secs();
+pub const TALENT_DISMEMBER_BITES: u32 = PUDGE_DISMEMBER
+    .value("ticks")
+    .bonus("special_bonus_unique_pudge_6")
+    .added()
+    .int() as u32;
+/// Factors on a dismember's damage a second and on its strength's share:
+/// `special_bonus_unique_pudge_3`.
+pub const TALENT_DISMEMBER_DAMAGE_FACTOR: Fixed = fixed(
+    PUDGE_DISMEMBER
+        .value("dismember_damage")
+        .bonus("special_bonus_unique_pudge_3")
+        .factor(),
+);
+pub const TALENT_DISMEMBER_STRENGTH_FACTOR: Fixed = fixed(
+    PUDGE_DISMEMBER
+        .value("strength_damage")
+        .bonus("special_bonus_unique_pudge_3")
+        .factor(),
+);
+/// Factor on a flesh heap stack's strength and on the meat shield's block:
+/// `special_bonus_unique_pudge_1`, the same on both.
+pub const TALENT_FLESH_HEAP_FACTOR: Fixed = {
+    let heap = PUDGE_INNATE_GRAFT_FLESH
+        .value("flesh_heap_strength_buff_amount")
+        .bonus("special_bonus_unique_pudge_1")
+        .factor();
+    let shield = PUDGE_FLESH_HEAP
+        .value("damage_block")
+        .bonus("special_bonus_unique_pudge_1")
+        .factor();
+    assert!(heap.0 == shield.0);
+    fixed(heap)
+};

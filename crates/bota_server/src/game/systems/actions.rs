@@ -709,11 +709,18 @@ impl World {
     fn timing_of(&self, entity: Entity, what: PendingCast) -> Option<Timing> {
         let (point, backswing, duration) = match what {
             PendingCast::Ability { slot, target } => {
-                let def = ability_def(self.ability_in(entity, slot))?;
+                let id = self.ability_in(entity, slot);
+                let def = ability_def(id)?;
+                let level = self
+                    .abilities
+                    .get(entity)
+                    .and_then(|book| book.slot(usize::from(slot.0)))
+                    .map_or(0, |held| held.level);
+                let base = self.ability_duration(entity, id, level);
                 let duration = if def.resisted_channel {
-                    self.channel_duration(entity, target, def)
+                    self.channel_duration(entity, target, def, base)
                 } else {
-                    def.duration
+                    base
                 };
                 (def.point, def.backswing, duration)
             }
@@ -734,6 +741,7 @@ impl World {
         caster: Entity,
         target: bota_proto::Target,
         def: &bota_core::AbilityDef,
+        base: u32,
     ) -> u32 {
         let Some(on) = self.unit_aimed_at(target) else {
             return 0;
@@ -751,7 +759,7 @@ impl World {
         if self.is_channelling(caster) {
             return 0;
         }
-        super::modifiers::resisted_ticks(&self.stats, on, ModifierKind::Stunned, def.duration)
+        super::modifiers::resisted_ticks(&self.stats, on, ModifierKind::Stunned, base)
     }
 
     /// Milliseconds a cast point lasts for an entity: its own length, or

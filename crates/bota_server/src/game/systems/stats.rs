@@ -3,10 +3,11 @@
 use bota_core::{
     AMPLIFY_DAMAGE_PCT, AMPLIFY_SPELL_AMP_BP, ARCANE_COOLDOWN_CUT_BP, ARCANE_MANA_CUT_BP, Buff,
     Carried, Growth, HASTE_RUNE_SPEED, INVISIBILITY_FADE_TICKS, ModifierKind, NeutralAbility, Odds,
-    Regen, Stat, Talent, UnitDef, agility_armor, agility_attack_speed, cut_rate,
-    intelligence_magic_resist_bp, item_def, primary_damage, regen, rules, soul_damage, spell_buff,
+    Regen, Stat, TALENT_ARMOR, Talent, UnitDef, ability_def, agility_armor, agility_attack_speed,
+    cut_rate, fixed, intelligence_magic_resist_bp, item_def, primary_damage, regen, rules,
+    soul_damage, spell_buff,
 };
-use bota_proto::{Attributes, Fixed, ModifierSpec};
+use bota_proto::{AbilityId, Attributes, Fixed, ModifierSpec};
 
 use crate::game::{
     AbilityBook, AppliedModifiers, Def, Entity, EntityAllocator, Health, Illusion, Inventory,
@@ -142,13 +143,17 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         if let Some(carried) = carried {
             add_carried(&mut now, &mut sums, &carried, illusion);
         }
-        if let Some(book) = abilities.get(entity) {
+        let book = abilities.get(entity);
+        if let Some(book) = book {
             now.attributes +=
                 Attributes::all(rules::ATTRIBUTE_BONUS_POINTS * i32::from(book.attribute_bonus));
+            if book.has_talent(Talent::Armor) {
+                now.armor += kept(illusion, Fixed::from_int(TALENT_ARMOR));
+            }
         }
         // A Break leaves the flesh heap whole, and the souls held work on:
         // it only stops new souls from being gathered (Liquipedia, Break).
-        add_heap(&mut now, held(ModifierKind::flesh_heap));
+        add_heap(&mut now, held(ModifierKind::flesh_heap), book);
         from_attributes(&mut now);
         let base_armor =
             Fixed::from_ratio(kind.armor * 2 + kind.per_upgrade.armor_halves * steps, 2)
@@ -448,11 +453,18 @@ fn add_carried(now: &mut Stats, sums: &mut Sums, carried: &Carried, illusion: bo
     }
 }
 
-/// What the flesh heap has kept, worth strength by the stack. Only a hero
-/// whose innate it is keeps any.
-fn add_heap(now: &mut Stats, kept: u32) {
+/// What the flesh heap has kept, worth strength by the stack, what the
+/// keeper's talents make of it. Only a hero whose innate it is keeps any.
+fn add_heap(now: &mut Stats, kept: u32, book: Option<&AbilityBook>) {
+    if kept == 0 {
+        return;
+    }
+    let key = ability_def(AbilityId::FLESH_HEAP).map_or("", |def| def.key);
+    let per_stack = book.map_or(rules::FLESH_HEAP_STRENGTH_PER_STACK, |book| {
+        fixed(book.talented(key, "flesh_heap_strength_buff_amount", 0))
+    });
     let kept = i32::try_from(kept).unwrap_or(i32::MAX);
-    now.attributes.strength += rules::FLESH_HEAP_STRENGTH_PER_STACK * Fixed::from_int(kept);
+    now.attributes.strength += per_stack * Fixed::from_int(kept);
 }
 
 /// Adds what every working modifier on a unit is worth to its stats, each
@@ -481,9 +493,8 @@ fn add_modifiers<'a>(
                 }
             }
             ModifierKind::Slowed { pct } => sums.pace.change(-pct.clamp(0, 100)),
-            ModifierKind::Rotting { level } => {
-                sums.pace
-                    .change(-rules::ROT_SLOW_PCT[usize::from(level)].clamp(0, 100));
+            ModifierKind::Rotting { slow_pct, .. } => {
+                sums.pace.change(-i32::from(slow_pct).clamp(0, 100));
             }
             ModifierKind::BloodGrenade { .. } => {
                 let slow = grenade_of(held.inflictor).map_or(0, |spec| spec.slow_pct);
