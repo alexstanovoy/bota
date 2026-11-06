@@ -289,6 +289,7 @@ fn run_inner(
         secrets,
         rx,
         tx,
+        inbound: crate::net::InboundBudget::default(),
         conns: Vec::new(),
         parting: Vec::new(),
         live: LiveConnections::default(),
@@ -492,6 +493,7 @@ struct Server {
     rx: Receiver<NetEvent>,
     /// Cloned into every connection's reader thread; keeps `rx` open.
     tx: Sender<NetEvent>,
+    inbound: crate::net::InboundBudget,
     conns: Vec<Connection>,
     /// Connections let go that are still read on (see [`Linger`]): strangers of their source,
     /// the first to be cut short for a newcomer. One leaves once its reader has ended.
@@ -645,7 +647,9 @@ impl Server {
     /// dropped still said is not heard.
     fn hear(&mut self, event: NetEvent, in_match: bool) -> Option<(PlayerId, ClientMsg)> {
         let (id, broken) = match event {
-            NetEvent::Msg(id, msg) => return self.conn(id).is_some().then_some((id, msg)),
+            NetEvent::Msg(id, msg) => {
+                return self.conn(id).is_some().then(|| (id, msg.into_message()));
+            }
             NetEvent::Connected(stream) => {
                 self.adopt(stream);
                 return None;
@@ -733,6 +737,7 @@ impl Server {
         let id = PlayerId(self.next_player);
         self.next_player += 1;
         let terms = Terms {
+            inbound: &self.inbound,
             events: &self.tx,
             idle_timeout: self.opts.idle_timeout,
             messages_per_sec: self.opts.messages_per_sec,

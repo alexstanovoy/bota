@@ -1,5 +1,7 @@
 //! The server speaks the protocol end to end over a real socket.
 
+mod inbound;
+
 #[cfg(feature = "websocket")]
 mod pending;
 

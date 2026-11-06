@@ -28,6 +28,8 @@ pub enum Breach {
     Undecodable,
     /// More messages than the connection's allowance.
     Flood,
+    /// The consumer has not drained this peer's or the server's bounded data queue.
+    InputBacklog,
 }
 
 impl fmt::Display for Breach {
@@ -40,6 +42,7 @@ impl fmt::Display for Breach {
             Breach::Unframed => write!(f, "sent bytes that are no frame"),
             Breach::Undecodable => write!(f, "sent an undecodable message"),
             Breach::Flood => write!(f, "sent more messages than its allowance"),
+            Breach::InputBacklog => write!(f, "reached the queued client message limit"),
         }
     }
 }

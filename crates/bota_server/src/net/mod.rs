@@ -3,6 +3,7 @@
 mod allowance;
 mod conn;
 mod deflate;
+mod inbound;
 mod listeners;
 mod outbox;
 mod pending;
@@ -13,6 +14,9 @@ mod ws;
 
 pub use allowance::*;
 pub use conn::*;
+pub use inbound::{
+    InboundBudget, MAX_QUEUED_CLIENT_MESSAGES, MAX_QUEUED_MESSAGES_PER_PEER, QueuedClientMessage,
+};
 pub use listeners::*;
 pub use outbox::*;
 pub use pending::MAX_PENDING_CONNECTIONS;

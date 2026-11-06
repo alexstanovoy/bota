@@ -22,7 +22,7 @@ pub enum NetEvent {
     /// TLS and upgrade, are done.
     Connected(Box<dyn FrameStream>),
     /// A peer sent a message.
-    Msg(PlayerId, ClientMsg),
+    Msg(PlayerId, super::QueuedClientMessage),
     /// A peer's connection ended, cleanly or not.
     Disconnected(PlayerId),
     /// A peer broke the protocol, and will be heard from no more.
@@ -78,6 +78,7 @@ impl Drop for Hold {
 /// What every connection of a server is held to, and where it reports.
 pub struct Terms<'a> {
     pub events: &'a Sender<NetEvent>,
+    pub inbound: &'a super::InboundBudget,
     /// A peer that sends nothing for this long, or takes nothing of what is
     /// sent for this long, is reported gone.
     pub idle_timeout: Option<Duration>,
@@ -90,6 +91,18 @@ pub struct Terms<'a> {
     pub live: &'a LiveConnections,
     /// How long a peer let go is read on.
     pub linger: &'a Linger,
+}
+
+struct ReaderEvents {
+    channel: Sender<NetEvent>,
+    budget: Arc<super::inbound::PeerBudget>,
+}
+
+impl ReaderEvents {
+    fn data(&self, id: PlayerId, message: ClientMsg) -> Result<bool, Breach> {
+        let queued = self.budget.queue(message).ok_or(Breach::InputBacklog)?;
+        Ok(self.channel.send(NetEvent::Msg(id, queued)).is_ok())
+    }
 }
 
 impl Connection {
@@ -124,7 +137,11 @@ impl Connection {
             Arc::clone(&ticks_sent),
             Instant::now(),
         );
-        let (events, world_tick) = (terms.events.clone(), Arc::clone(terms.world_tick));
+        let events = ReaderEvents {
+            channel: terms.events.clone(),
+            budget: terms.inbound.peer(),
+        };
+        let world_tick = Arc::clone(terms.world_tick);
         let opened = Instant::now();
         let connection = Connection {
             id,
@@ -210,6 +227,10 @@ impl Connection {
 /// waits in the outbox: the simulation never sees it, so the peer times the
 /// line and not the tick.
 ///
+/// Data queue exhaustion stops this reader and reports a breach. The simulation consumes the
+/// already queued prefix, then disconnects the sender; no order is silently dropped. Terminal
+/// events are not charged to the data budget, so exhaustion cannot hide the disconnect.
+///
 /// Once the server stops listening, the reader still drains the connection
 /// until the peer hangs up, or, for a peer let go, until the writer shuts the
 /// reading side a while after its own hang-up: a socket closed with bytes
@@ -218,7 +239,7 @@ impl Connection {
 fn read_loop(
     id: PlayerId,
     mut source: Box<dyn FrameSource>,
-    events: Sender<NetEvent>,
+    events: ReaderEvents,
     mut allowance: Allowance,
     outbox: &Outbox,
     opened: Instant,
@@ -255,13 +276,16 @@ fn read_loop(
                         outbox.push_urgent(frame);
                     }
                 }
-                listened = events.send(NetEvent::Msg(id, msg)).is_ok();
+                match events.data(id, msg) {
+                    Ok(accepted) => listened = accepted,
+                    Err(breach) => break Some(breach),
+                }
             }
             Err(_) => break Some(Breach::Undecodable),
         }
     };
     if listened {
-        let _ = events.send(match breach {
+        let _ = events.channel.send(match breach {
             None => NetEvent::Disconnected(id),
             Some(breach) => NetEvent::Breached(id, breach),
         });
