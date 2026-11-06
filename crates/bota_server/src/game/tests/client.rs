@@ -719,3 +719,98 @@ fn an_observer_cannot_make_a_validated_snapshot_panic_the_fold() {
         );
     }
 }
+
+#[test]
+fn public_lair_timer_uses_death_relative_game_time_and_only_public_team_evidence() {
+    use crate::game::World;
+    use bota_client_core::LairState;
+    use bota_proto::{DamageKind, MapId, ObjectiveKind, ObjectiveSet};
+    for (seconds, expected) in [
+        (
+            0,
+            LairState::Dead {
+                remaining: 480 * 30,
+            },
+        ),
+        (479, LairState::Dead { remaining: 30 }),
+        (
+            480,
+            LairState::Possible {
+                remaining: 180 * 30,
+            },
+        ),
+        (659, LairState::Possible { remaining: 30 }),
+        (660, LairState::Alive),
+    ] {
+        let mut cfg = mid_config();
+        cfg.map = MapId(0);
+        cfg.objectives = ObjectiveSet::of(ObjectiveKind::Roshan);
+        let mut world = World::for_match(&cfg, cfg.rng());
+        world.creeps_halted = true;
+        let boss = world.lairs[0].unit.expect("boss");
+        world.push_hit(world.seats[0].unit, boss, 100000, DamageKind::Pure, None);
+        world.step();
+        let fall = world.clock();
+        if seconds > 0 {
+            world.clock_shift.game = fall + seconds * rules::TICKS_PER_SECOND - world.tick - 1;
+            world.step();
+        }
+        let mut session = session_for(&cfg.info(), 0);
+        session
+            .ingest_snapshot(world.view(Team::Radiant), &mut ())
+            .expect("fresh reconnect snapshot");
+        let status = session
+            .lair_status(0, Some(Team::Radiant))
+            .expect("lair status");
+        assert_eq!(status.state, expected, "{seconds}s after a pregame death");
+        assert_eq!(status.home, bota_core::ROSHAN_DAY_PIT);
+    }
+}
+
+#[test]
+fn public_lair_snapshot_validation_rejects_unknown_future_and_private_evidence_including_after_an_observer()
+ {
+    use crate::game::World;
+    use bota_proto::{MapId, ObjectiveKind, ObjectiveSet};
+    let mut cfg = mid_config();
+    cfg.map = MapId(0);
+    cfg.objectives = ObjectiveSet::of(ObjectiveKind::Roshan);
+    let world = World::for_match(&cfg, cfg.rng());
+    let valid = world.view(Team::Radiant);
+    type Edit = fn(&mut WorldView);
+    let cases: [(Edit, SessionError); 4] = [
+        (|v| v.lairs[0].lair = 255, SessionError::LairOutOfRange(255)),
+        (
+            |v| v.lairs[0].fell_at = Some(v.game_tick() + 1),
+            SessionError::LairTimeOutOfRange(0),
+        ),
+        (
+            |v| v.lairs[0].alive_known_by.dire = true,
+            SessionError::LairAudience(0),
+        ),
+        (
+            |v| v.lairs.push(v.lairs[0]),
+            SessionError::Stream("lair records are not strictly sorted by map index"),
+        ),
+    ];
+    for (edit, expected) in cases {
+        let mut session = session_for(&cfg.info(), 0);
+        let mut view = valid.clone();
+        edit(&mut view);
+        let error = session
+            .ingest_snapshot(view, &mut ())
+            .expect_err("invalid lair refused");
+        assert!(
+            matches!(error,IngestError::Session(ref actual) if *actual==expected),
+            "{error:?}"
+        );
+        let mut session = session_for(&cfg.info(), 0);
+        let error = session
+            .ingest_snapshot(valid.clone(), &mut Reshape(edit))
+            .expect_err("observer cannot reintroduce invalid evidence");
+        assert!(
+            matches!(error,IngestError::Session(ref actual) if *actual==expected),
+            "{error:?}"
+        );
+    }
+}

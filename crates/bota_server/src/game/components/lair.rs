@@ -11,6 +11,8 @@ pub struct Lair {
     /// A natural pit change is under way; damage never calls it off.
     pub travelling: bool,
     pub journey: Option<Journey>,
+    pub fell_at: Option<u32>,
+    pub known_alive: [bool; 2],
 }
 state_hash!(Lair {
     unit,
@@ -19,7 +21,9 @@ state_hash!(Lair {
     respawn_at,
     home,
     travelling,
-    journey
+    journey,
+    fell_at,
+    known_alive
 });
 
 /// Authoritative movement state is independent of the bounded effect store.

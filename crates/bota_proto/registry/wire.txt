@@ -737,3 +737,8 @@ field ForcedView 2 height: Fixed
 field UnitView 47 channel: Option<ChannelView>
 field ChannelView 0 ability: AbilityId
 field ChannelView 1 elapsed: u32
+
+field WorldView 18 lairs: Vec<LairView>
+field LairView 0 lair: u8
+field LairView 1 fell_at: Option<u32>
+field LairView 2 alive_known_by: SeenBy

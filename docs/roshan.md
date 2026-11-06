@@ -250,3 +250,36 @@ give no repaired coordinates. Those exact hiding spots remain unverified. The si
 uses the installed 7.41f terrain and compiled pit volumes, with explicit attack and vision
 boundary tests; that evidence establishes the current geometry source and rules, rather
 than an exact reproduction of the undocumented old spots.
+
+## Public state, timer and sounds
+
+Valve [7.38](https://www.dota2.com/patches/7.38) adds the alive/dead/possibly-alive display
+and public respawn window. Snapshots retain the last public death and each team's evidence
+of life. Seeing Roshan or hearing his global Roar confirms life until the next public death;
+respawning out of sight does not. Before eight minutes the timer counts to the first possible
+return, then to the eleven-minute guarantee. At that guarantee, alive is public inference.
+Time follows authoritative snapshots, so a paused match does not advance this timer.
+
+A side receives only its own evidence. Full spectators receive both teams' evidence; the
+client uses their union, matching the default spectator fog. Replay perspectives select the
+corresponding team's bit. The selected random respawn time and hidden unit identity are not
+in this record. Fresh snapshots therefore restore the display after reconnecting. The pit
+label uses the naturally scheduled home from the map data; exact in-transit tooltip behavior
+was not independently verified. Third Eye's exact timer requires the unsupported Templar
+Assassin and remains deferred.
+
+The installed sound events define `Roshan.RevengeRoar` with its simultaneous `.Layer`,
+`Roshan.Death`, and the default `valve_dota_001.music.roshan_end` stinger. The sound player
+keeps alternatives within each layer and throttles the logical cue once. Global death plays
+the roar and stinger, alongside the existing team announcer, independent of camera position.
+The stinger uses ordinary sound playback: the client has no background-music setting.
+The full default clip is imported; dynamic music beat transitions are not modeled.
+
+The headless status test crosses both public deadlines while outside pit vision and verifies
+that the guarantee does not fabricate a sighting. The Roar regression requires both layers
+simultaneously, and the death test moves the camera across the map before the killing attack.
+
+Valve's [December 2023 Banner fix](https://store.steampowered.com/news/app/570/view/3902996144638678168)
+states that its particles sometimes survived incorrectly. The real-server expiry and enemy
+attack scenarios require the model and every owned particle instance, including children,
+to finish. Simulator scenarios separately protect independent Banner and Glyph aura sources.

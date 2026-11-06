@@ -1,10 +1,14 @@
 //! Neutral bosses read their homes and respawn window from the map's rows.
 use crate::game::{Entity, Lair, Purpose, UnitOrder, World};
-use bota_core::{rules, time_of_day};
+use bota_core::rules;
 use bota_proto::EntityId;
 
 impl World {
     pub(crate) fn stand_up_lairs(&mut self) {
+        assert!(
+            self.map.lairs.len() <= bota_proto::limits::MAX_LAIRS,
+            "map lair definitions exceed the wire bound"
+        );
         for def in self.map.lairs {
             if !self.objectives.has(def.objective) {
                 continue;
@@ -18,6 +22,8 @@ impl World {
                 home: def.day,
                 travelling: false,
                 journey: None,
+                fell_at: None,
+                known_alive: [true, true],
             });
         }
     }
@@ -32,9 +38,7 @@ impl World {
                 .nth(index)
                 .expect("lair row");
             let clock = self.clock();
-            let night = clock >= self.schedule().horn + def.move_after * rules::TICKS_PER_SECOND
-                && time_of_day(clock, self.schedule()).night;
-            let home = if night { def.night } else { def.day };
+            let home = def.home_at(clock, self.schedule());
             if let Some(unit) = self.lairs[index].unit {
                 if home != self.lairs[index].home {
                     self.lairs[index].home = home;
@@ -90,6 +94,8 @@ impl World {
             .and_then(|killer| self.team.get(killer).copied())
             .filter(|team| *team != bota_proto::Team::Neutral);
         self.lairs[index].last_killer = team;
+        self.lairs[index].fell_at = Some(self.clock());
+        self.lairs[index].known_alive = [false, false];
         self.events.push(crate::game::Event::Fact {
             kind: bota_proto::EventKind::BossFell {
                 objective: def.objective,
@@ -171,5 +177,52 @@ impl World {
         for (unit, item) in recovered {
             self.recover_expired_item(unit, item);
         }
+    }
+}
+
+impl World {
+    /// Sightings are observed for both teams every tick, independent of requested views.
+    pub(crate) fn note_lair_sightings(&mut self) {
+        for index in 0..self.lairs.len() {
+            let Some(unit) = self.lairs[index].unit.filter(|u| self.alive(*u)) else {
+                continue;
+            };
+            let observed = [
+                self.shows(bota_proto::Team::Radiant, unit),
+                self.shows(bota_proto::Team::Dire, unit),
+            ];
+            for (known, seen) in self.lairs[index].known_alive.iter_mut().zip(observed) {
+                *known |= seen;
+            }
+        }
+    }
+    pub(crate) fn project_lairs(
+        &self,
+        viewer: Option<bota_proto::Team>,
+    ) -> Vec<bota_proto::LairView> {
+        let definitions = self
+            .map
+            .lairs
+            .iter()
+            .enumerate()
+            .filter(|(_, def)| self.objectives.has(def.objective));
+        debug_assert_eq!(
+            self.lairs.len(),
+            definitions.clone().count(),
+            "enabled lairs match their definitions"
+        );
+        assert!(self.lairs.len() <= bota_proto::limits::MAX_LAIRS);
+        definitions
+            .zip(&self.lairs)
+            .map(|((index, _), lair)| bota_proto::LairView {
+                lair: u8::try_from(index).expect("bounded map lair index"),
+                fell_at: lair.fell_at,
+                alive_known_by: bota_proto::SeenBy {
+                    radiant: lair.known_alive[0]
+                        && viewer.is_none_or(|t| t == bota_proto::Team::Radiant),
+                    dire: lair.known_alive[1] && viewer.is_none_or(|t| t == bota_proto::Team::Dire),
+                },
+            })
+            .collect()
     }
 }

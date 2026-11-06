@@ -50,3 +50,18 @@ pub struct Contact {
     pub effect: bota_proto::EffectId,
     pub timeout_effect: bota_proto::EffectId,
 }
+
+impl LairDef {
+    /// The publicly scheduled home; artificial sky changes do not change it.
+    pub fn home_at(&self, clock: u32, schedule: crate::rules::Schedule) -> Vec2 {
+        let starts = schedule.horn.saturating_add(
+            self.move_after
+                .saturating_mul(crate::rules::TICKS_PER_SECOND),
+        );
+        if clock >= starts && crate::time_of_day(clock, schedule).night {
+            self.night
+        } else {
+            self.day
+        }
+    }
+}

@@ -1690,6 +1690,8 @@ fn migrating_boss_on_open_ground() -> (World, crate::game::Entity, crate::game::
         home: LAIR.day,
         travelling: false,
         journey: None,
+        fell_at: None,
+        known_alive: [true, true],
     });
     let hero = seated_hero(
         &mut world,
@@ -2886,5 +2888,118 @@ fn pit_roshan_clears_a_visible_ward_before_chasing_a_distant_provoker_but_prefer
         world.settle();
         world.step();
         assert_eq!(world.target_of(boss), Some(if near { hero } else { ward }));
+    }
+}
+
+fn public_lair(world: &World, team: bota_proto::Team) -> bota_proto::LairView {
+    *world.view(team).lairs.first().expect("enabled lair")
+}
+
+#[test]
+fn public_lair_knowledge_keeps_hidden_respawns_private_and_persists_only_the_viewing_teams_sighting()
+ {
+    use bota_proto::{DamageKind, Team, Vec2};
+    let mut world = match_with_roshan();
+    let first = boss(&world);
+    let hero = world.seats[0].unit.expect("hero");
+    let initial = public_lair(&world, Team::Radiant);
+    assert_eq!(initial.lair, 0);
+    assert!(initial.alive_known_by.radiant);
+    assert!(!initial.alive_known_by.dire);
+    assert_eq!(initial.fell_at, None);
+    world.push_hit(Some(hero), first, 100000, DamageKind::Pure, None);
+    world.step();
+    let fall = world.clock();
+    assert_eq!(public_lair(&world, Team::Radiant).fell_at, Some(fall));
+    assert!(!public_lair(&world, Team::Radiant).alive_known_by.radiant);
+    let due = world.lairs[0].respawn_at;
+    world.clock_shift.game = due - world.tick - 1;
+    world.step();
+    let returned = boss(&world);
+    assert!(world.alive(returned));
+    for team in [Team::Radiant, Team::Dire] {
+        let view = world.view(team);
+        assert!(
+            !view
+                .units
+                .iter()
+                .any(|u| u.kind == bota_proto::UnitKind::Roshan)
+        );
+        let proof = public_lair(&world, team);
+        assert_eq!(proof.fell_at, Some(fall));
+        assert!(!proof.alive_known_by.radiant);
+        assert!(!proof.alive_known_by.dire);
+    }
+    let fingerprint = world.hash();
+    for _ in 0..3 {
+        let _ = world.view_full();
+        let _ = world.view(Team::Radiant);
+        let _ = world.view(Team::Dire);
+    }
+    assert_eq!(
+        world.hash(),
+        fingerprint,
+        "asking for views does not discover the hidden boss"
+    );
+    let at = world.pos(returned).expect("boss");
+    world.transform.get_mut(hero).expect("hero").pos = at + Vec2::from_ints(100, 0);
+    world.settle();
+    assert!(public_lair(&world, Team::Radiant).alive_known_by.radiant);
+    assert!(
+        !public_lair(&world, Team::Dire).alive_known_by.radiant,
+        "the other team's proof is not sent"
+    );
+    assert!(!public_lair(&world, Team::Dire).alive_known_by.dire);
+    world.transform.get_mut(hero).expect("hero").pos = world.map.fountains[0];
+    world.settle();
+    assert!(
+        public_lair(&world, Team::Radiant).alive_known_by.radiant,
+        "knowledge survives loss of sight and reconnect snapshots"
+    );
+    world.push_hit(None, returned, 100000, DamageKind::Pure, None);
+    world.step();
+    assert!(public_lair(&world, Team::Radiant).fell_at.expect("fall") > fall);
+    assert!(!public_lair(&world, Team::Radiant).alive_known_by.radiant);
+}
+
+#[test]
+fn public_lair_roar_confirms_life_globally_but_a_death_in_the_same_tick_clears_the_evidence() {
+    use bota_proto::{DamageKind, EventKind, Team, Vec2};
+    for dies in [false, true] {
+        let mut world = match_with_roshan();
+        let first = boss(&world);
+        let hero = world.seats[0].unit.expect("hero");
+        world.push_hit(Some(hero), first, 100000, DamageKind::Pure, None);
+        world.step();
+        let due = world.lairs[0].respawn_at;
+        world.clock_shift.game = due - world.tick - 1;
+        world.step();
+        let returned = boss(&world);
+        let at = world.pos(returned).expect("boss");
+        world.transform.get_mut(hero).expect("hero").pos = at + Vec2::from_ints(-500, 0);
+        world.settle();
+        assert!(!world.can_see(Team::Radiant, returned));
+        world.push_hit(Some(hero), returned, 1500, DamageKind::Pure, None);
+        world.step();
+        if dies {
+            world.push_hit(Some(hero), returned, 100000, DamageKind::Pure, None);
+        }
+        let events = world.step();
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e.kind(), EventKind::BossRoared { .. }))
+        );
+        assert_eq!(
+            events
+                .iter()
+                .any(|e| matches!(e.kind(), EventKind::BossFell { .. })),
+            dies
+        );
+        assert_eq!(
+            public_lair(&world, Team::Radiant).alive_known_by.radiant,
+            !dies
+        );
+        assert_eq!(public_lair(&world, Team::Dire).alive_known_by.dire, !dies);
     }
 }

@@ -179,6 +179,9 @@ pub enum SessionError {
     CastOutOfRange(EntityId),
     ForcedOutOfRange(EntityId),
     ChannelOutOfRange(EntityId),
+    LairOutOfRange(u8),
+    LairTimeOutOfRange(u8),
+    LairAudience(u8),
     /// A tree index did not refer to static match trees.
     InvalidFelledTree(u32),
     /// Position displacement did not fit the wire vector type.
@@ -497,6 +500,15 @@ impl SessionError {
                 f,
                 "an effect on {} has more time left than its full length",
                 Id(*id)
+            ),
+            Self::LairOutOfRange(index) => write!(f, "map lair {index} is absent or disabled"),
+            Self::LairTimeOutOfRange(index) => write!(
+                f,
+                "map lair {index} reports a death later than the game clock"
+            ),
+            Self::LairAudience(index) => write!(
+                f,
+                "map lair {index} reports another team's private evidence"
             ),
             Self::ChannelOutOfRange(id) => write!(
                 f,

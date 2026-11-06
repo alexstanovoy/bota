@@ -766,6 +766,9 @@ pub struct WorldView {
     /// the wire.
     #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_LOTUS_POOLS }>")]
     pub pools: Vec<PoolView>,
+    /// Public death times and persistent sightings of enabled map lairs, sorted by map index.
+    #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_LAIRS }>")]
+    pub lairs: Vec<LairView>,
 }
 
 /// How far cheats moved the clocks of a match: the game clock (`-startgame`)
@@ -805,4 +808,15 @@ impl WorldView {
         let at = self.players.binary_search_by_key(&slot, |p| p.slot).ok()?;
         self.players.get(at)
     }
+}
+
+/// Public evidence about one boss. The selected respawn time and hidden unit are absent.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LairView {
+    /// Index into the current map's lair definitions.
+    pub lair: u8,
+    /// Most recent public death on the authoritative game clock.
+    pub fell_at: Option<u32>,
+    /// Teams that have seen or heard him alive since that death. A side receives only its bit.
+    pub alive_known_by: SeenBy,
 }

@@ -38,3 +38,6 @@ pub const MAX_SHOP_ZONE_CORNERS: usize = 32;
 pub const HERO_ITEM_SLOTS: usize = INVENTORY_SLOTS + BACKPACK_SLOTS;
 /// A courier's bag: an inventory, no backpack.
 pub const COURIER_ITEM_SLOTS: usize = INVENTORY_SLOTS;
+
+/// Enabled boss lairs retained by one match and snapshot.
+pub const MAX_LAIRS: usize = 8;

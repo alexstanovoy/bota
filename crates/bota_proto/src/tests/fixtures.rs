@@ -327,6 +327,14 @@ pub fn world_view(creeps: u32) -> WorldView {
             lotuses: 4,
             next_in: Some(1200),
         }],
+        lairs: vec![LairView {
+            lair: 0,
+            fell_at: Some(1200),
+            alive_known_by: SeenBy {
+                radiant: true,
+                dire: false,
+            },
+        }],
     }
 }
 
@@ -587,6 +595,7 @@ pub fn empty_world_view() -> WorldView {
         clock: None,
         runes: Vec::new(),
         pools: Vec::new(),
+        lairs: Vec::new(),
     }
 }
 

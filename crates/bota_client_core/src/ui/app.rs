@@ -290,6 +290,8 @@ pub enum CueKind {
     Undeniable(Undeniable),
     /// The local Quickbuy plan has reached its safety bound.
     QuickBuyFull,
+    /// A boss's public fall, sounded globally.
+    BossDeath(bota_proto::ObjectiveKind),
 }
 
 /// A cue's kind, gain and optional world position. A positional event retains `told`
@@ -877,6 +879,11 @@ impl App {
         }
         // A spectator's fog is whatever eyes the snapshot came through.
         self.view()?.viewer
+    }
+
+    /// Boss information through the same eyes as the current fog, including replay POV.
+    pub fn lair_status(&self, index: u8) -> Option<crate::LairStatus> {
+        self.session()?.lair_status(index, self.fog_team())
     }
 
     /// Whether our living hero or personal courier physically reaches the home shop.

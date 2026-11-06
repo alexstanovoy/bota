@@ -258,3 +258,26 @@ fn death_credit_event_batches_keep_the_decoded_memory_limit() {
         postcard::Error::SerdeDeCustom
     );
 }
+
+#[test]
+fn a_snapshot_lair_list_is_bounded_before_it_is_folded() {
+    let mut view = empty_world_view();
+    let lair = LairView {
+        lair: 0,
+        fell_at: None,
+        alive_known_by: SeenBy {
+            radiant: false,
+            dire: false,
+        },
+    };
+    view.lairs = vec![lair; limits::MAX_LAIRS];
+    assert_eq!(roundtrip(&view), view);
+    view.lairs.push(lair);
+    let frame = encode_frame_to_vec(&view).expect("small encoded frame");
+    let mut reader = FrameReader::new();
+    reader.push(&frame);
+    assert_eq!(
+        reader.next_message::<WorldView>(),
+        Err(CodecError::Malformed)
+    );
+}

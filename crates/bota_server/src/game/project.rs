@@ -124,6 +124,7 @@ impl World {
             clock: self.clock_shift(),
             runes,
             pools: self.project_pools(),
+            lairs: self.project_lairs(viewer),
         };
         debug_assert!(within_limits(&view), "a view past the protocol's bounds");
         view
@@ -648,6 +649,7 @@ fn within_limits(view: &WorldView) -> bool {
         && view.players.len() <= MAX_SEATS
         && view.loot.len() <= MAX_SNAPSHOT_LOOT
         && view.runes.len() <= MAX_SNAPSHOT_RUNES
+        && view.lairs.len() <= MAX_LAIRS
         && view.felled_trees.len() <= MAX_STATIC_TREES
         && view.planted_trees.len() <= MAX_PLANTED_TREES
         && view.stock.len() <= 2 * MAX_SHOP_ENTRIES

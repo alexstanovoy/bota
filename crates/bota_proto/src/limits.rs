@@ -127,6 +127,8 @@ limits! {
     MAX_SHOP_ZONE_CORNERS: usize = crate::game_limits::MAX_SHOP_ZONE_CORNERS;
     /// At most one bounty, assist share and flagbearer bonus per seat.
     MAX_DEATH_GOLD_AWARDS: usize = crate::game_limits::MAX_DEATH_GOLD_AWARDS;
+    /// Most enabled boss lairs in one snapshot.
+    MAX_LAIRS: usize = crate::game_limits::MAX_LAIRS;
 }
 
 pub use crate::game_limits::{COURIER_ITEM_SLOTS, HERO_ITEM_SLOTS};
@@ -157,6 +159,7 @@ const _: () = {
     assert!(MAX_SNAPSHOT_LOOT * size_of::<crate::LootView>() <= MAX_DECODED_BYTES);
     assert!(MAX_SNAPSHOT_RUNES * size_of::<crate::RuneView>() <= MAX_DECODED_BYTES);
     assert!(MAX_PROJECTILES * size_of::<crate::ProjectileView>() <= MAX_DECODED_BYTES);
+    assert!(MAX_LAIRS * size_of::<crate::LairView>() <= MAX_DECODED_BYTES);
     assert!(MAX_SHOP_ENTRIES * size_of::<crate::ShopEntry>() <= MAX_DECODED_BYTES);
     assert!(
         MAX_SECRET_SHOPS

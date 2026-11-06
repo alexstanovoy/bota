@@ -874,6 +874,7 @@ impl World {
             );
         }
         self.note_sightings();
+        self.note_lair_sightings();
     }
 
     /// Notes on each seat what every side shown its hero now saw of it, for

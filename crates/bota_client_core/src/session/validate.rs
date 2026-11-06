@@ -35,6 +35,7 @@ pub(crate) struct Expect<'a> {
 /// observer did, it holds by construction.
 pub(crate) fn reshaped(expect: &Expect<'_>, view: &WorldView) -> Result<(), SessionError> {
     snapshot_limits(view)?;
+    lairs(expect, view)?;
     skipped_ticks(expect, view)?;
     units(
         expect.statics.roster(),
@@ -59,6 +60,7 @@ pub(crate) fn snapshot(expect: &Expect<'_>, view: &WorldView) -> Result<(), Sess
         });
     }
     snapshot_limits(view)?;
+    lairs(expect, view)?;
     seen_by(view)?;
     withheld(view)?;
     skipped_ticks(expect, view)?;
@@ -302,6 +304,11 @@ fn snapshot_limits(view: &WorldView) -> Result<(), SessionError> {
     check_limit("WorldView.loot", view.loot.len(), MAX_SNAPSHOT_LOOT)?;
     check_limit("WorldView.runes", view.runes.len(), MAX_SNAPSHOT_RUNES)?;
     check_limit("WorldView.pools", view.pools.len(), MAX_LOTUS_POOLS)?;
+    check_limit(
+        "WorldView.lairs",
+        view.lairs.len(),
+        bota_proto::limits::MAX_LAIRS,
+    )?;
     // Two sides' shelves for every item of the shop at most.
     check_limit("WorldView.stock", view.stock.len(), 2 * MAX_SHOP_ITEMS)?;
     check_limit(
@@ -753,6 +760,38 @@ fn restoration_reports(events: &[EventKind]) -> Result<(), SessionError> {
                     return Err(SessionError::RestorationReport { channel, amount });
                 }
             }
+        }
+    }
+    Ok(())
+}
+
+fn lairs(expect: &Expect<'_>, view: &WorldView) -> Result<(), SessionError> {
+    let metadata = expect.statics.metadata();
+    let map = bota_core::map_of(metadata.map);
+    let mut previous = None;
+    for lair in &view.lairs {
+        if !map
+            .lairs
+            .get(usize::from(lair.lair))
+            .is_some_and(|def| metadata.objectives.has(def.objective))
+        {
+            return Err(SessionError::LairOutOfRange(lair.lair));
+        }
+        if previous.is_some_and(|p| p >= lair.lair) {
+            return Err(SessionError::Stream(
+                "lair records are not strictly sorted by map index",
+            ));
+        }
+        previous = Some(lair.lair);
+        if lair.fell_at.is_some_and(|tick| tick > view.game_tick()) {
+            return Err(SessionError::LairTimeOutOfRange(lair.lair));
+        }
+        if view.viewer.is_some_and(|team| match team {
+            Team::Radiant => lair.alive_known_by.dire,
+            Team::Dire => lair.alive_known_by.radiant,
+            Team::Neutral => lair.alive_known_by.radiant || lair.alive_known_by.dire,
+        }) {
+            return Err(SessionError::LairAudience(lair.lair));
         }
     }
     Ok(())

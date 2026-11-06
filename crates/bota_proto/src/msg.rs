@@ -503,6 +503,10 @@ pub enum Codec {
 
 /// Anything the server can say to a participant.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "Snapshots dominate the stream; keeping the bounded view inline avoids an extra allocation per tick"
+)]
 pub enum ServerMsg {
     /// Accepts a [`ClientMsg::Hello`] and states the terms of the match.
     Welcome {

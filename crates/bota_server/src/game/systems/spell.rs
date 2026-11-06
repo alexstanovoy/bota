@@ -229,7 +229,15 @@ impl World {
         if let Some(index) = self.lairs.iter().position(|l| l.unit == Some(cast.caster))
             && let Some(team) = self.lairs[index].last_killer
         {
-            let objective = self.map.lairs[index].objective;
+            self.lairs[index].known_alive = [true, true];
+            let objective = self
+                .map
+                .lairs
+                .iter()
+                .filter(|def| self.objectives.has(def.objective))
+                .nth(index)
+                .expect("lair definition")
+                .objective;
             self.events.push(crate::game::Event::Fact {
                 kind: bota_proto::EventKind::BossRoared { objective, team },
                 visible_to: crate::game::EventVisibility::Everyone,
