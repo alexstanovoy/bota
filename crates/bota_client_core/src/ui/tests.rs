@@ -126,6 +126,7 @@ fn a_unit() -> UnitView {
         hit_health: None,
         vision_grant: None,
         cast_rates: None,
+        gathering: None,
         seen_by: None,
         attack_range: Fixed::from_int(600),
         attack_time: 1700,

@@ -353,6 +353,25 @@ pub struct UnitView {
     /// shortens them lowers them. Absent while both are the table's own, which most units'
     /// always are. [`AbilityView::mana_cost`] is already worked out under the second.
     pub cast_rates: Option<(i32, i32)>,
+    /// The countdown a side runs by standing near this map objective (a Shrine of Wisdom
+    /// gathered, a lotus plucked from a Lotus Pool), as Dota's ring on the ground shows it to
+    /// whoever sees the objective: the server's particle on the building itself
+    /// (`experience_shrine_active`, the progress circle), no side's alone; "a ring particle
+    /// effect indicates the gathering time ... also pauses when an enemy interrupts" (Liquipedia,
+    /// *Shrine of Wisdom*; *Lotus Pool*: "also reverses"). Absent while none runs. Last on the
+    /// wire.
+    pub gathering: Option<GatheringView>,
+}
+
+/// A countdown a side runs by standing near a map objective.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct GatheringView {
+    /// The side it runs for.
+    pub side: Team,
+    /// Ticks it has run: it runs back while the side is gone or contested.
+    pub progress: u32,
+    /// Ticks it runs to its end.
+    pub ticks: u32,
 }
 
 /// A cast in its cast point.

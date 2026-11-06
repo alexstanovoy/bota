@@ -586,15 +586,28 @@ impl World {
         world
     }
 
-    /// Lays what stands on the ground afresh: every standing structure and
-    /// tree, at its collision size.
+    /// Whether heroes walk onto and through a unit, its kind's
+    /// [`walkable`](bota_core::KindDef::walkable): neither an obstacle laid on
+    /// the ground nor a body.
+    pub(crate) fn walked_through(&self, entity: Entity) -> bool {
+        self.kind
+            .get(entity)
+            .is_some_and(|kind| bota_core::kind_def(*kind).walkable)
+    }
+
+    /// Lays what stands on the ground afresh: every standing structure but
+    /// what is walked through ([`World::walked_through`]) and every tree, at
+    /// its collision size.
     pub fn lay_passability(&mut self) {
         let mut circles = Vec::new();
         for entity in self.entities.iter() {
             let Some(kind) = self.kind.get(entity).copied() else {
                 continue;
             };
-            if !bota_core::kind_def(kind).structure || !self.alive(entity) {
+            if !bota_core::kind_def(kind).structure
+                || !self.alive(entity)
+                || self.walked_through(entity)
+            {
                 continue;
             }
             let (Some(at), Some(hull)) = (self.transform.get(entity), self.hull.get(entity)) else {

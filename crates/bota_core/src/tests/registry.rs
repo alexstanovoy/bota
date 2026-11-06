@@ -45,3 +45,15 @@ fn every_row_is_its_registry_line() {
             .map(|row| (row.kind.id().0, row.unit, false)),
     );
 }
+
+/// Walkability is said of a kind, never read off a size: the Shrine of Wisdom alone is walked
+/// onto, and no other kind, however small its hull, is taken for walkable.
+#[test]
+fn only_the_shrine_of_wisdom_is_walked_onto() {
+    let walkable: Vec<_> = crate::UNIT_KINDS
+        .iter()
+        .filter(|def| def.walkable)
+        .map(|def| def.kind)
+        .collect();
+    assert_eq!(walkable, [bota_proto::UnitKind::Shrine]);
+}

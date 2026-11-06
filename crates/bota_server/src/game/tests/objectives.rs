@@ -465,6 +465,59 @@ fn a_move_beside_the_shrine_watcher_routes_to_its_far_side_on_both_maps() {
     }
 }
 
+/// What is walked through is said by its kind: a Watcher stripped of its hull's size is still a
+/// body and an obstacle, the Shrine beside it neither.
+#[test]
+fn a_hull_of_no_size_is_no_walkable_ground() {
+    let mut world = watcher_path_match(MapId(0));
+    let map = map_of(MapId(0));
+    let watcher = the(&world, UnitKind::Watcher, map.watchers[9]);
+    let shrine = the(&world, UnitKind::Shrine, map.shrines[0]);
+    world.hull.get_mut(watcher).expect("a hull").collision = bota_proto::Fixed::ZERO;
+    world.lay_passability();
+    world.lay_bodies();
+    let is_body = |world: &World, unit: Entity| {
+        let at = world.transform.get(unit).expect("standing").pos;
+        let mut found = false;
+        world
+            .bodies
+            .near(at, rules::units(1), |body| found |= body.entity == unit);
+        found
+    };
+    assert!(is_body(&world, watcher), "a Watcher of no size is a body");
+    assert!(!is_body(&world, shrine), "the Shrine is no body");
+    assert!(!world.walked_through(watcher));
+    assert!(world.walked_through(shrine));
+}
+
+/// A Shrine of Wisdom is a plaza heroes walk onto and stand in, as in Dota: a hero sent to its
+/// middle gets there (it stopped at the Shrine's hull, 112 short).
+#[test]
+fn a_hero_walks_onto_a_shrine_of_wisdom_and_stands_in_its_middle() {
+    for map in [MapId(0), MapId(2)] {
+        for at in map_of(map).shrines {
+            let mut world = watcher_path_match(map);
+            let unit = hero(&world, 0);
+            place_hero(&mut world, 0, *at + Vec2::from_ints(-300, 0));
+            give(
+                &mut world,
+                &[(
+                    0,
+                    Order::Move {
+                        target: Target::Pos(*at),
+                    },
+                )],
+            );
+            run(&mut world, 8 * rules::TICKS_PER_SECOND);
+            let pos = world.transform.get(unit).expect("standing").pos;
+            assert!(
+                pos.within(*at, rules::units(24)),
+                "map {map:?}: stopped at {pos:?}, the Shrine's middle {at:?}"
+            );
+        }
+    }
+}
+
 fn watcher_path_match(map: MapId) -> World {
     let mut cfg = config();
     cfg.map = map;
@@ -487,7 +540,7 @@ fn objectives_block_path_planning_after_spawn_on_both_maps() {
             let kind = *world.kind.get(unit).expect("a kind");
             if !matches!(
                 kind,
-                UnitKind::Watcher | UnitKind::Shrine | UnitKind::Outpost | UnitKind::LotusPool
+                UnitKind::Watcher | UnitKind::Outpost | UnitKind::LotusPool
             ) {
                 continue;
             }
@@ -577,6 +630,30 @@ fn gathered(events: &[Event]) -> Option<(Team, i32, Option<EntityId>)> {
         EventKind::ShrineActivated { team, xp, by, .. } => Some((team, xp, by)),
         _ => None,
     })
+}
+
+/// A Shrine's countdown is told to whoever sees the Shrine, as Dota's ring on the ground shows
+/// it: absent while none runs, then the side running it, how far and how long it is.
+#[test]
+fn a_shrines_countdown_is_told_to_both_sides_as_it_runs() {
+    let (mut world, shrine) = the_shrine_before(1, 1, &[Team::Radiant, Team::Dire]);
+    let at = world.transform.get(shrine).expect("standing").pos;
+    for viewer in [None, Some(Team::Radiant), Some(Team::Dire)] {
+        assert_eq!(shown(&world, viewer, shrine).gathering, None, "{viewer:?}");
+    }
+    place_hero(&mut world, 0, at + Vec2::from_ints(200, 0));
+    run(&mut world, rules::TICKS_PER_SECOND);
+    let told = shown(&world, None, shrine).gathering.expect("running");
+    assert_eq!(told.side, Team::Radiant);
+    assert_eq!(told.ticks, SHRINE_COUNTDOWN_TICKS);
+    assert!(told.progress > 0 && told.progress < told.ticks, "{told:?}");
+    for viewer in [Some(Team::Radiant), Some(Team::Dire)] {
+        assert_eq!(
+            shown(&world, viewer, shrine).gathering,
+            Some(told),
+            "{viewer:?}"
+        );
+    }
 }
 
 #[test]

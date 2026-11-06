@@ -72,6 +72,14 @@ pub struct KindDef {
     /// `ability_capture` or `ability_lamp_use`. Absent for a kind a click
     /// only attacks or follows.
     pub interact: Option<AbilityId>,
+    /// A player may pick it with the mouse: select it, hover it, aim at it. Not a Shrine of
+    /// Wisdom or a Lotus Pool, untargetable objectives that are part of the map in Dota
+    /// ([PN 7.38]: Lotus Pools "are no longer targetable buildings, and are now part of the
+    /// map"; Liquipedia, *Shrine of Wisdom* and *Lotus Pool*: "Untargetable").
+    pub selectable: bool,
+    /// Heroes walk onto it and stand in it: it is neither an obstacle laid on the ground nor a
+    /// body to bump into, whatever its hull. A Shrine of Wisdom, a plaza in Dota 7.41f.
+    pub walkable: bool,
 }
 
 /// A kind that is none of the special things, so a row names only what sets
@@ -97,6 +105,8 @@ const PLAIN: KindDef = KindDef {
     breaks_regen: false,
     glyphed_for: None,
     interact: None,
+    selectable: true,
+    walkable: false,
 };
 
 const fn lane_creep(kind: UnitKind, name: &'static str, attack_class: AttackClass) -> KindDef {
@@ -223,8 +233,15 @@ pub const UNIT_KINDS: [KindDef; 17] = [
         interact: Some(AbilityId::LAMP_USE),
         ..objective(UnitKind::Watcher, "Watcher", false)
     },
-    objective(UnitKind::Shrine, "Shrine of Wisdom", false),
-    objective(UnitKind::LotusPool, "Lotus Pool", false),
+    KindDef {
+        selectable: false,
+        walkable: true,
+        ..objective(UnitKind::Shrine, "Shrine of Wisdom", false)
+    },
+    KindDef {
+        selectable: false,
+        ..objective(UnitKind::LotusPool, "Lotus Pool", false)
+    },
 ];
 
 const _: () = {

@@ -690,3 +690,7 @@ field EventKind::Died 7 credited_hero: Option<EntityId>
 field EventKind::ItemUsed 3 target: Option<EntityId>
 field EventKind::Landed 3 missile: Option<EntityId>
 field EventKind::Damaged 5 removal: bool
+field GatheringView 0 side: Team
+field GatheringView 1 progress: u32
+field GatheringView 2 ticks: u32
+field UnitView 44 gathering: Option<GatheringView>

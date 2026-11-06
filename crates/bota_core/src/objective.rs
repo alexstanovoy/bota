@@ -239,11 +239,14 @@ pub const DOTA_SHRINES: [Vec2; 2] = [
 ];
 
 /// A Shrine of Wisdom: an invulnerable building of the neutral team with no
-/// sight, on the filler hull [U:21855-21914; LIQ Shrine of Wisdom].
+/// sight, a plaza with no body that heroes walk onto and stand in, as Dota
+/// 7.41f plays it (the filler hull of its `BoundsHullName` [U:21855-21914]
+/// blocks nothing there; its kind is `walkable`), with the filler's bound
+/// [LIQ Shrine of Wisdom].
 pub const SHRINE: UnitDef = UnitDef {
     kind: UnitKind::Shrine,
     max_hp: SHRINE_HP,
-    collision: rules::FILLER_COLLISION,
+    collision: 0,
     bound: rules::FILLER_BOUND,
     invulnerable: true,
     ..BARE_UNIT

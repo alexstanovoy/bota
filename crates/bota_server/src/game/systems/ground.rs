@@ -18,7 +18,8 @@ impl World {
     }
 
     /// Every entity with a hull as a body where it stands now, in entity
-    /// order, in the reused body buffer.
+    /// order, in the reused body buffer, but what is walked through
+    /// ([`World::walked_through`]: a Shrine of Wisdom).
     fn take_bodies(&mut self) -> Vec<Body> {
         let mut bodies = std::mem::take(&mut self.body_scratch);
         bodies.clear();
@@ -26,6 +27,9 @@ impl World {
             let (Some(hull), Some(at)) = (self.hull.get(entity), self.transform.get(entity)) else {
                 continue;
             };
+            if self.walked_through(entity) {
+                continue;
+            }
             let fixed = self
                 .stats
                 .get(entity)
