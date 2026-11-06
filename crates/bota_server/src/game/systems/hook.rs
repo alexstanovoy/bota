@@ -44,6 +44,7 @@ impl World {
             hook,
             Hook {
                 owner: caster,
+                from,
                 aim,
                 speed: Fixed::from_int(rules::HOOK_SPEED),
                 reach_left: reach,
@@ -92,13 +93,15 @@ impl World {
             }
             let step = per_tick(hook.speed);
             if hook.returning {
-                let next = move_towards(at, home, step);
-                self.put_at(entity, next, home);
+                // It comes back to where it was thrown from, wherever its
+                // thrower has gone (Dota, 2013-09-23).
+                let next = move_towards(at, hook.from, step);
+                self.put_at(entity, next, hook.from);
                 self.lay_chain(&hook, home, next);
                 if let Some(caught) = hook.caught {
                     self.drag(entity, hook.owner, caught, next);
                 }
-                if next == home {
+                if next == hook.from {
                     self.let_go(entity);
                     continue;
                 }

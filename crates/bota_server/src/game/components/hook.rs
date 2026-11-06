@@ -7,10 +7,12 @@ use crate::engine::state_hash;
 /// A hook thrown out and on its way somewhere.
 ///
 /// It flies out until it catches something or runs out of reach, then comes
-/// back to whoever threw it, dragging what it caught.
+/// back to where it was thrown from, dragging what it caught.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Hook {
     pub owner: Entity,
+    /// Where it was thrown from, which it comes back to.
+    pub from: Vec2,
     /// The spot it flies out at.
     pub aim: Vec2,
     /// World units a second.
@@ -34,6 +36,7 @@ pub struct Hook {
 
 state_hash!(Hook {
     owner,
+    from,
     aim,
     speed,
     reach_left,

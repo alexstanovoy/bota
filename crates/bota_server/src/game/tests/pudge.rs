@@ -235,6 +235,50 @@ fn a_hook_saves_an_allied_creep_without_damage_or_execution() {
     ));
 }
 
+/// A hook pulls what it caught to where it was thrown from, wherever its thrower has gone
+/// since (Valve 2013-09-23: "Meat Hook now pulls the target to the initial hook position
+/// regardless of where Pudge is"; Liquipedia: to "the ability cast location").
+#[test]
+fn a_hook_pulls_to_where_it_was_thrown_from_not_to_its_thrower() {
+    let (mut world, pudge, mark) = pudge_and_a_hero_mark(1200);
+    let home = world.pos(pudge).expect("Pudge stands");
+    cast(&mut world, 0, Target::Pos(home + Vec2::from_ints(1200, 0)));
+    until_the_hook_flies(&mut world);
+    for _ in 0..rules::TICKS_PER_SECOND {
+        if hook_holds(&world) {
+            break;
+        }
+        world.step();
+    }
+    assert!(hook_holds(&world), "the hook latches");
+    // Freed by the latch, Pudge walks off north while the hook comes back.
+    seat_order(
+        &mut world,
+        Order::Move {
+            target: Target::Pos(home + Vec2::from_ints(0, 600)),
+        },
+    );
+    for _ in 0..rules::TICKS_PER_SECOND * 2 {
+        if !hook_flying(&world) {
+            break;
+        }
+        world.step();
+    }
+    assert!(!hook_flying(&world), "the hook is back");
+    let landed = world.pos(mark).expect("standing");
+    assert!(
+        landed.within(home, Fixed::from_int(60)),
+        "the mark lands where the hook was thrown: {landed:?} from {home:?}"
+    );
+    assert!(
+        !world
+            .pos(pudge)
+            .expect("standing")
+            .within(home, Fixed::from_int(150)),
+        "while Pudge has walked off"
+    );
+}
+
 /// A hooked ally is dragged, not stunned: whatever it channels goes on (Valve 2011-11-17:
 /// "Fixed Meat Hook interrupting allied channel abilities"; Liquipedia: the hook "neither
 /// stuns nor damages the affected allied unit").
