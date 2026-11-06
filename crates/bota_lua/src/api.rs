@@ -104,6 +104,7 @@ fn install_actions(lua: &mut Lua, methods: TableId, state: Shared, _vectors: Vec
                 "Action_UseAbility" | "Action_UseAbilityOnEntity" | "Action_UseAbilityOnLocation" => {
                     vm.charge_fuel(1 + state.abilities.len() as u64 / 8)?;
                     let ability = abilities::identity(&state, vm.arg(args, 1)).ok_or_else(|| vm.error("ability handle expected"))?;
+                    if !abilities::valid(&state, ability) { return Err(vm.error("stale ability handle")); }
                     if ability.owner() != id { return Err(vm.error("ability belongs to another unit")); }
                     let target = match name {
                         "Action_UseAbilityOnEntity" => Target::Unit(state.id(vm.arg(args, 2)).ok_or_else(|| vm.error("unit handle expected"))?),
@@ -134,26 +135,27 @@ fn install_bot_state(lua: &mut Lua, methods: TableId, state: Shared) -> Result<(
         method(lua, methods, name, Rc::new(move |vm, args| {
             let mut state = capture.borrow_mut();
             let id = identity(vm, &state, args)?;
-            let index = state.bot_index();
+            let active = state.bot_index();
+            let index = state.unit(id).and_then(|unit| unit.owner).and_then(|slot| state.seats.iter().position(|seat| seat.slot == slot));
             let value = match name {
                 "GetGold" | "GetRespawnTime" => {
                     let player = state.snapshot.as_ref().and_then(|snapshot| snapshot.players.iter().find(|player| player.unit == Some(id)));
-                    Value::Number(player.map_or(0.0, |player| f64::from(if name == "GetGold" { player.gold.unwrap_or(0) } else { player.respawn_left.min(i32::MAX as u32) as i32 })))
+                    Value::Number(player.map_or(0.0, |player| if name == "GetGold" { f64::from(player.gold.unwrap_or(0)) } else { globals::seconds(player.respawn_left) }))
                 }
-                "GetActiveMode" => Value::Number(f64::from(state.bots[index].mode)),
-                "GetActiveModeDesire" => Value::Number(state.bots[index].desire),
-                "GetNextItemPurchaseValue" => Value::Number(f64::from(state.bots[index].next_purchase)),
-                "GetTarget" => { let target = state.bots[index].target; state.handle(vm, target)? }
+                "GetActiveMode" => Value::Number(index.map_or(0.0, |index| f64::from(state.bots[index].mode))),
+                "GetActiveModeDesire" => Value::Number(index.map_or(0.0, |index| state.bots[index].desire)),
+                "GetNextItemPurchaseValue" => Value::Number(index.map_or(0.0, |index| f64::from(state.bots[index].next_purchase))),
+                "GetTarget" => { let target = index.and_then(|index| state.bots[index].target); state.handle(vm, target)? }
                 "SetTarget" => {
                     if Some(id) != state.own_id() { return Err(vm.error("mutation requires the active bot")); }
                     let target = vm.arg(args, 1);
-                    state.bots[index].target = if target == Value::Nil { None } else { Some(state.id(target).ok_or_else(|| vm.error("unit handle expected"))?) };
+                    state.bots[active].target = if target == Value::Nil { None } else { Some(state.id(target).ok_or_else(|| vm.error("unit handle expected"))?) };
                     return Ok(0);
                 }
                 "SetNextItemPurchaseValue" => {
                     if Some(id) != state.own_id() { return Err(vm.error("mutation requires the active bot")); }
                     let value = globals::integer(vm, args, 1)?;
-                    state.bots[index].next_purchase = i32::try_from(value).map_err(|_| vm.error("purchase value is outside integer range"))?;
+                    state.bots[active].next_purchase = i32::try_from(value).map_err(|_| vm.error("purchase value is outside integer range"))?;
                     return Ok(0);
                 }
                 "IsHero" => Value::Boolean(state.unit(id).is_some_and(|unit| unit.kind == bota_proto::UnitKind::Hero)),

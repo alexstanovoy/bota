@@ -38,6 +38,8 @@ fn view(state: &State, identity: Identity) -> Option<View> {
     }
 }
 
+pub(super) fn valid(state: &State, identity: Identity) -> bool { view(state, identity).is_some() }
+
 pub(super) fn identity(state: &State, value: Value) -> Option<Identity> {
     state.abilities.iter().find(|(_, table)| value == Value::Table(*table)).map(|(identity, _)| *identity)
 }

@@ -109,12 +109,23 @@ version = "0.0.0"
 dependencies = [
  "bota_client_core",
  "bota_core",
+ "bota_lua",
  "bota_proto",
  "bota_replay",
  "bota_server",
  "libfuzzer-sys",
  "serde",
  "signal-hook",
+]
+
+[[package]]
+name = "bota_lua"
+version = "0.1.0"
+dependencies = [
+ "bota_client_core",
+ "bota_core",
+ "bota_proto",
+ "luagee",
 ]
 
 [[package]]
@@ -451,6 +462,10 @@ name = "log"
 version = "0.4.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
+
+[[package]]
+name = "luagee"
+version = "0.1.0"
 
 [[package]]
 name = "miniz_oxide"

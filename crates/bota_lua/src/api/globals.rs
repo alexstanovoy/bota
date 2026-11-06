@@ -88,3 +88,5 @@ fn install_utilities(lua: &mut Lua) -> Result<(), BindingError> {
     }
     Ok(())
 }
+
+pub(super) fn seconds(ticks: u32) -> f64 { f64::from(ticks) / 30.0 }

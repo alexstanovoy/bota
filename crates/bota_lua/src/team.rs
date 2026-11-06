@@ -189,6 +189,7 @@ impl LuaTeam {
         Ok(SelectionTurn { seats, complete, failures })
     }
 
+    #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
     pub(crate) fn finish_selection(&mut self) -> Vec<BotSeat> {
         let mut state = self.state.borrow_mut();
         for index in 0..state.seats.len() { state.seats[index].hero = state.picks[index].unwrap_or(state.seats[index].hero); }
@@ -196,6 +197,7 @@ impl LuaTeam {
         state.seats.clone()
     }
 
+    #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
     pub(crate) fn prepare_selection(&mut self) -> Result<(), BindingError> {
         let slot = self.state.borrow().seats[0].slot;
         self.add_pack_file(slot, ScriptKind::HeroSelection, "hero_selection")?;
