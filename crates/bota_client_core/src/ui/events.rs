@@ -106,8 +106,9 @@ impl App {
                 }
             }
             EventKind::AbilityCast { caster, ability } => self.on_cast(caster, ability),
-            EventKind::ItemBought { slot, .. } => {
+            EventKind::ItemBought { slot, item } => {
                 if Some(slot) == self.my_slot {
+                    self.quick_buy.bought(item);
                     self.cue(CueKind::Buy, 0.9, None);
                 }
             }

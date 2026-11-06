@@ -1724,7 +1724,7 @@ fn quick_buy_lists_only_what_is_missing_after_the_hero_stash_and_courier() {
     let mut seat = a_seat(SlotId(0), Some(hero.id));
     seat.stash = Some(vec![None; 6]);
     app.handle(snapshot_of(10, vec![hero, courier], vec![seat]));
-    app.quick_buy = Some(ItemId::BRACER.0);
+    app.set_quick_buy(ItemId::BRACER.0, false);
     assert_eq!(
         app.missing_for(ItemId::BRACER.0),
         vec![ItemId::RECIPE_BRACER]
@@ -1966,4 +1966,29 @@ fn dead_carriers_grant_neither_secret_shop_access_nor_purchase_space() {
             ItemId::DEMON_EDGE
         ));
     }
+}
+
+#[test]
+fn quick_buy_refuses_an_excess_copy_with_a_message_and_denial_cue() {
+    let mut app = a_started_app();
+    for _ in 0..crate::MAX_QUICK_BUY_TARGETS {
+        app.set_quick_buy(ItemId::BOOTS.0, true);
+    }
+    app.set_quick_buy(ItemId::BOOTS.0, true);
+    assert_eq!(app.quick_buy.targets().len(), crate::MAX_QUICK_BUY_TARGETS);
+    assert_eq!(
+        app.reject.as_ref().map(|(why, _)| why),
+        Some(&crate::Refused::QuickBuyFull)
+    );
+    assert!(
+        app.cues
+            .iter()
+            .any(|cue| cue.kind == crate::CueKind::QuickBuyFull)
+    );
+    app.set_quick_buy(ItemId::CLARITY.0, false);
+    assert_eq!(
+        app.quick_buy.targets(),
+        &[ItemId::CLARITY.0],
+        "replacement still works at the bound"
+    );
 }

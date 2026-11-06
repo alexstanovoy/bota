@@ -18,7 +18,7 @@ struct Pin {
 const PIN: Pin = Pin {
     version: 98,
     literals: 0x287c_9df7_c729_a2f1,
-    code: 0xab84_8941_8cd6_b782,
+    code: 0x31f5_fc04_bd4c_560e,
 };
 
 /// A changed number or string is a changed rule: the version must move. Any

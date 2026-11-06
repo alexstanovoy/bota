@@ -165,10 +165,26 @@ pub fn purchase_pool<'a, P: HeldItem + 'a>(
 /// primary attribute" (Liquipedia, *Power Treads*). A part's own parts are
 /// its first recipe's.
 pub fn missing_parts(item: ItemId, held: &[ItemId], primary: Option<Attribute>) -> Vec<ItemId> {
+    purchase_requirements(item, held, primary).wanted
+}
+
+/// The existing recipe evaluator's missing components and unconsumed ownership pool.
+#[must_use]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PurchaseRequirements {
+    pub wanted: Vec<ItemId>,
+    pub remaining_owned: Vec<ItemId>,
+}
+
+pub fn purchase_requirements(
+    item: ItemId,
+    held: &[ItemId],
+    primary: Option<Attribute>,
+) -> PurchaseRequirements {
     let recipes_of = |id: ItemId| item_def(id).into_iter().flat_map(ItemDef::recipes);
     let first_parts = |id: ItemId| recipes_of(id).next().map_or(&[][..], |recipe| recipe.parts);
     let cost_of = |id: ItemId| item_def(id).map_or(0, |def| def.cost);
-    let mut best: Option<(i32, bool, Vec<ItemId>)> = None;
+    let mut best: Option<(i32, bool, PurchaseRequirements)> = None;
     for recipe in recipes_of(item) {
         let mut spare = held.to_vec();
         let mut wanted = Vec::new();
@@ -183,10 +199,23 @@ pub fn missing_parts(item: ItemId, held: &[ItemId], primary: Option<Attribute>) 
             .as_ref()
             .is_none_or(|(least, was_own, _)| cost < *least || (cost == *least && own && !was_own));
         if better {
-            best = Some((cost, own, wanted));
+            best = Some((
+                cost,
+                own,
+                PurchaseRequirements {
+                    wanted,
+                    remaining_owned: spare,
+                },
+            ));
         }
     }
-    best.map_or_else(|| vec![item], |(_, _, wanted)| wanted)
+    best.map_or_else(
+        || PurchaseRequirements {
+            wanted: vec![item],
+            remaining_owned: held.to_vec(),
+        },
+        |(_, _, result)| result,
+    )
 }
 
 /// Lays out what one part still costs, spending `held` as it goes.

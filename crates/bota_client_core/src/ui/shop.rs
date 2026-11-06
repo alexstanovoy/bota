@@ -170,19 +170,27 @@ impl App {
         missing_for(ItemId(id), &held, primary)
     }
 
-    /// What the quick-buy intent buys now: the quick-buy item whole when the
-    /// gold covers it, else its first missing part the gold covers.
-    pub fn quick_buy_next(&self) -> Option<u16> {
-        let target = self.quick_buy.filter(|item| self.offers(*item))?;
-        let gold = self.player(self.my_slot?)?.gold.unwrap_or(0);
-        if gold >= self.price_of(target).0 {
-            return Some(target);
+    /// Replace the queue, or append a requested copy, reserving ownership once.
+    pub fn set_quick_buy(&mut self, item: u16, append: bool) {
+        if !self.offers(item) {
+            return;
         }
-        self.missing_for(target)
-            .into_iter()
-            .find(|part| {
-                self.offers(part.0) && whole_price(*part).is_some_and(|price| price <= gold)
-            })
-            .map(|part| part.0)
+        let (held, primary) = self.buyer();
+        if !self.quick_buy.add(item, append, &held, primary) {
+            self.reject = Some((crate::Refused::QuickBuyFull, 2.5));
+            self.cue(crate::CueKind::QuickBuyFull, 0.8, None);
+        }
+    }
+
+    /// Unbought components in queue order, including entries beyond the visible rows.
+    pub fn quick_buy_parts(&self) -> &[u16] {
+        self.quick_buy.parts()
+    }
+
+    pub fn quick_buy_next(&self) -> Option<u16> {
+        let gold = self.player(self.my_slot?)?.gold.unwrap_or(0);
+        self.quick_buy_parts().iter().copied().find(|id| {
+            self.offers(*id) && whole_price(ItemId(*id)).is_some_and(|price| price <= gold)
+        })
     }
 }

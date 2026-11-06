@@ -282,6 +282,8 @@ pub enum CueKind {
     Refused(bota_proto::RejectReason),
     /// A click that would attack an ally was turned down, for this reason.
     Undeniable(Undeniable),
+    /// The local Quickbuy plan has reached its safety bound.
+    QuickBuyFull,
 }
 
 /// A cue: what, how loud from 0 to 1, and where in the world it happens;
@@ -319,6 +321,8 @@ pub enum Undeniable {
 /// Why an order went nowhere.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Refused {
+    /// A further requested Quickbuy copy would exceed the local planning bound.
+    QuickBuyFull,
     /// A rule of the game, the server's or one the client checks first.
     Rule(bota_proto::RejectReason),
     /// An attack on an ally the client did not send, the game not letting it
@@ -501,8 +505,8 @@ pub struct App {
     pub heartbeat: f32,
     /// The seat a replay is watched as, as if it were playing.
     pub pov: Option<SlotId>,
-    /// The item the quick-buy intent works towards.
-    pub quick_buy: Option<u16>,
+    /// Requested copies and their unbought components, in Quickbuy order.
+    pub quick_buy: crate::QuickBuyQueue,
     /// Items chosen in the tactical phase, before the match exists: sent as
     /// buy orders, one a tick, once it has begun.
     pub queued_buys: Vec<u16>,
@@ -548,7 +552,7 @@ impl App {
             before_told: Vec::new(),
             heartbeat: 0.0,
             pov: None,
-            quick_buy: None,
+            quick_buy: crate::QuickBuyQueue::default(),
             queued_buys: Vec::new(),
         }
     }
@@ -1068,11 +1072,9 @@ impl App {
         self.heartbeat_cue(dt);
         if let Some(view) = self.seat.session().and_then(ClientSession::current) {
             self.derived.trail(view, dt);
-            if let Some(target) = self.quick_buy
-                && let Some(p) = self.my_slot.and_then(|slot| self.player(slot))
-                && crate::shop::held_items(view, p).contains(&bota_proto::ItemId(target))
-            {
-                self.quick_buy = None;
+            if let Some(player) = self.my_slot.and_then(|slot| view.player(slot)) {
+                let held = crate::shop::held_items(view, player);
+                self.quick_buy.sync(&held, crate::shop::primary_of(player));
             }
         }
     }
