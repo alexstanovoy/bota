@@ -7,7 +7,7 @@ use bota_proto::{
     UnitView, WorldView,
 };
 
-use crate::game::{ActionPhase, ActionState, Entity, Seat, World, item_view, item_views};
+use crate::game::{ActionPhase, ActionState, Entity, Seat, Stats, World, item_view, item_views};
 use crate::profile::Phase;
 
 /// The handle as it travels on the wire.
@@ -505,6 +505,21 @@ impl World {
         Some(unit)
     }
 
+    /// What a unit's cooldowns and mana costs come to, when they are not the table's own, told to
+    /// its own side and to a view of the whole map. Another side is not told: what shortens them
+    /// can be a setup (a cheat's modifier) that is no business of the enemy's.
+    fn cast_rates_shown(
+        &self,
+        viewer: Option<Team>,
+        entity: Entity,
+        stats: &Stats,
+    ) -> Option<(i32, i32)> {
+        let own = viewer.is_none_or(|side| self.team.get(entity) == Some(&side));
+        (own && (stats.cooldown_rate_bp != rules::NOMINAL_BP
+            || stats.mana_cost_rate_bp != rules::NOMINAL_BP))
+            .then_some((stats.cooldown_rate_bp, stats.mana_cost_rate_bp))
+    }
+
     /// One unit, or nothing when the entity is not one.
     fn project_unit(&self, viewer: Option<Team>, entity: Entity) -> Option<UnitView> {
         let kind = *self.kind.get(entity)?;
@@ -555,6 +570,7 @@ impl World {
             bound: hull.map_or(Fixed::ZERO, |h| h.bound),
             vision_radius: stats.vision,
             vision_grant: stats.vision_grant,
+            cast_rates: self.cast_rates_shown(viewer, entity, stats),
             true_sight_radius: stats.true_sight,
             statuses: StatusFlags {
                 bits: self.statuses_of(entity, stats),

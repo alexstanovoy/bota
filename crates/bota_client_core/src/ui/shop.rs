@@ -98,6 +98,17 @@ impl App {
         bota_core::rules::STARTING_GOLD - spent
     }
 
+    /// The gold a purchase can use now: what the queued items leave in the tactical phase, the
+    /// seat's own gold in play, none to a watcher or before the seat has any.
+    pub fn spendable_gold(&self) -> i32 {
+        if self.in_tactical_phase() {
+            return self.gold_after_queue();
+        }
+        self.my_slot
+            .and_then(|slot| self.player(slot)?.gold)
+            .unwrap_or(0)
+    }
+
     /// The items the shop offers: the match's once it began, the lobby's before (what a match
     /// started now plays with), this build's whole catalogue until either told.
     pub fn catalogue(&self) -> Catalogue {

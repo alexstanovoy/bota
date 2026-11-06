@@ -32,17 +32,19 @@ const TICK_RATE: usize = 30;
 /// behind one byte each), one for the rune of each, absent in all but a
 /// Bottle, and a byte for the exact health of a unit whose health counts hits,
 /// absent on a hero. The absent vision grant adds its one-byte option tag,
-/// raising this budget from 278 to 279 bytes.
+/// raising this budget from 278 to 279 bytes, and the absent pair of cast rates
+/// another, to 280.
 #[test]
-fn a_hero_stays_under_279_bytes() {
+fn a_hero_stays_under_280_bytes() {
     let len = encoded_len(&hero_unit());
-    assert!(len <= 279, "hero unit grew to {len} bytes");
+    assert!(len <= 280, "hero unit grew to {len} bytes");
 }
 
+/// The absent pair of cast rates adds its one-byte option tag: 83 to 84 bytes.
 #[test]
-fn a_creep_stays_under_83_bytes() {
+fn a_creep_stays_under_84_bytes() {
     let len = encoded_len(&creep_unit(1));
-    assert!(len <= 83, "creep unit grew to {len} bytes");
+    assert!(len <= 84, "creep unit grew to {len} bytes");
 }
 
 #[test]

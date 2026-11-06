@@ -106,18 +106,4 @@ impl World {
     }
 }
 
-/// A mana cost after a rate in basis points.
-pub fn cost_after(base: i32, rate_bp: i32) -> i32 {
-    (i64::from(base) * i64::from(rate_bp) / i64::from(rules::NOMINAL_BP))
-        .clamp(0, i64::from(i32::MAX)) as i32
-}
-
-/// Ticks a cooldown comes to at a rate in basis points, never zero for a
-/// cooldown that was set at all.
-pub fn cooldown_after(base: u32, rate_bp: i32) -> u32 {
-    if base == 0 {
-        return 0;
-    }
-    (i64::from(base) * i64::from(rate_bp) / i64::from(rules::NOMINAL_BP))
-        .clamp(1, i64::from(u32::MAX)) as u32
-}
+pub use bota_core::{cooldown_after, cost_after};

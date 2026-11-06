@@ -380,6 +380,11 @@ pub struct UnitView {
     /// sight and allegiance: the receiving team and its current radius.
     /// Told to the receiving side and to viewers of the whole map.
     pub vision_grant: Option<(Team, Fixed)>,
+    /// What a cooldown and a mana cost of this unit's abilities and items come to, in basis
+    /// points of the table's (10 000 is the table's own), as a pair: a rune or an effect that
+    /// shortens them lowers them. Absent while both are the table's own, which most units'
+    /// always are. [`AbilityView::mana_cost`] is already worked out under the second.
+    pub cast_rates: Option<(i32, i32)>,
 }
 
 /// A cast in its cast point.

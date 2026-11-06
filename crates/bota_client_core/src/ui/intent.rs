@@ -4,7 +4,7 @@
 
 use bota_proto::{
     AbilityId, AbilitySlot, Aim, ClientMsg, EntityId, Fixed, HeroId, ItemId, ItemSlot, Order,
-    SlotId, Target, UnitKind, Vec2, WorldView,
+    SlotId, Target, UnitKind, Vec2,
 };
 
 use crate::ui::app::{App, Pin, Source, Tap};
@@ -306,11 +306,9 @@ impl App {
             } else {
                 Order::Attack { target }
             }
-        } else if let Some(item) =
-            loot_under_cursor(view, at).or_else(|| rune_under_cursor(view, at))
-        {
+        } else if let Some(lying) = self.lying_at(at) {
             Order::Take {
-                target: Target::Unit(item),
+                target: Target::Unit(lying.id),
             }
         } else {
             Order::Move {
@@ -446,42 +444,89 @@ impl App {
     }
 }
 
-/// The ground item nearest a world point, if it is close enough.
-pub fn loot_under_cursor(view: &WorldView, (wx, wy): (f32, f32)) -> Option<EntityId> {
-    nearest(
-        wx,
-        wy,
-        view.loot.iter().map(|lying| (lying.id, lying.pos, 35.0)),
-    )
+/// How near a click must be to an item lying on the ground to take it.
+pub const LOOT_REACH: f32 = 35.0;
+/// How near a click must be to a rune to walk to it.
+pub const RUNE_REACH: f32 = 60.0;
+
+/// An item or a rune lying where a smart click would take it, and how near the click had to be.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Lying {
+    pub id: EntityId,
+    pub pos: Vec2,
+    pub reach: f32,
 }
 
-/// The rune nearest a world point, if it is close enough: a click on it walks
-/// the hero to it.
-pub fn rune_under_cursor(view: &WorldView, (wx, wy): (f32, f32)) -> Option<EntityId> {
-    nearest(
-        wx,
-        wy,
-        view.runes.iter().map(|lying| (lying.id, lying.pos, 60.0)),
-    )
+impl App {
+    /// Whether a view of the whole map's `seen_by` says the viewing side sees what it tells of.
+    /// A side's own view holds only what it sees.
+    fn sees(&self, seen_by: Option<bota_proto::SeenBy>) -> bool {
+        match (seen_by, self.fog_team()) {
+            (Some(by), Some(side)) => by.by(side),
+            _ => true,
+        }
+    }
+
+    /// The ground item nearest a world point, within its reach, among those the viewing side
+    /// sees. A view of the whole map (a replay, a spectator's) holds what its side does not
+    /// see; those are neither taken, nor named, nor shown to be.
+    pub fn loot_at(&self, (wx, wy): (f32, f32)) -> Option<Lying> {
+        let loot = self
+            .view()?
+            .loot
+            .iter()
+            .filter(|l| self.sees(l.seen_by))
+            .map(|l| Lying {
+                id: l.id,
+                pos: l.pos,
+                reach: LOOT_REACH,
+            });
+        nearest(wx, wy, loot)
+    }
+
+    /// The rune nearest a world point, within its reach, among those the viewing side sees.
+    pub fn rune_at(&self, (wx, wy): (f32, f32)) -> Option<Lying> {
+        let runes = self
+            .view()?
+            .runes
+            .iter()
+            .filter(|r| self.sees(r.seen_by))
+            .map(|r| Lying {
+                id: r.id,
+                pos: r.pos,
+                reach: RUNE_REACH,
+            });
+        nearest(wx, wy, runes)
+    }
+
+    /// The item, else the rune, that a smart click at a world point takes.
+    pub fn lying_at(&self, at: (f32, f32)) -> Option<Lying> {
+        self.loot_at(at).or_else(|| self.rune_at(at))
+    }
+
+    /// Whether a click on the ground gives the hero an order now: the seat's hero stands, what is
+    /// picked is the seat's to drive, the match is on and the stream is live.
+    pub fn gives_orders(&self) -> bool {
+        self.my_standing_hero().is_some()
+            && self.controls_selection()
+            && self.over.is_none()
+            && matches!(self.source, Source::Live(_))
+    }
 }
 
 /// The candidate nearest a world point among those within their own reach of
 /// it, the first one listed on a tie.
-fn nearest(
-    wx: f32,
-    wy: f32,
-    candidates: impl Iterator<Item = (EntityId, Vec2, f32)>,
-) -> Option<EntityId> {
-    let mut best: Option<(f32, EntityId)> = None;
-    for (id, pos, reach) in candidates {
-        let dx = pos.x.to_f32() - wx;
-        let dy = pos.y.to_f32() - wy;
+fn nearest(wx: f32, wy: f32, candidates: impl Iterator<Item = Lying>) -> Option<Lying> {
+    let mut best: Option<(f32, Lying)> = None;
+    for lying in candidates {
+        let dx = lying.pos.x.to_f32() - wx;
+        let dy = lying.pos.y.to_f32() - wy;
         let dist = (dx * dx + dy * dy).sqrt();
-        if dist <= reach && best.is_none_or(|(b, _)| dist < b) {
-            best = Some((dist, id));
+        if dist <= lying.reach && best.is_none_or(|(b, _)| dist < b) {
+            best = Some((dist, lying));
         }
     }
-    best.map(|(_, id)| id)
+    best.map(|(_, lying)| lying)
 }
 
 /// A world position as the wire carries it.

@@ -657,3 +657,36 @@ fn a_risen_hero_attacks_nobody_of_its_own_accord_while_untouchable() {
         "left to itself, it takes the enemy on once the buff is gone"
     );
 }
+
+/// A rune's cut of the cooldowns and mana costs is told to its bearer's side and to a view of the
+/// whole map, never to the other side, which sees the hero all the same.
+#[test]
+fn cast_rates_are_told_to_the_own_side_and_the_whole_map_only() {
+    let mut world = World::new();
+    let bearer = seat_hero(&mut world, 0, Team::Radiant, Vec2::from_ints(5_000, 5_000));
+    seat_hero(&mut world, 1, Team::Dire, Vec2::from_ints(5_100, 5_000));
+    put_on(&mut world, bearer, ModifierKind::RuneArcane, 600);
+    world.settle();
+    world.step();
+    let rates = |view: bota_proto::WorldView| {
+        view.units
+            .iter()
+            .find(|unit| unit.id == wire_id(bearer))
+            .map(|unit| unit.cast_rates)
+    };
+    assert_eq!(
+        rates(world.view(Team::Radiant)),
+        Some(Some((7_500, 7_000))),
+        "its own side"
+    );
+    assert_eq!(
+        rates(world.view_full()),
+        Some(Some((7_500, 7_000))),
+        "the whole map"
+    );
+    assert_eq!(
+        rates(world.view(Team::Dire)),
+        Some(None),
+        "the other side sees the hero, not the rates"
+    );
+}

@@ -3,7 +3,7 @@
 use bota_core::{
     AMPLIFY_DAMAGE_PCT, AMPLIFY_SPELL_AMP_BP, ARCANE_COOLDOWN_CUT_BP, ARCANE_MANA_CUT_BP, Buff,
     Carried, Growth, HASTE_RUNE_SPEED, INVISIBILITY_FADE_TICKS, ModifierKind, NeutralAbility, Odds,
-    Regen, Stat, Talent, UnitDef, agility_armor, agility_attack_speed,
+    Regen, Stat, Talent, UnitDef, agility_armor, agility_attack_speed, cut_rate,
     intelligence_magic_resist_bp, primary_damage, regen, rules, soul_damage, spell_buff,
 };
 use bota_proto::{Attributes, Fixed, ModifierSpec};
@@ -167,12 +167,8 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         // An Arcane Rune shortens what is left once every other source has
         // had its say: its cut stacks multiplicatively [LIQ Runes].
         if working().any(|held| held.kind == ModifierKind::RuneArcane) {
-            let cut = |rate: i32, cut_bp: i32| {
-                (i64::from(rate) * i64::from(rules::NOMINAL_BP - cut_bp)
-                    / i64::from(rules::NOMINAL_BP)) as i32
-            };
-            now.cooldown_rate_bp = cut(now.cooldown_rate_bp, ARCANE_COOLDOWN_CUT_BP);
-            now.mana_cost_rate_bp = cut(now.mana_cost_rate_bp, ARCANE_MANA_CUT_BP);
+            now.cooldown_rate_bp = cut_rate(now.cooldown_rate_bp, ARCANE_COOLDOWN_CUT_BP);
+            now.mana_cost_rate_bp = cut_rate(now.mana_cost_rate_bp, ARCANE_MANA_CUT_BP);
         }
         // An illusion deals a share of its hero's damage and takes more of
         // what is dealt to it.

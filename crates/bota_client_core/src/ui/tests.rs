@@ -124,6 +124,7 @@ fn a_unit() -> UnitView {
         evasion: Fixed::ZERO,
         hit_health: None,
         vision_grant: None,
+        cast_rates: None,
         seen_by: None,
         attack_range: Fixed::from_int(600),
         attack_time: 1700,
@@ -358,22 +359,80 @@ fn a_click_takes_the_ground_item_nearest_the_cursor_and_only_within_reach() {
         charges: None,
         seen_by: None,
     };
-    let mut view = a_tick(0, Vec::new(), Vec::new());
-    view.loot = vec![lying_at(21, 1000, 1000), lying_at(22, 1040, 1000)];
+    let app = an_app_seeing_loot(vec![lying_at(21, 1000, 1000), lying_at(22, 1040, 1000)]);
+    let taken = |at| app.loot_at(at).map(|l| l.id);
     assert_eq!(
-        crate::ui::intent::loot_under_cursor(&view, (1010.0, 1000.0)),
+        taken((1010.0, 1000.0)),
         Some(handle(21)),
         "the nearer of the two"
     );
     assert_eq!(
-        crate::ui::intent::loot_under_cursor(&view, (1044.0, 1000.0)),
+        taken((1044.0, 1000.0)),
         Some(handle(22)),
         "and the nearer from the other side"
     );
     assert_eq!(
-        crate::ui::intent::loot_under_cursor(&view, (5000.0, 5000.0)),
+        taken((5000.0, 5000.0)),
         None,
         "far from both, the click is for the ground"
+    );
+}
+
+/// A match of seat 0 whose first view holds this loot.
+fn an_app_seeing_loot(loot: Vec<bota_proto::LootView>) -> App {
+    let mut app = a_silent_app();
+    app.my_slot = Some(SlotId(0));
+    app.handle(a_match_start());
+    let ours = owned(1, UnitKind::Hero, Some(SlotId(0)));
+    let us = ours.id;
+    let bota_proto::ServerMsg::Snapshot { mut view } =
+        snapshot_of(10, vec![ours], vec![a_seat(SlotId(0), Some(us))])
+    else {
+        panic!("a snapshot");
+    };
+    view.loot = loot;
+    app.handle(bota_proto::ServerMsg::Snapshot { view });
+    app
+}
+
+/// A view of the whole map lists what no side may see; a click takes, and a front end rings,
+/// only what the viewing side sees of it.
+#[test]
+fn a_smart_click_takes_only_the_ground_items_the_viewing_side_sees() {
+    let handle = |idx: u32| EntityId { idx, generation: 1 };
+    let lying = |idx: u32, seen: bota_proto::SeenBy| bota_proto::LootView {
+        id: handle(idx),
+        pos: Vec2::from_ints(1000, 1000),
+        item: ItemId::BOOTS,
+        charges: None,
+        seen_by: Some(seen),
+    };
+    let app = an_app_seeing_loot(vec![
+        lying(
+            21,
+            bota_proto::SeenBy {
+                radiant: false,
+                dire: true,
+            },
+        ),
+        lying(
+            22,
+            bota_proto::SeenBy {
+                radiant: true,
+                dire: false,
+            },
+        ),
+    ]);
+    let taken = app.lying_at((1000.0, 1000.0)).map(|l| l.id);
+    assert_eq!(
+        taken,
+        Some(handle(22)),
+        "the one Radiant sees, not the one only Dire does"
+    );
+    assert_eq!(
+        app.loot_at((1000.0, 1000.0)).map(|l| l.id),
+        Some(handle(22)),
+        "and an item's name is no more told than it is taken"
     );
 }
 
