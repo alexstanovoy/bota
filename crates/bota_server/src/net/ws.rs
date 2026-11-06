@@ -27,7 +27,7 @@ use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::runtime::Handle;
-use tokio::sync::mpsc;
+use tokio::sync::{Semaphore, mpsc};
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::WebSocketStream;
 use tokio_tungstenite::tungstenite::error::CapacityError;
@@ -41,6 +41,8 @@ use crate::net::{
 
 /// How long a peer has for its TLS handshake and WebSocket upgrade together.
 const HANDSHAKE_DEADLINE: Duration = Duration::from_secs(10);
+/// Handshakes do not consume the adoption slots used by the TCP listener.
+const MAX_HANDSHAKES: usize = 64;
 
 /// Frames read ahead of a connection's reader thread.
 const INBOUND_FRAMES: usize = 16;
@@ -94,12 +96,26 @@ impl Tls {
 pub struct WsListener {
     listener: std::net::TcpListener,
     tls: Option<Tls>,
+    #[cfg(test)]
+    held_handshakes: Option<std_mpsc::Sender<()>>,
 }
 
 impl WsListener {
     /// Speaks TLS on `listener` when given it.
     pub fn new(listener: std::net::TcpListener, tls: Option<Tls>) -> WsListener {
-        WsListener { listener, tls }
+        WsListener {
+            listener,
+            tls,
+            #[cfg(test)]
+            held_handshakes: None,
+        }
+    }
+
+    /// The test owns handshake completion through its sockets, without racing the deadline.
+    #[cfg(test)]
+    pub(crate) fn hold_handshakes(mut self, started: std_mpsc::Sender<()>) -> Self {
+        self.held_handshakes = Some(started);
+        self
     }
 
     /// Starts accepting on a thread of its own, whose runtime then carries
@@ -120,23 +136,33 @@ impl WsListener {
             TcpListener::from_std(self.listener)?
         };
         let tls = self.tls.map(|tls| TlsAcceptor::from(tls.0));
-        thread::Builder::new()
-            .spawn(move || runtime.block_on(accept_all(listener, tls, events, pending)))?;
+        thread::Builder::new().spawn(move || {
+            runtime.block_on(accept_all(
+                listener,
+                tls,
+                events,
+                pending,
+                #[cfg(test)]
+                self.held_handshakes,
+            ))
+        })?;
         Ok(())
     }
 }
 
 /// Accepts every peer as it comes, so that the kernel's backlog never fills, and hands each whose
 /// handshake completes in time to the server thread. A peer is let go at once when
-/// [`MAX_PENDING_CONNECTIONS`](super::MAX_PENDING_CONNECTIONS) await adoption across all listeners,
-/// or as many of its source's as the bounds per source allow
-/// ([`groups`](crate::net::groups)).
+/// the handshake pool or its source's share is full. A completed handshake takes a separate
+/// adoption reservation; stalled upgrades therefore cannot reserve the TCP listener's room.
 async fn accept_all(
     listener: TcpListener,
     tls: Option<TlsAcceptor>,
     events: std_mpsc::Sender<NetEvent>,
     pending: super::pending::PendingAdmissions,
+    #[cfg(test)] held_handshakes: Option<std_mpsc::Sender<()>>,
 ) {
+    let handshakes = Arc::new(Semaphore::new(MAX_HANDSHAKES));
+    let sources = super::Places::default();
     let server_gone = Arc::new(AtomicBool::new(false));
     while !server_gone.load(Ordering::Relaxed) {
         let (tcp, peer) = match listener.accept().await {
@@ -146,13 +172,27 @@ async fn accept_all(
                 continue;
             }
         };
-        let Some(admission) = pending.take(Some(peer.ip())) else {
+        let Some(source) = sources.take(peer.ip()) else {
+            continue;
+        };
+        let Ok(handshake) = Arc::clone(&handshakes).try_acquire_owned() else {
             continue;
         };
         let (tls, events, server_gone) = (tls.clone(), events.clone(), Arc::clone(&server_gone));
+        let pending = pending.clone();
+        #[cfg(test)]
+        let held_handshakes = held_handshakes.clone();
         tokio::spawn(async move {
-            let opened = tokio::time::timeout(HANDSHAKE_DEADLINE, open(tcp, tls)).await;
-            if let Ok(Ok(stream)) = opened
+            let opened = open_timed(
+                tcp,
+                tls,
+                #[cfg(test)]
+                held_handshakes,
+            )
+            .await;
+            drop((handshake, source));
+            if let Ok(stream) = opened
+                && let Some(admission) = pending.take(Some(peer.ip()))
                 && events
                     .send(NetEvent::Connected(admission.stream(stream)))
                     .is_err()
@@ -161,6 +201,21 @@ async fn accept_all(
             }
         });
     }
+}
+
+async fn open_timed(
+    tcp: TcpStream,
+    tls: Option<TlsAcceptor>,
+    #[cfg(test)] held: Option<std_mpsc::Sender<()>>,
+) -> io::Result<Box<dyn FrameStream>> {
+    #[cfg(test)]
+    if let Some(started) = held {
+        let _ = started.send(());
+        return open(tcp, tls).await;
+    }
+    tokio::time::timeout(HANDSHAKE_DEADLINE, open(tcp, tls))
+        .await
+        .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "WebSocket handshake deadline"))?
 }
 
 /// The TLS handshake when there is TLS, then the WebSocket upgrade.

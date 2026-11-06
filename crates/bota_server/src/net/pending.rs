@@ -1,4 +1,4 @@
-//! Reservations follow accepted sockets through handshakes and the simulation's inbox.
+//! Reservations follow completed connections through the simulation's adoption inbox.
 
 use std::io;
 use std::net::{IpAddr, Ipv4Addr};
@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use super::{FrameStream, Place, Places, Split};
 
-/// Accepted sockets awaiting adoption, including unfinished WebSocket handshakes.
+/// Completed TCP/WebSocket connections awaiting adoption; handshakes have a separate pool.
 pub const MAX_PENDING_CONNECTIONS: usize = 64;
 
 #[derive(Clone, Default)]

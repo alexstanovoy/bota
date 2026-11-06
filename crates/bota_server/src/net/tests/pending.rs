@@ -65,8 +65,7 @@ fn pending_admissions_share_a_source_bound_across_tcp_and_websocket() {
         .map(|n| connect_from(1, if n % 2 == 0 { tcp } else { ws }, n % 2 != 0))
         .collect();
     rejected(&mut connect_from(1, tcp, false));
-    let mut excess = connect_from(1, ws, false);
-    let _ = excess.write_all(super::limits::UPGRADE);
+    let mut excess = connect_from(1, ws, true);
     rejected(&mut excess);
     // Taking a queued stream alone does not release its reservation: adoption still owns it.
     let pending = take_pending(&recv);
@@ -100,4 +99,31 @@ fn pending_admissions_share_a_global_bound_across_tcp_and_websocket() {
         "no excess socket entered the queue"
     );
     drop((clients, fresh));
+}
+
+#[test]
+fn stalled_websocket_handshakes_leave_tcp_adoption_capacity() {
+    let tcp = TcpListener::bind("127.0.0.1:0").expect("TCP listener");
+    let ws = TcpListener::bind("127.0.0.1:0").expect("WebSocket listener");
+    let (tcp_port, ws_port) = (
+        tcp.local_addr().unwrap().port(),
+        ws.local_addr().unwrap().port(),
+    );
+    let (started, handshakes) = mpsc::channel();
+    let ws = crate::net::WsListener::new(ws, None).hold_handshakes(started);
+    let (events, incoming) = mpsc::channel();
+    Listeners::with_websocket(tcp, ws)
+        .start(&events)
+        .expect("listeners start");
+    let stalled: Vec<_> = (0..64)
+        .map(|n| connect_from(n / 16 + 1, ws_port, false))
+        .collect();
+    for _ in 0..64 {
+        handshakes
+            .recv_timeout(WAIT)
+            .expect("all stalled upgrades entered their pool");
+    }
+    let client = connect_from(200, tcp_port, false);
+    drop(take_pending(&incoming));
+    drop((stalled, client));
 }
