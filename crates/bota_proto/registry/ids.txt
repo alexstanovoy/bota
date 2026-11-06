@@ -315,3 +315,5 @@ neutral 43 live npc_dota_neutral_grown_frog_mage
 neutral 44 live npc_dota_neutral_ancient_frog_mage
 neutral 45 live npc_dota_dark_troll_warlord_skeleton_warrior
 neutral 46 live npc_dota_enraged_wildkin_tornado
+
+neutral 47 live npc_dota_roshan

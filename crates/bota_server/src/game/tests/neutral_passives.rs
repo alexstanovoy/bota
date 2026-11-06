@@ -582,7 +582,7 @@ fn a_dying_mud_golem_splits_into_shards_that_walk_home_and_slow_the_hero() {
     for shard in &shards {
         assert_eq!(
             world.camp_home.get(*shard).map(|c| (c.camp, c.home)),
-            Some((3, home))
+            Some((Some(3), home))
         );
         assert_eq!(
             world.stats.get(*shard).expect("derived").max_hp,

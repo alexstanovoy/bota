@@ -103,7 +103,7 @@ fn beasts_of(world: &World, camp: usize) -> usize {
             world
                 .camp_home
                 .get(*e)
-                .is_some_and(|h| usize::from(h.camp) == camp)
+                .is_some_and(|h| h.camp.map(usize::from) == Some(camp))
         })
         .count()
 }
@@ -211,7 +211,7 @@ fn pulling_a_camp_out_of_its_box_before_the_minute_stacks_it() {
             world
                 .camp_home
                 .get(*e)
-                .is_some_and(|h| usize::from(h.camp) == CAMP)
+                .is_some_and(|h| h.camp.map(usize::from) == Some(CAMP))
         })
         .collect();
     // Held in the box, one stays and the camp stays closed.
@@ -712,7 +712,7 @@ fn camp_beasts(world: &World, camp: usize) -> Vec<Entity> {
             world
                 .camp_home
                 .get(*e)
-                .is_some_and(|h| usize::from(h.camp) == camp)
+                .is_some_and(|h| h.camp.map(usize::from) == Some(camp))
         })
         .collect()
 }

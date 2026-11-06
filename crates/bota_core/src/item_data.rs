@@ -237,3 +237,22 @@ pub(crate) const fn str_eq(a: &str, b: &str) -> bool {
     }
     true
 }
+
+/// Numeric fields from a unit or ability script, in the script's own units.
+#[derive(Clone, Copy, Debug)]
+pub struct ScriptData {
+    pub key: &'static str,
+    pub values: &'static [(&'static str, &'static [Dec])],
+}
+impl ScriptData {
+    pub const fn first(&self, key: &str) -> Dec {
+        let mut at = 0;
+        while at < self.values.len() {
+            if str_eq(self.values[at].0, key) {
+                return self.values[at].1[0];
+            }
+            at += 1;
+        }
+        panic!("missing script field")
+    }
+}

@@ -25,6 +25,7 @@ impl World {
     /// Their passability must be laid after [`World::settle`] initializes health.
     pub(crate) fn stand_up_objectives(&mut self, objectives: ObjectiveSet) {
         self.objectives = objectives;
+        self.stand_up_lairs();
         let map = self.map;
         if objectives.has(ObjectiveKind::Outposts) {
             for outpost in map.outposts {

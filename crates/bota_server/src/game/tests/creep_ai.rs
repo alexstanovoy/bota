@@ -98,7 +98,10 @@ fn a_building_never_shoots_the_jungle_and_a_creep_only_at_a_pull_camp() {
         let index = index.expect("the map has camps of both kinds");
         let home = CAMPS[index].pos + Vec2::from_ints(90, 0);
         let camp = u8::try_from(index).expect("few camps");
-        CampHome { camp, home }
+        CampHome {
+            camp: Some(camp),
+            home,
+        }
     };
     world.camp_home.insert(beast, camp_of(false));
     assert!(
@@ -584,7 +587,13 @@ fn the_jungle_pays_a_courier_no_mind_but_the_other_side_does_not() {
     let beast = world.spawn_unit(NeutralKind::Kobold.def(), Team::Neutral, at);
     // Of no camp the map has, so no lane creep is drawn to it: the creep's choice is the courier.
     let camp = u8::MAX;
-    world.camp_home.insert(beast, CampHome { camp, home: at });
+    world.camp_home.insert(
+        beast,
+        CampHome {
+            camp: Some(camp),
+            home: at,
+        },
+    );
     world.neutral_ai.insert(
         beast,
         NeutralAi {

@@ -57,12 +57,10 @@ fn objectives_and_runes_are_sets_by_name_and_what_a_map_does_not_play_fails_befo
             Args::try_parse_from(["bota_server", bad[0], bad[1]]).expect_err("no such kind");
         assert_eq!(error.kind(), ErrorKind::ValueValidation, "{bad:?}");
     }
-    // Roshan is not played yet: asked for, the server refuses before it
-    // listens, on every map. Runes are played where the map has spots for
-    // them (the Dota map and the mid-only map), and refused on the demo map.
+    // The demo map has neither pits nor rune spots.
     for map in ["0", "1", "2"] {
         for (asked, refused_on) in [
-            (["--objectives", "roshan"], &["0", "1", "2"][..]),
+            (["--objectives", "roshan"], &["1"][..]),
             (["--runes", "bounty"], &["1"][..]),
         ] {
             let args = Args::try_parse_from(["bota_server", "--map", map, asked[0], asked[1]])

@@ -3,5 +3,7 @@
 
 mod item_mechanics;
 mod items;
+mod roshan;
+pub(crate) use roshan::*;
 
 pub(crate) use item_mechanics::ITEM_ROWS;

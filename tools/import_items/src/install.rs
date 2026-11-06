@@ -49,7 +49,7 @@ pub fn read(dota: Option<&Path>) -> Result<Source, String> {
 }
 
 /// `ClientVersion <n> (<VersionDate>)` of a `steam.inf`.
-fn build(path: &Path) -> Result<String, String> {
+pub(crate) fn build(path: &Path) -> Result<String, String> {
     let size = std::fs::metadata(path)
         .map_err(|e| format!("{path:?}: {e}"))?
         .len();

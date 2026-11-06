@@ -99,7 +99,7 @@ impl World {
             .get(dead)
             .map_or(0, |on_it| on_it.count_of(ModifierKind::neutral_upgrade));
         for _ in 0..at_level(&count, level) {
-            let shard = self.spawn_neutral(kind, at, home.camp, steps);
+            let shard = self.spawn_neutral_home(kind, at, home.camp, steps);
             self.shape_shard(
                 shard,
                 kind,

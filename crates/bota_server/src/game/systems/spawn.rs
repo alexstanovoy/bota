@@ -2,7 +2,7 @@
 
 use bota_core::{
     COURIER, COURIER_ABILITIES, HERO, ModifierKind, NeutralAbility, NeutralKind, UnitDef,
-    effect_def, hero_def, neutral_ability_level, rules,
+    effect_def, hero_def, neutral_ability_level,
 };
 use bota_proto::{AbilityId, Angle, Fixed, HeroId, Inflictor, SlotId, Team, Vec2};
 
@@ -326,6 +326,17 @@ impl World {
         camp: u8,
         upgrades: u32,
     ) -> Entity {
+        self.spawn_neutral_home(kind, pos, Some(camp), upgrades)
+    }
+
+    /// The same neutral lifecycle for camp members and independent bosses.
+    pub(crate) fn spawn_neutral_home(
+        &mut self,
+        kind: NeutralKind,
+        pos: Vec2,
+        camp: Option<u8>,
+        upgrades: u32,
+    ) -> Entity {
         let def = kind.def();
         let entity = self.spawn_body(def, Team::Neutral, pos);
         if def.collision > 0 {
@@ -360,7 +371,7 @@ impl World {
         self.neutral_ai.insert(
             entity,
             NeutralAi {
-                leash_left: rules::NEUTRAL_AGGRO_WINDOW,
+                leash_left: kind.neutral().home.window,
                 reaggro_block: 0,
                 going_home: false,
                 roused_by: None,

@@ -680,9 +680,13 @@ pub(crate) fn a_camp_at(world: &mut World, at: Vec2) -> Vec<Entity> {
             Team::Neutral,
             at + Vec2::from_ints(60 * step, 0),
         );
-        world
-            .camp_home
-            .insert(beast, CampHome { camp: 1, home: at });
+        world.camp_home.insert(
+            beast,
+            CampHome {
+                camp: Some(1),
+                home: at,
+            },
+        );
         world.neutral_ai.insert(
             beast,
             NeutralAi {

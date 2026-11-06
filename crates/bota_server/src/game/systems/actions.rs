@@ -760,6 +760,14 @@ impl World {
 
     /// Leaves what a swing that came due turns into.
     fn strike(&mut self, attacker: Entity, on: Entity, stats: &Stats) {
+        if self.def.get(on).is_some_and(|def| def.0.pit_attacked)
+            && !self
+                .pos(attacker)
+                .is_some_and(|at| self.map.boss_zones.iter().any(|zone| zone.contains(at)))
+        {
+            return;
+        }
+
         self.expose(attacker, on);
         self.reveal(attacker);
         // What is carried against creeps is worth nothing against anything else.

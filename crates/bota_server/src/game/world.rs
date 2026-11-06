@@ -75,6 +75,8 @@ world_tables! {
         pub crit: Vec<Option<crate::game::Rolls>> = Vec::new();
         /// Which roster each camp put out last, so it never draws twice running.
         pub camp_last: Vec<u8> = Vec::new();
+        /// Boss lifecycle state, indexed by the map's lair row.
+        pub lairs: Vec<crate::game::Lair> = Vec::new();
         /// The forest as it stands: what is down, and what has been put up.
         pub trees: Forest = Forest::default();
         /// Blows dealt and not yet felt. Filled and emptied inside one tick.
@@ -742,6 +744,7 @@ impl World {
     fn step_upkeep(&mut self) {
         self.spawn_waves();
         self.fill_camps();
+        self.tick_lairs();
         self.tick_runes();
         self.tick_shrines();
         self.tick_pools();
@@ -823,6 +826,7 @@ impl World {
     fn refresh_sight(&mut self) {
         let scroll_sights: Vec<(Team, Vec2, i32)> = self.teleport_sights().collect();
         visibility_system(SightCx {
+            pits: self.map.boss_zones,
             entities: &self.entities,
             transform: &self.transform,
             team: &self.team,

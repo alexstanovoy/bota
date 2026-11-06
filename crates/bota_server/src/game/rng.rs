@@ -42,6 +42,8 @@ pub enum Purpose {
     /// Which of the heroes standing in a Lotus Pool is handed the lotus it
     /// grew, drawn from the stream of each pluck alone.
     Lotus = 16,
+    /// Independent lair respawn draws, keyed by row and fall count.
+    Lair = 17,
 }
 
 /// The purposes with a stream of the match as a whole, whose draws the

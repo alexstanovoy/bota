@@ -504,4 +504,6 @@ pub enum UnitKind {
     /// A Lotus Pool (`npc_dota_lotus_pool`): an invulnerable building that
     /// grows healing lotuses for any hero standing in it to pluck.
     LotusPool,
+    /// The neutral boss of the river pits.
+    Roshan,
 }

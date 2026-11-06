@@ -337,8 +337,8 @@ impl World {
             UnitKind::Tower => Some(cooldown),
             _ => Some(0),
         };
-        let returning = kind == UnitKind::CreepNeutral
-            && self.neutral_ai.get(entity).is_some_and(|ai| ai.going_home);
+        let returning =
+            kind_def(kind).neutral && self.neutral_ai.get(entity).is_some_and(|ai| ai.going_home);
         // A hold is on the target: of one the view does not carry, nothing
         // is told.
         let target = held.filter(|on| self.carried(viewer, *on)).map(wire_id);

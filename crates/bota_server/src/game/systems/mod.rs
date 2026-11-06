@@ -22,6 +22,7 @@ mod hitting;
 mod hook;
 mod illusion;
 mod jungle;
+mod lair;
 mod lane_ai;
 mod lotus;
 mod missile;

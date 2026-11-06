@@ -20,7 +20,8 @@ use crate::{AbilityDef, Pierces, StructureId, TargetFilter, UnitDef, Until, rule
 pub const SIMULATED_OBJECTIVES: ObjectiveSet = ObjectiveSet::of(ObjectiveKind::Watchers)
     .with(ObjectiveKind::Outposts)
     .with(ObjectiveKind::Shrines)
-    .with(ObjectiveKind::LotusPools);
+    .with(ObjectiveKind::LotusPools)
+    .with(ObjectiveKind::Roshan);
 
 /// The kind of unit an objective stands as, for those that stand as one.
 pub const fn objective_unit(objective: ObjectiveKind) -> Option<UnitKind> {
@@ -29,7 +30,8 @@ pub const fn objective_unit(objective: ObjectiveKind) -> Option<UnitKind> {
         ObjectiveKind::Outposts => Some(UnitKind::Outpost),
         ObjectiveKind::Shrines => Some(UnitKind::Shrine),
         ObjectiveKind::LotusPools => Some(UnitKind::LotusPool),
-        ObjectiveKind::Roshan | ObjectiveKind::Tormentor => None,
+        ObjectiveKind::Roshan => Some(UnitKind::Roshan),
+        ObjectiveKind::Tormentor => None,
     }
 }
 

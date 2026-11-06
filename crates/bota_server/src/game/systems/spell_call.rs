@@ -42,7 +42,7 @@ impl World {
                 brads: (first + raised * 65536 / i32::from(count)) as u16,
             };
             let at = point_ahead(from, facing, rules::units(SUMMON_RING));
-            let unit = self.spawn_neutral(
+            let unit = self.spawn_neutral_home(
                 kind,
                 at,
                 home.camp,
@@ -87,7 +87,7 @@ impl World {
             return false;
         };
         let ticks = ticks_of_ms(life_ms);
-        let unit = self.spawn_neutral(kind, clamp_to_map(at), home.camp, 0);
+        let unit = self.spawn_neutral_home(kind, clamp_to_map(at), home.camp, 0);
         let by = (Some(cast.caster), cast.inflictor());
         self.give_timed_life(unit, ticks, by);
         self.put_modifier(

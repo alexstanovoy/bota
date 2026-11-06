@@ -114,7 +114,10 @@ impl World {
                 return self
                     .camp_home
                     .get(target)
-                    .and_then(|home| self.map.camps.get(usize::from(home.camp)))
+                    .and_then(|home| {
+                        home.camp
+                            .and_then(|camp| self.map.camps.get(usize::from(camp)))
+                    })
                     .is_some_and(|camp| camp.pullable);
             }
         }

@@ -11,6 +11,7 @@
 //! fails when the committed table holds other items than the install gives (the client build it
 //! names aside).
 
+mod boss;
 mod dec;
 mod emit;
 mod install;
@@ -64,6 +65,17 @@ fn args() -> Result<Args, String> {
 
 fn run() -> Result<(), String> {
     let args = args()?;
+    let boss = rustfmt(&boss::table(args.dota.as_deref())?)?;
+    let boss_path = repo().join("crates/bota_core/src/data/roshan.rs");
+    if args.check {
+        let committed =
+            std::fs::read_to_string(&boss_path).map_err(|e| format!("{boss_path:?}: {e}"))?;
+        if !emit::same_items(&committed, &boss) {
+            return Err("Roshan script data is stale".into());
+        }
+    } else {
+        std::fs::write(&boss_path, boss).map_err(|e| format!("{boss_path:?}: {e}"))?;
+    }
     let source = install::read(args.dota.as_deref())?;
     let registry_path = registry_path();
     let mut registry =
@@ -133,6 +145,15 @@ mod tests {
     #[test]
     #[ignore = "needs a Dota 2 install"]
     fn the_committed_table_is_what_the_install_gives() {
+        let boss = crate::rustfmt(&crate::boss::table(None).expect("boss scripts"))
+            .expect("formatted scripts");
+        let committed =
+            std::fs::read_to_string(crate::repo().join("crates/bota_core/src/data/roshan.rs"))
+                .expect("committed boss data");
+        assert!(
+            crate::emit::same_items(&committed, &boss),
+            "Roshan data is stale"
+        );
         let source = crate::install::read(None).expect("an install");
         let registry = std::fs::read_to_string(crate::registry_path()).expect("the registry");
         let items = crate::registry::items(&registry).expect("a well-formed registry");

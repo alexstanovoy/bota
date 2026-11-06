@@ -91,7 +91,7 @@ impl World {
             .filter(|beast| {
                 self.camp_home
                     .get(*beast)
-                    .is_some_and(|home| home.camp == camp)
+                    .is_some_and(|home| home.camp == Some(camp))
             })
             .collect();
         let held = own.iter().any(|beast| {
@@ -125,7 +125,7 @@ impl World {
                     && self
                         .camp_home
                         .get(*beast)
-                        .is_some_and(|home| home.camp == camp)
+                        .is_some_and(|home| home.camp == Some(camp))
             })
             .filter_map(|beast| self.neutral.get(beast).copied())
             .collect();
@@ -182,8 +182,6 @@ impl World {
     /// and nothing near wakes it until it is back. At night it sleeps: nothing coming near wakes
     /// it (Liquipedia, Time of Day: a neutral's aggro range is 0 by night).
     pub fn tick_jungle(&mut self) {
-        let guard = rules::units(rules::NEUTRAL_GUARD_DISTANCE);
-        let back = rules::units(rules::NEUTRAL_RETURN);
         let night = self.time_of_day().night;
         let entities = self.take_entity_snapshot();
         let mut wakers = std::mem::take(&mut self.jungle_spots);
@@ -196,12 +194,18 @@ impl World {
             ) else {
                 continue;
             };
+            let policy = self
+                .neutral
+                .get(entity)
+                .map_or(&bota_core::JUNGLE_HOME, |kind| kind.neutral().home);
+            let guard = rules::units(policy.guard);
+            let back = rules::units(policy.back);
             ai.reaggro_block = ai.reaggro_block.saturating_sub(1);
             if ai.going_home {
                 ai.awake = false;
                 if at.within(home.home, back) {
                     ai.going_home = false;
-                    ai.leash_left = rules::NEUTRAL_AGGRO_WINDOW;
+                    ai.leash_left = policy.window;
                     self.set_order(entity, UnitOrder::Idle);
                 } else {
                     self.set_order(entity, UnitOrder::Move { pos: home.home });
@@ -210,23 +214,23 @@ impl World {
                 continue;
             }
             if at.within(home.home, guard) {
-                ai.leash_left = rules::NEUTRAL_AGGRO_WINDOW;
+                ai.leash_left = policy.window;
             } else {
                 ai.leash_left = ai.leash_left.saturating_sub(1);
                 if ai.leash_left == 0 {
                     ai.going_home = true;
-                    ai.reaggro_block = rules::NEUTRAL_REAGGRO_BLOCK;
+                    ai.reaggro_block = policy.reaggro_block;
                 }
             }
             // Asleep it wakes by day for what comes right up to it; from
             // further off, and at night from anywhere, nothing but a blow
             // wakes it.
-            if !ai.awake && !ai.going_home && ai.reaggro_block == 0 && !night {
+            if !ai.awake && !ai.going_home && ai.reaggro_block == 0 && !(night && policy.sleeps) {
                 if !laid {
                     self.lay_wakers(&mut wakers);
                     laid = true;
                 }
-                ai.awake = self.anything_hostile_near(entity, rules::NEUTRAL_AGGRO_RANGE, &wakers);
+                ai.awake = self.anything_hostile_near(entity, policy.aggro_range, &wakers);
             }
             if !ai.going_home
                 && let Some(target) = self.target_of(entity)
@@ -287,7 +291,7 @@ impl World {
     /// it, or the rest of a stack left at home, answers only for what it
     /// stands near. What is still blocked from waking is not called back.
     /// One walking home once its block ran out turns back for
-    /// [`rules::NEUTRAL_SHORT_WINDOW`] (Liquipedia, *Neutral Creeps*, Losing
+    /// [`policy.short_window`] (Liquipedia, *Neutral Creeps*, Losing
     /// Aggro). Approximation: Dota gives the full window again once every
     /// creep of the camp is home; here each creep's own return does. A blow
     /// wakes them from as far as [`rules::NEUTRAL_DAMAGE_AGGRO_RANGE`], seen
@@ -297,20 +301,30 @@ impl World {
             let (Some(by), Some(_)) = (blow.source, self.camp_home.get(blow.target)) else {
                 continue;
             };
-            if self.neutral_ai.get(blow.target).is_none() || !self.alive(by) {
+            if self.neutral_ai.get(blow.target).is_none()
+                || !self.alive(by)
+                || self.migrating(blow.target)
+            {
                 continue;
             }
             let (Some(here), Some(there)) = (self.pos(blow.target), self.pos(by)) else {
                 continue;
             };
-            if !here.within(there, rules::units(rules::NEUTRAL_DAMAGE_AGGRO_RANGE)) {
+            let policy = self
+                .neutral
+                .get(blow.target)
+                .map_or(&bota_core::JUNGLE_HOME, |kind| kind.neutral().home);
+            if !here.within(there, rules::units(policy.damage_aggro_range)) {
                 continue;
             }
-            let spread = rules::units(rules::NEUTRAL_AGGRO_SPREAD);
+            let spread = rules::units(policy.aggro_spread);
             for beast in self.entities.iter() {
                 let near = beast == blow.target
                     || self.pos(beast).is_some_and(|at| at.within(here, spread));
-                if !near || self.camp_home.get(beast).is_none() {
+                let Some(home) = self.camp_home.get(beast) else {
+                    continue;
+                };
+                if !near || (beast != blow.target && home.camp.is_none()) {
                     continue;
                 }
                 let Some(mut ai) = self.neutral_ai.get(beast).copied() else {
@@ -321,7 +335,11 @@ impl World {
                 }
                 if ai.going_home {
                     ai.going_home = false;
-                    ai.leash_left = rules::NEUTRAL_SHORT_WINDOW;
+                    ai.leash_left = self
+                        .neutral
+                        .get(beast)
+                        .map_or(&bota_core::JUNGLE_HOME, |kind| kind.neutral().home)
+                        .short_window;
                 }
                 ai.roused_by = Some(by);
                 ai.awake = true;

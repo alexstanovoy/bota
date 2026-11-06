@@ -134,6 +134,8 @@ pub struct UnitDef {
     pub hit_count: Option<HitCount>,
     /// Whether it counts as ancient.
     pub ancient: bool,
+    /// Attacks only land when launched from one of the map's boss zones.
+    pub pit_attacked: bool,
     /// Gold killing it pays.
     pub bounty_gold: GoldRange,
     /// Gold its fall pays every seat of the side that brought it down, half
@@ -205,6 +207,7 @@ pub(crate) const BARE_UNIT: UnitDef = UnitDef {
     spell_immune: false,
     hit_count: None,
     ancient: false,
+    pit_attacked: false,
     bounty_gold: GoldRange::ZERO,
     bounty_team: 0,
     bounty_xp: 0,
@@ -675,7 +678,7 @@ pub const MAX_VISION: i32 = max_vision();
 /// The kinds of unit that stand on their own, not one of a table's rows: with the heroes, the
 /// neutrals and the wards the items stand, every kind of unit there is. Listed by hand: a new
 /// kind goes here too, or the server's sight pass asserts once one of it sees farther.
-pub const FIXED_UNIT_DEFS: [&UnitDef; 28] = [
+pub const FIXED_UNIT_DEFS: [&UnitDef; 29] = [
     &BARE_UNIT,
     &MELEE_CREEP,
     &FLAGBEARER_CREEP,
@@ -704,6 +707,7 @@ pub const FIXED_UNIT_DEFS: [&UnitDef; 28] = [
     &crate::OUTPOST,
     &crate::WATCHER,
     &crate::SHRINE,
+    &crate::ROSHAN,
 ];
 
 const fn max_vision() -> i32 {

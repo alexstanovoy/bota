@@ -128,6 +128,8 @@ pub enum NeutralKind {
     SkeletonWarrior,
     /// Tornado: `npc_dota_enraged_wildkin_tornado`.
     WildkinTornado,
+    /// Boss of the river pits: `npc_dota_roshan`.
+    Roshan,
 }
 
 impl NeutralKind {
@@ -171,7 +173,49 @@ pub struct NeutralDef {
     pub innate: Option<NeutralAbility>,
     /// The plain form it spawns with.
     pub def: UnitDef,
+    /// Its wake and leash policy.
+    pub home: &'static HomeDef,
 }
+
+/// How a neutral holds the ground it stands guard on, as Liquipedia's
+/// *Neutral Creeps* ("Behavior") gives it: what draws it, how far it is led
+/// before it gives up and walks back, and whether it sleeps at night.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HomeDef {
+    /// A hostile unit this close wakes it.
+    pub aggro_range: i32,
+    /// A blow struck from within this range wakes it.
+    pub damage_aggro_range: i32,
+    /// How far around it a blow on it wakes the others of a camp.
+    pub aggro_spread: i32,
+    /// How far from its spot it may stand before its aggro window starts
+    /// running down: the guard distance.
+    pub guard: i32,
+    /// Ticks it may spend beyond its guard distance before it walks home.
+    pub window: u32,
+    /// The window of one struck back from its walk home.
+    pub short_window: u32,
+    /// Ticks after a leash break in which nothing wakes it.
+    pub reaggro_block: u32,
+    /// Being this close to its spot ends its walk home.
+    pub back: i32,
+    /// Whether it sleeps by night: nothing coming near wakes it then
+    /// (Liquipedia, *Time of Day*: a neutral's aggro range is 0 by night).
+    pub sleeps: bool,
+}
+
+/// How the jungle's creeps hold their camps.
+pub const JUNGLE_HOME: HomeDef = HomeDef {
+    aggro_range: rules::NEUTRAL_AGGRO_RANGE,
+    damage_aggro_range: rules::NEUTRAL_DAMAGE_AGGRO_RANGE,
+    aggro_spread: rules::NEUTRAL_AGGRO_SPREAD,
+    guard: rules::NEUTRAL_GUARD_DISTANCE,
+    window: rules::NEUTRAL_AGGRO_WINDOW,
+    short_window: rules::NEUTRAL_SHORT_WINDOW,
+    reaggro_block: rules::NEUTRAL_REAGGRO_BLOCK,
+    back: rules::NEUTRAL_RETURN,
+    sleeps: true,
+};
 
 /// The most abilities a neutral carries.
 pub const MAX_NEUTRAL_ABILITIES: usize = 4;
@@ -181,7 +225,7 @@ const _: () = {
     while at < NEUTRALS.len() {
         let neutral = &NEUTRALS[at];
         assert!(neutral.abilities.len() <= MAX_NEUTRAL_ABILITIES);
-        assert!(matches!(neutral.def.kind, UnitKind::CreepNeutral));
+        assert!(crate::kind_def(neutral.def.kind).neutral);
         at += 1;
     }
 };
@@ -223,6 +267,7 @@ const fn neutral(
         unit,
         abilities,
         innate: Some(NeutralAbility::NeutralUpgrade),
+        home: &JUNGLE_HOME,
         def,
     }
 }
@@ -1739,6 +1784,15 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
                 ..NEUTRAL_BASE
             },
         )
+    },
+    NeutralDef {
+        kind: NeutralKind::Roshan,
+        name: "Roshan",
+        unit: "npc_dota_roshan",
+        abilities: &[],
+        innate: None,
+        home: &crate::ROSHAN_HOME,
+        def: crate::ROSHAN,
     },
 ];
 

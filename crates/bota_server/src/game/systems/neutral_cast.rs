@@ -144,7 +144,7 @@ impl World {
                         && self
                             .camp_home
                             .get(*mate)
-                            .is_some_and(|h| h.camp == home.camp)
+                            .is_some_and(|h| home.camp.is_some() && h.camp == home.camp)
                         && self.neutral.get(*mate).is_some()
                 })
                 .collect();

@@ -252,7 +252,7 @@ fn requirements(block: &Kv) -> Result<Vec<Vec<String>>, String> {
 }
 
 /// `AbilityValues`: each a number a level, written alone or as the `value` of a block.
-fn values(block: &Kv) -> Result<Vec<(String, Vec<Milli>)>, String> {
+pub(crate) fn values(block: &Kv) -> Result<Vec<(String, Vec<Milli>)>, String> {
     let Some(values) = block.get("AbilityValues") else {
         return Ok(Vec::new());
     };

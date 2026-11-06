@@ -190,6 +190,7 @@ impl World {
         self.rot_goes_out(entity);
         self.carry_fights_on(entity);
         self.death_throes(entity);
+        self.bury_lair(entity);
         self.feed_flesh_heaps(entity, credited_hero);
         // Necromastery follows the physical OnDeath attacker; Flesh Heap follows credit.
         self.feed_souls(entity, killer);

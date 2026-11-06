@@ -508,6 +508,9 @@ name = "game_objectives"
 about = "the map's objectives: runes, Lotus Pools, Outposts, Watchers, Shrines"
 paths = [
     "crates/bota_server/src/game/systems/lotus.rs",
+    "crates/bota_server/src/game/systems/lair.rs",
+    "crates/bota_server/src/game/components/lair.rs",
+    "crates/bota_server/src/game/tests/roshan.rs",
     "crates/bota_server/src/game/systems/objective.rs",
     "crates/bota_server/src/game/systems/shrine.rs",
     "crates/bota_server/src/game/components/objective.rs",
@@ -518,6 +521,7 @@ paths = [
 tests = [{ crate = "bota_server", target = "lib", filters = [
     "game::tests::runes::",
     "game::tests::lotus::",
+    "game::tests::roshan::",
     "game::tests::objectives::",
 ] }]
 

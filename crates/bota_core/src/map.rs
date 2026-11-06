@@ -22,6 +22,60 @@ pub const MAP2_GAME_TICKS: u32 = 20 * 60 * rules::TICKS_PER_SECOND;
 /// pregame (Solo Mid's) included.
 pub const MAP2_TICK_CAP: u32 = rules::SOLO_MID_PREGAME_TICKS + MAP2_GAME_TICKS;
 
+/// A stretch of the ground as the map's volumes bound it: a convex polygon,
+/// its corners in turn round it, anticlockwise. Height is not read: what
+/// stands over it stands in it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PitZone {
+    pub corners: &'static [Vec2],
+}
+
+impl PitZone {
+    /// Whether a spot is in it, its edge included.
+    pub fn contains(&self, at: Vec2) -> bool {
+        let n = self.corners.len();
+        n >= 3
+            && (0..n).all(|i| {
+                let (a, b) = (self.corners[i], self.corners[(i + 1) % n]);
+                let cross = i64::from((b.x - a.x).raw) * i64::from((at.y - a.y).raw)
+                    - i64::from((b.y - a.y).raw) * i64::from((at.x - a.x).raw);
+                cross >= 0
+            })
+    }
+}
+
+/// Roshan's two pits as Dota's `trigger_boss_attackable` volumes bound them,
+/// bottom then top: the brush hulls of `maps/dota/entities/
+/// unnamed_2699_27805.vmdl` and `trigger_boss_attackable_2_2699_28489.vmdl`
+/// (the 7.41f map, 6966), turned and moved by their entities' angles and
+/// origins (`default_ents.vents`: yaw 181.62 at (2947.97, -3042.49) and yaw
+/// 341.82 at (-3075.14, 2678.24)), shifted as the map is and rounded to the
+/// unit.
+pub const DOTA_BOSS_ZONES: [PitZone; 2] = [
+    PitZone {
+        corners: &[
+            Vec2::from_ints(11528, 6581),
+            Vec2::from_ints(11744, 6299),
+            Vec2::from_ints(12003, 6226),
+            Vec2::from_ints(12206, 6261),
+            Vec2::from_ints(12427, 6494),
+            Vec2::from_ints(12322, 6809),
+            Vec2::from_ints(11870, 6958),
+        ],
+    },
+    PitZone {
+        corners: &[
+            Vec2::from_ints(5777, 11350),
+            Vec2::from_ints(6152, 11056),
+            Vec2::from_ints(6601, 11296),
+            Vec2::from_ints(6493, 11634),
+            Vec2::from_ints(6275, 11790),
+            Vec2::from_ints(6072, 11826),
+            Vec2::from_ints(5785, 11682),
+        ],
+    },
+];
+
 /// One playable map.
 #[derive(Clone, Copy, Debug)]
 pub struct MapDef {
@@ -59,6 +113,10 @@ pub struct MapDef {
     /// whose corners trace the real road keeps its towers beside it.
     pub lane_through_towers: bool,
     /// The jungle camps.
+    /// Bosses which the selected objectives can stand up.
+    pub lairs: &'static [crate::LairDef],
+    /// The ground volumes from which attacks may hit pit-bound units.
+    pub boss_zones: &'static [PitZone],
     pub camps: &'static [CampDef],
     /// Hero deaths on one side that lose it the match. Nought for a map lost
     /// only with a building.
@@ -147,6 +205,8 @@ const DOTA: MapDef = MapDef {
     lane_corners: DOTA_CORNERS,
     lane_through_towers: true,
     camps: &crate::CAMPS,
+    lairs: &[crate::ROSHAN_LAIR],
+    boss_zones: &DOTA_BOSS_ZONES,
     death_limit: 0,
     tower_ends_it: false,
     outposts: &objective::DOTA_OUTPOSTS,
@@ -188,6 +248,8 @@ const DEMO: MapDef = MapDef {
     lane_corners: DEMO_CORNERS,
     lane_through_towers: false,
     camps: &DEMO_CAMPS,
+    lairs: &[],
+    boss_zones: &[],
     death_limit: 0,
     tower_ends_it: false,
     outposts: &[],
@@ -260,6 +322,11 @@ impl MapDef {
         if !self.lotus_pools.is_empty() {
             held = held.with(ObjectiveKind::LotusPools);
         }
+        let mut at = 0;
+        while at < self.lairs.len() {
+            held = held.with(self.lairs[at].objective);
+            at += 1;
+        }
         held
     }
 
@@ -306,4 +373,10 @@ impl MapDef {
     pub fn index(&self) -> usize {
         self.id.0 as usize
     }
+}
+
+/// Pit walls separate sight even for flying viewers (Valve 7.41c).
+pub fn pit_sight_clear(pits: &[PitZone], from: Vec2, to: Vec2) -> bool {
+    pits.iter()
+        .all(|pit| pit.contains(from) == pit.contains(to))
 }

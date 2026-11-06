@@ -24,6 +24,8 @@ pub struct KindDef {
     pub lane_creep: bool,
     /// What a wave is made of, or what the jungle grows.
     pub creep: bool,
+    /// Uses a neutral mind and home, including bosses outside camps.
+    pub neutral: bool,
     /// Stands where it was put: nothing pulls or drags it, and an aura for
     /// ordinary units passes it by.
     pub fixed: bool,
@@ -91,6 +93,7 @@ const PLAIN: KindDef = KindDef {
     always_seen: false,
     lane_creep: false,
     creep: false,
+    neutral: false,
     fixed: false,
     leaves_a_death: true,
     attack_class: AttackClass::Plain,
@@ -160,7 +163,7 @@ const fn objective(kind: UnitKind, name: &'static str, takes_scrolls: bool) -> K
 }
 
 /// Every kind of unit, indexed by its wire variant.
-pub const UNIT_KINDS: [KindDef; 17] = [
+pub const UNIT_KINDS: [KindDef; 18] = [
     KindDef {
         kind: UnitKind::Hero,
         attack_class: AttackClass::Hero,
@@ -184,6 +187,7 @@ pub const UNIT_KINDS: [KindDef; 17] = [
     KindDef {
         kind: UnitKind::CreepNeutral,
         name: "Neutral Creep",
+        neutral: true,
         creep: true,
         ..PLAIN
     },
@@ -242,6 +246,15 @@ pub const UNIT_KINDS: [KindDef; 17] = [
         selectable: false,
         ..objective(UnitKind::LotusPool, "Lotus Pool", false)
     },
+    KindDef {
+        kind: UnitKind::Roshan,
+        name: "Roshan",
+        neutral: true,
+        creep: true,
+        death_announced: true,
+        breaks_regen: true,
+        ..PLAIN
+    },
 ];
 
 const _: () = {
@@ -272,7 +285,8 @@ const fn row(kind: UnitKind) -> usize {
         | UnitKind::Outpost
         | UnitKind::Watcher
         | UnitKind::Shrine
-        | UnitKind::LotusPool => kind as usize,
+        | UnitKind::LotusPool
+        | UnitKind::Roshan => kind as usize,
     }
 }
 

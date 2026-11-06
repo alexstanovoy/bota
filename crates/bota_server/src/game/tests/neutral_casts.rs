@@ -304,7 +304,10 @@ fn the_summoner_raises_skeletons_below_half_its_health() {
             );
             let left = life_left(&world, skeleton).expect("they live a while");
             assert!(left > ticks_of_ms(34_000) && left <= ticks_of_ms(35_000));
-            assert_eq!(world.camp_home.get(skeleton).map(|home| home.camp), Some(1));
+            assert_eq!(
+                world.camp_home.get(skeleton).map(|home| home.camp),
+                Some(Some(1))
+            );
         }
     }
 }

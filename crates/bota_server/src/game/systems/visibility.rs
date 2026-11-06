@@ -10,6 +10,7 @@ use crate::game::{
 
 /// What working out sight reads and writes.
 pub struct SightCx<'a> {
+    pub pits: &'static [bota_core::PitZone],
     pub entities: &'a EntityAllocator,
     pub transform: &'a Table<Transform>,
     pub team: &'a Table<Team>,
@@ -34,6 +35,8 @@ pub struct SightCx<'a> {
 /// The scratch a pass of sight works in, kept between passes.
 #[derive(Clone, Default)]
 pub struct SightScratch {
+    /// Pit volumes of the current map, applied to ground and flying sight.
+    pub(crate) pits: &'static [bota_core::PitZone],
     /// One row per live entity.
     rows: Vec<SightRow>,
     /// Every entity whose side and ordinary sight are worth asking about.
@@ -118,6 +121,7 @@ struct SightViewer {
 /// side's true sight also reaches it.
 pub fn visibility_system(cx: SightCx<'_>) {
     let SightCx {
+        pits,
         entities,
         transform,
         team,
@@ -131,6 +135,7 @@ pub fn visibility_system(cx: SightCx<'_>) {
         visibility,
         sight,
     } = cx;
+    sight.pits = pits;
     sight.rows.clear();
     for entity in entities.iter() {
         let at = transform.get(entity).map(|t| t.pos);
@@ -232,6 +237,7 @@ impl SightScratch {
         self.viewers.iter().any(|viewer| {
             viewer.side == side
                 && viewer.from.within(at, viewer.vision)
+                && bota_core::pit_sight_clear(self.pits, viewer.from, at)
                 && (viewer.flying
                     || (viewer.tier >= tier && sight_block.clear(viewer.from, viewer.tier, at)))
         })
@@ -274,6 +280,7 @@ impl SightScratch {
         let seen = self.viewers.iter().any(|viewer| {
             serves(viewer.side, team)
                 && viewer.from.within(at, viewer.vision)
+                && bota_core::pit_sight_clear(self.pits, viewer.from, at)
                 && (viewer.flying
                     || (viewer.tier >= row.tier && sight_block.clear(viewer.from, viewer.tier, at)))
         });
@@ -339,6 +346,7 @@ impl SightScratch {
                 };
                 if (seen.by(viewer.side) && seen.by(Team::Neutral))
                     || !viewer.from.within(at, viewer.vision)
+                    || !bota_core::pit_sight_clear(self.pits, viewer.from, at)
                     || (!viewer.flying && viewer.tier < row.tier)
                 {
                     continue;
@@ -474,7 +482,8 @@ impl World {
             let Some(Some(cell)) = self.exposure.get(entity).map(|e| e.0[team as usize]) else {
                 return false;
             };
-            if self.tick > cell.until
+            if !bota_core::pit_sight_clear(self.map.boss_zones, cell.at, at)
+                || self.tick > cell.until
                 || !cell
                     .at
                     .within(at, rules::units(rules::STRIKE_REVEAL_RADIUS))
@@ -484,9 +493,11 @@ impl World {
             let tier = self.ground.tier(cell.at);
             cell.flying || (tier >= target_tier && self.sight_block.clear(cell.at, tier, at))
         });
-        let landing = self
-            .teleport_sights()
-            .any(|(side, from, radius)| side == team && from.within(at, rules::units(radius)));
+        let landing = self.teleport_sights().any(|(side, from, radius)| {
+            side == team
+                && from.within(at, rules::units(radius))
+                && bota_core::pit_sight_clear(self.map.boss_zones, from, at)
+        });
         exposed
             || landing
             || self.entities.iter().any(|entity| {
@@ -501,7 +512,10 @@ impl World {
                         _ => return false,
                     }
                 };
-                if reach <= Fixed::ZERO || !from.within(at, reach) {
+                if reach <= Fixed::ZERO
+                    || !from.within(at, reach)
+                    || !bota_core::pit_sight_clear(self.map.boss_zones, from, at)
+                {
                     return false;
                 }
                 let viewer_tier = self.ground.tier(from);
