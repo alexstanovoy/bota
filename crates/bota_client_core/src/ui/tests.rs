@@ -1,7 +1,7 @@
 //! The client core, tested without a window or a socket.
 
 use crate::ui::ChannelStops;
-use crate::ui::app::{App, FeedKind, Killer, Tap, Victim, tap_again};
+use crate::ui::app::{App, CueKind, FeedKind, Killer, Tap, Victim, tap_again};
 use crate::ui::slots::{Look, Press, Slot, ability_look, decide, item_look, order_for};
 use bota_proto::{
     AbilityId, AbilitySlot, AbilityView, Aim, Angle, Attributes, EntityId, EventKind, Fixed,
@@ -1549,6 +1549,32 @@ fn a_fallen_tower_is_fed_with_the_hero_that_brought_it_down() {
         }),
         "the line names the hero that struck it"
     );
+}
+
+#[test]
+fn a_fallen_building_is_cued_with_the_event_that_told_of_it() {
+    let (mut app, _, _) = a_duel_app();
+    let told = EventKind::StructureDestroyed {
+        unit: EntityId {
+            idx: 9,
+            generation: 1,
+        },
+        team: Team::Dire,
+        kind: UnitKind::Barracks,
+        lane: Some(0),
+        tier: None,
+        ranged: Some(false),
+    };
+    app.handle(bota_proto::ServerMsg::Events {
+        tick: 10,
+        events: vec![told.clone()],
+    });
+    let cue = app
+        .cues
+        .iter()
+        .find(|cue| cue.kind == CueKind::StructureFell)
+        .expect("a cue for the fall");
+    assert_eq!(cue.told, Some(told), "the cue says which building fell");
 }
 
 #[test]

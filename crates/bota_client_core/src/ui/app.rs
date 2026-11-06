@@ -274,6 +274,9 @@ pub enum CueKind {
     LevelUp,
     /// A tower strikes the watched hero.
     TowerShot,
+    /// A building (a tower, a barracks, a filler, an Ancient) is brought down: the event it was
+    /// told by names whose and which.
+    StructureFell,
     /// A hero falls.
     HeroDeath,
     /// The watched hero brings an enemy hero down.

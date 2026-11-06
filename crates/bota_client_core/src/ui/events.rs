@@ -107,6 +107,8 @@ impl App {
                     Some((fallen, killer)) if fallen == unit => killer,
                     _ => None,
                 };
+                let at = self.spot(unit);
+                self.cue(CueKind::StructureFell, 1.0, at);
                 self.push_feed(FeedKind::StructureFell {
                     team,
                     kind,
