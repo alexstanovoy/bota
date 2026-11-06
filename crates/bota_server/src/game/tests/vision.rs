@@ -1241,3 +1241,38 @@ fn the_feed_names_the_hero_that_razed_a_barracks_or_a_tower_and_no_other_killer(
         "\"a tower was destroyed by The Dire\": a creep is not named"
     );
 }
+
+/// Every kind of unit there is stands in one world and has its sight worked out, by day and by
+/// night: none sees farther than the farthest sight a client works within
+/// (`bota_core::MAX_VISION`, which the sight pass asserts for every unit).
+#[test]
+fn every_kind_of_unit_sees_within_the_farthest_sight_there_is() {
+    use bota_core::{FIXED_UNIT_DEFS, HEROES, ITEMS, MAX_VISION, NEUTRALS, UnitDef, UseSpec};
+    let wards = ITEMS.iter().filter_map(|item| match item.effect {
+        UseSpec::Ward { unit, .. } => Some(unit),
+        _ => None,
+    });
+    let every: Vec<&'static UnitDef> = FIXED_UNIT_DEFS
+        .into_iter()
+        .chain(HEROES.iter().map(|hero| hero.unit))
+        .chain(NEUTRALS.iter().map(|neutral| &neutral.def))
+        .chain(wards)
+        .collect();
+    for def in &every {
+        assert!(def.day_vision.max(def.night_vision) <= MAX_VISION);
+    }
+    let (mut world, _) = match_hero();
+    let spot = an_empty_spot(&world);
+    for def in &every {
+        world.spawn_unit(def, Team::Radiant, spot);
+    }
+    world.settle();
+    // Then the other half of the day.
+    let first = world.time_of_day().night;
+    let turned = (0..rules::TICKS_PER_SECOND * 60 * 20).find(|_| {
+        world.step();
+        world.time_of_day().night != first
+    });
+    assert!(turned.is_some(), "the day turns");
+    world.settle();
+}

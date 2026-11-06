@@ -672,37 +672,40 @@ pub const TOWERS: [UnitDef; 4] = [tower_of(0), tower_of(1), tower_of(2), tower_o
 /// within it, whatever a view tells.
 pub const MAX_VISION: i32 = max_vision();
 
+/// The kinds of unit that stand on their own, not one of a table's rows: with the heroes, the
+/// neutrals and the wards the items stand, every kind of unit there is.
+pub const FIXED_UNIT_DEFS: [&UnitDef; 28] = [
+    &BARE_UNIT,
+    &MELEE_CREEP,
+    &FLAGBEARER_CREEP,
+    &RANGED_CREEP,
+    &SUPER_MELEE_CREEP,
+    &MEGA_MELEE_CREEP,
+    &SUPER_RANGED_CREEP,
+    &MEGA_RANGED_CREEP,
+    &SIEGE_CREEP,
+    &SUPER_SIEGE_CREEP,
+    &HERO,
+    &BARRACKS_MELEE,
+    &BARRACKS_RANGED,
+    &FILLER,
+    &RADIANT_ANCIENT,
+    &DIRE_ANCIENT,
+    &FOUNTAIN,
+    &COURIER,
+    &OBSERVER_WARD,
+    &SENTRY_WARD,
+    &TOWERS[0],
+    &TOWERS[1],
+    &TOWERS[2],
+    &TOWERS[3],
+    &crate::LOTUS_POOL,
+    &crate::OUTPOST,
+    &crate::WATCHER,
+    &crate::SHRINE,
+];
+
 const fn max_vision() -> i32 {
-    const FIXED: [&UnitDef; 28] = [
-        &BARE_UNIT,
-        &MELEE_CREEP,
-        &FLAGBEARER_CREEP,
-        &RANGED_CREEP,
-        &SUPER_MELEE_CREEP,
-        &MEGA_MELEE_CREEP,
-        &SUPER_RANGED_CREEP,
-        &MEGA_RANGED_CREEP,
-        &SIEGE_CREEP,
-        &SUPER_SIEGE_CREEP,
-        &HERO,
-        &BARRACKS_MELEE,
-        &BARRACKS_RANGED,
-        &FILLER,
-        &RADIANT_ANCIENT,
-        &DIRE_ANCIENT,
-        &FOUNTAIN,
-        &COURIER,
-        &OBSERVER_WARD,
-        &SENTRY_WARD,
-        &TOWERS[0],
-        &TOWERS[1],
-        &TOWERS[2],
-        &TOWERS[3],
-        &crate::LOTUS_POOL,
-        &crate::OUTPOST,
-        &crate::WATCHER,
-        &crate::SHRINE,
-    ];
     const fn sight(most: i32, def: &UnitDef) -> i32 {
         let farther = if def.day_vision > def.night_vision {
             def.day_vision
@@ -713,8 +716,8 @@ const fn max_vision() -> i32 {
     }
     let mut most = 0;
     let mut at = 0;
-    while at < FIXED.len() {
-        most = sight(most, FIXED[at]);
+    while at < FIXED_UNIT_DEFS.len() {
+        most = sight(most, FIXED_UNIT_DEFS[at]);
         at += 1;
     }
     let mut at = 0;

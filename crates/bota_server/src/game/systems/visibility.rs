@@ -135,6 +135,19 @@ pub fn visibility_system(cx: SightCx<'_>) {
     for entity in entities.iter() {
         let at = transform.get(entity).map(|t| t.pos);
         let stats = stats.get(entity);
+        // What a client works sight out within: a unit that sees farther is one of a kind
+        // bota_core::max_vision does not list.
+        let farthest = Fixed::from_int(bota_core::MAX_VISION);
+        debug_assert!(
+            stats.is_none_or(|s| s.vision <= farthest),
+            "a unit sees farther than bota_core::MAX_VISION: list its kind in max_vision"
+        );
+        debug_assert!(
+            stats
+                .and_then(|s| s.vision_grant)
+                .is_none_or(|(_, radius)| radius <= farthest),
+            "a vision grant sees farther than bota_core::MAX_VISION"
+        );
         sight.rows.push(SightRow {
             entity,
             team: team.get(entity).copied(),
