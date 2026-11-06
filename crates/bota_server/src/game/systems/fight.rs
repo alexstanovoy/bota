@@ -208,10 +208,17 @@ impl World {
                 awards: awards.map(Box::new),
             },
             visible_to: told.fall,
-            gold_hidden_from: killer
-                .filter(|&k| kind != Some(UnitKind::Hero) && self.seat_of(k).is_some())
-                .and_then(|k| self.team.get(k).copied())
-                .map(other_side),
+            gold_hidden_from: if kind == Some(UnitKind::Hero) {
+                None
+            } else {
+                // NPC kills still award private team income. Without a playing-side
+                // killer (an environmental or neutral kill), the fallen side earns none.
+                killer
+                    .and_then(|k| self.team.get(k).copied())
+                    .filter(|team| *team != Team::Neutral)
+                    .map(other_side)
+                    .or(side)
+            },
             source_told_to: told.killer,
         });
         let structure = kind.zip(side).filter(|(kind, _)| kind_def(*kind).structure);

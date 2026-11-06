@@ -173,6 +173,71 @@ fn a_flagbearer_kill_pays_its_spawn_time_bonus_to_both_nearby_allied_heroes() {
     );
 }
 
+#[test]
+fn a_creep_killed_flagbearer_hides_all_gold_from_the_fallen_side() {
+    use bota_proto::{EventKind, GoldAwardKind};
+    use bota_server::game::UnitOrder;
+    let (mut game, flag, _, promised, _) = arranged_flagbearer();
+    let names = [
+        game.handle_of(0, flag).expect("earning side's flag name"),
+        game.handle_of(1, flag).expect("fallen side's flag name"),
+    ];
+    let before: Vec<_> = game.world().seats.iter().map(|seat| seat.gold).collect();
+    let clock = game.world().clock();
+    let world = game.world_mut();
+    for slot in [0, 2] {
+        world.set_order(world.seats[slot].unit.expect("hero"), UnitOrder::Stand);
+    }
+    let at = world.transform.get(flag).expect("flag position").pos;
+    let creep = world.spawn_creep(&bota_core::MELEE_CREEP, Team::Radiant, at, 0, 0);
+    world.set_target(creep, flag);
+    let mut streams = Vec::new();
+    for _ in 0..150 {
+        streams = game
+            .step(&[&[], &[], &[]])
+            .expect("creep attack progresses");
+        if !game.world().alive(flag) {
+            break;
+        }
+    }
+    assert!(!game.world().alive(flag), "the creep kills the flagbearer");
+    let passive = passive_gold_by(game.world().clock() - game.world().schedule().horn)
+        - passive_gold_by(clock - game.world().schedule().horn);
+    for slot in [0, 2] {
+        assert_eq!(
+            game.world().seats[slot].gold - before[slot] - passive,
+            promised
+        );
+        let EventKind::Died {
+            bounty,
+            awards: Some(awards),
+            ..
+        } = death(&streams[slot], names[0])
+        else {
+            panic!("the earning side gets its bonus receipts")
+        };
+        assert_eq!(*bounty, Some(0), "no hero landed the killing blow");
+        assert_eq!(awards.len(), 2);
+        assert!(
+            awards
+                .iter()
+                .all(|award| award.kind == GoldAwardKind::FlagbearerBonus
+                    && award.amount == promised)
+        );
+    }
+    assert!(
+        matches!(
+            death(&streams[1], names[1]),
+            EventKind::Died {
+                bounty: None,
+                awards: None,
+                ..
+            }
+        ),
+        "the fallen side receives neither the legacy total nor any award"
+    );
+}
+
 fn assert_award_breakdown(
     streams: &[Vec<ServerMsg>],
     names: [bota_proto::EntityId; 2],

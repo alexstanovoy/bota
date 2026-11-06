@@ -200,6 +200,41 @@ fn a_hero_kills_gold_is_public() {
 }
 
 #[test]
+fn flagbearer_income_is_private_without_a_player_killing_blow() {
+    for killer_side in [None, Some(Team::Radiant), Some(Team::Neutral)] {
+        let mut world = World::new();
+        let at = Vec2::from_ints(5000, 5000);
+        seat_hero(&mut world, 0, Team::Radiant, at);
+        seat_hero(&mut world, 1, Team::Dire, at);
+        let flag = world.spawn_creep(&FLAGBEARER_CREEP, Team::Dire, at, 0, 0);
+        let killer = killer_side.map(|team| world.spawn_creep(&MELEE_CREEP, team, at, 0, 0));
+        world.settle();
+        let promised = world.bounty.get(flag).expect("flag bounty").bonus;
+        let before = world.seats[0].gold;
+        world.health.insert(flag, health(0));
+        let mut events = Vec::new();
+        world.bury(vec![(flag, killer)], &mut events);
+        assert_eq!(world.seats[0].gold - before, promised);
+        let told = visible_events(&events, Some(Team::Dire));
+        assert!(
+            told.iter().any(|event| matches!(
+                event,
+                EventKind::Died {
+                    bounty: None,
+                    awards: None,
+                    ..
+                }
+            )),
+            "private income for {killer_side:?}: {told:?}"
+        );
+        let own = visible_events(&events, Some(Team::Radiant));
+        assert!(own.iter().any(|event| matches!(event,
+            EventKind::Died { bounty: Some(0), awards: Some(awards), .. }
+                if awards.len() == 1 && awards[0].amount == promised)));
+    }
+}
+
+#[test]
 fn death_gold_awards_disclose_each_recipients_income_only_to_its_own_side() {
     use crate::game::{Event, EventVisibility};
     use bota_proto::{EntityId, GoldAward, GoldAwardKind, SlotId};
@@ -258,7 +293,7 @@ fn death_gold_awards_disclose_each_recipients_income_only_to_its_own_side() {
                 ..
             }
         ),
-        "a kill without a player still hides the other side's bonus awards"
+        "award privacy does not depend on the legacy bounty's disclosure marker"
     );
     let unseen = Event {
         visible_to: EventVisibility::Nobody,
