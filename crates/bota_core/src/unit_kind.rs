@@ -16,6 +16,10 @@ pub struct KindDef {
     /// The rules' identifier for the kind, for logs and tests; not a
     /// player-facing label.
     pub name: &'static str,
+    /// A fixed NPC model key; dynamic neutral and ward subtypes select their own.
+    pub npc: Option<&'static str>,
+    /// Health taken by one ranged-hero attack, for hit-count units.
+    pub health_per_ranged_hit: Option<i32>,
     /// A building: it stands still and blocks the ground.
     pub structure: bool,
     /// Both sides always know where it is, whatever their vision.
@@ -89,6 +93,8 @@ pub struct KindDef {
 const PLAIN: KindDef = KindDef {
     kind: UnitKind::Hero,
     name: "Hero",
+    npc: None,
+    health_per_ranged_hit: None,
     structure: false,
     always_seen: false,
     lane_creep: false,
@@ -163,7 +169,7 @@ const fn objective(kind: UnitKind, name: &'static str, takes_scrolls: bool) -> K
 }
 
 /// Every kind of unit, indexed by its wire variant.
-pub const UNIT_KINDS: [KindDef; 18] = [
+pub const UNIT_KINDS: [KindDef; 19] = [
     KindDef {
         kind: UnitKind::Hero,
         attack_class: AttackClass::Hero,
@@ -208,6 +214,9 @@ pub const UNIT_KINDS: [KindDef; 18] = [
     building(UnitKind::Fountain, "Fountain", TargetClass::Building, true),
     KindDef {
         kind: UnitKind::Ward,
+        health_per_ranged_hit: Some(
+            crate::OBSERVER_WARD.max_hp / rules::WARD_HITS.ranged_hero as i32,
+        ),
         name: "Ward",
         fixed: true,
         leaves_a_death: false,
@@ -219,6 +228,7 @@ pub const UNIT_KINDS: [KindDef; 18] = [
     },
     KindDef {
         kind: UnitKind::Courier,
+        health_per_ranged_hit: Some(crate::COURIER.max_hp / rules::COURIER_HITS.ranged_hero as i32),
         name: "Courier",
         death_announced: true,
         ..PLAIN
@@ -231,18 +241,22 @@ pub const UNIT_KINDS: [KindDef; 18] = [
     // A side teleports to the Outposts it holds [LIQ Outpost].
     KindDef {
         interact: Some(AbilityId::CAPTURE),
+        npc: Some("npc_dota_watch_tower"),
         ..objective(UnitKind::Outpost, "Outpost", true)
     },
     KindDef {
         interact: Some(AbilityId::LAMP_USE),
+        npc: Some("npc_dota_lantern"),
         ..objective(UnitKind::Watcher, "Watcher", false)
     },
     KindDef {
+        npc: Some("npc_dota_xp_fountain"),
         selectable: false,
         walkable: true,
         ..objective(UnitKind::Shrine, "Shrine of Wisdom", false)
     },
     KindDef {
+        npc: Some("npc_dota_lotus_pool"),
         selectable: false,
         ..objective(UnitKind::LotusPool, "Lotus Pool", false)
     },
@@ -253,6 +267,24 @@ pub const UNIT_KINDS: [KindDef; 18] = [
         creep: true,
         death_announced: true,
         breaks_regen: true,
+        ..PLAIN
+    },
+    KindDef {
+        kind: UnitKind::Banner,
+        health_per_ranged_hit: Some(
+            crate::BANNERS[0].max_hp
+                / crate::BANNERS[0]
+                    .hit_count
+                    .expect("banner hit count")
+                    .ranged_hero as i32,
+        ),
+        name: "Banner",
+        npc: Some("npc_dota_unit_roshans_banner"),
+        fixed: true,
+        leaves_a_death: false,
+        target_class: TargetClass::Ward,
+        struck_by_area_spells: false,
+        surely_struck: true,
         ..PLAIN
     },
 ];
@@ -286,7 +318,8 @@ const fn row(kind: UnitKind) -> usize {
         | UnitKind::Watcher
         | UnitKind::Shrine
         | UnitKind::LotusPool
-        | UnitKind::Roshan => kind as usize,
+        | UnitKind::Roshan
+        | UnitKind::Banner => kind as usize,
     }
 }
 

@@ -9,6 +9,8 @@ use crate::engine::state_hash;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ItemStack {
     pub id: ItemId,
+    /// Level of this physical item, preserved by moves.
+    pub level: u8,
     /// Uses left, for a consumable. Zero for one that only carries bonuses.
     pub charges: u8,
     /// Ticks until it may be used again.
@@ -58,6 +60,7 @@ impl ItemStack {
         let def = item_def(id).filter(|def| !def.unbuyable)?;
         Some(Self {
             id,
+            level: 1,
             charges: def.charges,
             cooldown: 0,
             mute: 0,
@@ -90,6 +93,7 @@ impl ItemStack {
     pub fn granted(id: ItemId, owner: SlotId, tick: u32, charges: u8) -> Self {
         Self {
             id,
+            level: 1,
             charges,
             cooldown: 0,
             mute: 0,
@@ -537,6 +541,7 @@ pub fn in_town_portal(slot: usize) -> bool {
 
 state_hash!(ItemStack {
     id,
+    level,
     charges,
     cooldown,
     mute,

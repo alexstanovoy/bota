@@ -211,7 +211,7 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
         aim: Some(Aim::Point),
         spends: Spends::One,
         effect: UseSpec::Ward {
-            unit: &OBSERVER_WARD,
+            units: &[OBSERVER_WARD],
             ticks: ticks(&ITEM_WARD_OBSERVER, "lifetime"),
         },
         // "Hold Control to give one Observer Ward to an allied hero".
@@ -237,7 +237,7 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
         aim: Some(Aim::Point),
         spends: Spends::One,
         effect: UseSpec::Ward {
-            unit: &SENTRY_WARD,
+            units: &[SENTRY_WARD],
             ticks: ticks(&ITEM_WARD_SENTRY, "lifetime"),
         },
         // "Hold Control to give one Sentry Ward to an allied hero".
@@ -1040,6 +1040,14 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
     },
     ItemDef {
         name: "Roshan's Banner",
+        public_placement: true,
+        aim: Some(Aim::Point),
+        charges: 1,
+        spends: Spends::One,
+        effect: UseSpec::Ward {
+            units: &crate::BANNERS,
+            ticks: ticks(&ITEM_ROSHANS_BANNER, "duration"),
+        },
         limits: ITEM_ROSHANS_BANNER.limits,
         ..from(&ITEM_ROSHANS_BANNER)
     },
@@ -1111,3 +1119,13 @@ const _: () = {
 // A Bottle is bought full: the charges it is bought with are all it holds, and the server fills
 // one to them.
 const _: () = assert!(ITEM_BOTTLE.charges as i32 == int(&ITEM_BOTTLE, "max_charges"));
+
+const _: () = {
+    let mut index = 0;
+    while index < ITEM_ROWS.len() {
+        if let UseSpec::Ward { units, .. } = ITEM_ROWS[index].effect {
+            assert!(!units.is_empty());
+        }
+        index += 1;
+    }
+};

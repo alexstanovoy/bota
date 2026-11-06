@@ -188,6 +188,7 @@ impl World {
         let kind = self.kind.get(target).copied();
         match reach {
             Reach::All => true,
+            Reach::LaneCreeps => kind.is_some_and(|kind| kind_def(kind).lane_creep),
             Reach::Heroes => kind == Some(UnitKind::Hero),
             Reach::Units => {
                 kind.is_some_and(|kind| kind != UnitKind::Hero && !kind_def(kind).fixed)

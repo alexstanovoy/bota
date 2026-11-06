@@ -406,6 +406,7 @@ fn missile(idx: u32) -> ProjectileView {
 
 fn dropped(idx: u32) -> LootView {
     LootView {
+        level: 1,
         id: entity(idx),
         pos: Vec2::from_ints(0, 0),
         item: ItemId::HEALING_SALVE,

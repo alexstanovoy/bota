@@ -245,6 +245,7 @@ fn assemble_once(owner: SlotId, tick: u32, pool: &mut [&mut Inventory]) -> bool 
             .sum::<u8>()
             .min(def.cast_charges);
         let built = ItemStack {
+            level: 1,
             id: ItemId(index as u16),
             charges: if def.cast_charges > 0 {
                 charges

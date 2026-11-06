@@ -652,6 +652,7 @@ pub(crate) fn hand_item(world: &mut World, hero: Entity, item: ItemId, charges: 
 /// An untouched stack of one item for seat 0.
 pub(crate) fn fresh_stack(item: ItemId, charges: u8) -> ItemStack {
     ItemStack {
+        level: 1,
         id: item,
         charges,
         cooldown: 0,
@@ -786,6 +787,7 @@ pub(crate) fn on_the_ground(world: &World) -> Vec<Entity> {
 /// A plain stack of one item for a seat, already touched.
 pub(crate) fn a_stack_of(item: ItemId, owner: u8) -> ItemStack {
     ItemStack {
+        level: 1,
         id: item,
         charges: 0,
         cooldown: 0,

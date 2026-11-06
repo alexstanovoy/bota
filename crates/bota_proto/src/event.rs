@@ -317,6 +317,8 @@ pub enum EventKind {
         by: SlotId,
         team: Team,
     },
+    /// A placed item announced to both sides, including its map location.
+    ItemPlaced { item: ItemId, team: Team, at: Vec2 },
 }
 
 /// The seats a [`EventKind::Died`] names as assisting, in seat order.

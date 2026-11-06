@@ -81,7 +81,7 @@ tests = [{ crate = "bota_radovid", env = { BOTA_SERVER_BIN = "{target_dir}/relea
 name = "import_items"
 about = "the item importer: its own checks, and that the committed item table is what a Dota 2 install gives"
 # the files it reads: the item table it writes and checks, and the ids it registers items under
-also_paths = ["crates/bota_core/src/data/items.rs", "crates/bota_proto/registry/ids.txt"]
+also_paths = ["crates/bota_core/src/data/items.rs", "crates/bota_core/src/data/roshan.rs", "crates/bota_core/src/data/placement.rs", "crates/bota_proto/registry/ids.txt"]
 tests = [{ crate = "import_items", args = ["--include-ignored"] }]
 
 [[group]]

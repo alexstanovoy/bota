@@ -28,6 +28,8 @@ pub struct EffectDef {
     /// Whether no client is ever told of it, as Dota hides a modifier: its
     /// worth shows only in the stats of whatever wears it.
     pub hidden: bool,
+    /// Independent lifetimes for each aura or world source.
+    pub per_source: bool,
     /// Whether only the side of whatever wears it is told of it, as Dota
     /// tells the other side nothing of `modifier_illusion`.
     pub own_side_only: bool,
@@ -46,6 +48,7 @@ const fn buff(id: u16, key: &'static str, name: &'static str) -> EffectDef {
         dispellable: false,
         kept_through_death: false,
         hidden: false,
+        per_source: false,
         own_side_only: false,
         ends_its_wearer: false,
     }
@@ -206,7 +209,10 @@ const EFFECT_ROWS: &[EffectDef] = &[
     debuff(53, "modifier_tornado_tempest_debuff", "Tempest"),
     fleeting(54, "modifier_frogmen_water_bubble", "WaterBubble"),
     debuff(55, "modifier_satyr_trickster_purge", "Purge"),
-    buff(56, "modifier_fountain_glyph", "Fortified"),
+    EffectDef {
+        per_source: true,
+        ..buff(56, "modifier_fountain_glyph", "Fortified")
+    },
     buff(57, "modifier_pudge_flesh_heap_block", "MeatShield"),
     debuff(58, "modifier_pudge_dismember", "Dismembered"),
     buff(

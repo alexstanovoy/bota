@@ -92,7 +92,9 @@ impl World {
             }
             UseSpec::PlantTree { ticks } => self.plant_a_tree(user, target, ticks, def.cast_range),
             UseSpec::FellTree => self.fell_a_tree(user, target, def.cast_range),
-            UseSpec::Ward { unit, ticks } => {
+            UseSpec::Ward { units, ticks } => {
+                let level = self.held_in_bag(user, slot).map_or(1, |s| s.level);
+                let unit = &units[usize::from(level.saturating_sub(1)).min(units.len() - 1)];
                 self.stand_ward(user, target, (item, unit), ticks, def.cast_range)
             }
             UseSpec::Dispense => self.dispense_ward(user, slot, target),
@@ -217,6 +219,7 @@ pub fn item_view(
         .unwrap_or(0);
     ItemView {
         expires_in: (stack.life > 0).then_some(stack.life),
+        level: stack.level,
         id: stack.id,
         charges: def
             .filter(|def| def.charges > 0 || def.cast_charges > 0)

@@ -837,10 +837,17 @@ impl World {
             .get(leg.entity)
             .and_then(|motion| motion.blocked);
         self.bodies.near(leg.from, reach, |body| {
-            if body.entity == leg.entity || body.fixed || self.phased(body.entity) {
+            if body.entity == leg.entity
+                || (body.fixed
+                    && self
+                        .kind
+                        .get(body.entity)
+                        .is_some_and(|kind| bota_core::kind_def(*kind).structure))
+                || self.phased(body.entity)
+            {
                 return;
             }
-            if !body.stationary {
+            if !body.fixed && !body.stationary {
                 return;
             }
             // The standing body it waits on, ahead on its way, is laid round

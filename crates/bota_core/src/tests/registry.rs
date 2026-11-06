@@ -57,3 +57,16 @@ fn only_the_shrine_of_wisdom_is_walked_onto() {
         .collect();
     assert_eq!(walkable, [bota_proto::UnitKind::Shrine]);
 }
+
+#[test]
+fn map_volumes_reject_extreme_wire_coordinates_without_overflow() {
+    use bota_proto::{Fixed, Vec2};
+    for raw in [i32::MIN, i32::MAX] {
+        let at = Vec2 {
+            x: Fixed { raw },
+            y: Fixed { raw },
+        };
+        assert!(crate::DOTA_NO_WARDS.iter().all(|zone| !zone.contains(at)));
+        assert!(crate::DOTA_BOSS_ZONES.iter().all(|zone| !zone.contains(at)));
+    }
+}

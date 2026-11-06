@@ -877,6 +877,7 @@ fn bulky_snapshot(tick: u32) -> Vec<u8> {
         model: None,
     };
     let dropped = |idx: u32| bota_proto::LootView {
+        level: 1,
         id: bota_proto::EntityId { idx, generation: 1 },
         pos: spot,
         item: bota_proto::ItemId::HEALING_SALVE,

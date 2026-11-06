@@ -32,6 +32,7 @@ pub fn ability_view(slot: u16) -> AbilityView {
 pub fn item_view(slot: u16) -> ItemView {
     ItemView {
         expires_in: None,
+        level: 1,
         id: ItemId(slot),
         charges: Some(3),
         cooldown_left: 0,
@@ -69,6 +70,7 @@ pub fn rune_view() -> RuneView {
 
 pub fn loot_view() -> LootView {
     LootView {
+        level: 1,
         id: entity(21),
         pos: Vec2::from_ints(6000, 6200),
         item: ItemId(3),

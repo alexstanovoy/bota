@@ -80,7 +80,11 @@ fn replaces(fresh: &Modifier, held: &Modifier) -> bool {
         // Each Regeneration Rune taken is an instance of its own
         // [LIQ Runes].
         (ModifierKind::RuneRegeneration { .. }, ModifierKind::RuneRegeneration { .. }) => false,
-        _ => std::mem::discriminant(&held.kind) == std::mem::discriminant(&fresh.kind),
+        _ => {
+            std::mem::discriminant(&held.kind) == std::mem::discriminant(&fresh.kind)
+                && (!bota_core::effect_def(fresh.kind.effect_id()).is_some_and(|e| e.per_source)
+                    || held.source == fresh.source)
+        }
     }
 }
 

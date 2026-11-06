@@ -697,6 +697,9 @@ field UnitView 44 gathering: Option<GatheringView>
 field UnitView 45 lit_for: Option<Team>
 
 variant UnitKind 17 Roshan
+variant UnitKind 18 Banner
+field ItemView 16 level: u8
+field LootView 5 level: u8
 
 variant RejectReason 31 ItemRestricted
 
@@ -714,3 +717,8 @@ variant EventKind 23 ItemTaken {}
 field EventKind::ItemTaken 0 item: ItemId
 field EventKind::ItemTaken 1 by: SlotId
 field EventKind::ItemTaken 2 team: Team
+
+variant EventKind 24 ItemPlaced {}
+field EventKind::ItemPlaced 0 item: ItemId
+field EventKind::ItemPlaced 1 team: Team
+field EventKind::ItemPlaced 2 at: Vec2

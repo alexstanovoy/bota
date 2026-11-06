@@ -530,6 +530,9 @@ impl World {
         by: (Option<Entity>, Option<Inflictor>),
     ) -> Entity {
         let entity = self.spawn_body(def, team, pos);
+        if def.collision > 0 {
+            self.give_hull(entity, def);
+        }
         self.give_timed_life(entity, ticks, by);
         entity
     }

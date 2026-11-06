@@ -185,15 +185,8 @@ impl App {
             Slot::Ability(_) => 0,
             Slot::Item(at) => self
                 .item_in(at)
-                .and_then(|item| bota_core::item_def(item.id))
-                .and_then(|def| match def.effect {
-                    // The circle Dota draws at the cursor while a ward is aimed is what the ward
-                    // gives: true sight where it gives that, else its vision.
-                    bota_core::UseSpec::Ward { unit, .. } if unit.true_sight > 0 => {
-                        Some(unit.true_sight)
-                    }
-                    bota_core::UseSpec::Ward { unit, .. } => Some(unit.day_vision),
-                    _ => def.radius(),
+                .and_then(|item| {
+                    bota_core::item_def(item.id).and_then(|def| def.radius_at(item.level))
                 })
                 .unwrap_or(0),
         }

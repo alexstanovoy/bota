@@ -410,6 +410,7 @@ impl Tracks {
             | EventKind::LotusPlucked { .. }
             | EventKind::BossFell { .. }
             | EventKind::ItemDestroyed { .. }
+            | EventKind::ItemPlaced { .. }
             | EventKind::ItemTaken { .. } => {}
         }
     }

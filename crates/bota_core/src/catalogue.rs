@@ -278,7 +278,13 @@ impl Fnv {
             UseSpec::Mend(mend) => self.u64(1).mend(mend),
             UseSpec::PlantTree { ticks } => self.u64(2).u64(ticks as u64),
             UseSpec::FellTree => self.u64(3),
-            UseSpec::Ward { unit, ticks } => self.u64(4).u64(unit.kind as u64).u64(ticks as u64),
+            UseSpec::Ward { units, ticks } => {
+                let mut h = self.u64(4).u64(units[0].kind as u64).u64(ticks as u64);
+                if units.len() > 1 {
+                    h = h.u64(0xAB).u64(units.len() as u64);
+                }
+                h
+            }
             UseSpec::Dispense => self.u64(5),
             UseSpec::Teleport(scroll) => self
                 .u64(6)
@@ -349,6 +355,7 @@ pub(crate) const fn item_digest(def: &ItemDef) -> u64 {
     let ItemDef {
         limits,
         public_loot,
+        public_placement,
         cooldown_group,
         cooldown_in_inventory,
         pickup_lifetime,
@@ -496,6 +503,9 @@ pub(crate) const fn item_digest(def: &ItemDef) -> u64 {
     }
     if cooldown_in_inventory {
         fnv = fnv.u64(0xAA);
+    }
+    if public_placement {
+        fnv = fnv.u64(0xAC);
     }
     if public_loot {
         fnv = fnv.u64(0xA8);

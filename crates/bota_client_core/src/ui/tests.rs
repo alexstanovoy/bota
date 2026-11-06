@@ -248,6 +248,7 @@ fn what_keeps_an_ability_from_working_is_told_apart_from_what_it_is() {
 fn an_item(charges: Option<u8>, cooldown: u32, mana_cost: i32, aim: Option<Aim>) -> ItemView {
     ItemView {
         expires_in: None,
+        level: 1,
         id: ItemId::BOOTS,
         charges,
         cooldown_left: cooldown,
@@ -357,6 +358,7 @@ fn a_player() -> PlayerView {
 fn a_click_takes_the_ground_item_nearest_the_cursor_and_only_within_reach() {
     let handle = |idx: u32| EntityId { idx, generation: 1 };
     let lying_at = |idx: u32, x: i32, y: i32| bota_proto::LootView {
+        level: 1,
         id: handle(idx),
         pos: Vec2::from_ints(x, y),
         item: ItemId::BOOTS,
@@ -405,6 +407,7 @@ fn an_app_seeing_loot(loot: Vec<bota_proto::LootView>) -> App {
 fn a_smart_click_takes_only_the_ground_items_the_viewing_side_sees() {
     let handle = |idx: u32| EntityId { idx, generation: 1 };
     let lying = |idx: u32, seen: bota_proto::SeenBy| bota_proto::LootView {
+        level: 1,
         id: handle(idx),
         pos: Vec2::from_ints(1000, 1000),
         item: ItemId::BOOTS,
@@ -2545,6 +2548,7 @@ fn an_attack_click_resolves_a_ground_item_to_its_handle() {
         generation: 1,
     };
     view.loot.push(bota_proto::LootView {
+        level: 1,
         id: item,
         pos: Vec2::from_ints(1000, 1000),
         item: ItemId::AEGIS,
@@ -2562,4 +2566,24 @@ fn an_attack_click_resolves_a_ground_item_to_its_handle() {
             target: Target::Unit(item)
         })
     );
+}
+
+#[test]
+fn aiming_a_physical_banner_uses_its_own_upgrade_level() {
+    for (level, radius) in [(1, 600), (2, 900), (3, 1200)] {
+        let mut app = a_started_app();
+        let mut hero = owned(1, UnitKind::Hero, Some(SlotId(0)));
+        let mut banner = an_item(Some(1), 0, 0, Some(Aim::Point));
+        banner.id = ItemId::ROSHANS_BANNER;
+        banner.level = level;
+        hero.items = vec![Some(banner)];
+        let id = hero.id;
+        app.my_slot = Some(SlotId(0));
+        app.handle(snapshot_of(
+            10,
+            vec![hero],
+            vec![a_seat(SlotId(0), Some(id))],
+        ));
+        assert_eq!(app.area_of(Slot::Item(0)), radius);
+    }
 }

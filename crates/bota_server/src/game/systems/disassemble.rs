@@ -137,6 +137,7 @@ impl World {
         built: &ItemStack,
     ) -> ItemStack {
         ItemStack {
+            level: 1,
             id,
             charges,
             cooldown: 0,

@@ -98,8 +98,9 @@ impl World {
             for drop in def.drops {
                 if falls >= drop.from
                     && self.catalogue.holds(drop.item)
-                    && let Some(stack) = crate::game::ItemStack::dropped(drop.item)
+                    && let Some(mut stack) = crate::game::ItemStack::dropped(drop.item)
                 {
+                    stack.level = (falls - drop.from + 1).min(u32::from(drop.max_level)) as u8;
                     self.lay_loot(stack, at);
                 }
             }

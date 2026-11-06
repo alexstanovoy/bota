@@ -46,11 +46,26 @@ impl World {
         let (Some(side), Some(from)) = (self.team.get(user).copied(), self.pos(user)) else {
             return false;
         };
-        if !from.within(pos, rules::units(range)) || !self.clearance.stands_clear(pos) {
+        if !from.within(pos, rules::units(range))
+            || !self.clearance.stands_clear(pos)
+            || self.map.no_wards.iter().any(|zone| zone.contains(pos))
+        {
             return false;
         }
         let by = (Some(user), Some(Inflictor::Item(item)));
         self.spawn_ward(def, (side, pos), ticks, by);
+        if item_def(item).is_some_and(|def| def.public_placement) {
+            self.events.push(crate::game::Event::Fact {
+                kind: bota_proto::EventKind::ItemPlaced {
+                    item,
+                    team: side,
+                    at: pos,
+                },
+                visible_to: crate::game::EventVisibility::Everyone,
+                gold_hidden_from: None,
+                source_told_to: crate::game::EventVisibility::Everyone,
+            });
+        }
         self.settle();
         true
     }
@@ -62,12 +77,12 @@ impl World {
             return false;
         };
         let ward = stack.active_ward();
-        let Some((UseSpec::Ward { unit, ticks }, range)) =
+        let Some((UseSpec::Ward { units, ticks }, range)) =
             item_def(ward).map(|def| (def.effect, def.cast_range))
         else {
             return false;
         };
-        if !self.stand_ward(user, target, (ward, unit), ticks, range) {
+        if !self.stand_ward(user, target, (ward, &units[0]), ticks, range) {
             return false;
         }
         if let Some(held) = self

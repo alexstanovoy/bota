@@ -37,8 +37,10 @@ impl PitZone {
         n >= 3
             && (0..n).all(|i| {
                 let (a, b) = (self.corners[i], self.corners[(i + 1) % n]);
-                let cross = i64::from((b.x - a.x).raw) * i64::from((at.y - a.y).raw)
-                    - i64::from((b.y - a.y).raw) * i64::from((at.x - a.x).raw);
+                let cross = (i128::from(b.x.raw) - i128::from(a.x.raw))
+                    * (i128::from(at.y.raw) - i128::from(a.y.raw))
+                    - (i128::from(b.y.raw) - i128::from(a.y.raw))
+                        * (i128::from(at.x.raw) - i128::from(a.x.raw));
                 cross >= 0
             })
     }
@@ -117,6 +119,8 @@ pub struct MapDef {
     pub lairs: &'static [crate::LairDef],
     /// The ground volumes from which attacks may hit pit-bound units.
     pub boss_zones: &'static [PitZone],
+    /// Installed map volumes that forbid wards and banners.
+    pub no_wards: &'static [PitZone],
     pub camps: &'static [CampDef],
     /// Hero deaths on one side that lose it the match. Nought for a map lost
     /// only with a building.
@@ -207,6 +211,7 @@ const DOTA: MapDef = MapDef {
     camps: &crate::CAMPS,
     lairs: &[crate::ROSHAN_LAIR],
     boss_zones: &DOTA_BOSS_ZONES,
+    no_wards: crate::DOTA_NO_WARDS,
     death_limit: 0,
     tower_ends_it: false,
     outposts: &objective::DOTA_OUTPOSTS,
@@ -250,6 +255,7 @@ const DEMO: MapDef = MapDef {
     camps: &DEMO_CAMPS,
     lairs: &[],
     boss_zones: &[],
+    no_wards: &[],
     death_limit: 0,
     tower_ends_it: false,
     outposts: &[],

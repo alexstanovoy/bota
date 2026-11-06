@@ -12,12 +12,13 @@ type Change = (&'static str, fn(&mut ItemDef));
 #[test]
 fn every_rule_of_an_item_moves_its_digest() {
     let bottle = *item_def(ItemId::BOTTLE).expect("the Bottle is in the catalogue");
-    let changes: [Change; 32] = [
+    let changes: [Change; 33] = [
         ("cooldown group", |d| {
             d.cooldown_group = Some(ItemId::REFRESHER_SHARD)
         }),
         ("inventory cooldown", |d| d.cooldown_in_inventory = true),
         ("public loot", |d| d.public_loot = true),
+        ("public placement", |d| d.public_placement = true),
         ("drop rule", |d| d.limits.droppable = false),
         ("sale rule", |d| d.limits.sellable = false),
         ("ground destruction", |d| d.limits.killable = false),

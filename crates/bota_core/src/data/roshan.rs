@@ -33,3 +33,28 @@ pub const ROSHAN_UNIT: ScriptData = ScriptData {
         ("HasInventory", &[Dec(1000)]),
     ],
 };
+pub const BANNER_UNIT: ScriptData = ScriptData {
+    key: "npc_dota_unit_roshans_banner",
+    values: &[
+        ("ModelScale", &[Dec(700)]),
+        ("Level", &[Dec(4000)]),
+        ("IsSummoned", &[Dec(1000)]),
+        ("IsAncient", &[Dec(1000)]),
+        ("IsOther", &[Dec(1000)]),
+        ("IgnoreAddSummonedToSelection", &[Dec(1000)]),
+        ("ArmorPhysical", &[Dec(5000)]),
+        ("MagicalResistance", &[Dec(33000)]),
+        ("BountyXP", &[Dec(0)]),
+        ("BountyGoldMin", &[Dec(200000)]),
+        ("BountyGoldMax", &[Dec(200000)]),
+        ("HealthBarOffset", &[Dec(300000)]),
+        ("MovementSpeed", &[Dec(0)]),
+        ("MovementTurnRate", &[Dec(0)]),
+        ("StatusHealth", &[Dec(24000)]),
+        ("StatusHealthRegen", &[Dec(0)]),
+        ("StatusMana", &[Dec(0)]),
+        ("StatusManaRegen", &[Dec(0)]),
+        ("VisionDaytimeRange", &[Dec(1200000)]),
+        ("VisionNighttimeRange", &[Dec(1200000)]),
+    ],
+};

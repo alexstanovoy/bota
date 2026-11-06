@@ -454,6 +454,7 @@ impl World {
         let at = self.transform.get(entity)?;
         let def = bota_core::item_def(stack.id);
         Some(bota_proto::LootView {
+            level: stack.level,
             id: wire_id(entity),
             pos: at.pos,
             item: stack.id,

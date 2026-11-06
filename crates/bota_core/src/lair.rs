@@ -20,4 +20,6 @@ pub struct LairDrop {
     pub item: bota_proto::ItemId,
     pub from: u32,
     pub reclaimed: bool,
+    /// Drop levels advance with each qualifying fall, capped here.
+    pub max_level: u8,
 }

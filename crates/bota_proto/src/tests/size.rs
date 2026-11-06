@@ -34,12 +34,13 @@ const TICK_RATE: usize = 30;
 /// absent on a hero. The absent vision grant adds its one-byte option tag,
 /// raising the prior budget including absent cast rates to 282 bytes. Item lifetime tags add four
 /// bytes to this inventory; an active 300-second Aegis countdown adds two more.
+/// Four physical item level bytes raise that budget to 290.
 #[test]
-fn a_hero_with_an_active_item_lifetime_stays_under_288_bytes() {
+fn a_hero_with_an_active_item_lifetime_stays_under_292_bytes() {
     let mut hero = hero_unit();
     hero.items[0].as_mut().expect("fixture item").expires_in = Some(300 * TICK_RATE as u32);
     let len = encoded_len(&hero);
-    assert!(len <= 288, "hero unit grew to {len} bytes");
+    assert!(len <= 292, "hero unit grew to {len} bytes");
 }
 
 /// The absent pair of cast rates adds its one-byte option tag: 83 to 84 bytes;

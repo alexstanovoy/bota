@@ -98,20 +98,24 @@ pub const ROSHAN_DROPS: [crate::LairDrop; 4] = [
         item: bota_proto::ItemId::AEGIS,
         from: 1,
         reclaimed: true,
+        max_level: 1,
     },
     crate::LairDrop {
         item: bota_proto::ItemId::ROSHANS_BANNER,
         from: 2,
         reclaimed: false,
+        max_level: 3,
     },
     crate::LairDrop {
         item: bota_proto::ItemId::CHEESE,
         from: 3,
         reclaimed: false,
+        max_level: 1,
     },
     crate::LairDrop {
         item: bota_proto::ItemId::REFRESHER_SHARD,
         from: 3,
         reclaimed: false,
+        max_level: 1,
     },
 ];

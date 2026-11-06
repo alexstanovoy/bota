@@ -63,7 +63,7 @@ impl BodyIndex {
     pub fn stands_still(&self, at: Vec2, radius: Fixed) -> bool {
         let mut found = false;
         self.near(at, Fixed::ZERO, |body| {
-            found |= body.stationary && body.at == at && body.radius == radius;
+            found |= (body.fixed || body.stationary) && body.at == at && body.radius == radius;
         });
         found
     }

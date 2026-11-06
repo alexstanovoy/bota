@@ -355,6 +355,8 @@ pub struct FeedLine {
 /// What a kill feed line tells of.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FeedKind {
+    /// A public deployment of an item.
+    ItemPlaced { item: ItemId, team: Team },
     /// A public loot pickup or denial.
     Loot {
         item: ItemId,

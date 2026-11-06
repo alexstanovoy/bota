@@ -514,4 +514,6 @@ pub enum UnitKind {
     LotusPool,
     /// The neutral boss of the river pits.
     Roshan,
+    /// A planted Roshan banner.
+    Banner,
 }

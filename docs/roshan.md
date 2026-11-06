@@ -46,3 +46,22 @@ The recovery values and ghost vision are documented mechanics rather than script
 Aegis' timer is an appended `ItemView` field. New wire builds negotiate the registry/rules
 fingerprint. Every pre-existing 62-item catalogue prefix digest remains unchanged; a test
 pins the digest recorded from the preceding implementation.
+
+## Banner
+
+Valve [7.36](https://www.dota2.com/patches/7.36) replaces the old health/damage bonuses with
+invulnerability for allied lane creeps while within the aura, with 0.1-second linger and a
+120-second banner lifetime. The old bonus fields remaining in the script are unused.
+Valve [7.40](https://www.dota2.com/patches/7.40) adds two upgrades on successive drops. The
+installed `item_roshans_banner` row supplies the three radii (600/900/1200), health
+(24/32/40), melee hero hit counts (6/8/10), cast range (1200), duration and level cap.
+[Banner unit mechanics](https://liquipedia.net/dota2/Roshan%27s_Banner_%28unit%29) give ranged
+hero and non-hero hit counts, hull sizes, and spell immunity. The installed NPC row supplies
+vision, bounty, armor and ancient classification. A physical item retains its drop level.
+
+The aura uses `modifier_fountain_glyph`, independently for each banner and for the team
+Glyph, so neither lifetime erases the other. Only allied lane creeps receive it.
+`tools/import_items` imports the map's `trigger_no_wards` volumes from each model's convex
+physics hulls, preserving their union. They exclude both pits, fountains and their ramps,
+and one additional map brush. Ward and Banner placement checks the volumes again when
+the use completes; a failed placement spends nothing.

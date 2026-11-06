@@ -196,7 +196,7 @@ pub enum UseSpec {
     /// Stands a ward of a kind.
     Ward {
         /// What the ward is.
-        unit: &'static UnitDef,
+        units: &'static [UnitDef],
         /// How long it stands.
         ticks: u32,
     },
@@ -321,6 +321,8 @@ pub struct ItemDef {
     pub limits: crate::ItemLimits,
     /// Picking up or destroying it is public information for both sides.
     pub public_loot: bool,
+    /// Placement is a public map event, including its location.
+    pub public_placement: bool,
     /// Held copies in this group receive the cooldown when one is used.
     pub cooldown_group: Option<ItemId>,
     /// Its stack cooldown advances only in a hero's active inventory.
@@ -525,6 +527,22 @@ impl ItemDef {
     /// The radius of the area a use at a point takes in, in world units:
     /// Dota's `AbilityAOERadius`. Absent for one that takes in no area round
     /// its point.
+    /// Area preview for the physical item's level, including a ward's aura or sight.
+    pub fn radius_at(&self, level: u8) -> Option<i32> {
+        if let UseSpec::Ward { units, .. } = self.effect {
+            let unit = &units[usize::from(level.saturating_sub(1)).min(units.len() - 1)];
+            Some(unit.auras.first().map_or(
+                if unit.true_sight > 0 {
+                    unit.true_sight
+                } else {
+                    unit.day_vision
+                },
+                |a| a.radius,
+            ))
+        } else {
+            self.radius()
+        }
+    }
     pub const fn radius(&self) -> Option<i32> {
         match self.effect {
             UseSpec::Grenade(grenade) => Some(grenade.radius),
@@ -650,6 +668,7 @@ impl ItemDef {
 pub(crate) const PLAIN: ItemDef = ItemDef {
     limits: crate::ItemLimits::UNRESTRICTED,
     public_loot: false,
+    public_placement: false,
     cooldown_group: None,
     cooldown_in_inventory: false,
     pickup_lifetime: 0,

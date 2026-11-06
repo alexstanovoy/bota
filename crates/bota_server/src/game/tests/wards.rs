@@ -447,3 +447,217 @@ fn a_wards_two_hits_of_health_lose_one_to_a_hero_and_a_fifth_to_anything_else() 
     blow(&mut world, bota_core::Striker::Other);
     assert!(!world.alive(ward), "the fifth brings it down");
 }
+
+#[test]
+fn roshans_banner_can_be_planted_and_protects_only_allied_lane_creeps() {
+    let (mut world, hero, spot) = a_hero_with_a_ward(ItemId::ROSHANS_BANNER);
+    let at = spot + Vec2::from_ints(200, 0);
+    assert!(world.use_item(hero, 0, Target::Pos(at), &mut Vec::new()));
+    let banner = world
+        .entities
+        .iter()
+        .find(|e| world.kind.get(*e) == Some(&UnitKind::Banner))
+        .expect("banner");
+    let creep = world.spawn_unit(
+        bota_core::lane_creep_def(UnitKind::CreepMelee).expect("creep"),
+        Team::Radiant,
+        at,
+    );
+    let enemy = world.spawn_unit(
+        bota_core::lane_creep_def(UnitKind::CreepMelee).expect("creep"),
+        Team::Dire,
+        at,
+    );
+    world.step();
+    assert!(world.wears(creep, bota_core::ModifierKind::Fortified));
+    assert!(!world.wears(enemy, bota_core::ModifierKind::Fortified));
+    assert!(!world.wears(hero, bota_core::ModifierKind::Fortified));
+    let hp = world.health.get(creep).expect("health").hp;
+    world.push_hit(Some(enemy), creep, 100, bota_proto::DamageKind::Pure, None);
+    world.step();
+    assert_eq!(world.health.get(creep).expect("health").hp, hp);
+    world.despawn(banner);
+    run(&mut world, 4);
+    assert!(!world.wears(creep, bota_core::ModifierKind::Fortified));
+}
+
+#[test]
+fn banner_protection_keeps_glyph_and_other_banner_sources_independent() {
+    use crate::game::Modifier;
+    use bota_core::ModifierKind;
+    for glyph_first in [false, true] {
+        let (mut world, _, at) = a_hero_with_a_ward(ItemId::ROSHANS_BANNER);
+        let creep = world.spawn_unit(
+            bota_core::lane_creep_def(UnitKind::CreepMelee).expect("creep"),
+            Team::Radiant,
+            at,
+        );
+        let glyph = Modifier::new(ModifierKind::Fortified, None, None, Some(300));
+        if glyph_first {
+            world.put_modifier(creep, glyph);
+        }
+        let a = world.spawn_ward(
+            &bota_core::BANNERS[0],
+            (Team::Radiant, at),
+            3600,
+            (None, None),
+        );
+        let b = world.spawn_ward(
+            &bota_core::BANNERS[0],
+            (Team::Radiant, at),
+            3600,
+            (None, None),
+        );
+        world.step();
+        if !glyph_first {
+            world.put_modifier(creep, glyph);
+        }
+        world.despawn(a);
+        run(&mut world, 4);
+        assert!(
+            world
+                .modifiers
+                .get(creep)
+                .expect("mods")
+                .active()
+                .any(|m| m.source == Some(b) && m.kind == ModifierKind::Fortified)
+        );
+        world.despawn(b);
+        run(&mut world, 4);
+        let held: Vec<_> = world
+            .modifiers
+            .get(creep)
+            .expect("mods")
+            .active()
+            .filter(|m| m.kind == ModifierKind::Fortified)
+            .collect();
+        assert_eq!(held.len(), 1);
+        assert_eq!(held[0].source, None);
+        assert!(held[0].ticks_left > Some(280));
+    }
+}
+
+#[test]
+fn banner_levels_select_aura_and_hit_count_and_expire_after_two_minutes() {
+    for (index, radius, melee, ranged, other) in [
+        (0, 600, 6, 12, 24),
+        (1, 900, 8, 16, 32),
+        (2, 1200, 10, 20, 40),
+    ] {
+        let def = &bota_core::BANNERS[index];
+        for (striker, hits) in [
+            (bota_core::Striker::MeleeHero, melee),
+            (bota_core::Striker::RangedHero, ranged),
+            (bota_core::Striker::Other, other),
+        ] {
+            let mut world = World::new();
+            let at = Vec2::from_ints(5000, 5000);
+            let ward = world.spawn_ward(def, (Team::Dire, at), 3600, (None, None));
+            world.settle();
+            for count in 1..=hits {
+                world.push_hit(None, ward, 1, bota_proto::DamageKind::Physical, None);
+                let hit = world.hits.back_mut().expect("attack");
+                hit.attack = true;
+                hit.striker = Some(striker);
+                world.step();
+                assert_eq!(
+                    world.alive(ward),
+                    count < hits,
+                    "level {index}, {striker:?}, hit {count}"
+                );
+            }
+        }
+        let (mut world, hero, spot) = a_hero_with_a_ward(ItemId::ROSHANS_BANNER);
+        world.inventory.get_mut(hero).expect("bag").slots[0]
+            .as_mut()
+            .expect("item")
+            .level = index as u8 + 1;
+        let at = spot + Vec2::from_ints(200, 0);
+        assert!(world.use_item(hero, 0, Target::Pos(at), &mut Vec::new()));
+        let banner = world
+            .entities
+            .iter()
+            .find(|e| world.kind.get(*e) == Some(&UnitKind::Banner))
+            .expect("banner");
+        let near = world.spawn_unit(
+            bota_core::lane_creep_def(UnitKind::CreepMelee).expect("creep"),
+            Team::Radiant,
+            at + Vec2::from_ints(radius - 50, 0),
+        );
+        let far = world.spawn_unit(
+            bota_core::lane_creep_def(UnitKind::CreepMelee).expect("creep"),
+            Team::Radiant,
+            at + Vec2::from_ints(radius + 100, 0),
+        );
+        world.step();
+        assert!(world.wears(near, bota_core::ModifierKind::Fortified));
+        assert!(!world.wears(far, bota_core::ModifierKind::Fortified));
+        let remaining = life_left(&world, banner).expect("timed");
+        run(&mut world, remaining + 1);
+        assert!(!world.alive(banner));
+    }
+}
+
+#[test]
+fn ward_items_and_dispenser_cannot_be_placed_in_installed_exclusion_volumes() {
+    for item in [
+        ItemId::OBSERVER_WARD,
+        ItemId::SENTRY_WARD,
+        ItemId::ROSHANS_BANNER,
+    ] {
+        let (mut world, hero, _) = a_hero_with_a_ward(item);
+        for at in [
+            bota_core::ROSHAN_DAY_PIT,
+            bota_core::ROSHAN_NIGHT_PIT,
+            Vec2::from_ints(2000, 2500),
+            Vec2::from_ints(16500, 15600),
+        ] {
+            world.transform.get_mut(hero).expect("hero").pos = at + Vec2::from_ints(50, 0);
+            world.settle();
+            assert!(
+                !world.use_item(hero, 0, Target::Pos(at), &mut Vec::new()),
+                "{item:?} at {at:?}"
+            );
+            assert!(world.inventory.get(hero).expect("bag").slots[0].is_some());
+        }
+    }
+}
+
+#[test]
+fn a_hero_routes_around_a_planted_banner_and_its_expiry_removes_the_obstacle() {
+    let (mut world, hero, at) = a_hero_with_a_ward(ItemId::ROSHANS_BANNER);
+    let banner = world.spawn_ward(
+        &bota_core::BANNERS[0],
+        (Team::Radiant, at + Vec2::from_ints(150, 0)),
+        300,
+        (None, None),
+    );
+    let goal = at + Vec2::from_ints(400, 0);
+    world.settle();
+    seat_order(
+        &mut world,
+        Order::Move {
+            target: Target::Pos(goal),
+        },
+    );
+    run(&mut world, 150);
+    assert!(
+        world
+            .pos(hero)
+            .expect("hero")
+            .within(goal, rules::units(20)),
+        "hero {:?}, goal {:?}",
+        world.pos(hero),
+        goal
+    );
+    run(&mut world, 151);
+    assert!(!world.alive(banner));
+    seat_order(
+        &mut world,
+        Order::Move {
+            target: Target::Pos(at),
+        },
+    );
+    run(&mut world, 150);
+    assert!(world.pos(hero).expect("hero").within(at, rules::units(20)));
+}

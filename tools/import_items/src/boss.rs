@@ -25,6 +25,16 @@ pub fn table(dota: Option<&Path>) -> Result<String, String> {
          //! Read from {build}.\nuse crate::{{Dec, ScriptData}};\n"
     );
     row(&mut out, "ROSHAN_UNIT", "npc_dota_roshan", unit)?;
+    let banner = units
+        .get("DOTAUnits")
+        .and_then(|u| u.get("npc_dota_unit_roshans_banner"))
+        .ok_or("no banner unit")?;
+    row(
+        &mut out,
+        "BANNER_UNIT",
+        "npc_dota_unit_roshans_banner",
+        banner,
+    )?;
     Ok(out)
 }
 

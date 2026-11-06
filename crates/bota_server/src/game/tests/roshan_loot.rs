@@ -77,7 +77,7 @@ fn take_aegis(world: &mut World) -> (crate::game::Entity, usize) {
 #[test]
 fn roshan_drops_match_kill_count_at_both_times_of_day_without_a_blessing() {
     let mut world = match_with_roshan();
-    for count in 1..=4 {
+    for count in 1..=5 {
         kill(&mut world);
         let mut drops: Vec<_> = world
             .entities
@@ -94,6 +94,14 @@ fn roshan_drops_match_kill_count_at_both_times_of_day_without_a_blessing() {
         }
         expected.sort();
         assert_eq!(drops, expected, "kill {count}");
+        if count >= 2 {
+            let banner = world
+                .loot
+                .get(loot(&world, ItemId::ROSHANS_BANNER))
+                .expect("banner")
+                .0;
+            assert_eq!(banner.level, (count - 1).min(3) as u8);
+        }
         let ground: Vec<_> = world
             .entities
             .iter()
@@ -495,5 +503,72 @@ fn refresher_copies_share_the_use_cooldown_and_pause_it_in_the_backpack() {
             .expect("inventory shard")
             .cooldown,
         cooldown - 1
+    );
+}
+
+#[test]
+fn a_banner_preserves_its_level_when_picked_up_dropped_and_taken_again() {
+    use bota_proto::{Order, Target};
+    let (mut world, hero) = super::support::match_hero();
+    let at = super::support::an_empty_spot(&world);
+    world.transform.get_mut(hero).expect("hero").pos = at;
+    let mut stack = crate::game::ItemStack::dropped(ItemId::ROSHANS_BANNER).expect("drop");
+    stack.level = 3;
+    let dropped = world.lay_loot(stack, at);
+    world.settle();
+    seat_order(
+        &mut world,
+        Order::Take {
+            target: Target::Unit(crate::game::wire_id(dropped)),
+        },
+    );
+    run(&mut world, 2);
+    let slot = world
+        .inventory
+        .get(hero)
+        .expect("bag")
+        .slots
+        .iter()
+        .position(|s| s.is_some_and(|s| s.id == ItemId::ROSHANS_BANNER))
+        .expect("picked up");
+    assert_eq!(
+        world.inventory.get(hero).expect("bag").slots[slot]
+            .expect("held")
+            .level,
+        3
+    );
+    let view = world.view(bota_proto::Team::Radiant);
+    assert_eq!(
+        view.units
+            .iter()
+            .find(|u| u.id == crate::game::wire_id(hero))
+            .expect("hero")
+            .items[slot]
+            .expect("item")
+            .level,
+        3
+    );
+    seat_order(
+        &mut world,
+        Order::Put {
+            slot: bota_proto::ItemSlot(slot as u8),
+            target: Target::Pos(at),
+        },
+    );
+    run(&mut world, 2);
+    let dropped = loot(&world, ItemId::ROSHANS_BANNER);
+    assert_eq!(world.loot.get(dropped).expect("drop").0.level, 3);
+    seat_order(
+        &mut world,
+        Order::Take {
+            target: Target::Unit(crate::game::wire_id(dropped)),
+        },
+    );
+    run(&mut world, 2);
+    assert_eq!(
+        world.inventory.get(hero).expect("bag").slots[slot]
+            .expect("taken again")
+            .level,
+        3
     );
 }

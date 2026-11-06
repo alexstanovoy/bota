@@ -20,6 +20,8 @@ pub enum Whom {
 pub enum Reach {
     /// Every unit, buildings and wards among them.
     All,
+    /// Creeps spawned by lane waves.
+    LaneCreeps,
     /// Heroes.
     Heroes,
     /// Every unit but heroes, buildings and wards.

@@ -106,6 +106,8 @@ pub struct ItemView {
     pub rune: Option<StoredRune>,
     /// Remaining lifetime after pickup; absent for an item that does not expire.
     pub expires_in: Option<u32>,
+    /// Physical item level, counted from one.
+    pub level: u8,
 }
 
 /// When an item may be taken apart.
@@ -201,6 +203,8 @@ pub struct LootView {
     /// Which sides see it. Told only in a view of the whole map (a replay,
     /// a fogless spectator); absent in a side's view. Last on the wire.
     pub seen_by: Option<SeenBy>,
+    /// Physical item level, counted from one.
+    pub level: u8,
 }
 
 /// Which sides' views hold something: what Dota's spectator vision toggle

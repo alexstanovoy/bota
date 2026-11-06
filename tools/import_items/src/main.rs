@@ -18,6 +18,7 @@ mod install;
 mod item;
 mod overrides;
 mod registry;
+mod zones;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -75,6 +76,15 @@ fn run() -> Result<(), String> {
         }
     } else {
         std::fs::write(&boss_path, boss).map_err(|e| format!("{boss_path:?}: {e}"))?;
+    }
+    let zones = rustfmt(&zones::table(args.dota.as_deref())?)?;
+    let zones_path = repo().join("crates/bota_core/src/data/placement.rs");
+    if args.check {
+        if std::fs::read_to_string(&zones_path).map_err(|e| e.to_string())? != zones {
+            return Err("map placement data is stale".into());
+        }
+    } else {
+        std::fs::write(&zones_path, zones).map_err(|e| e.to_string())?;
     }
     let source = install::read(args.dota.as_deref())?;
     let registry_path = registry_path();
@@ -154,6 +164,12 @@ mod tests {
             crate::emit::same_items(&committed, &boss),
             "Roshan data is stale"
         );
+        let zones = crate::rustfmt(&crate::zones::table(None).expect("map placement volumes"))
+            .expect("formatted volumes");
+        let committed =
+            std::fs::read_to_string(crate::repo().join("crates/bota_core/src/data/placement.rs"))
+                .expect("committed placement data");
+        assert_eq!(committed, zones, "map placement data is stale");
         let source = crate::install::read(None).expect("an install");
         let registry = std::fs::read_to_string(crate::registry_path()).expect("the registry");
         let items = crate::registry::items(&registry).expect("a well-formed registry");
