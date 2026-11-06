@@ -53,6 +53,7 @@ impl World {
                     .talented(caster, AbilityId::MEAT_HOOK, "damage", level)
                     .int(),
                 damage_amp_bp,
+                mana: self.ability_mana_cost(caster, AbilityId::MEAT_HOOK, level as u8 + 1),
                 caught: None,
                 returning: false,
                 links,
@@ -143,6 +144,17 @@ impl World {
                 rules::HOOK_VISION_TICKS,
             );
         }
+        // A rune comes home with it, and its thrower has the hook's mana
+        // back, what it was paid (Dota's hero data; Valve 2018-08-13).
+        if self.rune.get(caught).is_some() {
+            if let (Some(pool), Some(stats)) =
+                (self.mana.get_mut(hook.owner), self.stats.get(hook.owner))
+            {
+                pool.mana = (pool.mana + Fixed::from_int(hook.mana)).min(stats.max_mana);
+            }
+            hook.caught = Some(caught);
+            return;
+        }
         let enemy = self.team.get(caught) != self.team.get(hook.owner);
         // An illusion is a creep to the hook (Dota 7.34: "Now instantly kills illusions").
         let executed = self.wears_illusion(caught)
@@ -188,14 +200,15 @@ impl World {
     /// The nearest living unit within its radius of the hook, edge counted,
     /// other than the one who threw it. A structure or a ward is never
     /// caught, nor an invulnerable unit, nor a spell-immune courier (Meat
-    /// Hook pierces spell immunity, but not a courier's).
+    /// Hook pierces spell immunity, but not a courier's). A rune lying on the
+    /// ground is.
     fn caught_at(&self, hook: Entity, owner: Entity, at: Vec2, radius: Fixed) -> Option<Entity> {
         let mut best: Option<(i64, Entity)> = None;
         for other in self.entities.iter() {
-            if other == hook || other == owner || !self.alive(other) {
-                continue;
-            }
-            if !self.latches_onto(other) {
+            // A rune lying on the ground is caught as well as a unit.
+            let catchable =
+                self.rune.get(other).is_some() || (self.alive(other) && self.latches_onto(other));
+            if other == hook || other == owner || !catchable {
                 continue;
             }
             let Some(spot) = self.pos(other) else {
@@ -244,8 +257,8 @@ impl World {
     }
 
     /// Drags what a hook caught to where the hook now is. An enemy is held
-    /// there, stunned; an ally only moved, so what it channels goes on (Dota
-    /// stopped the hook interrupting allied channels in 2011).
+    /// there, stunned; an ally or a rune only moved, so what an ally channels
+    /// goes on (Dota stopped the hook interrupting allied channels in 2011).
     ///
     /// The hold is handed out afresh every tick, so it lifts on its own once
     /// the hook lets go.
@@ -253,7 +266,8 @@ impl World {
         if let Some(at) = self.transform.get_mut(caught) {
             at.pos = to;
         }
-        if self.team.get(caught) != self.team.get(owner) {
+        let side = self.team.get(caught);
+        if side.is_some() && side != self.team.get(owner) {
             let with = Some(Inflictor::Ability(AbilityId::MEAT_HOOK));
             self.put_modifier(
                 caught,

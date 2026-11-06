@@ -1209,6 +1209,53 @@ fn a_hook_shows_its_side_where_it_latched_for_four_seconds() {
     assert!(!seen(&world), "and no more past four");
 }
 
+/// A hook latches onto a rune and drags it home, where its thrower takes it, and gives back
+/// the mana it cost (the dota2.com hero data: "Meat Hook can hit and drag runes to Pudge,
+/// refunding the Hook's mana cost"; Valve 2018-08-13: the refund is what was paid).
+#[test]
+fn a_hook_drags_a_rune_home_and_gives_back_its_mana() {
+    let mut cfg = super::runes::rune_config(&[Team::Radiant]);
+    cfg.picks[0].hero = HeroId::PUDGE;
+    let mut world = World::for_match(&cfg, cfg.rng());
+    let pudge = super::runes::hero(&world, 0);
+    let spot = bota_core::map_of(cfg.map).rune_spots[0].at;
+    world.put_rune(bota_proto::RuneKind::Haste, 0);
+    super::runes::place(&mut world, pudge, spot - Vec2::from_ints(700, 0));
+    set_level(&mut world, pudge, 0, 1);
+    world.fill_pools(pudge);
+    world.step();
+    assert_eq!(
+        super::runes::lying(&world).len(),
+        1,
+        "a rune lies at the spot"
+    );
+    let mana = world.mana.get(pudge).expect("has mana").mana;
+    let mut events = cast(&mut world, 0, Target::Pos(spot));
+    // A match takes an order up a few ticks on; the hook flies after its cast point.
+    let mut flew = false;
+    for _ in 0..3 * rules::TICKS_PER_SECOND {
+        events.extend(world.step());
+        flew |= hook_flying(&world);
+        if flew && !hook_flying(&world) {
+            break;
+        }
+    }
+    assert!(flew, "the hook flew");
+    events.extend(world.step());
+    assert!(
+        events.iter().any(|event| matches!(
+            event.kind(),
+            bota_proto::EventKind::RuneActivated { unit, .. } if unit == wire_id(pudge)
+        )),
+        "Pudge takes the rune it dragged home"
+    );
+    let now = world.mana.get(pudge).expect("has mana").mana;
+    assert!(
+        now >= mana - Fixed::from_int(1),
+        "and has his mana back: {now} of {mana}"
+    );
+}
+
 /// Whether a flying hook holds something.
 fn hook_holds(world: &World) -> bool {
     world
