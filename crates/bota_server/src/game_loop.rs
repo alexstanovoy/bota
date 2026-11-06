@@ -392,6 +392,15 @@ pub fn check_opts(opts: &ServerOpts) -> Result<(), String> {
         if let Some(hero) = heroes.iter().find(|h| bota_core::hero_def(**h).is_none()) {
             return Err(format!("hero {} does not exist", hero.0));
         }
+        // Heroes that exist, each once, are no more than the heroes there are: a client refuses a
+        // lobby offering more.
+        if let Some((_, hero)) = heroes
+            .iter()
+            .enumerate()
+            .find(|(at, hero)| heroes[..*at].contains(hero))
+        {
+            return Err(format!("the allowed heroes name hero {} twice", hero.0));
+        }
     }
     match opts.spectators.delay_ticks(opts.tick_rate) {
         Some(ticks) if ticks > MAX_DELAYED_TICKS => Err(format!(

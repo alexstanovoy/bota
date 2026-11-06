@@ -183,3 +183,18 @@ fn a_pool_of_one_is_given_to_every_seat_ready() {
     let view = seats[0].recv_until(|msg| snapshot(msg).filter(|view| view.tick > 1));
     assert_eq!(view.players.len(), 2);
 }
+
+/// A pool naming a hero twice is refused with the options: it could grow past the heroes there
+/// are, and every client refuses a lobby that offers more.
+#[test]
+fn a_hero_pool_naming_a_hero_twice_is_refused_with_the_options() {
+    let mut opts = realtime(16);
+    opts.heroes = Some(vec![HeroId::PUDGE; bota_core::HEROES.len() + 1]);
+    assert_eq!(
+        crate::game_loop::check_opts(&opts),
+        Err(format!(
+            "the allowed heroes name hero {} twice",
+            HeroId::PUDGE.0
+        ))
+    );
+}
