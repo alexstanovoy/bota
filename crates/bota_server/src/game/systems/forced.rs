@@ -248,6 +248,7 @@ impl World {
             kind: landing.kind,
             damage_amp_bp: landing.damage_amp_bp,
             attack: false,
+            spell: true,
             striker: None,
             pierces: false,
             uphill: false,
@@ -256,6 +257,9 @@ impl World {
             },
             blockable_source_team: None,
             proc: None,
+            laid: crate::game::Laid::NONE,
+            removal: false,
+            spares: false,
         });
     }
 }

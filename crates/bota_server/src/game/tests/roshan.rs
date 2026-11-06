@@ -159,7 +159,7 @@ fn roshan_can_be_attacked_from_inside_either_pit_and_ignores_outside_attacks() {
             world.validate_order(world.seats[0].slot, None, &order),
             Ok(())
         );
-        world.advance(&[Command {
+        world.advance_trusted(&[Command {
             slot: world.seats[0].slot,
             unit: None,
             order,
@@ -635,7 +635,7 @@ fn roshan_keeps_its_phased_body_when_an_enemy_stands_in_the_same_spot() {
 }
 
 #[test]
-fn lifesteal_from_roshan_uses_the_creep_factor_on_damage_actually_dealt() {
+fn lifesteal_from_roshan_keeps_fractional_health_with_the_creep_factor() {
     use crate::game::{Modifier, UnitOrder};
     use bota_core::{MELEE_CREEP, ModifierKind, NeutralAbility};
     use bota_proto::{EventKind, Fixed, Team, Vec2};
@@ -693,7 +693,9 @@ fn lifesteal_from_roshan_uses_the_creep_factor_on_damage_actually_dealt() {
         }) {
             assert!(pct > 0);
             let healed = world.health.get(attacker).expect("attacker").hp - before - regen;
-            assert_eq!(healed, Fixed::from_int(damage * pct * 60 / 10000));
+            let expected_raw = i64::from(damage) * i64::from(pct) * 60
+                * i64::from(Fixed::ONE.raw) / 10_000;
+            assert_eq!(i64::from(healed.raw), expected_raw);
             return;
         }
     }
@@ -1035,7 +1037,7 @@ fn roshan_slams_a_crowd_with_a_hero_and_deals_double_damage_to_creeps() {
             .get(target)
             .expect("effects")
             .active()
-            .find(|m| m.kind.effect_id() == bota_proto::EffectId(83))
+            .find(|m| m.kind.effect_id() == bota_proto::EffectId(86))
             .expect("Slam slows nearby units");
         assert_eq!(
             slow.ticks_total,
@@ -1056,7 +1058,7 @@ fn roshan_slams_a_crowd_with_a_hero_and_deals_double_damage_to_creeps() {
                 .get(target)
                 .expect("effects")
                 .active()
-                .any(|m| m.kind.effect_id() == bota_proto::EffectId(83))
+                .any(|m| m.kind.effect_id() == bota_proto::EffectId(86))
         );
     }
 }
@@ -1190,7 +1192,7 @@ fn roshan_roars_while_stunned_and_silenced_then_disarms_and_amplifies_after_wind
         Modifier::new(
             ModifierKind::Control {
                 control: Control::Silence,
-                effect: EffectId(89),
+                effect: EffectId(92),
             },
             Some(hero),
             None,
@@ -1244,7 +1246,7 @@ fn roshan_roars_while_stunned_and_silenced_then_disarms_and_amplifies_after_wind
         .get(hero)
         .expect("effects")
         .active()
-        .find(|m| m.kind.effect_id() == EffectId(87))
+        .find(|m| m.kind.effect_id() == EffectId(90))
         .expect("Roar disarm");
     let def = effect_def(disarm.kind.effect_id()).expect("effect");
     assert!(!def.dispellable);
@@ -1320,7 +1322,7 @@ fn roshan_only_roars_below_85_percent_at_a_real_hero_from_the_previous_killing_s
             Modifier::new(
                 ModifierKind::Control {
                     control: Control::Silence,
-                    effect: EffectId(89),
+                    effect: EffectId(92),
                 },
                 Some(hero),
                 None,
@@ -1510,7 +1512,7 @@ fn slam_does_not_damage_or_slow_spell_immune_heroes_or_couriers() {
                 .get(target)
                 .expect("effects")
                 .active()
-                .any(|m| m.kind.effect_id() == bota_proto::EffectId(83))
+                .any(|m| m.kind.effect_id() == bota_proto::EffectId(86))
         );
         world.step();
         assert!(world.health.get(target).expect("target").hp >= hp);
@@ -1606,7 +1608,7 @@ fn an_illusion_rune_cleanses_slam_but_preserves_the_heros_beneficial_haste() {
             .get(hero)
             .expect("effects")
             .active()
-            .any(|m| m.kind.effect_id() == bota_proto::EffectId(83))
+            .any(|m| m.kind.effect_id() == bota_proto::EffectId(86))
     );
     assert!(world.wears(hero, ModifierKind::Hastened { pct: 20 }));
 }
@@ -1793,7 +1795,7 @@ fn migration_silenced_attempts_consume_five_shared_stops_then_speed_caps_at_570_
         Modifier::new(
             ModifierKind::Control {
                 control: bota_core::Control::Silence,
-                effect: EffectId(89),
+                effect: EffectId(92),
             },
             Some(hero),
             None,
@@ -2473,7 +2475,7 @@ fn migration_disables_on_the_tick_before_release_cancel_instead_of_launching() {
         ModifierKind::Feared,
         ModifierKind::Control {
             control: Control::Silence,
-            effect: EffectId(89),
+            effect: EffectId(92),
         },
     ] {
         let (mut world, boss, hero) = migrating_boss_on_open_ground();
@@ -2722,7 +2724,7 @@ fn migration_begins_with_its_full_controller_when_the_boss_modifier_store_is_ful
             .expect("shown boss")
             .effects
             .iter()
-            .any(|e| e.id == EffectId(92))
+            .any(|e| e.id == EffectId(95))
     );
 }
 

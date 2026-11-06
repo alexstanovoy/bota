@@ -22,19 +22,19 @@ fn every_modifier() -> Vec<ModifierKind> {
         },
         ModifierKind::Control {
             control: bota_core::Control::Disarm,
-            effect: EffectId(87),
+            effect: EffectId(90),
         },
         ModifierKind::Control {
             control: bota_core::Control::Silence,
-            effect: EffectId(89),
+            effect: EffectId(92),
         },
         ModifierKind::Control {
             control: bota_core::Control::Stun,
-            effect: EffectId(84),
+            effect: EffectId(87),
         },
         ModifierKind::BonusArmor {
             armor: Fixed::ONE,
-            effect: EffectId(79),
+            effect: EffectId(82),
         },
         ModifierKind::Recovery {
             health_pct: 20,

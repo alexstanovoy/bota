@@ -784,7 +784,7 @@ fn physical_inventory_an_illusion_cannot_turn_copied_inventory_into_ground_items
             "action {action}"
         );
         let gold = world.seats[0].gold;
-        world.advance(&[Command {
+        world.advance_trusted(&[Command {
             slot: SlotId(0),
             unit: Some(wire_id(copy)),
             order,

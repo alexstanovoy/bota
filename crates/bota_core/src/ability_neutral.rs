@@ -1839,7 +1839,7 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
         Spell::Intrinsic {
             moving: Some(&crate::ROSHAN_MIGRATION),
             buff: Buff::of(Stat::IllusionAttackReductionPct, all(80)),
-            effect: EffectId(80),
+            effect: EffectId(83),
             aura: None,
         },
     ),
@@ -1860,7 +1860,7 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
                     .first("slow_resistance")
                     .int()),
             ),
-            effect: EffectId(81),
+            effect: EffectId(84),
             aura: Some(crate::ROSHAN_ARMOR_AURA),
         },
     ),
@@ -1883,7 +1883,7 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
                     .first("status_resistance")
                     .int()),
             ),
-            effect: EffectId(82),
+            effect: EffectId(85),
             breakable: false,
         },
     ),
@@ -1900,7 +1900,7 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
             chance_pct: crate::roshan_data::ROSHAN_BASH.first("bash_chance").int(),
             damage: all(crate::roshan_data::ROSHAN_BASH.first("bonus_damage").int()),
             stun_ms: all(crate::roshan_data::ROSHAN_BASH.first("stun_duration").0),
-            effect: EffectId(84),
+            effect: EffectId(87),
         }),
     ),
     entry(
@@ -1947,7 +1947,7 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
                         all(-crate::roshan_data::ROSHAN_SLAM.first("slow_amount").int()),
                         all(-crate::roshan_data::ROSHAN_SLAM.first("slow_amount").int()),
                     ),
-                    effect: EffectId(83),
+                    effect: EffectId(86),
                 },
             },
             when: When::Think(CastRule::on_itself(&[Need::Crowd {
@@ -2047,10 +2047,10 @@ const ROSHAN_ROAR: Roar = Roar {
         .first("windup_time")
         .secs()
         .ticks(),
-    windup_effect: EffectId(85),
-    emitter_effect: EffectId(86),
-    disarm_effect: EffectId(87),
-    damage_effect: EffectId(88),
+    windup_effect: EffectId(88),
+    emitter_effect: EffectId(89),
+    disarm_effect: EffectId(90),
+    damage_effect: EffectId(91),
     radius: crate::roshan_data::ROSHAN_REVENGEROAR.first("radius").int(),
     damage: crate::roshan_data::ROSHAN_REVENGEROAR.first("damage").int(),
     growth: crate::DamageGrowth {
@@ -2150,7 +2150,7 @@ const ROSHAN_THROW: Grab = Grab {
         .first("stun_duration")
         .secs()
         .ticks(),
-    grabbed_effect: EffectId(90),
-    thrown_effect: EffectId(91),
+    grabbed_effect: EffectId(93),
+    thrown_effect: EffectId(94),
     contact_ability: N::StrengthOfTheImmortal,
 };

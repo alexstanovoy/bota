@@ -281,41 +281,41 @@ const EFFECT_ROWS: &[EffectDef] = &[
         dispellable: true,
         ..buff(81, "modifier_aegis_regen", "Recovery")
     },
-    buff(79, "modifier_roshan_devotion", "Devotion"),
+    buff(82, "modifier_roshan_devotion", "Devotion"),
     hidden(
-        80,
+        83,
         "modifier_roshan_inherent_buffs",
         "StrengthOfTheImmortal",
     ),
-    hidden(81, "modifier_roshan_devotion_aura", "DevotionAura"),
-    hidden(82, "modifier_roshan_spell_block", "SpellBlock"),
+    hidden(84, "modifier_roshan_devotion_aura", "DevotionAura"),
+    hidden(85, "modifier_roshan_spell_block", "SpellBlock"),
     EffectDef {
         dispellable: true,
-        ..debuff(83, "modifier_roshan_slam", "RoshanSlam")
+        ..debuff(86, "modifier_roshan_slam", "RoshanSlam")
     },
     EffectDef {
         strong_dispellable: true,
-        ..debuff(84, "modifier_bashed", "Bashed")
+        ..debuff(87, "modifier_bashed", "Bashed")
     },
-    hidden(85, "modifier_roshan_revengeroar_windup", "RoarWindup"),
-    hidden(86, "modifier_roshan_revengeroar_aura", "RoarAura"),
-    debuff(87, "modifier_roshan_revengeroar_disarm", "RoarDisarm"),
+    hidden(88, "modifier_roshan_revengeroar_windup", "RoarWindup"),
+    hidden(89, "modifier_roshan_revengeroar_aura", "RoarAura"),
+    debuff(90, "modifier_roshan_revengeroar_disarm", "RoarDisarm"),
     EffectDef {
         dispellable: true,
-        ..debuff(88, "modifier_roshan_revengeroar", "RoarOfRetribution")
+        ..debuff(91, "modifier_roshan_revengeroar", "RoarOfRetribution")
     },
     EffectDef {
         dispellable: true,
-        ..debuff(89, "modifier_silence", "Silenced")
+        ..debuff(92, "modifier_silence", "Silenced")
     },
-    debuff(90, "modifier_roshan_grab", "Grabbed"),
-    debuff(91, "modifier_roshan_grab_thrown", "Thrown"),
-    buff(92, "modifier_roshan_moving", "Moving"),
-    debuff(93, "modifier_knockback", "Knockback"),
+    debuff(93, "modifier_roshan_grab", "Grabbed"),
+    debuff(94, "modifier_roshan_grab_thrown", "Thrown"),
+    buff(95, "modifier_roshan_moving", "Moving"),
+    debuff(96, "modifier_knockback", "Knockback"),
     EffectDef {
         per_source: true,
         ..hidden(
-            94,
+            97,
             "modifier_roshan_moving_knockback_timeout",
             "ContactCooldown",
         )

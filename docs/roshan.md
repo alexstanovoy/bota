@@ -105,8 +105,10 @@ eligible impact, including zero-damage stun/root projectiles.
 
 Valve [7.40](https://www.dota2.com/patches/7.40) makes lifesteal treat Roshan as a creep. The
 shared target factors are 60% for attack lifesteal and 20% for spell lifesteal, from the
-[current mechanics](https://liquipedia.net/dota2/Lifesteal). The attack consumer uses health
-actually removed, after mitigation, and excludes ward-type targets including Banner.
+[current mechanics](https://liquipedia.net/dota2/Lifesteal). Attack lifesteal uses the physical attack value after armor and resistance, before the
+target's damage block, barriers or incoming-damage changes, without an overkill clamp.
+It retains fractional health and excludes ward-type targets including Banner. Spell lifesteal
+uses health actually removed.
 
 
 ## Bash, Slam and Roar
@@ -115,7 +117,7 @@ The importer retains the installed `roshan_bash`, `roshan_slam` and `roshan_reve
 numeric rows. Bash rolls 15% pseudo-random chance at the attack point, carries its 50 physical
 bonus and 1.65-second piercing stun through impact, and is disabled by Break. The conditional
 bonus follows critical/base-attack scaling, is mitigated and blocked once with the attack,
-and contributes to actual-damage lifesteal, excluding the base used by cleave. Ward targets
+and contributes to the attack-lifesteal base, excluding the base used by cleave. Ward targets
 do not roll Bash. Valve [7.38](https://www.dota2.com/patches/7.38) adds its distinct attack
 animation; the client selects that follow-through from the reported attack proc, correlated
 with the attack point rather than another cast.

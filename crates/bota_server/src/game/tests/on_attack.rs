@@ -44,6 +44,8 @@ fn swing_laying(by: Entity, on: Entity, item: ItemId) -> Hit {
     let mut laid = Laid::NONE;
     laid.add(item);
     Hit {
+        proc: None,
+        blockable_source_team: None,
         source: Some(by),
         inflictor: None,
         target: on,
@@ -202,7 +204,7 @@ fn an_orb_of_blight_corrupts_through_spell_immunity_and_on_buildings_wards_and_a
 #[test]
 fn a_basic_dispel_takes_corruption_off() {
     let (mut world, _, mark, _) = first_landing(&[ItemId::BLIGHT_STONE], foe_hero);
-    world.dispel_basic(mark);
+    world.dispel(mark, crate::game::Dispel::Debuffs, crate::game::DispelPower::Basic);
     assert_eq!(laid_on(&world, mark, ItemId::BLIGHT_STONE).0, 0);
 }
 
@@ -700,7 +702,7 @@ fn an_orb_of_frost_lands_on_enemy_units_alone() {
 fn a_basic_dispel_takes_frost_off() {
     let (mut world, hero, mark, _) = first_landing(&[ItemId::ORB_OF_FROST], foe_hero);
     world.set_order(hero, crate::game::UnitOrder::Stand);
-    world.dispel_basic(mark);
+    world.dispel(mark, crate::game::Dispel::Debuffs, crate::game::DispelPower::Basic);
     world.step();
     assert_eq!(laid_on(&world, mark, ItemId::ORB_OF_FROST).0, 0);
     assert_eq!(

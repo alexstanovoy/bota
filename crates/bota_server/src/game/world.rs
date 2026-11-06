@@ -407,6 +407,8 @@ impl World {
     ) {
         let damage_amp_bp = self.outgoing_damage_amp_bp(source, kind);
         self.hits.push_back(Hit {
+            proc: None,
+            blockable_source_team: None,
             source,
             inflictor,
             target,
@@ -436,6 +438,8 @@ impl World {
         let kind = bota_proto::DamageKind::Physical;
         let damage_amp_bp = self.outgoing_damage_amp_bp(source, kind);
         self.hits.push_back(Hit {
+            proc: None,
+            blockable_source_team: None,
             source,
             inflictor,
             target,

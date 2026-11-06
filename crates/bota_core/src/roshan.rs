@@ -149,14 +149,14 @@ pub(crate) const ROSHAN_ARMOR_AURA: crate::Aura = crate::Aura {
     }),
     modifier: crate::AuraModifier::ArmorGrowth {
         hundredths_per_step: 40,
-        effect: bota_proto::EffectId(79),
+        effect: bota_proto::EffectId(82),
     },
 };
 
 /// The script supplies movement bonuses and the interruption budget; contact geometry is
 /// current On The Move mechanics, with damage from 7.33 and per-victim downtime from 7.38.
 pub const ROSHAN_MIGRATION: crate::Migration = crate::Migration {
-    effect: bota_proto::EffectId(92),
+    effect: bota_proto::EffectId(95),
     interrupts: &[
         crate::NeutralAbility::RoshanSlam,
         crate::NeutralAbility::GrabAndThrow,
@@ -181,7 +181,7 @@ pub const ROSHAN_MIGRATION: crate::Migration = crate::Migration {
         height: 50,
         cooldown: 60,
         tree_radius: 100,
-        effect: bota_proto::EffectId(93),
-        timeout_effect: bota_proto::EffectId(94),
+        effect: bota_proto::EffectId(96),
+        timeout_effect: bota_proto::EffectId(97),
     },
 };

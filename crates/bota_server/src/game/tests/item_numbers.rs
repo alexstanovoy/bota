@@ -703,6 +703,8 @@ fn morbid_swing_heal(amount: i32, on: impl FnOnce(&mut World, Vec2) -> Entity) -
     world.health.get_mut(hero).expect("alive").hp = Fixed::from_int(200);
     let regen = world.stats.get(hero).expect("derived").hp_regen;
     world.hits.push_back(crate::game::Hit {
+        proc: None,
+        blockable_source_team: None,
         source: Some(hero),
         inflictor: None,
         target: mark,
