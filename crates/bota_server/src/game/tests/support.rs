@@ -60,6 +60,8 @@ pub(crate) fn stats() -> Stats {
         magic_taken_pct: 0,
         damage_taken_bp: rules::NOMINAL_BP,
         restoration_bp: rules::NOMINAL_BP,
+        illusion_attack_taken_bp: rules::NOMINAL_BP,
+        slow_resist_bp: 0,
         accuracy: Odds::NEVER,
     }
 }

@@ -69,23 +69,25 @@ pub fn missile_system(cx: MissileCx<'_>) {
             continue;
         }
         let uphill = !shot.pierces && thrown_uphill(&shot, to, transform, kind, ground);
-        land(&shot, uphill, hits);
+        land(&shot, uphill, team.get(missile).copied(), hits);
         give_up(missile, entities, projectile, transform, team, visibility);
     }
 }
 
 /// Lays the blows a missile that arrived deals: its own, and the magical
 /// damage of each pierce riding with it.
-fn land(shot: &Projectile, uphill: bool, hits: &mut VecDeque<Hit>) {
+fn land(shot: &Projectile, uphill: bool, side: Option<Team>, hits: &mut VecDeque<Hit>) {
+    let blockable = matches!(shot.inflictor,Some(Inflictor::Ability(id)) if bota_core::ability_def(id).is_some_and(|def|def.block==bota_core::BlockTiming::Impact));
     hits.push_back(Hit {
+        blockable_source_team: if blockable { side } else { None },
         source: shot.source,
         inflictor: shot.inflictor,
         target: shot.target,
         amount: shot.damage,
         kind: shot.kind,
         damage_amp_bp: shot.damage_amp_bp,
-        attack: true,
-        spell: false,
+        attack: shot.striker.is_some(),
+        spell: shot.striker.is_none(),
         striker: shot.striker,
         pierces: shot.pierces,
         uphill,
@@ -96,6 +98,7 @@ fn land(shot: &Projectile, uphill: bool, hits: &mut VecDeque<Hit>) {
     });
     for &(damage, item) in &shot.pierced {
         hits.push_back(Hit {
+            blockable_source_team: None,
             source: shot.source,
             inflictor: Some(Inflictor::Item(item)),
             target: shot.target,

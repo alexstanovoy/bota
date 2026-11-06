@@ -27,6 +27,7 @@ const TARGET: UnitDef = UnitDef {
 fn pure_blow(world: &mut World, from: Entity, on: Entity) -> i32 {
     world.fill_pools(on);
     world.hits.push_back(Hit {
+        blockable_source_team: None,
         inflictor: None,
         source: Some(from),
         target: on,

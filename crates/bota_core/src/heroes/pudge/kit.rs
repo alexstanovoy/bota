@@ -120,6 +120,7 @@ pub const DISMEMBER: AbilityDef = AbilityDef {
     id: AbilityId::DISMEMBER,
     key: "pudge_dismember",
     name: "Dismember",
+    block: crate::BlockTiming::Cast,
     aim: Aim::Unit,
     max_level: rules::ULT_MAX_LEVEL,
     passive: false,

@@ -1,5 +1,6 @@
 //! Putting an entity into the world with everything its kind needs.
 
+use bota_core::Spell;
 use bota_core::{
     COURIER, COURIER_ABILITIES, HERO, ModifierKind, NeutralKind, UnitDef, effect_def, hero_def,
     neutral_ability_level,
@@ -365,7 +366,7 @@ impl World {
                     .iter()
                     .map(|ability| AbilityState {
                         id: ability.id(),
-                        level,
+                        level: level.min(ability.entry().def.max_level),
                         cooldown: 0,
                     })
                     .collect(),
@@ -374,6 +375,33 @@ impl World {
                 attribute_bonus: 0,
             },
         );
+        let intrinsics: Vec<_> = kind
+            .neutral()
+            .abilities
+            .iter()
+            .filter_map(|ability| {
+                let breakable = match ability.spell() {
+                    Spell::Intrinsic { .. } => false,
+                    Spell::Block { breakable, .. } => *breakable,
+                    _ => return None,
+                };
+                let mut held = Modifier::new(
+                    ModifierKind::Spell {
+                        ability: *ability,
+                        level: level.min(ability.entry().def.max_level),
+                        amount: 0,
+                    },
+                    Some(entity),
+                    Some(Inflictor::Ability(ability.id())),
+                    None,
+                );
+                held.breakable = breakable;
+                Some(held)
+            })
+            .collect();
+        for held in intrinsics {
+            self.put_modifier(entity, held);
+        }
         self.camp_home.insert(entity, CampHome { camp, home: pos });
         self.neutral_ai.insert(
             entity,

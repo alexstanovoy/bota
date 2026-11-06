@@ -521,6 +521,7 @@ impl ModifierKind {
 /// The effect a spell's own modifier shows, if the spell leaves one.
 pub const fn spell_effect(ability: NeutralAbility) -> Option<EffectId> {
     match *ability.spell() {
+        Spell::Intrinsic { effect, .. } | Spell::Block { effect, .. } => Some(effect),
         Spell::Aura(aura) => Some(aura.effect),
         Spell::Storm { effect, .. }
         | Spell::Strike(Strike::Lay { effect, .. })
@@ -571,6 +572,7 @@ pub fn spell_statuses(ability: NeutralAbility, level: u8, amount: u16) -> u16 {
 /// modifier's own `amount`, falling as it wears off.
 pub const fn spell_buff(ability: NeutralAbility) -> Option<Buff> {
     match *ability.spell() {
+        Spell::Intrinsic { buff, .. } | Spell::Block { buff, .. } => Some(buff),
         Spell::Aura(aura) => Some(aura.buff),
         Spell::Storm { buff, .. }
         | Spell::Strike(Strike::Lay { buff, .. })

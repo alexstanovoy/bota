@@ -654,3 +654,7 @@ tests = [{ crate = "bota_server", features = ["phase-profile"], target = "lib", 
 [[route]]
 paths = ["crates/bota_server/src/game/systems/reincarnation.rs"]
 groups = ["game_items", "game_objectives"]
+
+[[route]]
+paths = ["crates/bota_server/src/game/systems/spell_block.rs"]
+groups = ["game_abilities", "game_neutrals", "game_objectives", "game_determinism"]

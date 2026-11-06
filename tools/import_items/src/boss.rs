@@ -36,11 +36,17 @@ pub fn table(dota: Option<&Path>) -> Result<String, String> {
         banner,
     )?;
     let abilities = read("scripts/npc/npc_abilities.txt")?;
-    let devotion = abilities
-        .get("DOTAAbilities")
-        .and_then(|a| a.get("roshan_devotion"))
-        .ok_or("no devotion")?;
-    row(&mut out, "ROSHAN_DEVOTION", "roshan_devotion", devotion)?;
+    for (constant, key) in [
+        ("ROSHAN_DEVOTION", "roshan_devotion"),
+        ("ROSHAN_INHERENT_BUFFS", "roshan_inherent_buffs"),
+        ("ROSHAN_SPELL_BLOCK", "roshan_spell_block"),
+    ] {
+        let ability = abilities
+            .get("DOTAAbilities")
+            .and_then(|a| a.get(key))
+            .ok_or("missing boss passive")?;
+        row(&mut out, constant, key, ability)?;
+    }
     Ok(out)
 }
 

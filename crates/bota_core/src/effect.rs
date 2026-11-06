@@ -261,6 +261,13 @@ const EFFECT_ROWS: &[EffectDef] = &[
         ..buff(81, "modifier_aegis_regen", "Recovery")
     },
     buff(79, "modifier_roshan_devotion", "Devotion"),
+    hidden(
+        80,
+        "modifier_roshan_inherent_buffs",
+        "StrengthOfTheImmortal",
+    ),
+    hidden(81, "modifier_roshan_devotion_aura", "DevotionAura"),
+    hidden(82, "modifier_roshan_spell_block", "SpellBlock"),
 ];
 
 /// How many effect ids the protocol has ever handed out, retired ones

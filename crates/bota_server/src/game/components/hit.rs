@@ -42,6 +42,8 @@ pub struct Hit {
     /// The items whose passive the blow lays on the struck before its damage
     /// lands: an attack's, its own blow only.
     pub laid: Laid,
+    /// Allegiance captured by a blockable spell projectile.
+    pub blockable_source_team: Option<bota_proto::Team>,
     /// Whether it removes health rather than dealing damage (Dota's HP
     /// Removal): it sets off nothing that answers to damage.
     pub removal: bool,
@@ -151,7 +153,8 @@ state_hash!(Hit {
     effect,
     laid,
     removal,
-    spares
+    spares,
+    blockable_source_team
 });
 state_hash!(Fear { line, most });
 

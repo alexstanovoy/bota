@@ -105,7 +105,13 @@ impl World {
         if self.stats.get(target).is_some_and(|s| s.invulnerable) {
             return false;
         }
-        if mine == Team::Neutral && self.kind.get(target) == Some(&UnitKind::Courier) {
+        if mine == Team::Neutral
+            && self.kind.get(target) == Some(&UnitKind::Courier)
+            && self
+                .neutral
+                .get(seeker)
+                .is_none_or(|kind| !kind.neutral().home.attacks_couriers)
+        {
             return false;
         }
         if theirs == Team::Neutral {

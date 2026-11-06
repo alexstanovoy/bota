@@ -325,3 +325,9 @@ effect 81 live modifier_aegis_regen
 
 ability 80 live roshan_inherent_buffs
 effect 82 live modifier_roshan_devotion
+
+ability 81 live roshan_devotion
+ability 82 live roshan_spell_block
+effect 83 live modifier_roshan_inherent_buffs
+effect 84 live modifier_roshan_devotion_aura
+effect 85 live modifier_roshan_spell_block

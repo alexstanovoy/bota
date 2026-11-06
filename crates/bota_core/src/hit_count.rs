@@ -13,6 +13,8 @@ pub enum Striker {
     RangedHero,
     /// Anything else: a creep, a building.
     Other,
+    /// An illusion attack; still counts as an ordinary creep against hit-count health.
+    Illusion,
 }
 
 impl Striker {
@@ -49,7 +51,7 @@ impl HitCount {
         let hits = match by {
             Some(Striker::MeleeHero) => self.melee_hero,
             Some(Striker::RangedHero) => self.ranged_hero,
-            Some(Striker::Other) => self.other,
+            Some(Striker::Other | Striker::Illusion) => self.other,
             None => return Fixed::ZERO,
         };
         assert!(hits > 0 && max_hp.raw > 0);

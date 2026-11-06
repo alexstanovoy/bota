@@ -172,7 +172,8 @@ impl World {
         self.team.get(by) != self.team.get(on)
             && self.team.get(on).is_some()
             && self.kind.get(on).is_some_and(|kind| {
-                !bota_core::kind_def(*kind).structure && *kind != UnitKind::Ward
+                !bota_core::kind_def(*kind).structure
+                    && bota_core::kind_def(*kind).target_class != bota_core::TargetClass::Ward
             })
     }
 

@@ -81,3 +81,29 @@ it has not been independently confirmed from engine source. The existing simulat
 that maximum-health changes preserve the filled fraction is retained; no first-party
 Roshan-specific exception was found. The shared Q16.16 health representation saturates near
 32,768 HP (around 206 minutes of this growth); no extra growth cap is added.
+
+## Defensive passives
+
+The installed `roshan_spell_block` supplies its 15-second cooldown and 25% status resistance;
+`roshan_devotion` supplies 25% slow resistance. Neither passive has `IsBreakable` set.
+[Slow resistance](https://liquipedia.net/dota2/Slow_Resistance) stacks multiplicatively,
+reduces negative movement-speed changes, and increases minimum speed since 7.38. It is
+separate from status resistance, which shortens eligible disables. Resistance is gathered
+before movement changes, with one basis-point rounding independent of modifier order.
+
+[Strength of the Immortal](https://liquipedia.net/dota2/Roshan) documents permanent phased
+movement and 80% reduction of illusion attack damage, excluding spell damage. The attack's
+illusion classification is captured in the attack record and survives projectile flight.
+The same mechanics document hero-class attacks against couriers. Neutral targeting policy
+allows Roshan to acquire couriers while leaving ordinary autonomous neutrals' policy intact.
+
+Spell absorption occurs at the cast point or at a tracking projectile's impact, according to
+ability data. A valid blocked cast spends mana and cooldown but never starts its channel;
+an invalid target (including lost pit sight) consumes neither. Projectile allegiance belongs
+to the projectile even after its caster dies. One ready block absorbs one simultaneous
+eligible impact, including zero-damage stun/root projectiles.
+
+Valve [7.40](https://www.dota2.com/patches/7.40) makes lifesteal treat Roshan as a creep. The
+shared target factors are 60% for attack lifesteal and 20% for spell lifesteal, from the
+[current mechanics](https://liquipedia.net/dota2/Lifesteal). The attack consumer uses health
+actually removed, after mitigation, and excludes ward-type targets including Banner.

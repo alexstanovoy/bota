@@ -2,9 +2,21 @@
 //! enemy items.
 
 use bota_core::{NeutralAbility, ability_def, at_home_shop, item_def, rules};
-use bota_proto::{AbilityId, AbilitySlot, EventKind, Fixed, Target, UnitKind};
+use bota_proto::{AbilityId, AbilitySlot, Fixed, Target, UnitKind};
 
-use crate::game::{Entity, Event, EventVisibility, World, ability_hooks, wire_id};
+use crate::game::{Entity, World, ability_hooks};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CastOutcome {
+    Refused,
+    Applied,
+    Blocked,
+}
+impl CastOutcome {
+    pub fn went(self) -> bool {
+        self != Self::Refused
+    }
+}
 
 impl World {
     /// Whether an entity stands in its own shop.
@@ -31,6 +43,15 @@ impl World {
     /// must be active and learned, the cooldown run out, the mana be there,
     /// and the ability itself must have found something to do.
     pub fn begin_ability(&mut self, entity: Entity, slot: AbilitySlot, target: Target) -> bool {
+        self.begin_ability_outcome(entity, slot, target).went()
+    }
+
+    pub(crate) fn begin_ability_outcome(
+        &mut self,
+        entity: Entity,
+        slot: AbilitySlot,
+        target: Target,
+    ) -> CastOutcome {
         let at = usize::from(slot.0);
         let Some(ability) = self
             .abilities
@@ -38,30 +59,55 @@ impl World {
             .and_then(|book| book.slots.get(at))
             .copied()
         else {
-            return false;
+            return CastOutcome::Refused;
         };
         let Some(def) = ability_def(ability.id) else {
-            return false;
+            return CastOutcome::Refused;
         };
         // An illusion casts nothing, and uses no item.
         if def.passive || ability.level == 0 || ability.cooldown > 0 || self.wears_illusion(entity)
         {
-            return false;
+            return CastOutcome::Refused;
         }
         let cost = self.ability_mana_cost(entity, ability.id, ability.level);
         if self.mana.get(entity).map_or(0, |m| m.mana.to_int()) < cost {
-            return false;
+            return CastOutcome::Refused;
         }
         let cooldown = self.ability_cooldown(entity, ability.id, ability.level);
-        let gone_off = match NeutralAbility::of(ability.id) {
-            Some(spell) => self.cast_spell(entity, spell, ability.level, target),
-            None => {
-                ability_hooks(ability.id).is_some_and(|hooks| (hooks.on_cast)(self, entity, target))
-            }
+        let blocked = if matches!(def.block, bota_core::BlockTiming::Cast) {
+            let Some(blocked) = self.block_cast_target(entity, ability.id, target) else {
+                return CastOutcome::Refused;
+            };
+            blocked
+        } else {
+            false
         };
+        let gone_off = blocked
+            || match NeutralAbility::of(ability.id) {
+                Some(spell) => self.cast_spell(entity, spell, ability.level, target),
+                None => ability_hooks(ability.id)
+                    .is_some_and(|hooks| (hooks.on_cast)(self, entity, target)),
+            };
         if !gone_off {
-            return false;
+            return CastOutcome::Refused;
         }
+        self.pay_for_ability(entity, at, ability.id, cost, cooldown, target);
+        if blocked {
+            CastOutcome::Blocked
+        } else {
+            CastOutcome::Applied
+        }
+    }
+
+    fn pay_for_ability(
+        &mut self,
+        entity: Entity,
+        at: usize,
+        ability: AbilityId,
+        cost: i32,
+        cooldown: u32,
+        target: Target,
+    ) {
         self.expose_caster(entity, target);
         self.charge_nearby_items(entity);
         if let Some(mana) = self.mana.get_mut(entity) {
@@ -72,17 +118,7 @@ impl World {
         {
             ability.cooldown = cooldown;
         }
-        let visible_to = self.who_may_know(entity, None);
-        self.events.push(Event::Fact {
-            kind: EventKind::AbilityCast {
-                caster: wire_id(entity),
-                ability: ability.id,
-            },
-            visible_to,
-            gold_hidden_from: None,
-            source_told_to: EventVisibility::Everyone,
-        });
-        true
+        self.tell_ability_triggered(entity, ability);
     }
 
     /// Gives every enemy item near a cast one charge of what it may hold.

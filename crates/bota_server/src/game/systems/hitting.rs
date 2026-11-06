@@ -86,6 +86,9 @@ pub struct HitCx<'a> {
     pub missed: &'a mut VecDeque<Missed>,
     /// The tick the blows are felt on.
     pub tick: u32,
+    pub abilities: &'a mut Table<crate::game::AbilityBook>,
+    pub blocks: &'a mut Vec<super::spell_block::BlockActivation>,
+    pub free_spells: bool,
 }
 
 /// Takes every waiting blow off the health it landed on.
@@ -111,6 +114,9 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         evasion,
         missed,
         tick,
+        abilities,
+        blocks,
+        free_spells,
     } = cx;
     while let Some(blow) = hits.pop_front() {
         let standing = health
@@ -126,6 +132,20 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
                 .any(|held| held.kind == ModifierKind::Shielded)
         });
         if !standing || stat.invulnerable || shielded {
+            continue;
+        }
+        if let Some(side) = blow.blockable_source_team
+            && let Some(blocked) = super::spell_block::absorb(
+                blow.target,
+                side,
+                abilities,
+                stats,
+                modifiers,
+                team,
+                free_spells,
+            )
+        {
+            blocks.push(blocked);
             continue;
         }
         let at = transform.get(blow.target).map_or(Vec2::ZERO, |t| t.pos);
@@ -254,7 +274,11 @@ fn damage_taken<const AMPLIFIED: bool>(
         }
     }
     let stolen = taken;
-    let taken = blocked(taken, on_it.as_deref());
+    let mut taken = blocked(taken, on_it.as_deref());
+    if blow.attack && blow.striker == Some(bota_core::Striker::Illusion) {
+        taken = (i64::from(taken) * i64::from(stat.illusion_attack_taken_bp)
+            / i64::from(rules::NOMINAL_BP)) as i32;
+    }
     // What the target takes more or less of than lands on others, as an
     // illusion takes more.
     let taken = (i64::from(taken) * i64::from(stat.damage_taken_bp) / i64::from(rules::NOMINAL_BP))

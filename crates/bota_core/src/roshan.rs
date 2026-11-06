@@ -62,24 +62,7 @@ pub const ROSHAN: UnitDef = UnitDef {
         xp: 20,
         ..crate::unit::NO_GROWTH
     },
-    auras: &[crate::Aura {
-        whom: crate::Whom::Allies,
-        reaches: crate::Reach::Living,
-        radius: crate::data::ROSHAN_DEVOTION.first("radius").int(),
-        linger: rules::TICKS_PER_SECOND / 2,
-        breakable: false,
-        invulnerable: false,
-        water: false,
-        growth_clock: Some(crate::GrowthClock {
-            first_after_horn: 0,
-            period: 60 * rules::TICKS_PER_SECOND,
-            cap: u32::MAX,
-        }),
-        modifier: crate::AuraModifier::ArmorGrowth {
-            hundredths_per_step: 40,
-            effect: bota_proto::EffectId(79),
-        },
-    }],
+    innate: &[crate::ModifierKind::Phased],
     ..BARE_UNIT
 };
 
@@ -87,6 +70,7 @@ pub const ROSHAN: UnitDef = UnitDef {
 /// 1800, never asleep, led off it as a neutral is [LIQ Roshan "Behavior";
 /// LIQ Neutral Creeps].
 pub const ROSHAN_HOME: HomeDef = HomeDef {
+    attacks_couriers: true,
     aggro_range: 140,
     damage_aggro_range: 1800,
     aggro_spread: 0,
@@ -144,3 +128,23 @@ pub const ROSHAN_DROPS: [crate::LairDrop; 4] = [
         max_level: 1,
     },
 ];
+
+/// Devotion carries only the armor to nearby allies.
+pub(crate) const ROSHAN_ARMOR_AURA: crate::Aura = crate::Aura {
+    whom: crate::Whom::Allies,
+    reaches: crate::Reach::Living,
+    radius: crate::data::ROSHAN_DEVOTION.first("radius").int(),
+    linger: rules::TICKS_PER_SECOND / 2,
+    breakable: false,
+    invulnerable: false,
+    water: false,
+    growth_clock: Some(crate::GrowthClock {
+        first_after_horn: 0,
+        period: 60 * rules::TICKS_PER_SECOND,
+        cap: u32::MAX,
+    }),
+    modifier: crate::AuraModifier::ArmorGrowth {
+        hundredths_per_step: 40,
+        effect: bota_proto::EffectId(79),
+    },
+};

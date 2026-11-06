@@ -87,6 +87,8 @@ pub enum NeutralAbility {
     Rally,
     Tempest,
     StrengthOfTheImmortal,
+    Devotion,
+    SpellBlock,
 }
 
 impl NeutralAbility {
@@ -197,6 +199,11 @@ pub enum Stat {
     CooldownPct,
     /// Percent of its attacks that never miss.
     AccuracyPct,
+    /// Percent resisted, multiplicatively across sources.
+    SlowResistPct,
+    StatusResistPct,
+    /// Reduction of incoming illusion attacks, leaving spells unaffected.
+    IllusionAttackReductionPct,
 }
 
 /// What a spell's own modifier does to the stats of whatever wears it: up
@@ -467,6 +474,18 @@ pub enum Spell {
         when: When,
         shared: Option<Shared>,
     },
+    /// A permanent self modifier, optionally also carrying an aura.
+    Intrinsic {
+        buff: Buff,
+        effect: EffectId,
+        aura: Option<Aura>,
+    },
+    /// Absorbs an enemy unit-target spell while ready, with intrinsic self stats.
+    Block {
+        buff: Buff,
+        effect: EffectId,
+        breakable: bool,
+    },
 }
 
 impl Spell {
@@ -475,6 +494,9 @@ impl Spell {
     /// living units only and lingers [`rules::AURA_LINGER_TICKS`]; a Break
     /// silences it as its spell's `breakable` says.
     const fn aura(&self, ability: NeutralAbility) -> Option<Aura> {
+        if let Spell::Intrinsic { aura, .. } = *self {
+            return aura;
+        }
         let (whom, radius, water, breakable) = match *self {
             Spell::Aura(AuraSpell {
                 whom,
@@ -570,6 +592,11 @@ const fn cast(
         max_level: 4,
         passive: false,
         at_an_enemy,
+        block: if at_an_enemy && matches!(aim, Aim::Unit) {
+            crate::BlockTiming::Cast
+        } else {
+            crate::BlockTiming::Never
+        },
         mana,
         cooldown,
         range,
@@ -598,6 +625,18 @@ const fn entry(
             id,
             key,
             aura: spell.aura(ability),
+            block: if matches!(
+                spell,
+                Spell::Cast {
+                    act: Act::Bolt { .. },
+                    ..
+                }
+            ) && matches!(def.block, crate::BlockTiming::Cast)
+            {
+                crate::BlockTiming::Impact
+            } else {
+                def.block
+            },
             ..def
         },
         spell,
@@ -1719,14 +1758,59 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
     ),
     entry(
         AbilityId(80),
-        "roshan_inherent_buffs",
+        crate::data::ROSHAN_INHERENT_BUFFS.key,
         NeutralAbility::StrengthOfTheImmortal,
         AbilityDef {
             max_level: 1,
             hidden: true,
             ..passive("StrengthOfTheImmortal")
         },
-        Spell::Upgrade,
+        Spell::Intrinsic {
+            buff: Buff::of(Stat::IllusionAttackReductionPct, all(80)),
+            effect: EffectId(80),
+            aura: None,
+        },
+    ),
+    entry(
+        AbilityId(81),
+        crate::data::ROSHAN_DEVOTION.key,
+        NeutralAbility::Devotion,
+        AbilityDef {
+            max_level: 1,
+            hidden: true,
+            ..passive("Devotion")
+        },
+        Spell::Intrinsic {
+            buff: Buff::of(
+                Stat::SlowResistPct,
+                all(crate::data::ROSHAN_DEVOTION.first("slow_resistance").int()),
+            ),
+            effect: EffectId(81),
+            aura: Some(crate::ROSHAN_ARMOR_AURA),
+        },
+    ),
+    entry(
+        AbilityId(82),
+        crate::data::ROSHAN_SPELL_BLOCK.key,
+        NeutralAbility::SpellBlock,
+        AbilityDef {
+            max_level: 1,
+            cooldown: &[crate::data::ROSHAN_SPELL_BLOCK
+                .first("AbilityCooldown")
+                .secs()
+                .ticks()],
+            ..passive("SpellBlock")
+        },
+        Spell::Block {
+            buff: Buff::of(
+                Stat::StatusResistPct,
+                all(crate::data::ROSHAN_SPELL_BLOCK
+                    .first("status_resistance")
+                    .int()),
+            ),
+            effect: EffectId(82),
+            breakable: false,
+        },
     ),
 ];
 

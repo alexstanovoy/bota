@@ -11,6 +11,7 @@ use bota_core::{
     BEATS_PER_TICK, Behavior, ModifierKind, Striker, Talent, ability_def, attack_gain, beats,
     carried_pierces, cast_point_ms, cross, facing_gap, facing_towards, item_def, kind_def, rules,
 };
+use bota_proto::UnitKind;
 use bota_proto::{
     Aim, DamageKind, Fixed, Inflictor, ItemId, ItemSlot, ProjectileModel, Team, Vec2,
 };
@@ -507,10 +508,14 @@ impl World {
                 let Some(over) = cross(progress, beats(timing.point)) else {
                     return false;
                 };
-                action.state = if self.begin(entity, what) {
-                    cast_state(what, ActionPhase::During { progress: over })
-                } else {
-                    ActionState::Ready
+                action.state = match self.begin(entity, what) {
+                    super::cast::CastOutcome::Applied => {
+                        cast_state(what, ActionPhase::During { progress: over })
+                    }
+                    super::cast::CastOutcome::Blocked => {
+                        cast_state(what, ActionPhase::After { progress: over })
+                    }
+                    super::cast::CastOutcome::Refused => ActionState::Ready,
                 };
             }
             ActionPhase::During { progress } => {
@@ -624,7 +629,7 @@ impl World {
 
     /// The moment a cast goes off: the ability's or item's own work, and its
     /// cost. False when it did not go off, and then nothing was spent.
-    fn begin(&mut self, entity: Entity, what: PendingCast) -> bool {
+    fn begin(&mut self, entity: Entity, what: PendingCast) -> super::cast::CastOutcome {
         // A rune let out of a Bottle breaks nothing, an Invisibility Rune's
         // own least of all; any other cast or use of an item does.
         let lets_out = match what {
@@ -634,12 +639,18 @@ impl World {
             PendingCast::Ability { .. } => false,
         };
         let went = match what {
-            PendingCast::Ability { slot, target } => self.begin_ability(entity, slot, target),
+            PendingCast::Ability { slot, target } => {
+                self.begin_ability_outcome(entity, slot, target)
+            }
             PendingCast::Item { slot, target } => {
-                self.begin_item(entity, usize::from(slot.0), target)
+                if self.begin_item(entity, usize::from(slot.0), target) {
+                    super::cast::CastOutcome::Applied
+                } else {
+                    super::cast::CastOutcome::Refused
+                }
             }
         };
-        if went && !lets_out {
+        if went.went() && !lets_out {
             self.reveal(entity);
         }
         went
@@ -788,9 +799,17 @@ impl World {
         let striker = match self.kind.get(attacker) {
             // An illusion's attack counts as a creep's.
             Some(kind) if !self.wears_illusion(attacker) => {
-                Striker::of(*kind, stats.projectile_speed.is_some())
+                let kind = if self.kind.get(on) == Some(&UnitKind::Courier)
+                    && matches!(kind_def(*kind).attack_class, bota_core::AttackClass::Hero)
+                {
+                    UnitKind::Hero
+                } else {
+                    *kind
+                };
+                Striker::of(kind, stats.projectile_speed.is_some())
             }
-            _ => Striker::Other,
+            Some(_) => Striker::Illusion,
+            None => Striker::Other,
         };
         let swing = Swing {
             striker,
@@ -896,6 +915,7 @@ impl World {
     /// itself, and the magical damage of each pierce riding with it.
     fn strike_home(&mut self, attacker: Entity, on: Entity, swing: Swing) {
         self.hits.push_back(Hit {
+            blockable_source_team: None,
             source: Some(attacker),
             inflictor: None,
             target: on,
@@ -914,6 +934,7 @@ impl World {
         });
         for (bonus, item) in swing.pierced {
             self.hits.push_back(Hit {
+                blockable_source_team: None,
                 source: Some(attacker),
                 inflictor: Some(Inflictor::Item(item)),
                 target: on,

@@ -366,6 +366,7 @@ impl World {
         inflictor: Option<Inflictor>,
     ) {
         self.hits.push_back(Hit {
+            blockable_source_team: None,
             source,
             inflictor,
             target,
@@ -459,6 +460,7 @@ impl World {
     ) {
         let damage_amp_bp = self.outgoing_damage_amp_bp(source, kind);
         self.hits.push_back(Hit {
+            blockable_source_team: None,
             source,
             inflictor,
             target,
@@ -977,7 +979,11 @@ impl World {
             .hits
             .iter()
             .any(|hit| hit.damage_amp_bp != bota_core::rules::NOMINAL_BP);
+        let mut blocks = Vec::new();
         let cx = HitCx {
+            abilities: &mut self.abilities,
+            blocks: &mut blocks,
+            free_spells: self.wtf,
             hits: &mut self.hits,
             landed: &mut self.landed,
             transform: &self.transform,
@@ -997,6 +1003,9 @@ impl World {
             hitting_system::<true>(cx);
         } else {
             hitting_system::<false>(cx);
+        }
+        for activation in blocks {
+            self.tell_ability_triggered(activation.unit, activation.ability);
         }
         self.landed.drain(..).collect()
     }

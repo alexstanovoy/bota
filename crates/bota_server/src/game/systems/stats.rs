@@ -108,7 +108,22 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         // Every percent change of the pace and of the main attack damage is
         // summed and taken once, and flat bonus damage is added after, as
         // Dota works movement speed and attack damage out.
+        let working = || {
+            modifiers
+                .get(entity)
+                .into_iter()
+                .flat_map(|on_it| on_it.active())
+                .filter(|held| !disabled_in(modifiers, held))
+        };
+        let slow_keep = resistance_keep(working(), Stat::SlowResistPct);
+        now.slow_resist_bp = rules::NOMINAL_BP - slow_keep;
+        now.status_resist_bp = rules::NOMINAL_BP
+            - (rules::NOMINAL_BP - now.status_resist_bp)
+                * resistance_keep(working(), Stat::StatusResistPct)
+                / rules::NOMINAL_BP;
+        now.illusion_attack_taken_bp = resistance_keep(working(), Stat::IllusionAttackReductionPct);
         let mut sums = Sums::of(modifiers.get(entity));
+        sums.pace.slow_keep_bp = slow_keep;
         if let Some(carried) = carried {
             add_carried(&mut now, &mut sums, &carried, illusion);
         }
@@ -129,13 +144,6 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         sums.bonus_damage += kept(illusion, soul_damage(held(ModifierKind::souls), levels + 1));
         // What a breakable aura put on does nothing while its source is
         // broken.
-        let working = || {
-            modifiers
-                .get(entity)
-                .into_iter()
-                .flat_map(|on_it| on_it.active())
-                .filter(|held| !disabled_in(modifiers, held))
-        };
         let wearer = Wearer {
             base_armor,
             hero: kind.kind == bota_proto::UnitKind::Hero,
@@ -154,9 +162,10 @@ pub fn derive_stats(cx: StatsCx<'_>) {
             Some(pace) => Fixed::from_int(pace),
             None => paced(
                 now.move_speed,
-                sums.pace.pct,
+                sums.pace.pct_bp,
                 pace_scale_bp,
                 kind.unbounded_pace,
+                now.slow_resist_bp,
             ),
         };
         // A Haste Rune moves its wearer at the haste speed at least, and
@@ -212,14 +221,16 @@ pub fn derive_stats(cx: StatsCx<'_>) {
 /// The percent changes of a unit's pace, summed as Dota sums them. A unit
 /// under hasted movement ([`ModifierKind::Haste`]) takes none of the slows.
 struct Pace {
-    pct: i32,
+    pct_bp: i32,
     hasted: bool,
+    slow_keep_bp: i32,
 }
 
 impl Pace {
     fn of(on_it: Option<&Modifiers>) -> Pace {
         Pace {
-            pct: 0,
+            pct_bp: 0,
+            slow_keep_bp: rules::NOMINAL_BP,
             hasted: on_it.is_some_and(|on_it| {
                 on_it
                     .active()
@@ -232,7 +243,12 @@ impl Pace {
     /// movement is hasted.
     fn change(&mut self, pct: i32) {
         if pct >= 0 || !self.hasted {
-            self.pct += pct;
+            let basis_points = pct * 100;
+            self.pct_bp += if pct < 0 {
+                basis_points * self.slow_keep_bp / rules::NOMINAL_BP
+            } else {
+                basis_points
+            };
         }
     }
 }
@@ -732,6 +748,8 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32, night: bool) -> Stats {
         magic_taken_pct: 0,
         damage_taken_bp: rules::NOMINAL_BP,
         restoration_bp: rules::NOMINAL_BP,
+        illusion_attack_taken_bp: rules::NOMINAL_BP,
+        slow_resist_bp: 0,
         accuracy: Odds::NEVER,
         move_speed: Fixed::from_int(kind.move_speed + up.move_speed),
         turn_rate: kind.turn_rate,
@@ -778,12 +796,16 @@ fn follow(held: Fixed, was: Fixed, now: Fixed) -> Fixed {
 /// (nominal unless its world's paces are scaled); a unit whose pace is
 /// `unbounded` (Dota's courier) keeps only the lower limit. A unit with no
 /// pace of its own (a building, a ward) stays still.
-fn paced(flat: Fixed, pct: i32, scale_bp: i32, unbounded: bool) -> Fixed {
+fn paced(flat: Fixed, pct: i32, scale_bp: i32, unbounded: bool, slow_resist_bp: i32) -> Fixed {
     if flat <= Fixed::ZERO {
         return flat;
     }
     let limit = |speed: i32| scaled_bp(Fixed::from_int(speed), scale_bp);
-    let pace = scaled(flat, (100 + pct).max(0)).max(limit(rules::MIN_MOVE_SPEED));
+    let minimum = scaled_bp(
+        limit(rules::MIN_MOVE_SPEED),
+        rules::NOMINAL_BP + slow_resist_bp,
+    );
+    let pace = scaled_bp(flat, (rules::NOMINAL_BP + pct).max(0)).max(minimum);
     if unbounded {
         pace
     } else {
@@ -798,4 +820,27 @@ fn scaled(speed: Fixed, pct: i32) -> Fixed {
     Fixed {
         raw: raw.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
     }
+}
+
+/// Each resistance source acts on what previous sources left, independently of duration.
+fn resistance_keep<'a>(working: impl Iterator<Item = &'a Modifier>, stat: Stat) -> i32 {
+    let mut values = [0u8; rules::MAX_EFFECTS_PER_UNIT];
+    let mut count = 0;
+    for held in working.take(rules::MAX_EFFECTS_PER_UNIT) {
+        if let ModifierKind::Spell { ability, level, .. } = held.kind
+            && let Some(buff) = spell_buff(ability)
+        {
+            let pct = buff.get(stat, level).clamp(0, 100) as u8;
+            if pct > 0 {
+                values[count] = pct;
+                count += 1;
+            }
+        }
+    }
+    values[..count].sort_unstable();
+    let scale = 1u128 << 64;
+    let keep = values[..count]
+        .iter()
+        .fold(scale, |keep, pct| keep * u128::from(100 - pct) / 100);
+    ((keep * rules::NOMINAL_BP as u128 + scale / 2) / scale) as i32
 }

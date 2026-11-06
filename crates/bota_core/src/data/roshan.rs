@@ -62,3 +62,18 @@ pub const ROSHAN_DEVOTION: ScriptData = ScriptData {
     key: "roshan_devotion",
     values: &[("radius", &[Dec(5000)]), ("slow_resistance", &[Dec(25000)])],
 };
+pub const ROSHAN_INHERENT_BUFFS: ScriptData = ScriptData {
+    key: "roshan_inherent_buffs",
+    values: &[
+        ("move_pits_bonus_speed_per_interrupt", &[Dec(70000)]),
+        ("move_pits_max_bonus_speed", &[Dec(300000)]),
+        ("move_pits_slow_resistance", &[Dec(25000)]),
+    ],
+};
+pub const ROSHAN_SPELL_BLOCK: ScriptData = ScriptData {
+    key: "roshan_spell_block",
+    values: &[
+        ("AbilityCooldown", &[Dec(15000)]),
+        ("status_resistance", &[Dec(25000)]),
+    ],
+};

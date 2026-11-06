@@ -66,6 +66,14 @@ impl TargetFilter {
     }
 }
 
+/// Where an otherwise eligible enemy unit-target spell can be absorbed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BlockTiming {
+    Never,
+    Cast,
+    Impact,
+}
+
 /// One entry of the ability list.
 #[derive(Clone, Copy, Debug)]
 pub struct AbilityDef {
@@ -133,6 +141,7 @@ pub struct AbilityDef {
     /// order at a unit whose kind names it as its
     /// [`interact`](crate::KindDef::interact) casts it.
     pub hidden: bool,
+    pub block: BlockTiming,
     /// Which units it may be aimed at.
     pub targets: TargetFilter,
 }
@@ -162,6 +171,7 @@ pub(crate) const BARE_ABILITY: AbilityDef = AbilityDef {
     granted_at: None,
     retired: false,
     hidden: false,
+    block: BlockTiming::Never,
     targets: TargetFilter::ANY,
 };
 

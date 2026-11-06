@@ -181,6 +181,8 @@ pub struct NeutralDef {
 /// before it gives up and walks back, and whether it sleeps at night.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct HomeDef {
+    /// Whether this autonomous neutral may acquire couriers.
+    pub attacks_couriers: bool,
     /// A hostile unit this close wakes it.
     pub aggro_range: i32,
     /// A blow struck from within this range wakes it.
@@ -205,6 +207,7 @@ pub struct HomeDef {
 
 /// How the jungle's creeps hold their camps.
 pub const JUNGLE_HOME: HomeDef = HomeDef {
+    attacks_couriers: false,
     aggro_range: rules::NEUTRAL_AGGRO_RANGE,
     damage_aggro_range: rules::NEUTRAL_DAMAGE_AGGRO_RANGE,
     aggro_spread: rules::NEUTRAL_AGGRO_SPREAD,
@@ -224,6 +227,17 @@ const _: () = {
     while at < NEUTRALS.len() {
         let neutral = &NEUTRALS[at];
         assert!(neutral.abilities.len() <= MAX_NEUTRAL_ABILITIES);
+        let mut slot = 0;
+        let mut hidden = false;
+        while slot < neutral.abilities.len() {
+            let def = &neutral.abilities[slot].entry().def;
+            assert!(
+                !hidden || def.hidden,
+                "visible neutral ability after hidden slot"
+            );
+            hidden |= def.hidden;
+            slot += 1;
+        }
         assert!(crate::kind_def(neutral.def.kind).neutral);
         at += 1;
     }
@@ -1795,7 +1809,7 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
         kind: NeutralKind::Roshan,
         name: "Roshan",
         unit: "npc_dota_roshan",
-        abilities: &[],
+        abilities: &[A::SpellBlock, A::StrengthOfTheImmortal, A::Devotion],
         growth: Some(crate::NeutralGrowth {
             ability: NeutralAbility::StrengthOfTheImmortal,
             clock: crate::GrowthClock {
