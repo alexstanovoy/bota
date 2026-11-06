@@ -5,7 +5,7 @@ use bota_core::{
     AttackClass, ModifierKind, NeutralAbility, Odds, Spell, Strike, ability_cooldown, at_level,
     class_pct, rules, ticks_of_ms,
 };
-use bota_proto::{DamageKind, Inflictor, UnitKind};
+use bota_proto::{DamageKind, Fixed, Inflictor, UnitKind};
 
 use crate::game::{Entity, Landed, Modifier, PseudoRandom, Purpose, Rolls, Stats, World, wire_id};
 
@@ -137,7 +137,9 @@ impl World {
             if !self.foes(by, on) {
                 continue;
             }
-            self.lifesteal(by, blow.amount);
+            if blow.kind == DamageKind::Physical {
+                self.lifesteal(by, on, blow.amount);
+            }
             if self.wears_fountain_passive(by) {
                 let splash = (rules::FOUNTAIN_SPLASH_RADIUS, rules::FOUNTAIN_SPLASH_PCT);
                 self.splash(by, None, blow, splash);
@@ -174,11 +176,28 @@ impl World {
             })
     }
 
-    /// Mends an attacker by its lifesteal share of the damage it dealt.
-    fn lifesteal(&mut self, by: Entity, dealt: i32) {
-        let pct = self.stats.get(by).map_or(0, |stats| stats.lifesteal_pct);
-        if pct > 0 && dealt > 0 && self.living_unit(by) {
-            self.mend(by, dealt * pct / 100);
+    /// Mends an attacker by its lifesteal share of the physical damage it
+    /// dealt `on` a foe. Lifesteal heals nothing off a courier (Dota 7.38:
+    /// "Attack damage against wards, buildings, or couriers" gives none),
+    /// and an item's heals less off what is no hero.
+    fn lifesteal(&mut self, by: Entity, on: Entity, dealt: i32) {
+        let Some(stats) = self.stats.get(by) else {
+            return;
+        };
+        let target = self.kind.get(on).copied();
+        if dealt <= 0 || target == Some(UnitKind::Courier) || !self.living_unit(by) {
+            return;
+        }
+        let creep_pct = if target == Some(UnitKind::Hero) {
+            100
+        } else {
+            rules::LIFESTEAL_CREEP_PCT
+        };
+        let hundredths = stats.lifesteal_pct * 100 + stats.creep_cut_lifesteal_pct * creep_pct;
+        if hundredths > 0 {
+            // Dota heals the fraction too.
+            let share = Fixed::from_ratio(hundredths, 10_000);
+            self.mend_part(by, Fixed::from_int(dealt) * share);
         }
     }
 

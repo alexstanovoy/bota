@@ -179,6 +179,7 @@ item 78 live item_mystic_staff
 item 79 live item_ultimate_orb
 item 80 live item_shawl
 item 81 live item_cloak
+item 82 live item_lifesteal
 
 effect 0 retired bota_haste
 effect 1 live modifier_flask_healing

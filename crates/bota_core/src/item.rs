@@ -68,6 +68,10 @@ pub struct Carried {
     /// share of what the others let through, and all of them of what the
     /// carrier's own resistance lets through.
     pub magic_resist_bp: i32,
+    /// Percent of the physical damage the carrier's attacks deal healed
+    /// back, [`rules::LIFESTEAL_CREEP_PCT`] of it off what is no hero.
+    /// Several carried add up.
+    pub lifesteal_pct: i32,
 }
 
 /// Nothing carried at all, so an entry names only what it adds.
@@ -91,6 +95,7 @@ pub(crate) const NOTHING: Carried = Carried {
     melee_range: 0,
     mana_pct: 0,
     magic_resist_bp: 0,
+    lifesteal_pct: 0,
 };
 
 /// Whole points of one attribute and none of the others.
@@ -746,6 +751,7 @@ pub fn carried_bonus(items: impl Iterator<Item = CarriedItem>, ranged: bool) -> 
         total.melee_range += carried.melee_range;
         total.mana_pct += carried.mana_pct;
         total.magic_resist_bp = resist_both(total.magic_resist_bp, carried.magic_resist_bp);
+        total.lifesteal_pct += carried.lifesteal_pct;
         // What an item is set to is worth points of that attribute alone.
         if let Some(mode) = stack.mode {
             total.attributes += points(mode, def.mode_bonus);

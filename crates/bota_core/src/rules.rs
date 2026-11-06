@@ -1172,6 +1172,11 @@ pub const UPHILL_MISS: crate::Odds = crate::Odds::percent(25);
 pub const BACKPACK_MUTE_TICKS: u32 = 180;
 /// How close to the home fountain the shop, the stash and selling work.
 pub const SHOP_RANGE: i32 = 1000;
+/// Percent of what a creep-penalized lifesteal heals off a unit that is no hero (an illusion
+/// counts as one): Dota's `DOTA_ATTACK_LIFESTEAL_CREEP_FACTOR`, 0.6 since 7.33c (Liquipedia,
+/// *Lifesteal* and *Morbid Mask*; the install's Vladmir's Offering: `lifesteal_aura` 20,
+/// `lifesteal_creeps_tooltip` 12).
+pub const LIFESTEAL_CREEP_PCT: i32 = 60;
 /// Percent of the price a sale returns.
 pub const SELL_PCT: i32 = 50;
 /// Ticks after purchase in which an unused item refunds in full.

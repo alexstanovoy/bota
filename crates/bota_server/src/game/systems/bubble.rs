@@ -123,11 +123,17 @@ impl World {
 
     /// Mends a unit by `amount`, up to its maximum.
     pub(crate) fn mend(&mut self, entity: Entity, amount: i32) {
+        self.mend_part(entity, Fixed::from_int(amount));
+    }
+
+    /// Mends a unit by `amount`, a fraction of a point included, up to its
+    /// maximum.
+    pub(crate) fn mend_part(&mut self, entity: Entity, amount: Fixed) {
         let Some(max) = self.stats.get(entity).map(|stats| stats.max_hp) else {
             return;
         };
         if let Some(health) = self.health.get_mut(entity) {
-            health.hp = (health.hp + Fixed::from_int(amount)).min(max);
+            health.hp = (health.hp + amount).min(max);
         }
     }
 }

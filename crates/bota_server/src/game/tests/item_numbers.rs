@@ -397,6 +397,7 @@ fn every_stat_item_bought_adds_what_its_script_says_and_nothing_else() {
                 "bonus_mana" => expected.max_mana += points(*value),
                 "bonus_health_regen" | "bonus_regen" => expected.hp_regen += per_tick(*value),
                 "bonus_mana_regen" => expected.mana_regen += per_tick(*value),
+                "lifesteal_percent" => expected.creep_cut_lifesteal_pct += value.int(),
                 "bonus_magical_armor" => {
                     // Of what the hero's own resistance lets through, the item keeps out its
                     // percent.
@@ -422,7 +423,7 @@ fn every_stat_item_bought_adds_what_its_script_says_and_nothing_else() {
         expected.mana_regen = got.mana_regen;
         assert_eq!(got, expected, "{}", def.key);
     }
-    assert_eq!(checked, 43, "the shop's stat items");
+    assert_eq!(checked, 44, "the shop's stat items");
 }
 
 /// `stats` with `more` attributes and what they are worth: health, mana and their regeneration,
@@ -472,5 +473,61 @@ fn shawl_and_cloak_keep_out_their_share_of_the_magic_the_rest_let_through() {
         bota_core::resist_both(2500, 1800),
         3850,
         "a Cloak on a base 25%"
+    );
+}
+
+/// Whether two amounts of health agree to a hundredth of a point: a share of a blow taken as a
+/// fixed-point product.
+fn within_a_hundredth(a: Fixed, b: Fixed) -> bool {
+    (a - b).raw.abs() <= Fixed::from_ratio(1, 100).raw
+}
+
+/// What one attack of a hero that bought a Morbid Mask deals `on`, and what it heals back of it,
+/// regeneration aside.
+fn morbid_mask_attack(on: impl FnOnce(&mut World, Vec2) -> Entity) -> (i32, Fixed) {
+    let (mut world, hero) = out_of_fountain_after_buying(&[ItemId::MORBID_MASK]);
+    let at = world.transform.get(hero).expect("standing").pos;
+    let mark = on(&mut world, at + Vec2::from_ints(120, 0));
+    world.health.get_mut(hero).expect("alive").hp = Fixed::from_int(200);
+    attack_click(&mut world, mark);
+    for _ in 0..120 {
+        let before = world.health.get(hero).expect("alive").hp;
+        let regen = world.stats.get(hero).expect("derived").hp_regen;
+        let events = world.step();
+        let dealt = events.iter().find_map(|event| match event.kind() {
+            EventKind::Damaged {
+                source: Some(source),
+                target,
+                amount,
+                inflictor: None,
+                ..
+            } if source == wire_id(hero) && target == wire_id(mark) => Some(amount),
+            _ => None,
+        });
+        if let Some(dealt) = dealt {
+            let healed = world.health.get(hero).expect("alive").hp - before - regen;
+            return (dealt, healed);
+        }
+    }
+    panic!("the attack never landed")
+}
+
+/// A Morbid Mask bought through the shop heals its carrier for 18% of the physical damage its
+/// attack deals a hero, and 60% of that off a creep (Dota's creep factor since 7.33c: Liquipedia,
+/// *Morbid Mask*, "+18% Lifesteal (Hero) +10.8% Lifesteal (Creep)").
+#[test]
+fn a_morbid_mask_heals_eighteen_percent_of_a_blow_on_a_hero_and_less_on_a_creep() {
+    let (dealt, healed) = morbid_mask_attack(|world, at| {
+        world.spawn_hero(Team::Dire, at, SlotId(1), HeroId::SHADOW_FIEND)
+    });
+    assert!(
+        within_a_hundredth(healed, Fixed::from_ratio(dealt * 18, 100)),
+        "{healed} of {dealt}"
+    );
+    let (dealt, healed) =
+        morbid_mask_attack(|world, at| world.spawn_unit(&bota_core::MELEE_CREEP, Team::Dire, at));
+    assert!(
+        within_a_hundredth(healed, Fixed::from_ratio(dealt * 108, 1000)),
+        "{healed} of {dealt}"
     );
 }

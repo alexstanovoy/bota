@@ -901,6 +901,16 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
         },
         ..from(&ITEM_CLOAK)
     },
+    // Morbid Mask: also Liquipedia's *Lifesteal* (7.38: lifesteal heals off physical attack
+    // damage alone, and less off what is no hero).
+    ItemDef {
+        name: "Morbid Mask",
+        carried: Carried {
+            lifesteal_pct: int(&ITEM_LIFESTEAL, "lifesteal_percent"),
+            ..NOTHING
+        },
+        ..from(&ITEM_LIFESTEAL)
+    },
 ];
 
 /// One kind of lotus, as its script gives it.

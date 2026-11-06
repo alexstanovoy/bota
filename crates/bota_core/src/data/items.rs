@@ -1970,3 +1970,24 @@ pub(crate) const ITEM_CLOAK: ItemData = ItemData {
         ("tooltip_resist", &[Dec::of("18")]),
     ],
 };
+
+pub(crate) const ITEM_LIFESTEAL: ItemData = ItemData {
+    id: ItemId(82),
+    key: "item_lifesteal",
+    retired: false,
+    cost: 900,
+    behavior: B::PASSIVE,
+    cast_range: 0,
+    cast_point: Ms::secs("0"),
+    channel: Ms::secs("0"),
+    cooldown: Ms::secs("0"),
+    mana: 0,
+    health: 0,
+    charges: 0,
+    stack: 0,
+    stock: None,
+    purchasable: true,
+    secret_shop: false,
+    builds: &[],
+    values: &[("lifesteal_percent", &[Dec::of("18")])],
+};

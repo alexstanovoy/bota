@@ -808,8 +808,8 @@ fn a_prowler_aura_mends_its_bearer_by_a_share_of_what_it_deals() {
             let regen = world.stats.get(acolyte).expect("derived").hp_regen;
             assert_eq!(
                 hp(&world, acolyte),
-                before + regen + Fixed::from_int(amount * 9 / 100),
-                "nine percent of {amount} came back"
+                before + regen + Fixed::from_int(*amount) * Fixed::from_ratio(9, 100),
+                "nine percent of {amount} came back, its fraction too"
             );
             return;
         }

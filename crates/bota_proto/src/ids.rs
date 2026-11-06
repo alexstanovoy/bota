@@ -215,6 +215,8 @@ impl ItemId {
     pub const SHAWL: ItemId = ItemId(80);
     /// Dota's `item_cloak`: magic resistance.
     pub const CLOAK: ItemId = ItemId(81);
+    /// Dota's `item_lifesteal` (public name Morbid Mask): attack lifesteal.
+    pub const MORBID_MASK: ItemId = ItemId(82);
 }
 
 /// What did something: the ability or the item a unit used, as Dota's combat
