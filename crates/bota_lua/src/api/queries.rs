@@ -79,10 +79,8 @@ fn install_positions(lua: &mut Lua, methods: TableId, state: Shared, vectors: Ve
         let tower = integer(vm, args, 1)?;
         let snapshot = state.snapshot.as_ref().ok_or_else(|| vm.error("a current view is required"))?;
         vm.charge_fuel(1 + snapshot.units.len() as u64 / 8)?;
-        let lane = u8::try_from(tower / 3).ok();
-        let tier = u8::try_from(tower % 3 + 1).ok();
         let towers = if team == Team::Radiant { snapshot.map.radiant_towers } else { snapshot.map.dire_towers };
-        let position = towers.iter().find(|&&(l, t, _)| Some(l) == lane && Some(t) == tier).map(|&(_, _, pos)| pos);
+        let position = tower_position(towers, tower);
         let id = snapshot.units.iter().find(|known| known.visible && known.unit.kind == UnitKind::Tower && known.unit.team == team && Some(known.unit.pos) == position && known.unit.hp > 0).map(|known| known.unit.id);
         let value = state.handle(vm, id)?;
         vm.results(&[value])
@@ -92,7 +90,7 @@ fn install_positions(lua: &mut Lua, methods: TableId, state: Shared, vectors: Ve
         let lane = integer(vm, args, 0)?;
         let amount = vector::number(vm, args, 1)?.clamp(0.0, 1.0);
         let snapshot = state.snapshot.as_ref().ok_or_else(|| vm.error("a current view is required"))?;
-        let lane = u8::try_from(lane).ok().and_then(|lane| lane.checked_sub(1)).filter(|&lane| lane < snapshot.map.lanes).ok_or_else(|| vm.error("lane is not on this map"))?;
+        let lane = lane_id(lane).filter(|&lane| lane < snapshot.map.lanes).ok_or_else(|| vm.error("lane is not on this map"))?;
         vm.charge_fuel(128)?;
         let line = bota_core::lane_polyline(snapshot.map, lane);
         let total: f64 = line.windows(2).map(|points| distance(points[0], points[1])).sum();
@@ -110,6 +108,23 @@ fn install_positions(lua: &mut Lua, methods: TableId, state: Shared, vectors: Ve
         vm.results(&[value])
     }))?;
     Ok(())
+}
+
+// Engine lane enums are TOP=1, MID=2, BOT=3; core geometry is indexed MID, TOP, BOT.
+fn lane_id(lane: i64) -> Option<u8> {
+    match lane { 1 => Some(bota_core::rules::LANE_TOP), 2 => Some(bota_core::rules::LANE_MID), 3 => Some(bota_core::rules::LANE_BOT), _ => None }
+}
+
+fn tower_position(towers: &[(u8, u8, Vec2)], tower: i64) -> Option<Vec2> {
+    match tower {
+        0..=8 => {
+            let lane = lane_id(tower / 3 + 1)?;
+            let tier = u8::try_from(tower % 3 + 1).ok()?;
+            towers.iter().find(|&&(l, t, _)| l == lane && t == tier).map(|&(_, _, position)| position)
+        }
+        9..=10 => towers.iter().filter(|&&(_, tier, _)| tier == 4).nth(usize::try_from(tower - 9).ok()?).map(|&(_, _, position)| position),
+        _ => None,
+    }
 }
 
 fn interpolate(a: Vec2, b: Vec2, fraction: f64) -> Vec2 {

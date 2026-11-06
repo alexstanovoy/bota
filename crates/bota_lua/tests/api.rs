@@ -135,3 +135,37 @@ fn innate_ability_lookup_is_stable_and_never_creates_a_cast_or_learning_slot() {
         for (session, stream) in sessions.iter_mut().zip(streams) { support::fold(session, stream); }
     }
 }
+
+#[test]
+#[allow(clippy::float_arithmetic, reason = "sample public lane geometry at a known waypoint")]
+fn valve_lane_and_tower_ids_select_the_corresponding_core_locations() {
+    let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let map = sessions[0].map();
+    let mut checks = String::from("function Think()\n");
+    for (team, towers) in [(2, map.radiant_towers), (3, map.dire_towers)] {
+        for (id, lane, tier, index) in [(0, 1, 1, 0), (1, 1, 2, 0), (2, 1, 3, 0), (3, 0, 1, 0), (4, 0, 2, 0), (5, 0, 3, 0), (6, 2, 1, 0), (7, 2, 2, 0), (8, 2, 3, 0), (9, 0, 4, 0), (10, 0, 4, 1)] {
+            let (_, _, position) = towers.iter().filter(|&&(l, t, _)| l == lane && t == tier).nth(index).expect("tower");
+            checks.push_str(&format!("do local t=GetTower({team},{id}) assert(t ~= nil, 'tower {team}/{id}') local p=t:GetLocation() assert(p == Vector({}, {}, 0), 'tower location {team}/{id}') end\n", dota_coordinate(position.x), dota_coordinate(position.y)));
+        }
+    }
+    for (external, internal) in [(1, 1), (2, 0), (3, 2)] {
+        let line = bota_core::lane_polyline(map, internal);
+        let distance = |a: bota_proto::Vec2, b: bota_proto::Vec2| (a.distance_squared(b) as f64).sqrt();
+        let total: f64 = line.windows(2).map(|p| distance(p[0], p[1])).sum();
+        let fraction = distance(line[0], line[1]) / total;
+        checks.push_str(&format!("do local p=GetLocationAlongLane({external},{fraction:.17}) assert((p-Vector({}, {}, 0)):Length2D() < 1, 'lane {external}') end\n", dota_coordinate(line[1].x), dota_coordinate(line[1].y)));
+    }
+    checks.push_str("assert(GetTower(TEAM_RADIANT,-1) == nil) assert(GetTower(TEAM_RADIANT,11) == nil) GetBot():Action_MoveToLocation(GetLocationAlongLane(LANE_MID,0.5)) end");
+    let mut lua = LuaTeam::new(Team::Radiant, &[BotSeat { slot: SlotId(0), hero: HeroId::SHADOW_FIEND }], Limits::DEFAULT, Keys { hash: [17, 19], random: 23 }).expect("team");
+    lua.add_script(SlotId(0), ScriptKind::Takeover, "map_ids", checks.as_bytes()).expect("script");
+    for _ in 0..3 {
+        let turn = lua.think(&sessions[0]).expect("think");
+        assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+        let orders: Vec<_> = turn.bots[0].orders.iter().map(|&issued| sessions[0].issue(issued).expect("ordinary order")).collect();
+        let streams = local.step(&[&orders, &[]]).expect("step");
+        for (session, stream) in sessions.iter_mut().zip(streams) { support::fold(session, stream); }
+    }
+}
+
+#[allow(clippy::float_arithmetic, reason = "convert fixed-point engine locations into API test coordinates")]
+fn dota_coordinate(value: bota_proto::Fixed) -> f64 { f64::from(value.raw) / 65536.0 - 9216.0 }
