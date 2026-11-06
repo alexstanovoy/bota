@@ -1,0 +1,2 @@
+00000000000000000000000000000000
+function Think() GetBot():Action_MoveToLocation(GetBot():GetLocation()) end

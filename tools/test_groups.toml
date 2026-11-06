@@ -19,6 +19,9 @@
 [crate.bota_core]
 [crate.bota_replay]
 
+[crate.bota_lua]
+features = ["native"]
+
 [crate.bota_client_core]
 # `web` is the browser's (wasm32 only; the gate's wasm steps check it).
 features = ["ui", "websocket"]
@@ -64,6 +67,11 @@ tests = [{ crate = "bota_core" }]
 name = "replay"
 about = "replay metadata"
 tests = [{ crate = "bota_replay" }]
+
+[[group]]
+name = "lua"
+about = "Lua API, scoped scheduling, native deadlines, confined loading and complete matches"
+tests = [{ crate = "bota_lua", features = ["native"] }]
 
 [[group]]
 name = "client_core"

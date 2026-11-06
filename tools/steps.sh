@@ -22,6 +22,8 @@ lint_steps() { # crates
         "cargo clippy$packages --all-targets -- -D warnings" \
         clippy-radovid "$(needed "$crates" bota_radovid)" "bota_radovid $unchanged" \
         "cargo clippy -p bota_radovid --all-targets --features e2e -- -D warnings" \
+        clippy-lua "$(needed "$crates" bota_lua)" "bota_lua $unchanged" \
+        "cargo clippy -p bota_lua --all-targets --all-features -- -D warnings" \
         clippy-ui "$(needed "$crates" bota_client_core)" "bota_client_core $unchanged" \
         "cargo clippy -p bota_client_core --all-targets --features ui -- -D warnings"
 }
@@ -35,6 +37,8 @@ wasm_steps() { # crates
     printf '%s\t%s\t%s\t%s\n' \
         wasm "$(needed "$crates" bota_client_core)" "bota_client_core $unchanged" \
         "cargo check --target wasm32-unknown-unknown -p bota_client_core -p bota_proto --features bota_client_core/ui" \
+        wasm-lua "$(needed "$crates" bota_lua)" "bota_lua $unchanged" \
+        "cargo check --release --target wasm32-unknown-unknown -p bota_lua --no-default-features" \
         wasm-radovid "$(needed "$crates" bota_radovid)" "bota_radovid $unchanged" \
         "cargo check --target wasm32-unknown-unknown -p bota_radovid --features web" \
         wasm-web "$(needed "$crates" bota_client_core)" "bota_client_core $unchanged" \
