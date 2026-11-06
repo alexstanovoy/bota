@@ -108,9 +108,8 @@ fuzz_target!(|data: &[u8]| {
             .saturating_sub(world.tick)
             .clamp(1, MAX_TICKS_PER_RECORD);
         for _ in 0..ticks {
-            let taken = line.release(&world, &mut refused);
+            let _ = line.advance(&mut world, &mut refused);
             refused.clear();
-            let _ = world.advance(&taken);
             if world.victor().is_some() || world.tick >= MAX_TICKS {
                 publish(&world, &line);
                 return;
