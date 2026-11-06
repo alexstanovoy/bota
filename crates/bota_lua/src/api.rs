@@ -5,12 +5,14 @@ use luagee::{Args, Lua, LuaError, TableId, Value, Vm};
 
 use crate::{BindingError, state::State, vector::{self, Vectors}};
 
+pub(crate) mod context;
+mod patterns;
 mod globals;
 mod queries;
 mod geometry;
 pub(crate) mod abilities;
 
-type Shared = Rc<RefCell<State>>;
+pub(crate) type Shared = Rc<RefCell<State>>;
 
 fn global(lua: &mut Lua, name: &'static str, function: luagee::HostFunction) -> Result<(), BindingError> {
     let function = lua.function(name, function)?;
@@ -37,18 +39,12 @@ pub(crate) fn install(lua: &mut Lua, state: Shared, vectors: Vectors) -> Result<
     for (name,value) in [("DAMAGE_TYPE_PHYSICAL",1),("DAMAGE_TYPE_MAGICAL",2),("DAMAGE_TYPE_PURE",4),("DAMAGE_TYPE_ALL",7),("TOWER_TOP_1",0),("TOWER_TOP_2",1),("TOWER_TOP_3",2),("TOWER_MID_1",3),("TOWER_MID_2",4),("TOWER_MID_3",5),("TOWER_BOT_1",6),("TOWER_BOT_2",7),("TOWER_BOT_3",8),("TOWER_BASE_1",9),("TOWER_BASE_2",10)] { lua.set_global(name,Value::Number(f64::from(value)))?; }
     for (name,value) in [("BOT_MODE_DESIRE_NONE",0.0),("BOT_MODE_DESIRE_VERYLOW",0.1),("BOT_MODE_DESIRE_LOW",0.25),("BOT_MODE_DESIRE_MODERATE",0.5),("BOT_MODE_DESIRE_HIGH",0.75),("BOT_MODE_DESIRE_VERYHIGH",0.9),("BOT_MODE_DESIRE_ABSOLUTE",1.0)] { lua.set_global(name,Value::Number(value))?; }
     let capture = state.clone();
-    global(lua, "GetBot", Rc::new(move |vm, _| {
-        let mut state = capture.borrow_mut();
-        let id = state.own_id();
-        let value = state.handle(vm, id)?;
-        vm.results(&[value])
-    }))?;
-    let capture = state.clone();
     global(lua, "GetTeam", Rc::new(move |vm, _| vm.results(&[Value::Number(team_number(capture.borrow().team))])))?;
     global(lua, "GetScriptDirectory", Rc::new(|vm, _| { let value = vm.new_string(b"bots")?; vm.results(&[value]) }))?;
     let methods = lua.vm().new_table()?;
     lua.pin(Value::Table(methods))?;
     state.borrow_mut().unit_methods = Some(methods);
+    patterns::install(lua, &context::ApiContext { state: state.clone(), vectors })?;
     globals::install(lua, state.clone(), vectors)?;
     queries::install(lua, methods, state.clone(), vectors)?;
     abilities::install(lua, methods, state.clone())?;
@@ -61,7 +57,7 @@ pub(crate) fn install(lua: &mut Lua, state: Shared, vectors: Vectors) -> Result<
 fn team_number(team: Team) -> f64 { match team { Team::Radiant => 2.0, Team::Dire => 3.0, Team::Neutral => 4.0 } }
 
 fn install_unit_reads(lua: &mut Lua, methods: TableId, state: Shared, vectors: Vectors) -> Result<(), BindingError> {
-    for name in ["IsNull", "IsAlive", "GetHealth", "GetMaxHealth", "GetLocation", "GetUnitName", "GetTeam", "CanBeSeen", "GetLevel", "IsInvulnerable", "IsMagicImmune", "IsChanneling", "IsUsingAbility", "HasScepter"] {
+    for name in ["IsNull", "IsAlive", "GetMaxHealth", "GetLocation", "GetUnitName", "GetTeam", "CanBeSeen", "GetLevel", "IsInvulnerable", "IsMagicImmune", "IsChanneling", "IsUsingAbility", "HasScepter"] {
         let capture = state.clone();
         method(lua, methods, name, Rc::new(move |vm, args| {
             let state = capture.borrow();
@@ -77,7 +73,6 @@ fn install_unit_reads(lua: &mut Lua, methods: TableId, state: Shared, vectors: V
                 }
                 "IsNull" => Value::Boolean(unit.is_none() && !snapshot.is_some_and(|snapshot| snapshot.players.iter().any(|player| player.unit == Some(id)))),
                 "IsAlive" => Value::Boolean(!dead && unit.is_some_and(|unit| unit.hp > 0)),
-                "GetHealth" => Value::Number(if dead { 0.0 } else { unit.map_or(0.0, |unit| f64::from(unit.hp)) }),
                 "GetMaxHealth" => Value::Number(unit.map_or(0.0, |unit| f64::from(unit.max_hp))),
                 "GetLevel" => Value::Number(unit.map_or(0.0, |unit| f64::from(unit.level))),
                 "GetTeam" => Value::Number(unit.map_or(4.0, |unit| team_number(unit.team))),
@@ -96,7 +91,7 @@ fn install_unit_reads(lua: &mut Lua, methods: TableId, state: Shared, vectors: V
 }
 
 fn install_actions(lua: &mut Lua, methods: TableId, state: Shared, _vectors: Vectors) -> Result<(), BindingError> {
-    for name in ["Action_MoveToLocation", "Action_AttackMove", "Action_AttackUnit", "Action_ClearActions", "Action_UseAbility", "Action_UseAbilityOnEntity", "Action_UseAbilityOnLocation"] {
+    for name in ["Action_AttackMove", "Action_AttackUnit", "Action_ClearActions", "Action_UseAbility", "Action_UseAbilityOnEntity", "Action_UseAbilityOnLocation"] {
         let capture = state.clone();
         method(lua, methods, name, Rc::new(move |vm, args| {
             let mut state = capture.borrow_mut();
@@ -115,7 +110,6 @@ fn install_actions(lua: &mut Lua, methods: TableId, state: Shared, _vectors: Vec
                     };
                     ability.order(target)
                 }
-                "Action_MoveToLocation" => Order::Move { target: Target::Pos(vector::position(vm, vm.arg(args, 1))?) },
                 "Action_AttackMove" => Order::Attack { target: Target::Pos(vector::position(vm, vm.arg(args, 1))?) },
                 "Action_AttackUnit" => {
                     let target = state.id(vm.arg(args, 1)).ok_or_else(|| vm.arg_error(args, 1, "unit handle expected"))?;
