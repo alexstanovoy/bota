@@ -436,11 +436,13 @@ paths = [
     "crates/bota_server/src/game/tests/vision.rs",
     "crates/bota_server/src/game/tests/wards.rs",
     "crates/bota_server/src/game/tests/ward_stacks.rs",
+    "crates/bota_server/src/game/tests/view_bounds.rs",
 ]
 tests = [{ crate = "bota_server", target = "lib", filters = [
     "game::tests::vision::",
     "game::tests::wards::",
     "game::tests::ward_stacks::",
+    "game::tests::view_bounds::",
 ] }]
 
 [[group]]
