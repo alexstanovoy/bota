@@ -670,14 +670,29 @@ fn an_enemy_in_the_shrine_runs_its_countdown_back() {
         "contested, it runs back"
     );
     place(&mut world, radiant, map_of(MapId(0)).fountains[0]);
+    let remaining = half - half / 2;
+    for progress in (0..remaining).rev() {
+        world.step();
+        let zone = world.zone.get(shrine).expect("the shrine countdown");
+        assert_eq!(
+            zone.progress, progress,
+            "the first side's progress keeps rewinding"
+        );
+        assert_eq!(zone.side, (progress > 0).then_some(Team::Radiant));
+        assert_eq!(
+            world.seats[1].xp, 0,
+            "the new side cannot collect before rewinding"
+        );
+    }
     let (ticks, events) =
         until(&mut world, 3 * SHRINE_COUNTDOWN_TICKS, is_gathered).expect("gathered");
     assert_eq!(gathered(&events).map(|(team, ..)| team), Some(Team::Dire));
     assert_eq!(
-        ticks,
-        half - half / 2 + SHRINE_COUNTDOWN_TICKS,
-        "back down to nothing for Radiant, then three seconds for Dire"
+        ticks, SHRINE_COUNTDOWN_TICKS,
+        "after rewinding, Dire gathers for its full three seconds"
     );
+    assert_eq!(world.seats[0].xp, 0);
+    assert_eq!(world.seats[1].xp, 200);
 }
 
 #[test]
