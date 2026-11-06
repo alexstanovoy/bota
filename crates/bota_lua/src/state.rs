@@ -1,5 +1,5 @@
 use bota_client_core::{ClientSession, IssuedOrder, VelocityEstimate};
-use bota_proto::{AbilityView, EntityId, HeroId, ItemSlot, ItemView, Kit, SlotId, Team, UnitView};
+use bota_proto::{AbilityView, EntityId, HeroId, ItemSlot, ItemView, Kit, SlotId, TalentView, Team, UnitView};
 use luagee::{LuaError, TableId, Value, Vm};
 
 use crate::{BindingError, BotSeat};
@@ -37,6 +37,7 @@ pub(crate) struct Snapshot {
     pub players: Vec<Player>,
     pub units: Vec<KnownUnit>,
     pub damage: Vec<(u32, EntityId, EntityId)>,
+    pub talents: Vec<TalentView>,
 }
 
 impl Snapshot {
@@ -48,6 +49,7 @@ impl Snapshot {
                 .checked_add(player.kit.as_ref().map_or(0, |kit| kit.abilities.len()).checked_mul(std::mem::size_of::<AbilityView>())?)?
                 .checked_add(player.kit.as_ref().map_or(0, |kit| kit.items.len()).checked_mul(std::mem::size_of::<Option<ItemView>>())?)
         });
+        let players = players.and_then(|bytes| bytes.checked_add(view.talents.len().checked_mul(std::mem::size_of::<TalentView>())?));
         let bytes = session.entities().iter().try_fold(players.unwrap_or(usize::MAX), |bytes, track| {
             let unit = &track.unit;
             bytes.checked_add(std::mem::size_of::<KnownUnit>())?
@@ -68,6 +70,7 @@ impl Snapshot {
                     stash: own.then(|| player.stash.clone()).flatten(), respawn_left: player.respawn_left }
             }).collect(),
             damage: session.recent_events().iter().filter_map(|event| match event.kind { bota_proto::EventKind::Damaged { source: Some(source), target, .. } => Some((event.tick, source, target)), _ => None }).collect(),
+            talents: view.talents.iter().filter(|talents| view.players.iter().any(|player| player.slot == talents.slot && player.team == session.team())).copied().collect(),
             units: session.entities().iter().map(|track| KnownUnit { unit: track.unit.clone(), visible: view.units.binary_search_by_key(&track.unit.id, |unit| unit.id).is_ok(), last_visible: (track.last_seen_tick, track.unit.pos), velocity: track.velocity }).collect(),
         })
     }
@@ -208,5 +211,15 @@ mod tests {
             }
         }
         assert_eq!(hidden_ticks, 10, "the enemy was seen moving, then lost in fog");
+    }
+
+    #[test]
+    fn talent_capture_keeps_only_the_receiving_teams_talents() {
+        let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
+        for (index, slot) in [(0, SlotId(0)), (1, SlotId(1))] {
+            let snapshot = Snapshot::capture(&sessions[index]).expect("snapshot");
+            assert!(!snapshot.talents.is_empty());
+            assert!(snapshot.talents.iter().all(|talents| talents.slot == slot));
+        }
     }
 }
