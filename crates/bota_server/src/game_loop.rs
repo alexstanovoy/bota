@@ -1984,7 +1984,14 @@ fn encoded_snapshot(message: &ServerMsg) -> Option<Vec<u8>> {
 pub(crate) fn visible_events(events: &[Event], viewing: Option<Team>) -> Vec<EventKind> {
     events
         .iter()
-        .filter(|e| viewing.is_none_or(|mine| e.visible_to.tells(mine)))
+        .filter(|e| {
+            viewing.is_none_or(|mine| {
+                e.visible_to.tells(mine)
+                    || matches!(&e.kind,
+                EventKind::Died { awards: Some(awards), .. }
+                    if awards.iter().any(|award| award.team == mine))
+            })
+        })
         .map(|e| {
             let mut kind = e.kind.clone();
             if let Some(mine) = viewing {
@@ -2025,6 +2032,7 @@ fn told_as(kind: &mut EventKind, event: &Event, mine: Team) {
             killer,
             bounty,
             assists,
+            awards,
             ..
         } => {
             if hide_dealer {
@@ -2033,6 +2041,12 @@ fn told_as(kind: &mut EventKind, event: &Event, mine: Team) {
             }
             if event.gold_hidden_from == Some(mine) {
                 *bounty = None;
+            }
+            if let Some(disclosed) = awards {
+                disclosed.retain(|award| award.team == mine);
+                if disclosed.is_empty() {
+                    *awards = None;
+                }
             }
         }
         _ => {}

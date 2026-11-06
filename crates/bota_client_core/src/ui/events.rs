@@ -2,7 +2,8 @@
 //! and cues for the front end.
 
 use bota_proto::{
-    AbilityId, DamageKind, EntityId, EventKind, RuneKind, SlotId, Team, UnitKind, UnitView,
+    AbilityId, DamageKind, EntityId, EventKind, GoldAward, GoldAwardKind, RuneKind, SlotId, Team,
+    UnitKind, UnitView,
 };
 
 use crate::ui::app::{
@@ -81,8 +82,16 @@ impl App {
                 denied,
                 bounty,
                 assists,
+                awards,
                 ..
-            } => self.on_death(unit, killer, denied, bounty.unwrap_or(0), assists),
+            } => self.on_death(
+                unit,
+                killer,
+                denied,
+                bounty.unwrap_or(0),
+                assists,
+                awards.as_deref().map(Vec::as_slice),
+            ),
             EventKind::StructureDestroyed {
                 unit,
                 team,
@@ -223,6 +232,7 @@ impl App {
         denied: bool,
         gold: i32,
         assists: u16,
+        awards: Option<&[GoldAward]>,
     ) {
         self.fallen_to = Some((unit, killer));
         let victim = self
@@ -254,11 +264,9 @@ impl App {
             if mine {
                 self.cue(CueKind::Deny, 0.9, None);
             }
-        } else if gold > 0 && mine {
-            if victim.is_some() {
-                self.float(unit, gold, FloaterKind::Gold);
-            }
-            if !hero {
+        } else {
+            self.float_death_gold(unit, mine, gold, awards);
+            if gold > 0 && mine && !hero {
                 self.cue(CueKind::LastHit, 0.95, at);
             }
         }
@@ -268,6 +276,39 @@ impl App {
             }
             let gain = if Some(unit) == ears { 1.0 } else { 0.6 };
             self.cue_of(fallen, CueKind::HeroDeath, gain, at);
+        }
+    }
+
+    /// Render only the watched recipient's actual credit components; old aggregate-only
+    /// deaths retain their existing presentation.
+    fn float_death_gold(
+        &mut self,
+        fallen: EntityId,
+        mine: bool,
+        gold: i32,
+        awards: Option<&[GoldAward]>,
+    ) {
+        let Some(awards) = awards else {
+            if mine && gold > 0 && self.freshest(fallen).is_some() {
+                self.float(fallen, gold, FloaterKind::Gold);
+            }
+            return;
+        };
+        let watched = self
+            .my_slot
+            .or_else(|| self.ears().and_then(|hero| self.seat_of_hero(hero)));
+        for award in awards
+            .iter()
+            .filter(|award| Some(award.recipient) == watched && award.amount > 0)
+        {
+            let unit = match award.kind {
+                GoldAwardKind::KillBounty => fallen,
+                GoldAwardKind::FlagbearerBonus => self
+                    .body_of(award.recipient)
+                    .filter(|hero| self.freshest(*hero).is_some())
+                    .unwrap_or(fallen),
+            };
+            self.float(unit, award.amount, FloaterKind::Gold);
         }
     }
 

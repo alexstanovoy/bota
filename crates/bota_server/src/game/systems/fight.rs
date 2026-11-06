@@ -196,7 +196,7 @@ impl World {
             .and_then(|k| self.team.get(k).copied())
             .is_some_and(|theirs| Some(theirs) == side);
         let assists = self.credit_assists(entity, killer);
-        let paid = self.pay_for(entity, killer, events);
+        let (paid, awards) = self.pay_for_report(entity, killer, events);
         events.push(Event {
             kind: EventKind::Died {
                 unit: wire_id(entity),
@@ -205,6 +205,7 @@ impl World {
                 gold: 0,
                 bounty: Some(paid),
                 assists,
+                awards: awards.map(Box::new),
             },
             visible_to: told.fall,
             gold_hidden_from: killer

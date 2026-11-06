@@ -106,3 +106,32 @@ fn secret_shop_sequences_are_bounded_before_decoding() {
         );
     }
 }
+
+#[test]
+fn death_gold_awards_are_bounded_before_decoding() {
+    let award = GoldAward {
+        recipient: SlotId(0),
+        team: Team::Radiant,
+        kind: GoldAwardKind::FlagbearerBonus,
+        amount: 49,
+    };
+    let death = |count| EventKind::Died {
+        unit: entity(100),
+        killer: Some(entity(7)),
+        denied: false,
+        gold: 0,
+        bounty: Some(86),
+        assists: 0,
+        awards: Some(Box::new(vec![award; count])),
+    };
+    let maximum = death(MAX_DEATH_GOLD_AWARDS);
+    assert_eq!(roundtrip(&maximum), maximum);
+    let bytes =
+        encode_frame_to_vec(&death(MAX_DEATH_GOLD_AWARDS + 1)).expect("encode invalid award list");
+    let mut reader = FrameReader::new();
+    reader.push(&bytes);
+    assert!(matches!(
+        reader.next_message::<EventKind>(),
+        Err(CodecError::Malformed)
+    ));
+}

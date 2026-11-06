@@ -100,8 +100,8 @@ limits! {
     /// ticks a second, the bound past which the server closes the
     /// connection.
     MAX_SKIPPED_TICKS: usize = 900;
-    /// Most events in one batch, half the bytes of a payload.
-    MAX_EVENTS_PER_BATCH: usize = MAX_PAYLOAD_LEN / 2;
+    /// Most events in one batch: every event needs at least three wire bytes.
+    MAX_EVENTS_PER_BATCH: usize = MAX_PAYLOAD_LEN / 3;
     /// Most entries in the shop of a match: room for every item there is.
     MAX_SHOP_ENTRIES: usize = 1_024;
     /// Most shelves of limited stock a view lists: both sides' for every entry
@@ -129,6 +129,8 @@ limits! {
     MAX_SECRET_SHOPS: usize = 8;
     /// Corners of one convex shop trigger footprint.
     MAX_SHOP_ZONE_CORNERS: usize = 32;
+    /// One kill credit plus at most one flagbearer bonus per seat.
+    MAX_DEATH_GOLD_AWARDS: usize = MAX_SEATS + 1;
 }
 
 /// A hero's bag: the inventory and the backpack.
@@ -148,7 +150,16 @@ const _: () = {
     // A hero's fall names its assists as one bit for each seat.
     assert!(MAX_SEATS <= u16::BITS as usize);
     assert!(MAX_VIEW_UNITS * unit <= MAX_DECODED_BYTES);
-    assert!(MAX_EVENTS_PER_BATCH * size_of::<crate::EventKind>() <= MAX_DECODED_BYTES);
+    // An award uses at least four wire bytes; a death with a disclosed list has at
+    // least nine bytes of header. Each nested allocation therefore weighs at most
+    // three times its wire bytes, including the boxed Vec header. The outer Vec
+    // never reserves more than MAX_EVENTS_PER_BATCH entries (bounded::Capped).
+    assert!(size_of::<crate::GoldAward>() <= 3 * 4);
+    assert!(size_of::<Vec<crate::GoldAward>>() <= 3 * 9);
+    assert!(
+        MAX_EVENTS_PER_BATCH * size_of::<crate::EventKind>() + 3 * MAX_PAYLOAD_LEN
+            <= MAX_DECODED_BYTES
+    );
     assert!(MAX_SNAPSHOT_LOOT * size_of::<crate::LootView>() <= MAX_DECODED_BYTES);
     assert!(MAX_SNAPSHOT_RUNES * size_of::<crate::RuneView>() <= MAX_DECODED_BYTES);
     assert!(MAX_PROJECTILES * size_of::<crate::ProjectileView>() <= MAX_DECODED_BYTES);

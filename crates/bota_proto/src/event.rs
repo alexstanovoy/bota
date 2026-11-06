@@ -20,6 +20,23 @@ pub enum DamageKind {
     Pure,
 }
 
+/// Why a death credited one component of gold. Variants are append-only.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum GoldAwardKind {
+    KillBounty,
+    FlagbearerBonus,
+}
+
+/// One actual credit associated with a death, before presentation or aggregation.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct GoldAward {
+    pub recipient: SlotId,
+    /// The recipient's side, for independent income privacy when a death rewards both sides.
+    pub team: Team,
+    pub kind: GoldAwardKind,
+    pub amount: i32,
+}
+
 /// A single thing that happened on one tick.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum EventKind {
@@ -89,6 +106,13 @@ pub enum EventKind {
         /// seat numbered `n`. Zero for any other unit, and withheld with the
         /// killer from a side that is not told it.
         assists: u16,
+        /// Disclosed credit components, when a breakdown is provided. Each side learns only
+        /// its own recipients' awards; a full spectator learns all of them. An income recipient
+        /// can receive this fact without seeing the fallen unit or its killer. Last on the wire.
+        #[serde(
+            deserialize_with = "crate::bounded::option_boxed_seq::<_, _, { crate::limits::MAX_DEATH_GOLD_AWARDS }>"
+        )]
+        awards: Option<Box<Vec<GoldAward>>>,
     },
     /// A unit's ability took effect.
     ///

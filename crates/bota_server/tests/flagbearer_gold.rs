@@ -114,10 +114,15 @@ fn arranged_flagbearer() -> (
 fn a_flagbearer_kill_pays_its_spawn_time_bonus_to_both_nearby_allied_heroes() {
     let (mut game, flag, ally, promised, range) = arranged_flagbearer();
     let target = game.handle_of(0, flag).expect("visible flag");
+    let names = [
+        target,
+        game.handle_of(1, flag)
+            .expect("the opposite side's flag name"),
+    ];
     let before: Vec<_> = game.world().seats.iter().map(|seat| seat.gold).collect();
     let last_hits = game.world().seats[0].last_hits;
     let clock = game.world().clock();
-    order(
+    let mut streams = order(
         &mut game,
         Order::Attack {
             target: Target::Unit(target),
@@ -135,7 +140,7 @@ fn a_flagbearer_kill_pays_its_spawn_time_bonus_to_both_nearby_allied_heroes() {
             ),
             "the ally must stay eligible while the creep moves"
         );
-        game.step(&[&[], &[], &[]]).expect("attack progresses");
+        streams = game.step(&[&[], &[], &[]]).expect("attack progresses");
     }
     assert!(
         !game.world().alive(flag),
@@ -162,7 +167,73 @@ fn a_flagbearer_kill_pays_its_spawn_time_bonus_to_both_nearby_allied_heroes() {
         "the flagbearer's own team earns no gold"
     );
     assert_eq!(game.world().seats[2].last_hits, 0);
+    assert_award_breakdown(&streams, names, kill_bounty, promised, killer_gain);
     eprintln!(
         "flagbearer: kill={kill_bounty}, spawn-time bonus={promised}, killer gained={killer_gain}, ally gained={ally_gain}"
     );
+}
+
+fn assert_award_breakdown(
+    streams: &[Vec<ServerMsg>],
+    names: [bota_proto::EntityId; 2],
+    kill: i32,
+    bonus: i32,
+    total: i32,
+) {
+    use bota_proto::{EventKind, GoldAward, GoldAwardKind};
+    let expected = [
+        GoldAward {
+            recipient: SlotId(0),
+            team: Team::Radiant,
+            kind: GoldAwardKind::KillBounty,
+            amount: kill,
+        },
+        GoldAward {
+            recipient: SlotId(0),
+            team: Team::Radiant,
+            kind: GoldAwardKind::FlagbearerBonus,
+            amount: bonus,
+        },
+        GoldAward {
+            recipient: SlotId(2),
+            team: Team::Radiant,
+            kind: GoldAwardKind::FlagbearerBonus,
+            amount: bonus,
+        },
+    ];
+    for (seat, name) in [(0, names[0]), (2, names[0])] {
+        let EventKind::Died { bounty, awards, .. } = death(&streams[seat], name) else {
+            panic!("death")
+        };
+        assert_eq!(*bounty, Some(total), "legacy total is unchanged");
+        let awards = awards
+            .as_deref()
+            .expect("the earning side receives the breakdown");
+        assert_eq!(awards.len(), expected.len());
+        assert!(expected.iter().all(|award| awards.contains(award)));
+    }
+    assert!(
+        matches!(
+            death(&streams[1], names[1]),
+            EventKind::Died {
+                bounty: None,
+                awards: None,
+                ..
+            }
+        ),
+        "the opposite side receives neither the income total nor the breakdown"
+    );
+}
+
+fn death(stream: &[ServerMsg], id: bota_proto::EntityId) -> &bota_proto::EventKind {
+    stream
+        .iter()
+        .find_map(|message| match message {
+            ServerMsg::Events { events, .. } => events.iter().find(|event| {
+                matches!(event,
+            bota_proto::EventKind::Died { unit, .. } if *unit == id)
+            }),
+            _ => None,
+        })
+        .expect("the ordered flagbearer death")
 }

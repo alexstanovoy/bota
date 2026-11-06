@@ -183,3 +183,39 @@ fn a_frame_has_one_encoding_so_bytes_after_the_message_are_refused() {
         Err(CodecError::Malformed)
     );
 }
+
+#[test]
+fn a_full_frame_of_death_awards_fits_the_same_decoded_memory_budget() {
+    use bota_proto::{EntityId, GoldAward, GoldAwardKind, MAX_DEATH_GOLD_AWARDS, SlotId, Team};
+    let _turn = TURN.lock().unwrap();
+    let award = GoldAward {
+        recipient: SlotId(0),
+        team: Team::Radiant,
+        kind: GoldAwardKind::FlagbearerBonus,
+        amount: 49,
+    };
+    let event = EventKind::Died {
+        unit: EntityId {
+            idx: 1,
+            generation: 1,
+        },
+        killer: None,
+        denied: false,
+        gold: 0,
+        bounty: Some(86),
+        assists: 0,
+        awards: Some(Box::new(vec![award; MAX_DEATH_GOLD_AWARDS])),
+    };
+    let size = postcard::to_allocvec(&event)
+        .expect("an encoded death")
+        .len();
+    let events = vec![event; (MAX_PAYLOAD_LEN - 16) / size];
+    let payload = postcard::to_allocvec(&ServerMsg::Events { tick: 1, events }).expect("a payload");
+    assert!(payload.len() <= MAX_PAYLOAD_LEN);
+    let (read, peak) = peak_of(|| decode_payload::<ServerMsg>(&payload));
+    assert!(matches!(read, Ok(ServerMsg::Events { .. })));
+    assert!(
+        peak <= MAX_DECODED_BYTES,
+        "{peak} decoded bytes for a full death-award frame"
+    );
+}

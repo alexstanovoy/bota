@@ -1354,6 +1354,55 @@ fn an_events_previous_unit_stays_at_its_origin_after_later_snapshots_arrive() {
 }
 
 #[test]
+fn death_awards_keep_one_hero_feed_line_and_do_not_repeat_its_gold_caption() {
+    use bota_proto::{GoldAward, GoldAwardKind};
+    let (mut app, us, theirs) = a_duel_app();
+    let recipient = app.my_slot.expect("own seat");
+    let team = app.my_team().expect("own team");
+    // The duel helper puts the enemy in the fog; a world caption needs its visible body.
+    let mut view = app.view().expect("a view").clone();
+    let mut victim = owned(theirs.idx, UnitKind::Hero, Some(SlotId(1)));
+    victim.id = theirs;
+    victim.team = Team::Dire;
+    view.units.push(victim);
+    view.tick = 11;
+    app.handle(bota_proto::ServerMsg::Snapshot { view });
+    app.handle(bota_proto::ServerMsg::Events {
+        tick: 11,
+        events: vec![EventKind::Died {
+            unit: theirs,
+            killer: Some(us),
+            denied: false,
+            gold: 0,
+            bounty: Some(200),
+            assists: 0b100,
+            awards: Some(Box::new(vec![GoldAward {
+                recipient,
+                team,
+                kind: GoldAwardKind::KillBounty,
+                amount: 200,
+            }])),
+        }],
+    });
+    assert_eq!(app.feed.len(), 1, "one death makes one feed line");
+    assert!(matches!(
+        app.feed[0].kind,
+        crate::ui::app::FeedKind::HeroDied {
+            gold: 200,
+            assists: 0b100,
+            ..
+        }
+    ));
+    let captions: Vec<_> = app
+        .floaters
+        .iter()
+        .filter(|floater| floater.kind == crate::ui::app::FloaterKind::Gold)
+        .map(|floater| floater.amount)
+        .collect();
+    assert_eq!(captions, [200], "the feed does not duplicate its award");
+}
+
+#[test]
 fn a_hero_slain_in_the_fog_is_fed_by_its_seat_with_its_killer() {
     let (mut app, us, theirs) = a_duel_app();
     app.handle(bota_proto::ServerMsg::Events {
@@ -1365,6 +1414,7 @@ fn a_hero_slain_in_the_fog_is_fed_by_its_seat_with_its_killer() {
             gold: 0,
             bounty: Some(200),
             assists: 0b100,
+            awards: None,
         }],
     });
     assert_eq!(
@@ -1463,6 +1513,7 @@ fn our_hero_slain_from_the_fog_names_the_hero_the_feed_announced() {
             gold: 0,
             bounty: Some(200),
             assists: 0,
+            awards: None,
         }],
     });
     let line = app.feed.last().map(|line| line.kind.clone()).expect("fed");
@@ -1494,6 +1545,7 @@ fn our_kill_of_a_creep_never_in_sight_sounds_its_last_hit() {
             gold: 0,
             bounty: Some(40),
             assists: 0,
+            awards: None,
         }],
     });
     app.pump(0.0);
@@ -1519,6 +1571,7 @@ fn a_hero_falling_cues_its_death_for_that_hero() {
             gold: 0,
             bounty: Some(200),
             assists: 0,
+            awards: None,
         }],
     });
     app.pump(0.0);

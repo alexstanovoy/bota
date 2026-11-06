@@ -675,3 +675,11 @@ field EventKind::StructureDestroyed 2 kind: UnitKind
 field EventKind::StructureDestroyed 3 lane: Option<u8>
 field EventKind::StructureDestroyed 4 tier: Option<u8>
 field EventKind::StructureDestroyed 5 ranged: Option<bool>
+
+variant GoldAwardKind 0 KillBounty
+variant GoldAwardKind 1 FlagbearerBonus
+field GoldAward 0 recipient: SlotId
+field GoldAward 1 team: Team
+field GoldAward 2 kind: GoldAwardKind
+field GoldAward 3 amount: i32
+field EventKind::Died 6 awards: Option<Vec<GoldAward>>

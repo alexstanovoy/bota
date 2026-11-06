@@ -4,7 +4,7 @@ use bota_core::{
     GoldRange, ModifierKind, assist_gold, denied_xp, hero_bounty, hero_kill_xp, hero_spawn_pos,
     kind_def, passive_gold_by, rules,
 };
-use bota_proto::{EventKind, Team, UnitKind, Vec2};
+use bota_proto::{EventKind, GoldAward, GoldAwardKind, Team, UnitKind, Vec2};
 
 use crate::game::{
     Bounty, Entity, Event, EventVisibility, Landed, Level, Modifier, Purpose, World, wire_id,
@@ -68,8 +68,18 @@ impl World {
         killer: Option<Entity>,
         events: &mut Vec<Event>,
     ) -> i32 {
+        self.pay_for_report(fallen, killer, events).0
+    }
+
+    /// The same credits, with the factual components to attach to the death event.
+    pub(crate) fn pay_for_report(
+        &mut self,
+        fallen: Entity,
+        killer: Option<Entity>,
+        events: &mut Vec<Event>,
+    ) -> (i32, Option<Vec<GoldAward>>) {
         let Some((mut bounty, fallen_seat, worths)) = self.price_of_fall(fallen) else {
-            return 0;
+            return (0, None);
         };
         // An illusion pays its experience for a player's kill alone [LIQ
         // Runes: "Illusion Bounty"; the experience only for a player kill].
@@ -77,12 +87,14 @@ impl World {
             bounty.xp = 0;
         }
         let Some(side) = self.team.get(fallen).copied() else {
-            return 0;
+            return (0, None);
         };
         let at = self.pos(fallen).unwrap_or(Vec2::ZERO);
         let killer_side = killer.and_then(|k| self.team.get(k).copied());
         let denied = killer_side == Some(side);
-        let mut paid = self.credit_killer(killer, denied, fallen_seat.is_some(), bounty.gold);
+        let kill_paid = self.credit_killer(killer, denied, fallen_seat.is_some(), bounty.gold);
+        let mut paid = kill_paid;
+        let mut awards = None;
         let striker_seat = killer.and_then(|k| self.seat_of(k));
         if let Some(worths) = worths
             && !denied
@@ -91,7 +103,10 @@ impl World {
             paid += self.pay_assist_gold(at, other_side(side), worths, striker_seat);
         }
         if !denied && bounty.bonus > 0 {
-            paid += self.pay_flag_bonus(at, other_side(side), bounty.bonus, striker_seat);
+            let (bonus, breakdown) =
+                self.report_flag_bonus(at, other_side(side), bounty.bonus, striker_seat, kill_paid);
+            paid += bonus;
+            awards = Some(breakdown);
         }
         if bounty.team > 0 {
             // The side that brought it down: a lane building's enemy, and
@@ -113,14 +128,14 @@ impl World {
                 let xp = denied_xp(bounty.xp);
                 self.grant_xp_around(at, other_side(side), xp, None, events);
             }
-            return paid;
+            return (paid, awards);
         }
         let Some(earners) = killer_side else {
-            return paid;
+            return (paid, awards);
         };
         let killer_seat = fallen_seat.and_then(|_| killer.and_then(|entity| self.seat_of(entity)));
         self.grant_xp_around(at, earners, bounty.xp, killer_seat, events);
-        paid
+        (paid, awards)
     }
 
     /// What the fallen is worth, the seat it was a hero of and the net
@@ -299,6 +314,41 @@ impl World {
     ) -> i32 {
         let paid_seats = self.seats_near(at, earners, rules::FLAGBEARER_BONUS_RADIUS, killer_seat);
         self.pay_seats(paid_seats, bonus, killer_seat)
+    }
+
+    /// Observe the existing credit stage rather than recomputing eligibility, scaling or RNG.
+    fn report_flag_bonus(
+        &mut self,
+        at: Vec2,
+        earners: Team,
+        bonus: i32,
+        killer_seat: Option<usize>,
+        kill_paid: i32,
+    ) -> (i32, Vec<GoldAward>) {
+        let before: Vec<_> = self.seats.iter().map(|seat| seat.gold).collect();
+        let paid = self.pay_flag_bonus(at, earners, bonus, killer_seat);
+        let mut awards = Vec::with_capacity(self.seats.len() + 1);
+        if let Some(index) = killer_seat.filter(|_| kill_paid > 0) {
+            awards.push(GoldAward {
+                recipient: self.seats[index].slot,
+                team: self.seats[index].team,
+                kind: GoldAwardKind::KillBounty,
+                amount: kill_paid,
+            });
+        }
+        for (seat, before) in self.seats.iter().zip(before) {
+            let amount = seat.gold - before;
+            if amount > 0 {
+                awards.push(GoldAward {
+                    recipient: seat.slot,
+                    team: seat.team,
+                    kind: GoldAwardKind::FlagbearerBonus,
+                    amount,
+                });
+            }
+        }
+        debug_assert!(awards.len() <= bota_proto::MAX_DEATH_GOLD_AWARDS);
+        (paid, awards)
     }
 
     /// One payout of a gold range, drawn evenly from it on the match's

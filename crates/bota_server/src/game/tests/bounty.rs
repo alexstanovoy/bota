@@ -198,3 +198,98 @@ fn a_hero_kills_gold_is_public() {
     let (earned, told) = told_gold(&mut world, prey, killer);
     assert_eq!(told, [Some(Some(earned)); 3]);
 }
+
+#[test]
+fn death_gold_awards_disclose_each_recipients_income_only_to_its_own_side() {
+    use crate::game::{Event, EventVisibility};
+    use bota_proto::{EntityId, GoldAward, GoldAwardKind, SlotId};
+    let receipt = |slot, team, amount| GoldAward {
+        recipient: SlotId(slot),
+        team,
+        kind: GoldAwardKind::FlagbearerBonus,
+        amount,
+    };
+    let receipts = vec![
+        receipt(0, Team::Radiant, 45),
+        receipt(2, Team::Radiant, 45),
+        receipt(1, Team::Dire, 40),
+    ];
+    let event = Event {
+        kind: EventKind::Died {
+            unit: EntityId {
+                idx: 9,
+                generation: 1,
+            },
+            killer: None,
+            denied: false,
+            gold: 0,
+            bounty: Some(82),
+            assists: 0,
+            awards: Some(Box::new(receipts.clone())),
+        },
+        visible_to: EventVisibility::Everyone,
+        gold_hidden_from: Some(Team::Dire),
+        source_told_to: EventVisibility::Everyone,
+    };
+    assert_disclosed_awards(&event, &receipts);
+    let only_radiant = Event {
+        kind: EventKind::Died {
+            unit: EntityId {
+                idx: 9,
+                generation: 1,
+            },
+            killer: None,
+            denied: false,
+            gold: 0,
+            bounty: Some(0),
+            assists: 0,
+            awards: Some(Box::new(receipts[..2].to_vec())),
+        },
+        gold_hidden_from: None,
+        ..event
+    };
+    let told = visible_events(std::slice::from_ref(&only_radiant), Some(Team::Dire));
+    assert!(
+        matches!(
+            &told[0],
+            EventKind::Died {
+                bounty: Some(0),
+                awards: None,
+                ..
+            }
+        ),
+        "a kill without a player still hides the other side's bonus awards"
+    );
+    let unseen = Event {
+        visible_to: EventVisibility::Nobody,
+        source_told_to: EventVisibility::Nobody,
+        ..only_radiant
+    };
+    let own = visible_events(std::slice::from_ref(&unseen), Some(Team::Radiant));
+    assert!(
+        matches!(&own[0], EventKind::Died { killer: None, awards: Some(awards), .. }
+        if awards.len() == 2),
+        "recipients learn their income even without sight of the death"
+    );
+    assert!(visible_events(&[unseen], Some(Team::Dire)).is_empty());
+}
+
+fn assert_disclosed_awards(event: &crate::game::Event, receipts: &[bota_proto::GoldAward]) {
+    for (viewing, expected, bounty) in [
+        (None, receipts, Some(82)),
+        (Some(Team::Radiant), &receipts[..2], Some(82)),
+        (Some(Team::Dire), &receipts[2..], None),
+    ] {
+        let told = visible_events(std::slice::from_ref(event), viewing);
+        let EventKind::Died {
+            awards,
+            bounty: actual,
+            ..
+        } = &told[0]
+        else {
+            panic!("death")
+        };
+        assert_eq!(*actual, bounty);
+        assert_eq!(awards.as_deref().map(Vec::as_slice), Some(expected));
+    }
+}

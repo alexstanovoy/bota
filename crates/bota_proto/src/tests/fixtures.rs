@@ -612,8 +612,28 @@ pub fn all_events() -> Vec<EventKind> {
             killer: Some(entity(7)),
             denied: false,
             gold: 0,
-            bounty: Some(43),
+            bounty: Some(86),
             assists: 0b0000_0110,
+            awards: Some(Box::new(vec![
+                GoldAward {
+                    recipient: SlotId(0),
+                    team: Team::Radiant,
+                    kind: GoldAwardKind::KillBounty,
+                    amount: 37,
+                },
+                GoldAward {
+                    recipient: SlotId(0),
+                    team: Team::Radiant,
+                    kind: GoldAwardKind::FlagbearerBonus,
+                    amount: 49,
+                },
+                GoldAward {
+                    recipient: SlotId(2),
+                    team: Team::Radiant,
+                    kind: GoldAwardKind::FlagbearerBonus,
+                    amount: 49,
+                },
+            ])),
         },
         EventKind::AbilityCast {
             caster: entity(7),

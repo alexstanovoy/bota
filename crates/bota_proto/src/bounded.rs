@@ -44,6 +44,10 @@ impl<'de, T: Deserialize<'de>, const MAX: usize> Deserialize<'de> for Capped<T, 
                     if items.len() == MAX {
                         return Err(A::Error::invalid_length(MAX + 1, &self));
                     }
+                    if items.len() == items.capacity() {
+                        let room = items.capacity().max(1).saturating_mul(2).min(MAX);
+                        items.reserve_exact(room - items.len());
+                    }
                     items.push(item);
                 }
                 Ok(items)
@@ -74,6 +78,21 @@ where
     T: Deserialize<'de>,
 {
     Option::<Capped<T, MAX>>::deserialize(deserializer).map(|capped| capped.map(|capped| capped.0))
+}
+
+/// An optional bounded sequence kept out of a large enum's common inline footprint.
+#[expect(
+    clippy::box_collection,
+    reason = "the Vec header must stay outside EventKind to preserve the decoded batch budget"
+)]
+pub(crate) fn option_boxed_seq<'de, D, T, const MAX: usize>(
+    deserializer: D,
+) -> Result<Option<Box<Vec<T>>>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    option_seq::<'de, D, T, MAX>(deserializer).map(|items| items.map(Box::new))
 }
 
 /// A `Vec` of at most `OUTER` vectors of at most `INNER` elements each.
