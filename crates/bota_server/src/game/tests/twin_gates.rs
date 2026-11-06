@@ -577,7 +577,7 @@ fn a_warp_whose_exit_is_walled_off_lands_nowhere_and_gives_its_mana_back() {
 }
 
 #[test]
-fn a_warp_shows_its_caster_to_nobody() {
+fn a_warp_shows_its_caster_to_the_gates_neutral_side_as_any_cast_at_a_unit_does() {
     let mut world = gates_match(&[Team::Radiant]);
     let caster = hero(&world, 0);
     before_gate(&mut world, caster, 1);
@@ -588,8 +588,8 @@ fn a_warp_shows_its_caster_to_nobody() {
         world
             .exposure
             .get(caster)
-            .is_none_or(|exposure| exposure.0.iter().all(Option::is_none)),
-        "a neutral gate has no side to be shown the caster"
+            .is_some_and(|exposure| exposure.0[Team::Neutral as usize].is_some()),
+        "the neutral side is shown the caster: its sight wakes the camps"
     );
 }
 
@@ -829,4 +829,104 @@ fn a_refused_click_is_told_back_and_leaves_nothing_pending() {
         !world.is_channelling(caster),
         "nothing goes off once the stun lifts"
     );
+}
+
+#[test]
+fn a_second_click_on_the_gate_leaves_the_warp_running() {
+    let mut world = gates_match(&[Team::Radiant]);
+    let caster = hero(&world, 0);
+    before_gate(&mut world, caster, 1);
+    let at = gate(&world, 1);
+    order(&mut world, 0, None, click(at), false);
+    until_channelling(&mut world, caster);
+    let mut ticks = 0;
+    for _ in 0..WARP_CHANNEL_TICKS / 2 {
+        world.step();
+        ticks += 1;
+    }
+    // DOTA_ABILITY_BEHAVIOR_DONT_CANCEL_CHANNEL: clicking the gate again changes nothing.
+    order(&mut world, 0, None, click(at), false);
+    ticks += 1;
+    assert!(world.is_channelling(caster), "the channel runs on");
+    let (rest, _) = until_warped(&mut world, 2 * WARP_CHANNEL_TICKS).expect("it lands");
+    assert!(
+        ticks + rest <= WARP_CHANNEL_TICKS + 1,
+        "on the first click's time: {ticks} + {rest} ticks"
+    );
+}
+
+#[test]
+fn objective_channels_charge_no_enemy_magic_stick() {
+    let mut world = gates_match(&[Team::Radiant, Team::Dire]);
+    let caster = hero(&world, 0);
+    let enemy = hero(&world, 1);
+    before_gate(&mut world, caster, 1);
+    world.transform.get_mut(enemy).expect("standing").pos =
+        DOTA_TWIN_GATES[1].at + Vec2::from_ints(400, -300);
+    world.set_order(enemy, UnitOrder::Stand);
+    world.settle();
+    hand_item(&mut world, enemy, bota_proto::ItemId::MAGIC_STICK, 0);
+    let at = gate(&world, 1);
+    order(&mut world, 0, None, click(at), false);
+    until_channelling(&mut world, caster);
+    let charges = world.inventory.get(enemy).expect("a bag").slots[0]
+        .expect("the stick")
+        .charges;
+    assert_eq!(
+        charges, 0,
+        "Valve: objective interactions do not charge a Magic Stick (Dota2-Gameplay issue \
+         32850); the 7.41 bug fix \"Glacier Guard triggering when using the Twin Gates\""
+    );
+}
+
+#[test]
+fn a_stunned_caster_begins_no_warp_by_any_path() {
+    let mut world = gates_match(&[Team::Radiant]);
+    let caster = hero(&world, 0);
+    before_gate(&mut world, caster, 1);
+    let at = gate(&world, 1);
+    let slot = world
+        .interaction_at(caster, wire_id(at))
+        .expect("the warp's slot");
+    put_on(&mut world, caster, ModifierKind::Stunned, 15);
+    assert!(!world.begin_ability(caster, slot, Target::Unit(wire_id(at))));
+    assert!(world.warp.get(caster).is_none());
+}
+
+#[test]
+fn a_warp_begins_for_no_caster_that_has_fallen() {
+    let mut world = gates_match(&[Team::Radiant, Team::Dire]);
+    let caster = hero(&world, 0);
+    before_gate(&mut world, caster, 1);
+    let killer = hero(&world, 1);
+    world.kill_by_hp_removal(killer, caster);
+    let at = gate(&world, 1);
+    assert!(!world.warp_begins(caster, Target::Unit(wire_id(at))));
+    assert!(world.warp.get(caster).is_none());
+}
+
+#[test]
+fn a_click_taken_before_a_stun_waits_for_it_to_lift() {
+    let mut world = gates_match(&[Team::Radiant]);
+    let caster = hero(&world, 0);
+    world.transform.get_mut(caster).expect("standing").pos =
+        DOTA_TWIN_GATES[1].at + Vec2::from_ints(0, -700);
+    world.set_order(caster, UnitOrder::Stand);
+    world.settle();
+    let at = gate(&world, 1);
+    order(&mut world, 0, None, click(at), false);
+    put_on(&mut world, caster, ModifierKind::Stunned, 20);
+    run(&mut world, 20);
+    assert!(world.pending_cast(caster).is_some(), "the cast still waits");
+    for _ in 0..4 * 30 {
+        if world.is_channelling(caster) {
+            break;
+        }
+        world.step();
+    }
+    assert!(
+        world.is_channelling(caster),
+        "walked in once the stun lifted"
+    );
+    until_warped(&mut world, 2 * WARP_CHANNEL_TICKS).expect("it lands once walked in");
 }

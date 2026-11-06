@@ -166,8 +166,14 @@ impl App {
             | EventKind::AttackLaunched { .. }
             | EventKind::Landed { .. }
             | EventKind::TreeFelled { .. }
-            | EventKind::TreeGrew { .. }
-            | EventKind::ItemUsed { .. } => {}
+            | EventKind::TreeGrew { .. } => {}
+            // An item used is the hero's last cast now: a channel it runs is
+            // the item's, no ability's.
+            EventKind::ItemUsed { caster, .. } => {
+                if caster.is_some() && caster == self.my_hero() {
+                    self.last_cast = None;
+                }
+            }
             EventKind::Captured { unit, team, .. } => {
                 let building = self
                     .freshest(unit)
@@ -346,6 +352,9 @@ impl App {
 
     /// An ability taking effect: the cue of a raze or a requiem.
     fn on_cast(&mut self, caster: EntityId, ability: AbilityId) {
+        if self.my_hero() == Some(caster) {
+            self.last_cast = Some((caster, ability));
+        }
         let at = self.spot(caster);
         if matches!(
             ability,

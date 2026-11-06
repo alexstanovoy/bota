@@ -236,6 +236,10 @@ impl World {
             order if self.is_channelling(unit) && self.ignores_channel(unit, &order) => {
                 self.take_body_order(unit, order);
             }
+            // An order to cast what Dota marks DONT_CANCEL_CHANNEL leaves the
+            // channel running and asks nothing more: the warp's gate clicked
+            // again while the warp runs.
+            order if self.is_channelling(unit) && self.keeps_channel(unit, &order) => {}
             order if bota_core::order_queues(order) && !is_halt(order) && self.is_casting(unit) => {
                 self.wait_for_cast(seat, unit, order, seq);
             }
@@ -259,6 +263,24 @@ impl World {
                 .map(|_| PendingCast::Item { slot, target }),
             _ => None,
         }
+    }
+
+    /// Whether an order casts an ability Dota marks
+    /// `DOTA_ABILITY_BEHAVIOR_DONT_CANCEL_CHANNEL`: a cast order of it, or an
+    /// order at a map objective whose hidden ability it is.
+    fn keeps_channel(&self, unit: Entity, order: &Order) -> bool {
+        let slot = match *order {
+            Order::Cast { slot, .. } => Some(slot),
+            Order::Move {
+                target: Target::Unit(at),
+            }
+            | Order::Attack {
+                target: Target::Unit(at),
+            } => self.interaction_at(unit, at),
+            _ => None,
+        };
+        slot.and_then(|slot| bota_core::ability_def(self.ability_in(unit, slot)))
+            .is_some_and(|def| def.dont_cancel_channel)
     }
 
     /// Whether an order is a cast or a use of something that leaves a
@@ -694,13 +716,13 @@ impl World {
         slot: bota_proto::AbilitySlot,
         target: &Target,
     ) -> Result<(), RejectReason> {
-        let held = self.held_in(unit, slot)?;
+        let ability = self.slot_ability(unit, slot)?;
         // A hidden ability is no slot a seat sees: only an order at what it
         // works on casts it.
-        let def = bota_core::ability_def(held.id)
+        let def = bota_core::ability_def(ability.id)
             .filter(|def| !def.hidden)
             .ok_or(RejectReason::EmptySlot)?;
-        self.cast_refusal(unit, seat, held, def, target)
+        self.cast_refusal(unit, seat, ability, def, target)
     }
 
     /// Whether a unit may cast the hidden ability of the map objective an
@@ -712,13 +734,13 @@ impl World {
         slot: bota_proto::AbilitySlot,
         target: &Target,
     ) -> Result<(), RejectReason> {
-        let held = self.held_in(unit, slot)?;
-        let def = bota_core::ability_def(held.id).ok_or(RejectReason::EmptySlot)?;
-        self.cast_refusal(unit, seat, held, def, target)
+        let ability = self.slot_ability(unit, slot)?;
+        let def = bota_core::ability_def(ability.id).ok_or(RejectReason::EmptySlot)?;
+        self.cast_refusal(unit, seat, ability, def, target)
     }
 
-    /// The ability a unit holds in a slot.
-    fn held_in(
+    /// The ability a unit has in a slot.
+    fn slot_ability(
         &self,
         unit: Entity,
         slot: bota_proto::AbilitySlot,
@@ -738,16 +760,12 @@ impl World {
         &self,
         unit: Entity,
         seat: &Seat,
-        held: crate::game::AbilityState,
+        ability: crate::game::AbilityState,
         def: &bota_core::AbilityDef,
         target: &Target,
     ) -> Result<(), RejectReason> {
-        if let Some(reason) = self.cast_blocked(unit, held, def) {
+        if let Some(reason) = self.cast_blocked(unit, ability, def) {
             return Err(reason);
-        }
-        // A channel is no bar: the order breaks it off, as in Dota.
-        if self.held(unit) || self.feared(unit) {
-            return Err(RejectReason::Disabled);
         }
         if !aimed_right(def.aim, target) {
             return Err(RejectReason::WrongTargetKind);
@@ -761,7 +779,7 @@ impl World {
                 return Err(RejectReason::WrongTargetKind);
             }
         }
-        if self.short_of_mana_for_cast(unit, held) {
+        if self.short_of_mana_for_cast(unit, ability) {
             return Err(RejectReason::NotEnoughMana);
         }
         Ok(())

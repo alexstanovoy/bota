@@ -488,6 +488,9 @@ pub struct App {
     pub channel_stops: crate::ui::ChannelStops,
     /// The order kept back by a channel, to carry out when it ends.
     pub(crate) held_order: Option<IssuedOrder>,
+    /// The ability one's hero last cast, as the server told it: what a
+    /// channel it runs is of.
+    pub(crate) last_cast: Option<(EntityId, bota_proto::AbilityId)>,
     /// The unit picked, if one is. Nothing picked means one's own hero.
     pub selected: Option<EntityId>,
     /// What the camera is pinned to. Nothing means a free camera.
@@ -567,6 +570,7 @@ impl App {
             queueing: false,
             channel_stops: crate::ui::ChannelStops::default(),
             held_order: None,
+            last_cast: None,
             selected: None,
             pinned: None,
             tapped: None,

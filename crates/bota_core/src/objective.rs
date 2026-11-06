@@ -129,6 +129,8 @@ pub const CAPTURE: AbilityDef = AbilityDef {
     granted_at: Some(1),
     hidden: true,
     targets: TargetFilter::of(&[UnitKind::Outpost], false),
+    // Objective interactions charge no Magic Stick (ValveSoftware/Dota2-Gameplay issue 32850).
+    procs_magic_stick: false,
     ..BARE_ABILITY
 };
 
@@ -210,6 +212,8 @@ pub const LAMP_USE: AbilityDef = AbilityDef {
     granted_at: Some(1),
     hidden: true,
     targets: TargetFilter::of(&[UnitKind::Watcher], true),
+    // Objective interactions charge no Magic Stick (ValveSoftware/Dota2-Gameplay issue 32850).
+    procs_magic_stick: false,
     ..BARE_ABILITY
 };
 
@@ -385,7 +389,13 @@ pub const TWIN_GATE: UnitDef = UnitDef {
 /// "can be initiated by any unit, except for illusions that cannot cast
 /// abilities" [LIQ Twin Gate; FAN Twin Gate]); an illusion casts nothing, so
 /// none warps. `IGNORE_SILENCE` asks nothing of the simulation yet: it has no
-/// silence.
+/// silence. `DONT_CANCEL_CHANNEL` [A:262]: clicking the gate again while the
+/// warp runs leaves it running. A teleport by Dota's Teleport Classification
+/// [PN 7.37], so "Teleports Require Hold/Stop to Cancel" covers it [LIQ Game
+/// Settings]. It charges no Magic Stick: Valve's tracker has objective
+/// interactions charge none (ValveSoftware/Dota2-Gameplay issue 32850), and a
+/// 7.41 update fixed "Crystal Maiden's Glacier Guard triggering when using
+/// the Twin Gates", an on-cast effect the warp is not to set off.
 pub const TWIN_GATE_WARP: AbilityDef = AbilityDef {
     id: AbilityId::TWIN_GATE_WARP,
     key: "twin_gate_portal_warp",
@@ -403,6 +413,9 @@ pub const TWIN_GATE_WARP: AbilityDef = AbilityDef {
     root_disables: true,
     free_without_mana: true,
     every_unit: true,
+    dont_cancel_channel: true,
+    teleport: true,
+    procs_magic_stick: false,
     targets: TargetFilter::of(&[UnitKind::TwinGate], false),
     ..BARE_ABILITY
 };

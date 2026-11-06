@@ -159,6 +159,16 @@ pub struct AbilityDef {
     /// its hero alone: one of the [`hidden`](Self::hidden) abilities of the
     /// map's objectives that Dota gives every unit.
     pub every_unit: bool,
+    /// Whether an order to cast it while its caster channels leaves the
+    /// channel be: Dota's `DOTA_ABILITY_BEHAVIOR_DONT_CANCEL_CHANNEL`.
+    pub dont_cancel_channel: bool,
+    /// Whether its channel is a teleport: Dota's Teleport Classification
+    /// (7.37), which the "Teleports Require Hold/Stop to Cancel" setting
+    /// goes by.
+    pub teleport: bool,
+    /// Whether a cast of it charges the enemy Magic Sticks about its caster:
+    /// Dota's `ProcsMagicStick`, which most abilities do.
+    pub procs_magic_stick: bool,
 }
 
 /// Nothing at all, so an entry names only what sets it apart.
@@ -194,6 +204,9 @@ pub(crate) const BARE_ABILITY: AbilityDef = AbilityDef {
     root_disables: false,
     free_without_mana: false,
     every_unit: false,
+    dont_cancel_channel: false,
+    teleport: false,
+    procs_magic_stick: true,
 };
 
 /// A courier's ability: one level, cast for no mana, held from its owner's

@@ -107,7 +107,9 @@ impl World {
         target: Target,
     ) {
         self.expose_caster(entity, target);
-        self.charge_nearby_items(entity);
+        if ability_def(ability).is_some_and(|def| def.procs_magic_stick) {
+            self.charge_nearby_items(entity);
+        }
         if let Some(mana) = self.mana.get_mut(entity) {
             mana.mana -= Fixed::from_int(cost);
         }
@@ -119,26 +121,32 @@ impl World {
         self.tell_ability_triggered(entity, ability);
     }
 
-    /// What keeps a held ability from going off at all right now, whoever
-    /// asks: an order taken for it, or the cast itself. A passive one, or any
-    /// one of an illusion (which casts nothing, and uses no item), one not
-    /// learned or still cooling down, and one Dota marks `ROOT_DISABLES`
-    /// while its caster is rooted. Mana is asked last, by
-    /// [`World::short_of_mana_for_cast`].
+    /// What keeps an ability in a slot from going off at all right now,
+    /// whoever asks: an order taken for it, or the cast itself. A passive one,
+    /// or any one of an illusion (which casts nothing, and uses no item), one
+    /// not learned or still cooling down, any one of a stunned or feared
+    /// caster but what may be cast while stunned, and one Dota marks
+    /// `ROOT_DISABLES` while its caster is rooted.
+    /// Mana is asked last, by [`World::short_of_mana_for_cast`].
     pub(crate) fn cast_blocked(
         &self,
         entity: Entity,
-        held: crate::game::AbilityState,
+        ability: crate::game::AbilityState,
         def: &bota_core::AbilityDef,
     ) -> Option<RejectReason> {
         if def.passive || self.wears_illusion(entity) {
             return Some(RejectReason::NotCastable);
         }
-        if held.level == 0 {
+        if ability.level == 0 {
             return Some(RejectReason::NotLearned);
         }
-        if held.cooldown > 0 {
+        if ability.cooldown > 0 {
             return Some(RejectReason::OnCooldown);
+        }
+        // A channel is no bar: an order breaks it off, as in Dota. What Dota
+        // lets begin despite a stun (Roshan's roar) begins despite a fear too.
+        if !def.cast_while_stunned && (self.held(entity) || self.feared(entity)) {
+            return Some(RejectReason::Disabled);
         }
         if def.root_disables && self.rooted(entity) {
             return Some(RejectReason::Disabled);
@@ -146,13 +154,14 @@ impl World {
         None
     }
 
-    /// Whether an entity has less mana than a cast of a held ability costs.
+    /// Whether an entity has less mana than a cast of the ability in a slot
+    /// costs.
     pub(crate) fn short_of_mana_for_cast(
         &self,
         entity: Entity,
-        held: crate::game::AbilityState,
+        ability: crate::game::AbilityState,
     ) -> bool {
-        let cost = self.ability_mana_cost(entity, held.id, held.level);
+        let cost = self.ability_mana_cost(entity, ability.id, ability.level);
         self.mana.get(entity).map_or(0, |m| m.mana.to_int()) < cost
     }
 

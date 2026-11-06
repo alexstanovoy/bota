@@ -436,8 +436,7 @@ impl World {
     }
 
     /// Shows a caster to the side of the unit its spell went off at, when
-    /// that unit stands within [`rules::CAST_REVEAL_RANGE`] of it; a channel
-    /// at a neutral building (a Watcher, a Twin Gate) shows it to nobody.
+    /// that unit stands within [`rules::CAST_REVEAL_RANGE`] of it.
     pub fn expose_caster(&mut self, caster: Entity, target: Target) {
         let Target::Unit(id) = target else {
             return;
@@ -445,15 +444,6 @@ impl World {
         let Some(mark) = self.of_wire(id) else {
             return;
         };
-        // A neutral building (an objective's) has nobody to show the caster to.
-        let neutral_building = self.team.get(mark) == Some(&Team::Neutral)
-            && self
-                .kind
-                .get(mark)
-                .is_some_and(|kind| kind_def(*kind).structure);
-        if neutral_building {
-            return;
-        }
         let (Some(from), Some(to)) = (self.transform.get(caster), self.transform.get(mark)) else {
             return;
         };

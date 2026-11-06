@@ -940,6 +940,52 @@ fn a_teleport_holds_orders_back_by_its_own_option_alone() {
     }
 }
 
+/// Dota files the Twin Gates under its teleports (7.37's Teleport Classification; Liquipedia's
+/// Game Settings, "Teleports Require Hold/Stop to Cancel": Teleport Scrolls, Boots of Travel,
+/// Twin Gates, Fiend's Gate): one's hero channelling a warp keeps orders back by the teleport
+/// option alone.
+#[test]
+fn a_twin_gate_warp_holds_orders_back_by_the_teleport_option_alone() {
+    use crate::ui::intent::Intent;
+    let warping = |app: &mut App| {
+        let mut hero = owned(1, UnitKind::Hero, Some(SlotId(0)));
+        hero.statuses.bits |= StatusFlags::CHANNELLING;
+        let id = hero.id;
+        app.handle(snapshot_of(
+            10,
+            vec![hero],
+            vec![a_seat(SlotId(0), Some(id))],
+        ));
+        app.handle(bota_proto::ServerMsg::Events {
+            tick: 10,
+            events: vec![EventKind::AbilityCast {
+                caster: id,
+                ability: bota_proto::AbilityId::TWIN_GATE_WARP,
+            }],
+        });
+        assert!(!app.lost, "the stream holds");
+    };
+    let walk = Order::Move {
+        target: Target::Pos(Vec2::from_ints(100, 0)),
+    };
+    for (teleport, channels, held) in [
+        (true, false, true),
+        (false, true, false),
+        (true, true, true),
+        (false, false, false),
+    ] {
+        let mut app = a_started_app();
+        app.channel_stops = ChannelStops { teleport, channels };
+        warping(&mut app);
+        app.act(Intent::MoveTo((100.0, 0.0)));
+        assert_eq!(
+            app.shown_orders.last().map(|shown| shown.order),
+            (!held).then_some(walk),
+            "teleport option {teleport}, channels option {channels}"
+        );
+    }
+}
+
 /// An immediate use breaks a channel it does not ignore, as the server has it: "Require Stop" keeps
 /// a Bottle back while a channel runs, and lets the Phase Boots, which ignore it, go through.
 #[test]

@@ -556,8 +556,10 @@ impl World {
         let Some(pending) = self.pending_cast(entity) else {
             return false;
         };
-        // A caster struck dead since its order was taken casts nothing: its
-        // body is buried with the tick's dead.
+        // A caster with no health left casts nothing. The live tick never
+        // gets here with one: the damage step buries the dead and their
+        // orders go with them. This keeps any other path that leaves a dead
+        // caster with a cast pending from casting it.
         if !self.alive(entity) {
             self.order_cast_off(entity);
             return false;

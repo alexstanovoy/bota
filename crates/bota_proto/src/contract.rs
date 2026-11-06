@@ -78,11 +78,17 @@
 //! any other killer only its side). [`StructureDestroyed`] is told to both
 //! sides, and [`ItemBought`] to the buyer's side alone.
 //!
+//! A warp through a Twin Gate that lands ([`GateWarped`]) is told to every
+//! side that sees either gate's spot or the unit as it comes out, as Dota
+//! plays its sounds at both gates; the unit itself only to a side that sees
+//! it, and `None` to the others.
+//!
 //! [`Damaged`]: crate::EventKind::Damaged
 //! [`Missed`]: crate::EventKind::Missed
 //! [`Healed`]: crate::EventKind::Healed
 //! [`Died`]: crate::EventKind::Died
 //! [`AbilityCast`]: crate::EventKind::AbilityCast
+//! [`GateWarped`]: crate::EventKind::GateWarped
 //! [`LevelUp`]: crate::EventKind::LevelUp
 //! [`StructureDestroyed`]: crate::EventKind::StructureDestroyed
 //! [`ItemBought`]: crate::EventKind::ItemBought

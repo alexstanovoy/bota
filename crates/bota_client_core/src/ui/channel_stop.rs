@@ -32,7 +32,12 @@ impl App {
         if hero.statuses.bits & StatusFlags::CHANNELLING == 0 {
             return false;
         }
-        let teleporting = view.teleports.iter().any(|teleport| teleport.slot == slot);
+        // A scroll's channel, or one of what Dota classes as a teleport (a
+        // Twin Gate's warp).
+        let teleporting = view.teleports.iter().any(|teleport| teleport.slot == slot)
+            || self.last_cast.is_some_and(|(caster, ability)| {
+                caster == hero.id && bota_core::ability_def(ability).is_some_and(|def| def.teleport)
+            });
         if teleporting {
             self.channel_stops.teleport
         } else {
