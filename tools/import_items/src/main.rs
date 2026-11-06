@@ -20,6 +20,7 @@ mod emit_heroes;
 mod hero;
 mod install;
 mod item;
+mod name;
 mod overrides;
 mod registry;
 mod zones;

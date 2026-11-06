@@ -5,6 +5,7 @@
 use heatel::keyvalues::Kv;
 
 use crate::dec::{self, Milli};
+use crate::name;
 
 /// What bota keeps of one ability.
 #[derive(Clone, Debug, PartialEq)]
@@ -141,6 +142,7 @@ const VALUE_MODIFIERS: [&str; 2] = ["CalculateSpellDamageTooltip", "affected_by_
 /// Reads the block of the ability `key`. A bonus of a facet in `dropped_facets` (one the hero no
 /// longer has) is left out; any other facet's is refused, since bota plays no facet.
 pub fn read(key: &str, block: &Kv, dropped_facets: &[String]) -> Result<Ability, String> {
+    let key = name::checked(key)?;
     let fail = |why: String| format!("{key}: {why}");
     let items = block.block().ok_or_else(|| fail("no block".into()))?;
     for (name, _) in items {
@@ -270,6 +272,7 @@ fn values(block: &Kv, dropped_facets: &[String]) -> Result<Vec<Value>, String> {
 }
 
 fn read_value(name: &str, value: &Kv, dropped_facets: &[String]) -> Result<Value, String> {
+    let name = name::checked(name)?;
     let fail = |why: String| format!("{name}: {why}");
     let inner = match value {
         Kv::Text(text) => {
@@ -296,8 +299,9 @@ fn read_value(name: &str, value: &Kv, dropped_facets: &[String]) -> Result<Value
                 return Err(fail(format!("a bonus of the live facet {facet:?}")));
             }
         } else if key.starts_with("special_bonus_") {
+            let key = name::checked(key).map_err(fail)?;
             bonuses.push((
-                key.clone(),
+                key.to_owned(),
                 bonus(text).map_err(|e| fail(format!("{key}: {e}")))?,
             ));
         } else {
@@ -417,6 +421,8 @@ mod tests {
             r#""AbilityValues" { "range" { "value" "300" "special_bonus_facet_live" "+1" } }"#,
             r#""AbilityValues" { "range" { "value" "300" "special_bonus_x" "1e3" } }"#,
             r#""AbilityCooldown" "5" "AbilityValues" { "AbilityCooldown" "5" }"#,
+            r#""AbilityValues" { "x\", \"" "5" }"#,
+            r#""AbilityValues" { "range" { "value" "1" "special_bonus_}{" "+1" } }"#,
         ];
         for body in refused {
             assert!(ability(body).is_err(), "{body}");

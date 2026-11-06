@@ -6,6 +6,7 @@ use heatel::keyvalues::Kv;
 use crate::ability::{self, Ability};
 use crate::dec::{self, Milli};
 use crate::install::HeroSource;
+use crate::name;
 
 /// What bota keeps of one hero.
 #[derive(Clone, Debug, PartialEq)]
@@ -168,15 +169,20 @@ pub fn read(source: &HeroSource, key: &str) -> Result<Hero, String> {
     };
     let dropped = dropped_facets(hero).map_err(fail)?;
     let definitions = hero.get("AbilityDefinitions");
-    let slot = |n: u32| match hero.get(&format!("Ability{n}")) {
-        Some(Kv::Text(text)) if !text.trim().is_empty() => Some(text.trim().to_owned()),
-        _ => None,
+    // What a slot names goes into the table as it is: a name, or the import fails.
+    let slot = |n: u32| -> Result<Option<String>, String> {
+        match hero.get(&format!("Ability{n}")) {
+            Some(Kv::Text(text)) if !text.trim().is_empty() => name::checked(text.trim())
+                .map(|name| Some(name.to_owned()))
+                .map_err(|e| fail(format!("Ability{n}: {e}"))),
+            _ => Ok(None),
+        }
     };
     let mut abilities = Vec::new();
-    for name in ABILITY_SLOTS
-        .filter_map(slot)
-        .filter(|name| name != EMPTY_SLOT)
-    {
+    for n in ABILITY_SLOTS {
+        let Some(name) = slot(n)?.filter(|name| name != EMPTY_SLOT) else {
+            continue;
+        };
         let block = definitions
             .and_then(|defs| defs.get(&name))
             .ok_or_else(|| fail(format!("{name} has no AbilityDefinitions block")))?;
@@ -186,7 +192,7 @@ pub fn read(source: &HeroSource, key: &str) -> Result<Hero, String> {
     for tier in 0..4 {
         for side in [1, 0] {
             let n = TALENT_SLOTS.start() + 2 * tier + side;
-            talents.push(slot(n).ok_or_else(|| fail(format!("no talent in Ability{n}")))?);
+            talents.push(slot(n)?.ok_or_else(|| fail(format!("no talent in Ability{n}")))?);
         }
     }
     let shared_talents = talents
@@ -215,10 +221,40 @@ fn dropped_facets(hero: &Kv) -> Result<Vec<String>, String> {
     for (name, facet) in facets.block().ok_or("Facets is no block")? {
         match facet.get("Deprecated") {
             Some(Kv::Text(flag)) if flag.trim() == "true" || flag.trim() == "1" => {
-                dropped.push(name.clone());
+                dropped.push(name::checked(name)?.to_owned());
             }
             _ => return Err(format!("the live facet {name:?}: bota plays no facet")),
         }
     }
     Ok(dropped)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::install::HeroSource;
+
+    /// A slot that names anything but a name is refused, saying which slot: it would go into
+    /// the generated table as it is.
+    #[test]
+    fn a_slot_naming_no_name_is_refused() {
+        let numbers: String = super::NUMBERS
+            .iter()
+            .map(|key| format!("\"{key}\" \"1\" "))
+            .collect();
+        let base = format!(
+            r#""DOTAHeroes" {{ "npc_dota_hero_base" {{ {numbers} "AttributePrimary" "DOTA_ATTRIBUTE_STRENGTH" "AttackCapabilities" "DOTA_UNIT_CAP_MELEE_ATTACK" }} }}"#
+        );
+        let hero = r#""DOTAHeroes" { "npc_dota_hero_x" { "Ability1" "x\"}; panic!(); {\"" } }"#;
+        let abilities = r#""DOTAAbilities" { }"#;
+        let source = HeroSource::new(
+            "fixture".into(),
+            &base,
+            &[("npc_dota_hero_x", hero)],
+            abilities,
+        )
+        .expect("parses");
+        let refused = super::read(&source, "npc_dota_hero_x").expect_err("a hostile slot");
+        assert!(refused.contains("Ability1: "), "{refused}");
+        assert!(refused.contains("a name is ASCII letters"), "{refused}");
+    }
 }

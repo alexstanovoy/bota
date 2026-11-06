@@ -165,6 +165,7 @@ fn aoe(block: &Kv) -> Result<Vec<String>, String> {
 
 /// Reads the block of the item `key`.
 pub fn read(key: &str, block: &Kv) -> Result<Item, String> {
+    let key = crate::name::checked(key)?;
     let fail = |why: String| format!("{key}: {why}");
     let items = block.block().ok_or_else(|| fail("no block".into()))?;
     for (name, _) in items {
@@ -318,7 +319,7 @@ pub(crate) fn values(block: &Kv) -> Result<Vec<(String, Vec<Milli>)>, String> {
                 }
             };
             Ok((
-                name.clone(),
+                crate::name::checked(name)?.to_owned(),
                 dec::levels(text).map_err(|e| format!("{name}: {e}"))?,
             ))
         })
@@ -371,6 +372,7 @@ mod tests {
             r#""AbilityBehavior" "DOTA_ABILITY_BEHAVIOR_ATTACK""#,
             r#""AbilityValues" { "range" { "value" "300" "RequiresFacet" "x" } }"#,
             r#""AbilityCooldown" "1e3""#,
+            r#""AbilityValues" { "x\"),(\"" "5" }"#,
         ];
         for body in refused {
             assert!(item(body).is_err(), "{body}");
