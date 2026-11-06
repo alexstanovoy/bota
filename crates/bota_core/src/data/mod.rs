@@ -1,11 +1,5 @@
-//! Bota's game data: what Dota's scripts give each item, generated from them, and the rows
-//! the catalog makes of it.
-
+//! Item data and effects, exported only through catalogue rows.
 mod item_mechanics;
-pub(crate) mod items;
-mod placement;
-mod roshan;
-pub use placement::*;
-pub(crate) use roshan::*;
+mod items;
 
 pub(crate) use item_mechanics::ITEM_ROWS;

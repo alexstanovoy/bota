@@ -7,7 +7,7 @@
 
 use bota_proto::{Aim, Attribute, Attributes, Fixed, ItemId};
 
-use crate::{Behavior, Dec, ITEMS, Odds, UnitDef, rules};
+use crate::{Behavior, Dec, ITEMS, Odds, rules};
 
 /// Which pool an item mends.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -196,7 +196,7 @@ pub enum UseSpec {
     /// Stands a ward of a kind.
     Ward {
         /// What the ward is.
-        units: &'static [UnitDef],
+        units: &'static [crate::WardDef],
         /// How long it stands.
         ticks: u32,
     },
@@ -538,7 +538,7 @@ impl ItemDef {
     /// Area preview for the physical item's level, including a ward's aura or sight.
     pub fn radius_at(&self, level: u8) -> Option<i32> {
         if let UseSpec::Ward { units, .. } = self.effect {
-            let unit = &units[usize::from(level.saturating_sub(1)).min(units.len() - 1)];
+            let unit = units[usize::from(level.saturating_sub(1)).min(units.len() - 1)].unit();
             Some(unit.auras.first().map_or(
                 if unit.true_sight > 0 {
                     unit.true_sight
@@ -889,9 +889,7 @@ impl UseSpec {
     /// Map exclusions are independent of range, terrain and current inventory.
     pub fn placement_allowed(self, map: &crate::MapDef, at: bota_proto::Vec2) -> bool {
         match self {
-            Self::Ward { .. } | Self::Dispense => {
-                !map.no_wards.iter().any(|zone| zone.contains(at))
-            }
+            Self::Ward { .. } | Self::Dispense => crate::ward_placement_allowed(map, at),
             Self::PlantTree { .. } => !map.boss_zones.iter().any(|zone| zone.contains(at)),
             _ => true,
         }

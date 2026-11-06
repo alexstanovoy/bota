@@ -99,7 +99,7 @@ impl World {
             UseSpec::FellTree => self.fell_a_tree(user, target, def.cast_range),
             UseSpec::Ward { units, ticks } => {
                 let level = self.held_in_bag(user, slot).map_or(1, |s| s.level);
-                let unit = &units[usize::from(level.saturating_sub(1)).min(units.len() - 1)];
+                let unit = units[usize::from(level.saturating_sub(1)).min(units.len() - 1)].unit();
                 self.stand_ward(user, target, (item, unit), ticks, def.cast_range)
             }
             UseSpec::Dispense => self.dispense_ward(user, slot, target),

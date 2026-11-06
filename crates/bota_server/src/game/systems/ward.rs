@@ -46,13 +46,9 @@ impl World {
         let (Some(side), Some(from)) = (self.team.get(user).copied(), self.pos(user)) else {
             return false;
         };
-        let placement = UseSpec::Ward {
-            units: std::slice::from_ref(def),
-            ticks,
-        };
         if !from.within(pos, rules::units(range))
             || !self.clearance.stands_clear(pos)
-            || !placement.placement_allowed(self.map, pos)
+            || !bota_core::ward_placement_allowed(self.map, pos)
         {
             return false;
         }
@@ -86,7 +82,7 @@ impl World {
         else {
             return false;
         };
-        if !self.stand_ward(user, target, (ward, &units[0]), ticks, range) {
+        if !self.stand_ward(user, target, (ward, units[0].unit()), ticks, range) {
             return false;
         }
         if let Some(held) = self

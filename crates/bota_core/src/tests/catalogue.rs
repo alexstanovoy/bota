@@ -89,9 +89,68 @@ fn drink(def: &mut ItemDef) -> &mut crate::Drink {
 fn adding_roshan_items_keeps_the_preexisting_catalogue_prefix_identical() {
     let previous = bota_proto::CataloguePrefix {
         items: 62,
-        digest: 0xe0e7_501a_8b65_4c20,
+        // Pristine rhash main9b64ead adds identifier bindings to row digests.
+        digest: 0xfdd9_00b6_4f2c_4b0a,
     };
+    assert_eq!(
+        crate::Catalogue::first(previous.items)
+            .expect("prefix")
+            .prefix(),
+        previous
+    );
     let shared = crate::Catalogue::agreeing(previous)
         .expect("the prefix published before Roshan still negotiates");
     assert_eq!(shared.prefix(), previous);
+}
+
+#[test]
+fn ward_digest_distinguishes_reordered_or_repeated_banner_level_payloads() {
+    let banner = *item_def(ItemId::ROSHANS_BANNER).expect("banner");
+    static REPEATED: [crate::WardDef; 3] = [crate::BANNER_WARDS[2]; 3];
+    static REORDERED: [crate::WardDef; 3] = [
+        crate::BANNER_WARDS[2],
+        crate::BANNER_WARDS[1],
+        crate::BANNER_WARDS[0],
+    ];
+    for units in [&REPEATED[..], &REORDERED[..]] {
+        let mut changed = banner;
+        let UseSpec::Ward { ticks, .. } = banner.effect else {
+            panic!("ward");
+        };
+        changed.effect = UseSpec::Ward { units, ticks };
+        assert_ne!(item_digest(&changed), item_digest(&banner));
+    }
+    let observer = *item_def(ItemId::OBSERVER_WARD).expect("observer");
+    let mut changed = observer;
+    let UseSpec::Ward { ticks, .. } = observer.effect else {
+        panic!("ward");
+    };
+    changed.effect = UseSpec::Ward {
+        units: &crate::SENTRY_WARDS,
+        ticks,
+    };
+    assert_ne!(
+        item_digest(&changed),
+        item_digest(&observer),
+        "same-kind singleton selection still has identity"
+    );
+}
+
+#[test]
+fn a_ward_dependency_must_fit_inside_its_containing_catalogue_prefix() {
+    let mut observer = *item_def(ItemId::OBSERVER_WARD).expect("observer");
+    let UseSpec::Ward { ticks, .. } = observer.effect else {
+        panic!("ward");
+    };
+    observer.effect = UseSpec::Ward {
+        units: &crate::BANNER_WARDS,
+        ticks,
+    };
+    assert!(!crate::item_table::ward_sources_precede_item(&observer));
+    let mut sentry = *item_def(ItemId::SENTRY_WARD).expect("sentry");
+    sentry.effect = UseSpec::Ward {
+        units: &crate::OBSERVER_WARDS,
+        ticks,
+    };
+    assert!(crate::item_table::ward_sources_precede_item(&sentry));
 }

@@ -1828,7 +1828,7 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
     ),
     entry(
         AbilityId(80),
-        crate::data::ROSHAN_INHERENT_BUFFS.key,
+        crate::roshan_data::ROSHAN_INHERENT_BUFFS.key,
         NeutralAbility::StrengthOfTheImmortal,
         AbilityDef {
             max_level: 1,
@@ -1845,7 +1845,7 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
     ),
     entry(
         AbilityId(81),
-        crate::data::ROSHAN_DEVOTION.key,
+        crate::roshan_data::ROSHAN_DEVOTION.key,
         NeutralAbility::Devotion,
         AbilityDef {
             max_level: 1,
@@ -1856,7 +1856,9 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
             moving: None,
             buff: Buff::of(
                 Stat::SlowResistPct,
-                all(crate::data::ROSHAN_DEVOTION.first("slow_resistance").int()),
+                all(crate::roshan_data::ROSHAN_DEVOTION
+                    .first("slow_resistance")
+                    .int()),
             ),
             effect: EffectId(81),
             aura: Some(crate::ROSHAN_ARMOR_AURA),
@@ -1864,11 +1866,11 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
     ),
     entry(
         AbilityId(82),
-        crate::data::ROSHAN_SPELL_BLOCK.key,
+        crate::roshan_data::ROSHAN_SPELL_BLOCK.key,
         NeutralAbility::SpellBlock,
         AbilityDef {
             max_level: 1,
-            cooldown: &[crate::data::ROSHAN_SPELL_BLOCK
+            cooldown: &[crate::roshan_data::ROSHAN_SPELL_BLOCK
                 .first("AbilityCooldown")
                 .secs()
                 .ticks()],
@@ -1877,7 +1879,7 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
         Spell::Block {
             buff: Buff::of(
                 Stat::StatusResistPct,
-                all(crate::data::ROSHAN_SPELL_BLOCK
+                all(crate::roshan_data::ROSHAN_SPELL_BLOCK
                     .first("status_resistance")
                     .int()),
             ),
@@ -1887,7 +1889,7 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
     ),
     entry(
         AbilityId(83),
-        crate::data::ROSHAN_BASH.key,
+        crate::roshan_data::ROSHAN_BASH.key,
         N::Bash,
         AbilityDef {
             max_level: 1,
@@ -1895,15 +1897,15 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
             ..passive("Bash")
         },
         Spell::Strike(Strike::Bash {
-            chance_pct: crate::data::ROSHAN_BASH.first("bash_chance").int(),
-            damage: all(crate::data::ROSHAN_BASH.first("bonus_damage").int()),
-            stun_ms: all(crate::data::ROSHAN_BASH.first("stun_duration").0),
+            chance_pct: crate::roshan_data::ROSHAN_BASH.first("bash_chance").int(),
+            damage: all(crate::roshan_data::ROSHAN_BASH.first("bonus_damage").int()),
+            stun_ms: all(crate::roshan_data::ROSHAN_BASH.first("stun_duration").0),
             effect: EffectId(84),
         }),
     ),
     entry(
         AbilityId(84),
-        crate::data::ROSHAN_SLAM.key,
+        crate::roshan_data::ROSHAN_SLAM.key,
         N::RoshanSlam,
         AbilityDef {
             max_level: 1,
@@ -1912,35 +1914,38 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
                 Aim::Own,
                 false,
                 &[0],
-                &[crate::data::ROSHAN_SLAM
+                &[crate::roshan_data::ROSHAN_SLAM
                     .first("AbilityCooldown")
                     .secs()
                     .ticks()],
                 0,
-                crate::data::ROSHAN_SLAM.first("AbilityCastPoint").0 as u32,
+                crate::roshan_data::ROSHAN_SLAM.first("AbilityCastPoint").0 as u32,
                 570,
             )
         },
         Spell::Cast {
             act: Act::Stomp {
-                radius: all(crate::data::ROSHAN_SLAM.first("radius").int()),
-                damage: all(crate::data::ROSHAN_SLAM.first("damage").int()),
+                radius: all(crate::roshan_data::ROSHAN_SLAM.first("radius").int()),
+                damage: all(crate::roshan_data::ROSHAN_SLAM.first("damage").int()),
                 growth: Some(crate::DamageGrowth {
-                    per_step: all(crate::data::ROSHAN_SLAM.first("damage_growth").int()),
+                    per_step: all(crate::roshan_data::ROSHAN_SLAM.first("damage_growth").int()),
                     clock: crate::GrowthClock {
                         first_after_horn: 60 * rules::TICKS_PER_SECOND,
                         period: 60 * rules::TICKS_PER_SECOND,
                         cap: u32::MAX,
                     },
                 }),
-                other_pct: 100 + crate::data::ROSHAN_SLAM.first("damage_bonus_creeps").int(),
+                other_pct: 100
+                    + crate::roshan_data::ROSHAN_SLAM
+                        .first("damage_bonus_creeps")
+                        .int(),
                 kind: DamageKind::Magical,
-                hero_ms: all(crate::data::ROSHAN_SLAM.first("slow_duration").0),
-                other_ms: all(crate::data::ROSHAN_SLAM.first("slow_duration").0),
+                hero_ms: all(crate::roshan_data::ROSHAN_SLAM.first("slow_duration").0),
+                other_ms: all(crate::roshan_data::ROSHAN_SLAM.first("slow_duration").0),
                 then: Then::Wear {
                     buff: chill(
-                        all(-crate::data::ROSHAN_SLAM.first("slow_amount").int()),
-                        all(-crate::data::ROSHAN_SLAM.first("slow_amount").int()),
+                        all(-crate::roshan_data::ROSHAN_SLAM.first("slow_amount").int()),
+                        all(-crate::roshan_data::ROSHAN_SLAM.first("slow_amount").int()),
                     ),
                     effect: EffectId(83),
                 },
@@ -1956,7 +1961,7 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
     ),
     entry(
         AbilityId(85),
-        crate::data::ROSHAN_REVENGEROAR.key,
+        crate::roshan_data::ROSHAN_REVENGEROAR.key,
         N::RevengeRoar,
         AbilityDef {
             max_level: 1,
@@ -1968,7 +1973,7 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
                 Aim::Own,
                 false,
                 &[0],
-                &[crate::data::ROSHAN_REVENGEROAR
+                &[crate::roshan_data::ROSHAN_REVENGEROAR
                     .first("AbilityCooldown")
                     .secs()
                     .ticks()],
@@ -1988,13 +1993,13 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
     ),
     entry(
         AbilityId(86),
-        crate::data::ROSHAN_GRAB.key,
+        crate::roshan_data::ROSHAN_GRAB.key,
         N::GrabAndThrow,
         AbilityDef {
             max_level: 1,
             pierces: crate::Pierces::Yes,
             block: crate::BlockTiming::Cast,
-            duration: crate::data::ROSHAN_GRAB
+            duration: crate::roshan_data::ROSHAN_GRAB
                 .first("channel_time")
                 .secs()
                 .ticks(),
@@ -2004,19 +2009,21 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
                 Aim::Unit,
                 true,
                 &[0],
-                &[crate::data::ROSHAN_GRAB
+                &[crate::roshan_data::ROSHAN_GRAB
                     .first("AbilityCooldown")
                     .secs()
                     .ticks()],
-                crate::data::ROSHAN_GRAB.first("AbilityCastRange").int(),
-                crate::data::ROSHAN_GRAB.first("AbilityCastPoint").0 as u32,
+                crate::roshan_data::ROSHAN_GRAB
+                    .first("AbilityCastRange")
+                    .int(),
+                crate::roshan_data::ROSHAN_GRAB.first("AbilityCastPoint").0 as u32,
                 530,
             )
         },
         Spell::Cast {
             when: When::Think(CastRule {
                 among: Among::Foes(Within::Radius(
-                    crate::data::ROSHAN_GRAB.first("cast_range").int(),
+                    crate::roshan_data::ROSHAN_GRAB.first("cast_range").int(),
                 )),
                 needs: &[Need::Migrating],
                 marks: &[Mark::RealHero],
@@ -2036,7 +2043,7 @@ pub const WATER_BUBBLE_EFFECT: EffectId = EffectId(54);
 pub const PURGE_EFFECT: EffectId = EffectId(55);
 
 const ROSHAN_ROAR: Roar = Roar {
-    windup: crate::data::ROSHAN_REVENGEROAR
+    windup: crate::roshan_data::ROSHAN_REVENGEROAR
         .first("windup_time")
         .secs()
         .ticks(),
@@ -2044,21 +2051,23 @@ const ROSHAN_ROAR: Roar = Roar {
     emitter_effect: EffectId(86),
     disarm_effect: EffectId(87),
     damage_effect: EffectId(88),
-    radius: crate::data::ROSHAN_REVENGEROAR.first("radius").int(),
-    damage: crate::data::ROSHAN_REVENGEROAR.first("damage").int(),
+    radius: crate::roshan_data::ROSHAN_REVENGEROAR.first("radius").int(),
+    damage: crate::roshan_data::ROSHAN_REVENGEROAR.first("damage").int(),
     growth: crate::DamageGrowth {
         clock: crate::GrowthClock {
             first_after_horn: 60 * rules::TICKS_PER_SECOND,
             period: 60 * rules::TICKS_PER_SECOND,
             cap: u32::MAX,
         },
-        per_step: all(crate::data::ROSHAN_REVENGEROAR.first("damage_growth").int()),
+        per_step: all(crate::roshan_data::ROSHAN_REVENGEROAR
+            .first("damage_growth")
+            .int()),
     },
-    disarm: crate::data::ROSHAN_REVENGEROAR
+    disarm: crate::roshan_data::ROSHAN_REVENGEROAR
         .first("disarm_duration")
         .secs()
         .ticks(),
-    aura_duration: crate::data::ROSHAN_REVENGEROAR
+    aura_duration: crate::roshan_data::ROSHAN_REVENGEROAR
         .first("duration")
         .secs()
         .ticks(),
@@ -2066,7 +2075,7 @@ const ROSHAN_ROAR: Roar = Roar {
         growth_clock: None,
         whom: Whom::Enemies,
         reaches: Reach::Living,
-        radius: crate::data::ROSHAN_REVENGEROAR.first("radius").int(),
+        radius: crate::roshan_data::ROSHAN_REVENGEROAR.first("radius").int(),
         linger: 15,
         modifier: AuraModifier::Spell(N::RevengeRoar),
         breakable: false,
@@ -2075,7 +2084,9 @@ const ROSHAN_ROAR: Roar = Roar {
     },
     buff: Buff::of(
         Stat::IncomingDamagePct,
-        all(crate::data::ROSHAN_REVENGEROAR.first("damage_pct").int()),
+        all(crate::roshan_data::ROSHAN_REVENGEROAR
+            .first("damage_pct")
+            .int()),
     ),
 };
 
@@ -2102,33 +2113,40 @@ pub const fn migration_of(ability: NeutralAbility) -> Option<&'static crate::Mig
     }
 }
 const ROSHAN_THROW: Grab = Grab {
-    duration: crate::data::ROSHAN_GRAB
+    duration: crate::roshan_data::ROSHAN_GRAB
         .first("channel_time")
         .secs()
         .ticks(),
-    contact_after: crate::data::ROSHAN_GRAB.first("interval").secs().ticks(),
-    distance: crate::data::ROSHAN_GRAB
+    contact_after: crate::roshan_data::ROSHAN_GRAB
+        .first("interval")
+        .secs()
+        .ticks(),
+    distance: crate::roshan_data::ROSHAN_GRAB
         .first("max_knockback_distance")
         .int(),
-    flight: crate::data::ROSHAN_GRAB
+    flight: crate::roshan_data::ROSHAN_GRAB
         .first("knockback_duration")
         .secs()
         .ticks(),
-    height: crate::data::ROSHAN_GRAB.first("knockback_height").int(),
-    damage: crate::data::ROSHAN_GRAB.first("damage").int(),
-    damage_per_throw: crate::data::ROSHAN_GRAB.first("damage_per_combo").int(),
+    height: crate::roshan_data::ROSHAN_GRAB
+        .first("knockback_height")
+        .int(),
+    damage: crate::roshan_data::ROSHAN_GRAB.first("damage").int(),
+    damage_per_throw: crate::roshan_data::ROSHAN_GRAB
+        .first("damage_per_combo")
+        .int(),
     health_growth: crate::DamageGrowth {
         clock: crate::GrowthClock {
             first_after_horn: 0,
             period: 60 * rules::TICKS_PER_SECOND,
             cap: u32::MAX,
         },
-        per_step: all(crate::data::ROSHAN_GRAB
+        per_step: all(crate::roshan_data::ROSHAN_GRAB
             .first("damage_growth_curr_hp_pct")
             .0
             / 10),
     },
-    stun: crate::data::ROSHAN_GRAB
+    stun: crate::roshan_data::ROSHAN_GRAB
         .first("stun_duration")
         .secs()
         .ticks(),

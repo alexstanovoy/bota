@@ -249,15 +249,18 @@ pub struct ScriptData {
     pub values: &'static [(&'static str, &'static [Dec])],
 }
 impl ScriptData {
-    pub const fn first(&self, key: &str) -> Dec {
+    pub const fn value(&self, key: &str) -> &'static [Dec] {
         let mut at = 0;
         while at < self.values.len() {
             if str_eq(self.values[at].0, key) {
-                return self.values[at].1[0];
+                return self.values[at].1;
             }
             at += 1;
         }
         panic!("missing script field")
+    }
+    pub const fn first(&self, key: &str) -> Dec {
+        self.value(key)[0]
     }
 }
 

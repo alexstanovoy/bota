@@ -8,8 +8,8 @@ use bota_proto::{Aim, Attribute, Attributes, EffectId, Fixed, ItemId};
 use super::items::*;
 use crate::{
     Affects, AllyUse, Carried, Dec, DisassembleRule, Dispel, Drink, Grenade, Immunity, ItemData,
-    ItemDef, LOTUS_TAKE_RANGE, Mend, NOTHING, OBSERVER_WARD, Odds, OnAttack, PLAIN, Pool, Recipe,
-    SENTRY_WARD, Scroll, Spends, Stock, UseSpec, hundredths_per_second, points, points_with, rules,
+    ItemDef, LOTUS_TAKE_RANGE, Mend, NOTHING, Odds, OnAttack, PLAIN, Pool, Recipe,
+    Scroll, Spends, Stock, UseSpec, hundredths_per_second, points, points_with, rules,
 };
 
 /// The row of an item as its script gives it; a row of the catalog adds what bota does with it.
@@ -152,7 +152,7 @@ const fn bracer_kin(d: &ItemData, which: Attribute, five: &str, two: &str) -> At
 }
 
 /// Every item, each its script's row and what bota does with it.
-pub(crate) const ITEM_ROWS: &[ItemDef] = &[
+pub(crate) static ITEM_ROWS: &[ItemDef] = &[
     ItemDef {
         name: "Boots of Speed",
         carried: Carried {
@@ -211,7 +211,7 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
         aim: Some(Aim::Point),
         spends: Spends::One,
         effect: UseSpec::Ward {
-            units: &[OBSERVER_WARD],
+            units: &crate::OBSERVER_WARDS,
             ticks: ticks(&ITEM_WARD_OBSERVER, "lifetime"),
         },
         // "Hold Control to give one Observer Ward to an allied hero".
@@ -237,7 +237,7 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
         aim: Some(Aim::Point),
         spends: Spends::One,
         effect: UseSpec::Ward {
-            units: &[SENTRY_WARD],
+            units: &crate::SENTRY_WARDS,
             ticks: ticks(&ITEM_WARD_SENTRY, "lifetime"),
         },
         // "Hold Control to give one Sentry Ward to an allied hero".
@@ -1047,7 +1047,7 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
         charges: 1,
         spends: Spends::One,
         effect: UseSpec::Ward {
-            units: &crate::BANNERS,
+            units: &crate::BANNER_WARDS,
             ticks: ticks(&ITEM_ROSHANS_BANNER, "duration"),
         },
         limits: ITEM_ROSHANS_BANNER.limits,

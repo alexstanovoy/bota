@@ -770,7 +770,7 @@ const fn max_vision() -> i32 {
         if let crate::UseSpec::Ward { units, .. } = crate::ITEMS[at].effect {
             let mut level = 0;
             while level < units.len() {
-                most = sight(most, &units[level]);
+                most = sight(most, units[level].unit());
                 level += 1;
             }
         }

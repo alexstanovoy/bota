@@ -1,13 +1,16 @@
 //! The planted Banner: hit-count health and a protection aura, by its item level.
-use crate::data::items::ITEM_ROSHANS_BANNER;
+const ITEM_ROSHANS_BANNER: crate::ScriptData = crate::ScriptData {
+    key: "item_roshans_banner",
+    values: crate::item_table::script_values(bota_proto::ItemId::ROSHANS_BANNER),
+};
 
 /// Each upgrade of the planted ward uses the same script's health and aura rows.
-const BANNER_AURAS: [[crate::Aura; 1]; 3] = [[banner_aura(0)], [banner_aura(1)], [banner_aura(2)]];
-pub const BANNERS: [crate::UnitDef; 3] = [banner(0), banner(1), banner(2)];
+static BANNER_AURAS: [[crate::Aura; 1]; 3] = [[banner_aura(0)], [banner_aura(1)], [banner_aura(2)]];
+pub static BANNERS: [crate::UnitDef; 3] = [banner(0), banner(1), banner(2)];
 
 const fn banner(level: usize) -> crate::UnitDef {
     use crate::HitCount;
-    use crate::data::BANNER_UNIT as U;
+    use crate::roshan_data::BANNER_UNIT as U;
     let hp = ITEM_ROSHANS_BANNER.value("health")[level].int();
     let hits = ITEM_ROSHANS_BANNER.value("health_tooltip")[level].int();
     crate::UnitDef {

@@ -271,7 +271,7 @@ impl Fnv {
     }
 
     /// What a use does, each kind under a tag of its own.
-    const fn effect(self, value: UseSpec) -> Fnv {
+    const fn effect(self, value: UseSpec, item: ItemId) -> Fnv {
         match value {
             UseSpec::Refresh { items } => self.u64(15).flag(items),
             UseSpec::None => self.u64(0),
@@ -279,9 +279,18 @@ impl Fnv {
             UseSpec::PlantTree { ticks } => self.u64(2).u64(ticks as u64),
             UseSpec::FellTree => self.u64(3),
             UseSpec::Ward { units, ticks } => {
-                let mut h = self.u64(4).u64(units[0].kind as u64).u64(ticks as u64);
-                if units.len() > 1 {
+                let mut h = self.u64(4).u64(units[0].kind() as u64).u64(ticks as u64);
+                // The canonical singleton is already identified by the item's own id.
+                // Every other selection includes its ordered, unforgeable definition keys.
+                if units.len() > 1 || units[0].level() != 0 || units[0].source_item().0 != item.0 {
                     h = h.u64(0xAB).u64(units.len() as u64);
+                    let mut row = 0;
+                    while row < units.len() {
+                        h = h
+                            .u64(units[row].source_item().0 as u64)
+                            .u64(units[row].level() as u64);
+                        row += 1;
+                    }
                 }
                 h
             }
@@ -456,7 +465,7 @@ pub(crate) const fn item_digest(def: &ItemDef) -> u64 {
         .flag(secret_shop)
         .flag(kept_empty)
         .flag(ally_target)
-        .effect(effect)
+        .effect(effect, id)
         .ally(ally)
         .u64(lifetime as u64);
     // What only a few items have adds to the digest only where it is: an item

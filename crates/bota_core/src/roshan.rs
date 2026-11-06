@@ -12,7 +12,7 @@
 
 use bota_proto::{Fixed, ObjectiveKind, UnitKind, Vec2};
 
-use crate::data::ROSHAN_UNIT as U;
+use crate::roshan_data::ROSHAN_UNIT as U;
 use crate::unit::BARE_UNIT;
 use crate::{GoldRange, HomeDef, LairDef, NeutralKind, UnitDef, rules};
 
@@ -137,7 +137,7 @@ pub const ROSHAN_DROPS: [crate::LairDrop; 4] = [
 pub(crate) const ROSHAN_ARMOR_AURA: crate::Aura = crate::Aura {
     whom: crate::Whom::Allies,
     reaches: crate::Reach::Living,
-    radius: crate::data::ROSHAN_DEVOTION.first("radius").int(),
+    radius: crate::roshan_data::ROSHAN_DEVOTION.first("radius").int(),
     linger: rules::TICKS_PER_SECOND / 2,
     breakable: false,
     invulnerable: false,
@@ -161,14 +161,16 @@ pub const ROSHAN_MIGRATION: crate::Migration = crate::Migration {
         crate::NeutralAbility::RoshanSlam,
         crate::NeutralAbility::GrabAndThrow,
     ],
-    max_stops: crate::data::ROSHAN_GRAB.first("max_interrupt_count").int() as u8,
-    speed_per_stop: crate::data::ROSHAN_INHERENT_BUFFS
+    max_stops: crate::roshan_data::ROSHAN_GRAB
+        .first("max_interrupt_count")
+        .int() as u8,
+    speed_per_stop: crate::roshan_data::ROSHAN_INHERENT_BUFFS
         .first("move_pits_bonus_speed_per_interrupt")
         .int(),
-    max_speed_bonus: crate::data::ROSHAN_INHERENT_BUFFS
+    max_speed_bonus: crate::roshan_data::ROSHAN_INHERENT_BUFFS
         .first("move_pits_max_bonus_speed")
         .int(),
-    slow_resist_pct: crate::data::ROSHAN_INHERENT_BUFFS
+    slow_resist_pct: crate::roshan_data::ROSHAN_INHERENT_BUFFS
         .first("move_pits_slow_resistance")
         .int(),
     contact: crate::Contact {

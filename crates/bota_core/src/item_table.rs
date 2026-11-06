@@ -69,6 +69,10 @@ const _: () = {
     let mut at = 0;
     while at < ITEMS.len() {
         let def = &ITEMS[at];
+        assert!(
+            ward_sources_precede_item(def),
+            "ward values must be inside the negotiated prefix"
+        );
         let instant = def.point == 0 && def.backswing == 0 && def.duration == 0;
         assert!(!def.ignores_channel || instant);
         assert!(!def.immediate || instant);
@@ -178,4 +182,30 @@ const fn parts_cost(parts: &[ItemId]) -> i32 {
         at += 1;
     }
     sum
+}
+
+/// Script values cross the private data boundary through catalogue rows. A const
+/// constructor can read these without depending on the size of the placed table.
+pub(crate) const fn script_values(id: ItemId) -> &'static [(&'static str, &'static [crate::Dec])] {
+    let mut row = 0;
+    while row < ITEM_ROWS.len() {
+        if ITEM_ROWS[row].id.0 == id.0 {
+            return ITEM_ROWS[row].values;
+        }
+        row += 1;
+    }
+    panic!("unknown item script")
+}
+
+pub(crate) const fn ward_sources_precede_item(item: &ItemDef) -> bool {
+    if let crate::UseSpec::Ward { units, .. } = item.effect {
+        let mut row = 0;
+        while row < units.len() {
+            if units[row].source_item().0 > item.id.0 {
+                return false;
+            }
+            row += 1;
+        }
+    }
+    true
 }

@@ -508,3 +508,26 @@ fn identical_sources_have_a_fixed_digest_independent_of_their_directory() {
     // Explicit framing and byte order, independent of Rust's Hash or Debug implementations.
     assert_eq!(first.identity(), 0x2f4e_a2e6_4c11_1c58);
 }
+
+#[test]
+fn banner_construction_policy_remains_in_the_rules_identity() {
+    let sources = Sources::new();
+    sources.write(
+        "crates/bota_core/src/lib.rs",
+        "mod rules; mod data; mod banner;",
+    );
+    let policy = include_str!("../src/banner.rs");
+    let changed = policy.replace("collision: 18,", "collision: 19,");
+    assert_ne!(
+        changed, policy,
+        "the production construction policy is present"
+    );
+    sources.write("crates/bota_core/src/banner.rs", policy);
+    let initial = sources.identity();
+    sources.write("crates/bota_core/src/banner.rs", &changed);
+    assert_ne!(
+        sources.identity(),
+        initial,
+        "a Banner rule change must move its identity"
+    );
+}
