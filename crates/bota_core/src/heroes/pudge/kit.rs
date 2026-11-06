@@ -1,6 +1,6 @@
 //! What Pudge is made of: his body, his four abilities and the hero row.
 
-use bota_proto::{AbilityId, Aim, Attribute, Attributes, Fixed, HeroId};
+use bota_proto::{AbilityId, Aim, Attributes, HeroId};
 
 use super::numbers::{
     DISMEMBER_CAST_POINT_MS, DISMEMBER_COOLDOWN, DISMEMBER_MANA, DISMEMBER_RANGE, DISMEMBER_TICKS,
@@ -8,43 +8,55 @@ use super::numbers::{
     MEAT_SHIELD_COOLDOWN, MEAT_SHIELD_MANA, PUDGE_TURN_RATE_BRADS, ROT_RADIUS,
 };
 use crate::ability::BARE_ABILITY;
+use crate::heroes_data::{
+    NPC_DOTA_HERO_PUDGE as DATA, PUDGE_DISMEMBER, PUDGE_FLESH_HEAP, PUDGE_INNATE_GRAFT_FLESH,
+    PUDGE_MEAT_HOOK, PUDGE_ROT,
+};
+use crate::item_data::str_eq;
 use crate::unit::NO_GROWTH;
-use crate::{AbilityDef, Growth, HERO, HeroDef, Pierces, TargetFilter, UnitDef, rules};
+use crate::{
+    AbilityData, AbilityDef, Behavior, Growth, HERO, HeroDef, Pierces, TargetFilter, TargetTeam,
+    UnitDef, UnitTargets, fixed, per_tick_of,
+};
 
-/// Pudge: heavy, slow, and swings by hand, at the numbers of the game's
-/// `scripts/npc/heroes/npc_dota_hero_pudge.txt` (client 6957): 45 to 51 base
-/// attack damage, a base attack time of 1.7 seconds, 2.5 health a second;
-/// his attack animation is Liquipedia's *Pudge*: 0.5 + 1.17.
+/// Pudge: heavy, slow, and swings by hand, at his script's numbers. His backswing the script
+/// does not hold: Liquipedia's *Pudge* gives his attack animation as 0.5 + 1.17.
 pub const PUDGE: UnitDef = UnitDef {
     attributes: Attributes {
-        strength: Fixed::from_int(25),
-        agility: Fixed::from_int(13),
-        intelligence: Fixed::from_int(16),
+        strength: fixed(DATA.strength),
+        agility: fixed(DATA.agility),
+        intelligence: fixed(DATA.intelligence),
     },
-    primary: Some(Attribute::Strength),
-    max_hp: 120,
-    max_mana: 75,
-    hp_regen: Fixed::from_ratio(5, 2 * rules::TICKS_PER_SECOND as i32),
-    damage: 45,
-    damage_spread: 6,
-    attack_range: 175,
-    attack_time: 1700,
-    attack_point: 500,
+    primary: Some(DATA.primary),
+    max_hp: DATA.health,
+    max_mana: DATA.mana,
+    hp_regen: per_tick_of(DATA.health_regen),
+    damage: DATA.damage_min,
+    damage_spread: DATA.damage_max - DATA.damage_min,
+    attack_range: DATA.attack_range,
+    acquisition: DATA.acquisition,
+    attack_time: DATA.attack_rate.0,
+    attack_point: DATA.attack_point.0,
     attack_backswing: 1170,
     projectile_speed: None,
-    armor: 0,
-    move_speed: 280,
+    armor: DATA.armor.int(),
+    magic_resist_pct: DATA.magic_resist.int(),
+    move_speed: DATA.move_speed,
     turn_rate: PUDGE_TURN_RATE_BRADS,
+    day_vision: DATA.day_vision,
+    night_vision: DATA.night_vision,
     per_level: Growth {
         attributes: Attributes {
-            strength: Fixed::from_int(3),
-            agility: Fixed::from_ratio(14, 10),
-            intelligence: Fixed::from_ratio(18, 10),
+            strength: fixed(DATA.strength_gain),
+            agility: fixed(DATA.agility_gain),
+            intelligence: fixed(DATA.intelligence_gain),
         },
         ..NO_GROWTH
     },
     ..HERO
 };
+
+const _: () = assert!(DATA.melee, "Pudge swings by hand: no projectile");
 
 /// Pudge's hero row: his body and slots, the flesh heap as his innate and no
 /// talents.
@@ -65,10 +77,10 @@ pub const HERO_DEF: HeroDef = HeroDef {
 
 pub const MEAT_HOOK: AbilityDef = AbilityDef {
     id: AbilityId::MEAT_HOOK,
-    key: "pudge_meat_hook",
+    key: PUDGE_MEAT_HOOK.key,
     name: "Meat Hook",
     aim: Aim::Point,
-    max_level: rules::ABILITY_MAX_LEVEL,
+    max_level: PUDGE_MEAT_HOOK.max_level,
     passive: false,
     mana: &HOOK_MANA,
     cooldown: &HOOK_COOLDOWN,
@@ -81,14 +93,14 @@ pub const MEAT_HOOK: AbilityDef = AbilityDef {
 
 pub const ROT: AbilityDef = AbilityDef {
     id: AbilityId::ROT,
-    key: "pudge_rot",
+    key: PUDGE_ROT.key,
     name: "Rot",
-    max_level: rules::ABILITY_MAX_LEVEL,
+    max_level: PUDGE_ROT.max_level,
     passive: false,
-    toggle: true,
-    ignores_channel: true,
-    mana: &[0, 0, 0, 0],
-    cooldown: &[0, 0, 0, 0],
+    toggle: PUDGE_ROT.behavior.has(Behavior::TOGGLE),
+    ignores_channel: PUDGE_ROT.behavior.has(Behavior::IGNORE_CHANNEL),
+    mana: &ROT_MANA,
+    cooldown: &ROT_COOLDOWN,
     range: ROT_RADIUS,
     ..BARE_ABILITY
 };
@@ -96,21 +108,21 @@ pub const ROT: AbilityDef = AbilityDef {
 /// Pudge's innate: it sits in no slot and is never learned.
 pub const FLESH_HEAP: AbilityDef = AbilityDef {
     id: AbilityId::FLESH_HEAP,
-    key: "pudge_innate_graft_flesh",
+    key: PUDGE_INNATE_GRAFT_FLESH.key,
     name: "Flesh Heap",
-    max_level: 1,
+    max_level: PUDGE_INNATE_GRAFT_FLESH.max_level,
     range: FLESH_HEAP_RANGE,
     ..BARE_ABILITY
 };
 
 pub const MEAT_SHIELD: AbilityDef = AbilityDef {
     id: AbilityId::MEAT_SHIELD,
-    key: "pudge_flesh_heap",
+    key: PUDGE_FLESH_HEAP.key,
     name: "Meat Shield",
-    max_level: rules::ABILITY_MAX_LEVEL,
+    max_level: PUDGE_FLESH_HEAP.max_level,
     passive: false,
-    immediate: true,
-    ignores_channel: true,
+    immediate: PUDGE_FLESH_HEAP.behavior.has(Behavior::IMMEDIATE),
+    ignores_channel: PUDGE_FLESH_HEAP.behavior.has(Behavior::IGNORE_CHANNEL),
     mana: &MEAT_SHIELD_MANA,
     cooldown: &MEAT_SHIELD_COOLDOWN,
     ..BARE_ABILITY
@@ -118,13 +130,13 @@ pub const MEAT_SHIELD: AbilityDef = AbilityDef {
 
 pub const DISMEMBER: AbilityDef = AbilityDef {
     id: AbilityId::DISMEMBER,
-    key: "pudge_dismember",
+    key: PUDGE_DISMEMBER.key,
     name: "Dismember",
     block: crate::BlockTiming::Cast,
     aim: Aim::Unit,
-    max_level: rules::ULT_MAX_LEVEL,
+    max_level: PUDGE_DISMEMBER.max_level,
     passive: false,
-    ultimate: true,
+    ultimate: PUDGE_DISMEMBER.ultimate,
     at_an_enemy: true,
     mana: &DISMEMBER_MANA,
     cooldown: &DISMEMBER_COOLDOWN,
@@ -136,4 +148,47 @@ pub const DISMEMBER: AbilityDef = AbilityDef {
     pierces: Pierces::Yes,
     targets: TargetFilter::ENEMY_HEROES_AND_BASIC,
     ..BARE_ABILITY
+};
+
+/// Rot's cost and wait, by level: the script gives it none.
+const ROT_MANA: [i32; 4] = crate::ints_of(PUDGE_ROT.mana);
+const ROT_COOLDOWN: [u32; 4] = crate::ticks_of(PUDGE_ROT.cooldown);
+
+/// What bota writes of each ability beside its script, checked against the script: its aim, its
+/// reach of a debuff-immune enemy, and whom it is aimed at.
+const _: () = {
+    let aimed = [
+        (&PUDGE_MEAT_HOOK, Behavior::POINT),
+        (&PUDGE_ROT, Behavior::NO_TARGET),
+        (&PUDGE_FLESH_HEAP, Behavior::NO_TARGET),
+        (&PUDGE_INNATE_GRAFT_FLESH, Behavior::PASSIVE),
+        (&PUDGE_DISMEMBER, Behavior::UNIT_TARGET),
+    ];
+    let mut at = 0;
+    while at < aimed.len() {
+        let (data, aim): (&AbilityData, Behavior) = aimed[at];
+        assert!(data.behavior.has(aim));
+        assert!(
+            str_eq(DATA.abilities[at], data.key),
+            "slot order as the script's"
+        );
+        at += 1;
+    }
+    assert!(DATA.abilities.len() == aimed.len());
+    assert!(matches!(MEAT_HOOK.pierces, Pierces::NotCouriers));
+    assert!(matches!(PUDGE_MEAT_HOOK.pierces_immunity, Some(true)));
+    assert!(matches!(PUDGE_ROT.pierces_immunity, Some(false)));
+    assert!(matches!(DISMEMBER.pierces, Pierces::Yes));
+    assert!(matches!(PUDGE_DISMEMBER.pierces_immunity, Some(true)));
+    assert!(matches!(
+        PUDGE_DISMEMBER.target_team,
+        Some(TargetTeam::Enemy)
+    ));
+    assert!(
+        PUDGE_DISMEMBER
+            .target_types
+            .is(UnitTargets::HERO.and(UnitTargets::BASIC))
+    );
+    assert!(PUDGE_INNATE_GRAFT_FLESH.innate);
+    assert!(!PUDGE_DISMEMBER.behavior.has(Behavior::IMMEDIATE));
 };

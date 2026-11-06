@@ -11,11 +11,11 @@ use crate::overrides::{self, OVERRIDES, PATCH};
 use crate::registry::Registered;
 
 /// How the line naming the client build the table was read from starts.
-const BUILD_LINE: &str = "//! Read from ";
+pub const BUILD_LINE: &str = "//! Read from ";
 
-/// Whether two tables hold the same items: the same text but for the client
+/// Whether two tables hold the same rows: the same text but for the client
 /// build each was read from, so an install updated without a change to the
-/// items still agrees with the table.
+/// rows still agrees with the table.
 pub fn same_items(one: &str, other: &str) -> bool {
     let items = |table: &str| {
         table
@@ -222,7 +222,7 @@ fn secs(milli: Milli) -> String {
 }
 
 /// The shortest decimal of a number in thousandths: `250` is `0.25`.
-fn decimal(milli: Milli) -> String {
+pub fn decimal(milli: Milli) -> String {
     let sign = if milli < 0 { "-" } else { "" };
     let (whole, fraction) = (milli.abs() / 1000, milli.abs() % 1000);
     if fraction == 0 {

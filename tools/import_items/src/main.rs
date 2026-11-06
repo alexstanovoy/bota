@@ -1,19 +1,23 @@
 //! `import_items`: writes `crates/bota_core/src/data/items.rs` from the `scripts/npc/items.txt`
-//! of a local Dota 2 install, for every item the id registry names. A development tool, never a
-//! build step: the table it writes is committed, holds numbers and Dota's internal names only,
-//! and names the client build it was read from.
+//! of a local Dota 2 install, for every item the id registry names, and
+//! `crates/bota_core/src/heroes_data.rs` from the hero scripts, for every hero of [`HEROES`]. A
+//! development tool, never a build step: the tables it writes are committed, hold numbers and
+//! Dota's internal names only, and name the client build they were read from.
 //!
 //! ```text
 //! import_items [--dota <"dota 2 beta" folder>] [--check] [--add <item key>]...
 //! ```
 //!
 //! `--add` appends a registry line for each new item key first. `--check` writes nothing and
-//! fails when the committed table holds other items than the install gives (the client build it
+//! fails when a committed table holds other rows than the install gives (the client build it
 //! names aside).
 
+mod ability;
 mod boss;
 mod dec;
 mod emit;
+mod emit_heroes;
+mod hero;
 mod install;
 mod item;
 mod overrides;
@@ -32,6 +36,15 @@ fn repo() -> PathBuf {
 fn table_path() -> PathBuf {
     repo().join("crates/bota_core/src/data/items.rs")
 }
+
+/// The committed hero table.
+fn heroes_path() -> PathBuf {
+    repo().join("crates/bota_core/src/heroes_data.rs")
+}
+
+/// The heroes whose numbers bota reads from the install. A hero not named here keeps its
+/// numbers in its own module until it moves over.
+const HEROES: &[&str] = &["npc_dota_hero_pudge"];
 
 /// The id registry.
 fn registry_path() -> PathBuf {
@@ -98,17 +111,23 @@ fn run() -> Result<(), String> {
         std::fs::write(&registry_path, &registry).map_err(|e| format!("{registry_path:?}: {e}"))?;
     }
     let table = rustfmt(&emit::table(&source, &registry::items(&registry)?)?)?;
-    let path = table_path();
-    if args.check {
-        let committed = std::fs::read_to_string(&path).map_err(|e| format!("{path:?}: {e}"))?;
-        if !emit::same_items(&committed, &table) {
-            return Err(format!(
-                "{path:?} differs from what the install gives: run import_items"
-            ));
+    let heroes = rustfmt(&emit_heroes::table(&install::read_heroes(
+        args.dota.as_deref(),
+        HEROES,
+    )?)?)?;
+    for (path, made) in [(table_path(), table), (heroes_path(), heroes)] {
+        if args.check {
+            let committed = std::fs::read_to_string(&path).map_err(|e| format!("{path:?}: {e}"))?;
+            if !emit::same_items(&committed, &made) {
+                return Err(format!(
+                    "{path:?} differs from what the install gives: run import_items"
+                ));
+            }
+            continue;
         }
-        return Ok(());
+        std::fs::write(&path, made).map_err(|e| format!("{path:?}: {e}"))?;
     }
-    std::fs::write(&path, table).map_err(|e| format!("{path:?}: {e}"))
+    Ok(())
 }
 
 /// `source` as `cargo fmt` leaves it in this repository, so a formatting pass never changes the
@@ -229,6 +248,21 @@ mod tests {
         assert!(
             crate::emit::same_items(&committed, &table),
             "the committed table is stale: run import_items"
+        );
+    }
+
+    /// The committed hero table is what the install on this machine gives, the build it names
+    /// aside: a new client build that changes a hero fails here until the table is regenerated.
+    #[test]
+    #[ignore = "needs a Dota 2 install"]
+    fn the_committed_hero_table_is_what_the_install_gives() {
+        let source = crate::install::read_heroes(None, crate::HEROES).expect("an install");
+        let table = crate::emit_heroes::table(&source).expect("importable heroes");
+        let table = crate::rustfmt(&table).expect("rustfmt");
+        let committed = std::fs::read_to_string(crate::heroes_path()).expect("the committed table");
+        assert!(
+            crate::emit::same_items(&committed, &table),
+            "the committed hero table is stale: run import_items"
         );
     }
 

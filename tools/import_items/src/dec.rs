@@ -6,8 +6,9 @@ const MAX_LEN: usize = 16;
 /// Thousandths of a number: `"0.25"` is 250. Bota's `Dec` holds the same.
 pub type Milli = i64;
 
-/// A decimal with at most three places (`"-15"`, `"0.25"`, `"7.0"`), in thousandths; anything
-/// else is refused.
+/// A decimal with at most three places (`"-15"`, `"0.25"`, `"7.0"`, and `"1.400000"`, whose
+/// further places are zeros, as the hero scripts write them), in thousandths; anything else is
+/// refused.
 pub fn milli(text: &str) -> Result<Milli, String> {
     let bad = || format!("{text:?} is no number of at most three decimal places");
     if text.is_empty() || text.len() > MAX_LEN {
@@ -23,7 +24,11 @@ pub fn milli(text: &str) -> Result<Milli, String> {
         None => (digits, ""),
     };
     let is_digits = |part: &str| part.bytes().all(|b| b.is_ascii_digit());
-    if whole.is_empty() || !is_digits(whole) || !is_digits(fraction) || fraction.len() > 3 {
+    if whole.is_empty() || !is_digits(whole) || !is_digits(fraction) {
+        return Err(bad());
+    }
+    let (fraction, beyond) = fraction.split_at(fraction.len().min(3));
+    if beyond.bytes().any(|b| b != b'0') {
         return Err(bad());
     }
     let whole: Milli = whole.parse().map_err(|_| bad())?;
@@ -65,6 +70,11 @@ mod tests {
         assert_eq!(milli("0.25"), Ok(250));
         assert_eq!(milli("-15"), Ok(-15_000));
         assert_eq!(milli("7.0"), Ok(7000));
+        assert_eq!(
+            milli("1.400000"),
+            Ok(1400),
+            "places past the third are zeros"
+        );
         assert_eq!(
             levels("35 50 65 80"),
             Ok(vec![35_000, 50_000, 65_000, 80_000])

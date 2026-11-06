@@ -103,6 +103,12 @@ impl Behavior {
     pub const ROOT_DISABLES: Behavior = Behavior(1 << 14);
     pub const SUPPRESS_ASSOCIATED_CONSUMABLE: Behavior = Behavior(1 << 15);
     pub const UNIT_TARGET: Behavior = Behavior(1 << 16);
+    /// Switched on and off: an ability's, never an item's.
+    pub const TOGGLE: Behavior = Behavior(1 << 17);
+    /// Kept out of the ability bar.
+    pub const HIDDEN: Behavior = Behavior(1 << 18);
+    /// An innate shown nowhere of its own.
+    pub const FORCE_NO_INNATE_UI: Behavior = Behavior(1 << 19);
 
     /// Both sets of flags.
     pub const fn and(self, other: Behavior) -> Behavior {
@@ -189,7 +195,8 @@ pub struct ItemData {
     pub values: &'static [(&'static str, &'static [Dec])],
 }
 
-/// Dota's `SpellDispellableType` of an item: which dispel takes off what it puts on.
+/// Dota's `SpellDispellableType` of an item or an ability: which dispel takes off what it puts
+/// on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Dispel {
     /// The script names none.
