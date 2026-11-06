@@ -615,6 +615,27 @@ fn pudge_mends_only_the_mana_his_intelligence_gives_eight_in_ten_seconds() {
     );
 }
 
+/// An enemy illusion falling beside Pudge is no hero to the heap (Liquipedia, *Pudge*: Flesh
+/// Heap "considers ... enemy illusions ... as creeps").
+#[test]
+fn a_flesh_heap_keeps_nothing_of_an_enemy_illusion_falling_near_it() {
+    let (mut world, pudge, hero) = pudge_and_a_hero_mark(200);
+    world.make_rune_illusions(hero);
+    let illusion = world
+        .entities
+        .iter()
+        .find(|&e| world.illusion.get(e).is_some_and(|made| made.of == hero))
+        .expect("a rune makes illusions");
+    world.transform.get_mut(illusion).expect("standing").pos =
+        world.pos(pudge).expect("Pudge stands") + Vec2::from_ints(150, 0);
+    world.settle();
+    world.health.insert(illusion, health(0));
+    let mut events = Vec::new();
+    world.bury(vec![(illusion, Some(pudge))], &mut events);
+    world.step();
+    assert_eq!(heap(&world, pudge), 0, "an illusion feeds it nothing");
+}
+
 /// A stack is worth two strength flat, whatever the hero's level, and the heap
 /// leaves magic resistance alone.
 #[test]
