@@ -2,7 +2,7 @@
 
 use bota_core::{ModifierKind, rules, tower_def};
 
-use crate::game::{Entity, Inventory, Modifier, Place, World, wire_id};
+use crate::game::{Entity, Inventory, Level, Modifier, Place, World, wire_id};
 use bota_proto::{
     AbilityId, AbilitySlot, EffectId, Fixed, HeroId, Inflictor, ItemId, ItemSlot, Order,
     RejectReason, SlotId, StatusFlags, Target, Team, Vec2,
@@ -794,6 +794,39 @@ fn a_hook_that_latches_frees_its_thrower_at_once() {
         facing,
         "and its thrower turns before the followthrough would have ended"
     );
+}
+
+/// Meat Hook kills an enemy illusion outright, as it does a creep (Valve 7.34: "Now
+/// instantly kills illusions"; Liquipedia: it "considers ... illusions as creeps").
+#[test]
+fn a_hook_kills_an_enemy_illusion_outright() {
+    let (mut world, pudge, hero) = pudge_and_a_hero_mark(600);
+    let mark = world.pos(hero).expect("standing");
+    // Sturdy enough that no hook's damage, nor anything else in the time, brings it down.
+    world.level.insert(hero, Level(rules::HERO_MAX_LEVEL));
+    world.settle();
+    world.fill_pools(hero);
+    world.make_rune_illusions(hero);
+    let illusion = world
+        .entities
+        .iter()
+        .find(|&e| world.illusion.get(e).is_some_and(|made| made.of == hero))
+        .expect("a rune makes illusions");
+    // The hero itself steps far out of the hook's way; one illusion stands where it stood.
+    world.transform.get_mut(hero).expect("standing").pos = mark + Vec2::from_ints(0, 3000);
+    world.transform.get_mut(illusion).expect("standing").pos = mark;
+    for other in world.entities.iter().collect::<Vec<_>>() {
+        if other != illusion && world.illusion.get(other).is_some() {
+            world.transform.get_mut(other).expect("standing").pos =
+                mark + Vec2::from_ints(0, -3000);
+        }
+    }
+    world.settle();
+    let home = world.pos(pudge).expect("Pudge stands");
+    cast(&mut world, 0, Target::Pos(home + Vec2::from_ints(600, 0)));
+    until_the_hook_flies(&mut world);
+    run(&mut world, rules::TICKS_PER_SECOND);
+    assert!(!world.alive(illusion), "the illusion it caught is dead");
 }
 
 /// Whether a flying hook holds something.

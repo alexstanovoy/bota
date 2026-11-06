@@ -130,12 +130,13 @@ impl World {
             Some(hook.owner),
         );
         let enemy = self.team.get(caught) != self.team.get(hook.owner);
-        if enemy
-            && self
+        // An illusion is a creep to the hook (Dota 7.34: "Now instantly kills illusions").
+        let executed = self.wears_illusion(caught)
+            || self
                 .kind
                 .get(caught)
-                .is_some_and(|kind| kind_def(*kind).creep)
-        {
+                .is_some_and(|kind| kind_def(*kind).creep);
+        if enemy && executed {
             // A point-target HP removal is neither damage nor a unit-target
             // cast, so nearby camp mates stay asleep. Sources:
             // https://liquipedia.net/dota2/Pudge
