@@ -744,12 +744,12 @@ impl Server {
         }
     }
 
-    /// Lets a stranger go, at once, for a newcomer from `from`: one let go and still read on
-    /// first, then one that has not said Hello, each time the oldest of the source that holds
-    /// the most, so that a source flooding the server lets its own go and not a fair client's
-    /// that is about to say Hello. A newcomer whose source holds as many strangers as that one
-    /// takes no place: it would only churn its own. Whether there is room then: a connection let
-    /// go still holds threads for a moment, so the live ones may pass `most` by those, never by
+    /// Lets a stranger go, at once, for a newcomer from `from`: one of another source let go and
+    /// still read on first; then one of the source that holds the most, so that a source flooding
+    /// the server lets its own go and not a fair client's that is about to say Hello; among
+    /// sources holding as many, another's than the newcomer's; then the oldest. A newcomer that
+    /// would only let its own source's go takes no place: it would churn its own. Whether there is room then: a connection let go
+    /// still holds threads for a moment, so the live ones may pass `most` by those, never by
     /// more than `most` again.
     fn make_room(&mut self, most: usize, from: Option<crate::net::Group>) -> bool {
         // The strangers, lingering ones marked, and how many each source holds, in one pass.
@@ -767,13 +767,19 @@ impl Server {
         let oldest = strangers
             .iter()
             .max_by_key(|(parting, source, opened, _)| {
-                (*parting, held[source], std::cmp::Reverse(*opened))
+                let other = *source != from;
+                (
+                    *parting && other,
+                    held[source],
+                    other,
+                    std::cmp::Reverse(*opened),
+                )
             })
             .map(|(_, source, _, id)| (*id, *source));
         let Some((oldest, source)) = oldest else {
             return false;
         };
-        if held.get(&from).copied().unwrap_or(0) >= held[&source] {
+        if source == from {
             return false;
         }
         match self.parting.iter().position(|c| c.id == oldest) {

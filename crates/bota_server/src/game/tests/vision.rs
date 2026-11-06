@@ -1244,7 +1244,9 @@ fn the_feed_names_the_hero_that_razed_a_barracks_or_a_tower_and_no_other_killer(
 
 /// Every kind of unit there is stands in one world and has its sight worked out, by day and by
 /// night: none sees farther than the farthest sight a client works within
-/// (`bota_core::MAX_VISION`, which the sight pass asserts for every unit).
+/// (`bota_core::MAX_VISION`, which the sight pass asserts for every unit). The kinds that stand
+/// on their own are listed by hand (`bota_core::FIXED_UNIT_DEFS`): a new one left off it is
+/// caught by the sight pass's assertion in whatever test first stands it, not here.
 #[test]
 fn every_kind_of_unit_sees_within_the_farthest_sight_there_is() {
     use bota_core::{FIXED_UNIT_DEFS, HEROES, ITEMS, MAX_VISION, NEUTRALS, UnitDef, UseSpec};

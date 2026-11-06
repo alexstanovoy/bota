@@ -185,11 +185,11 @@ fn ten_players_from_one_address_all_join_at_once() {
 
 /// Threads that each dial `addr`, say Hello as a client of another wire, read the refusal and
 /// then talk on, so that the server reads them on until their linger runs out, and dial again,
-/// until the returned flag is raised; and how many times the server took in none of them, that
-/// is let one go before telling it anything.
-fn refused_flood(addr: SocketAddr, threads: usize) -> (Arc<AtomicBool>, Arc<AtomicUsize>) {
+/// until the returned flag is raised; with how many refusals they read, and how many times the
+/// server took in none of them, that is let one go before telling it anything.
+fn refused_flood(addr: SocketAddr, threads: usize) -> (Arc<AtomicBool>, Counts) {
     let stop = Arc::new(AtomicBool::new(false));
-    let turned_away = Arc::new(AtomicUsize::new(0));
+    let counts = Counts::default();
     let hello = encode_frame_to_vec(&ClientMsg::hello(
         Role::Bot,
         "old build",
@@ -200,7 +200,7 @@ fn refused_flood(addr: SocketAddr, threads: usize) -> (Arc<AtomicBool>, Arc<Atom
     let pong = encode_frame_to_vec(&ClientMsg::Pong).expect("encode");
     for _ in 0..threads {
         let (stop, hello, pong) = (Arc::clone(&stop), hello.clone(), pong.clone());
-        let turned_away = Arc::clone(&turned_away);
+        let counts = counts.clone();
         thread::spawn(move || {
             while !stop.load(Ordering::Relaxed) {
                 let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_secs(1))
@@ -217,14 +217,17 @@ fn refused_flood(addr: SocketAddr, threads: usize) -> (Arc<AtomicBool>, Arc<Atom
                 // The refusal, or the server's hang-up when it took the connection in no more.
                 while !stop.load(Ordering::Relaxed) {
                     match stream.read(&mut buf) {
-                        Ok(1..) => break,
+                        Ok(1..) => {
+                            counts.refused.fetch_add(1, Ordering::Relaxed);
+                            break;
+                        }
                         Err(error)
                             if matches!(
                                 error.kind(),
                                 std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
                             ) => {}
                         Ok(0) | Err(_) => {
-                            turned_away.fetch_add(1, Ordering::Relaxed);
+                            counts.turned_away.fetch_add(1, Ordering::Relaxed);
                             break;
                         }
                     }
@@ -237,7 +240,14 @@ fn refused_flood(addr: SocketAddr, threads: usize) -> (Arc<AtomicBool>, Arc<Atom
             }
         });
     }
-    (stop, turned_away)
+    (stop, counts)
+}
+
+/// What a flood of refused peers has met so far.
+#[derive(Clone, Default)]
+struct Counts {
+    refused: Arc<AtomicUsize>,
+    turned_away: Arc<AtomicUsize>,
 }
 
 /// A peer refused at its Hello is read on for a while, and counts meanwhile as a stranger of its
@@ -249,11 +259,13 @@ fn a_source_redialling_with_refused_hellos_cannot_keep_a_fair_client_out() {
     // Few places, so that refused peers would fill them all at once.
     opts.max_connections = Some(16);
     let (tcp, _) = start_on_both_families(opts);
-    let (stop, turned_away) = refused_flood(SocketAddr::from(([127, 0, 0, 1], tcp)), 200);
-    // The fair client comes once the server takes in no more of the source's peers: it holds
-    // as many as it may.
+    let (stop, counts) = refused_flood(SocketAddr::from(([127, 0, 0, 1], tcp)), 200);
+    // The fair client comes once the source holds as many refused peers as strangers may be
+    // (a quarter of 16) and the server takes in no more of them.
     let started = Instant::now();
-    while turned_away.load(Ordering::Relaxed) == 0 {
+    while counts.refused.load(Ordering::Relaxed) < 4
+        || counts.turned_away.load(Ordering::Relaxed) == 0
+    {
         assert!(started.elapsed() < HANG_GUARD, "the server refuses nobody");
         thread::sleep(Duration::from_millis(10));
     }
@@ -389,4 +401,51 @@ fn keyless_watchers_are_bounded_per_source_and_in_all() {
     );
     let (_seated, slot) = join_as_bot(far, "player");
     assert_eq!(slot, Some(SlotId(0)), "a player still sits");
+}
+
+/// A connection to `server` from `local`, one of the loopback addresses: each is a source of
+/// its own.
+fn connect_from(local: [u8; 4], server: SocketAddr) -> TestClient {
+    let socket =
+        socket2::Socket::new(socket2::Domain::IPV4, socket2::Type::STREAM, None).expect("a socket");
+    socket
+        .bind(&SocketAddr::from((local, 0)).into())
+        .expect("bind the loopback address");
+    socket.connect(&server.into()).expect("connect");
+    let stream: TcpStream = socket.into();
+    stream
+        .set_read_timeout(Some(HANG_GUARD))
+        .expect("set timeout");
+    TestClient {
+        stream,
+        reader: Default::default(),
+    }
+}
+
+/// With the strangers' share full of one stranger from each of many addresses, a fair client
+/// that already holds a stranger of its own still joins: a newcomer takes another source's
+/// place rather than tie with them.
+#[test]
+fn a_fair_client_with_a_stranger_joins_against_many_single_stranger_addresses() {
+    let mut opts = realtime(37);
+    // A quarter of 64: sixteen strangers at once.
+    opts.max_connections = Some(64);
+    let (tcp, _) = start_on_both_families(opts);
+    let server = SocketAddr::from(([127, 0, 0, 1], tcp));
+    let strangers: Vec<TestClient> = (2..18u8)
+        .map(|at| connect_from([127, 0, 0, at], server))
+        .collect();
+    // Each is taken: the server pings it.
+    for mut stranger in strangers
+        .iter()
+        .map(|s| s.stream.try_clone().expect("a clone"))
+    {
+        let mut buf = [0u8; 4096];
+        let n = stranger.read(&mut buf).expect("the server pings");
+        assert!(n > 0, "the server took the stranger");
+    }
+    let fair = [127, 0, 0, 100];
+    let _waiting = connect_from(fair, server);
+    let (_seated, slot) = hello_as_bot(connect_from(fair, server), "fair");
+    assert_eq!(slot, Some(SlotId(0)), "the fair client is seated");
 }

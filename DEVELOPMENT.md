@@ -46,9 +46,10 @@ Connections that have not said Hello yet are bounded per source, so that one hos
   once, so the kernel's backlog never fills. A source holds 16 of them at most per IPv4 address, 16 per IPv6 /64 and
   64 per IPv6 /48.
 - Connections without a Hello have the same bounds per source, and take a quarter of `--max-connections` at most. A
-  newcomer past that (or past `--max-connections`) takes the place of the oldest stranger of the source holding the
-  most. A peer let go while a stranger (refused at its Hello, say) is read on for a while and counts meanwhile as a
-  stranger of its source, the first to be cut short for a newcomer.
+  newcomer past that (or past `--max-connections`) takes the place of another source's stranger: a lingering one
+  first, then the oldest of the source holding the most; one that could only take its own source's is refused. A peer
+  let go while a stranger (refused at its Hello, say) is read on for a while and counts meanwhile as a stranger of its
+  source.
 - Watchers without a seat's key are never let go for room, so they are bounded too: 4 per IPv4 address, IPv6 /64 and
   IPv6 /48, and a quarter of `--max-connections` in all; one past either is refused as `NotAdmitted`.
 - Players that said Hello have no bound per source and are never let go for room: players behind one address all play.
