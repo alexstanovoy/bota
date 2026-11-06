@@ -270,6 +270,7 @@ fn a_use_of_an_item_is_told_to_the_sides_that_see_it() {
             caster: Some(wire_id(hero)),
             item: ItemId::BLINK_DAGGER,
             at: Some(aim),
+            target: None,
         }
     );
     assert!(told[0].visible_to().tells(Team::Radiant), "its own side");

@@ -296,6 +296,7 @@ pub enum Event {
         caster: Option<EntityId>,
         item: ItemId,
         at: Option<Vec2>,
+        target: Option<EntityId>,
         visible_to: EventVisibility,
         point_told_to: EventVisibility,
         source_told_to: EventVisibility,
@@ -307,11 +308,16 @@ impl Event {
         match self {
             Self::Fact { kind, .. } => kind.clone(),
             Self::ItemUsed {
-                caster, item, at, ..
+                caster,
+                item,
+                at,
+                target,
+                ..
             } => EventKind::ItemUsed {
                 caster: *caster,
                 item: *item,
                 at: *at,
+                target: *target,
             },
         }
     }

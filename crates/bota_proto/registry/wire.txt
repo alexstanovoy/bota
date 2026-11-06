@@ -687,3 +687,4 @@ field EventKind::Died 6 awards: Option<Vec<GoldAward>>
 variant GoldAwardKind 2 AssistGold
 
 field EventKind::Died 7 credited_hero: Option<EntityId>
+field EventKind::ItemUsed 3 target: Option<EntityId>

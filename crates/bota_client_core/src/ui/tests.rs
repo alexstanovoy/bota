@@ -1337,6 +1337,7 @@ fn an_events_previous_unit_stays_at_its_origin_after_later_snapshots_arrive() {
         caster: Some(us),
         item: bota_proto::ItemId::BLINK_DAGGER,
         at: Some(to),
+        target: None,
     };
     app.handle(bota_proto::ServerMsg::Events {
         tick: 12,

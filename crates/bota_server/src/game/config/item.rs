@@ -42,12 +42,28 @@ impl World {
             Target::Pos(pos) => Some(pos),
             Target::Unit(id) => self.of_wire(id).and_then(|aimed| self.pos(aimed)),
         };
+        let sees_target = |team| {
+            side == team
+                || at.is_none_or(|at| self.can_see_point(team, at))
+                    && match target {
+                        Target::Unit(id) => self
+                            .of_wire(id)
+                            .is_some_and(|unit| self.sees_now(team, unit)),
+                        _ => true,
+                    }
+        };
+        let point_told_to =
+            EventVisibility::of(sees_target(Team::Radiant), sees_target(Team::Dire));
         self.events.push(Event::ItemUsed {
             caster: Some(wire_id(user)),
             item,
             at,
+            target: match target {
+                Target::Unit(id) => Some(id),
+                _ => None,
+            },
             visible_to: EventVisibility::of(told(Team::Radiant), told(Team::Dire)),
-            point_told_to: EventVisibility::Everyone,
+            point_told_to,
             source_told_to: self.who_may_name(Some(user)),
         });
     }

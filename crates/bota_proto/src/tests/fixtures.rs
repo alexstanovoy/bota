@@ -687,6 +687,7 @@ pub fn all_events() -> Vec<EventKind> {
             caster: Some(entity(7)),
             item: ItemId(31),
             at: Some(Vec2::from_ints(7904, 8976)),
+            target: Some(entity(9)),
         },
         EventKind::RuneSpawned {
             kind: RuneKind::Arcane,

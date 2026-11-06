@@ -228,8 +228,11 @@ pub enum EventKind {
         caster: Option<EntityId>,
         item: ItemId,
         /// The spot the use was aimed at: the point itself, or where the aimed
-        /// unit stood. Absent for a use aimed at nothing.
+        /// unit stood. Absent for a use aimed at nothing or a point withheld from this side.
         at: Option<Vec2>,
+        /// The aimed unit, when any. Another side that cannot see it receives neither its id nor
+        /// its position; full streams retain it so replay POVs can apply unit sight.
+        target: Option<EntityId>,
     },
     /// A rune appeared at a spot of the map. Told only to sides whose
     /// completed-tick snapshot shows it.
@@ -311,9 +314,13 @@ impl EventKind {
                 killer.iter_mut().for_each(&mut *visit);
                 credited_hero.as_deref_mut().into_iter().for_each(visit);
             }
-            EventKind::Landed { caster, .. }
-            | EventKind::TreeFelled { by: caster, .. }
-            | EventKind::ItemUsed { caster, .. } => caster.iter_mut().for_each(visit),
+            EventKind::Landed { caster, .. } | EventKind::TreeFelled { by: caster, .. } => {
+                caster.iter_mut().for_each(visit)
+            }
+            EventKind::ItemUsed { caster, target, .. } => {
+                caster.iter_mut().for_each(&mut *visit);
+                target.iter_mut().for_each(visit);
+            }
             EventKind::Captured { unit, by, .. } | EventKind::ShrineActivated { unit, by, .. } => {
                 visit(unit);
                 by.iter_mut().for_each(visit);

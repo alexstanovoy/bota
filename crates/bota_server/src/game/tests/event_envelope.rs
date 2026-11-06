@@ -14,6 +14,7 @@ fn item_fact_preserves_its_public_point_and_source_audience() {
         caster: Some(caster),
         item: ItemId::HEALING_SALVE,
         at: Some(at),
+        target: None,
         visible_to: EventVisibility::Everyone,
         point_told_to: EventVisibility::Everyone,
         source_told_to: EventVisibility::OneTeam(Team::Radiant),
@@ -29,6 +30,7 @@ fn item_fact_preserves_its_public_point_and_source_audience() {
                 caster: source,
                 item: ItemId::HEALING_SALVE,
                 at: Some(at),
+                target: None,
             }]
         );
     }

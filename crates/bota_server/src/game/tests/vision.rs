@@ -685,6 +685,139 @@ fn the_whole_map_says_which_sides_see_what_as_their_views_hold_it() {
     );
 }
 
+fn item_use_events(world: &mut World, seat: u8, item: ItemId, target: Target) -> Vec<Event> {
+    let order = bota_proto::Order::Use {
+        slot: bota_proto::ItemSlot(0),
+        target,
+    };
+    let slot = bota_proto::SlotId(seat);
+    assert_eq!(world.validate_order(slot, None, &order), Ok(()));
+    let mut events = world.advance(&[crate::game::Command {
+        slot,
+        unit: None,
+        queue: false,
+        seq: 0,
+        order,
+    }]);
+    for _ in 0..90 {
+        if events.iter().any(|event| {
+            matches!(event.kind(),
+            EventKind::ItemUsed { item: used, .. } if used == item)
+        }) {
+            break;
+        }
+        events.extend(world.step());
+    }
+    events
+}
+
+fn item_point_told(events: &[Event], viewer: Option<Team>, item: ItemId) -> Option<Vec2> {
+    crate::game_loop::visible_events(events, viewer)
+        .iter()
+        .find_map(|event| match event {
+            EventKind::ItemUsed { item: used, at, .. } if *used == item => Some(*at),
+            _ => None,
+        })
+        .expect("a visible user still tells the item use")
+}
+
+fn item_target_told(events: &[Event], viewer: Option<Team>, item: ItemId) -> Option<EntityId> {
+    crate::game_loop::visible_events(events, viewer)
+        .iter()
+        .find_map(|event| match event {
+            EventKind::ItemUsed {
+                item: used, target, ..
+            } if *used == item => Some(*target),
+            _ => None,
+        })
+        .expect("a visible user still tells the item use")
+}
+
+#[test]
+fn a_blink_destination_is_told_only_to_sides_that_see_it() {
+    for side in [Team::Radiant, Team::Dire] {
+        let other = if side == Team::Radiant {
+            Team::Dire
+        } else {
+            Team::Radiant
+        };
+        for destination_seen in [false, true] {
+            let mut world = World::new();
+            let landing = Vec2::from_ints(2600, 1000);
+            let watch = Vec2::from_ints(if destination_seen { 2100 } else { 1000 }, 1000);
+            seat_hero(&mut world, 0, other, watch);
+            let blinker = seat_hero(&mut world, 1, side, Vec2::from_ints(1500, 1000));
+            hand_item(&mut world, blinker, ItemId::BLINK_DAGGER, 0);
+            world.settle();
+            assert!(world.sees_now(other, blinker), "the watcher sees the start");
+            assert_eq!(world.can_see_point(other, landing), destination_seen);
+            let events = item_use_events(&mut world, 1, ItemId::BLINK_DAGGER, Target::Pos(landing));
+            assert_eq!(world.pos(blinker), Some(landing), "the real order blinked");
+            assert_eq!(world.can_see_point(other, landing), destination_seen);
+            for (viewer, expected) in [
+                (None, Some(landing)),
+                (Some(side), Some(landing)),
+                (Some(other), destination_seen.then_some(landing)),
+            ] {
+                let at = item_point_told(&events, viewer, ItemId::BLINK_DAGGER);
+                assert_eq!(
+                    at, expected,
+                    "viewer {viewer:?}: a fogged destination stays private"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn an_item_used_on_a_hidden_unit_does_not_reveal_its_position_on_visible_ground() {
+    for side in [Team::Radiant, Team::Dire] {
+        let other = if side == Team::Radiant {
+            Team::Dire
+        } else {
+            Team::Radiant
+        };
+        let (mut world, taker) =
+            super::runes::rune_under_hero(&[side, side, other], bota_proto::RuneKind::Invisibility);
+        world.step();
+        let caster = super::runes::hero(&world, 1);
+        let watcher = super::runes::hero(&world, 2);
+        let at = world.pos(taker).expect("the rune taker");
+        world.transform.get_mut(caster).unwrap().pos = at + Vec2::from_ints(100, 0);
+        world.transform.get_mut(watcher).unwrap().pos = at + Vec2::from_ints(300, 0);
+        run(&mut world, 90);
+        hand_item(&mut world, caster, ItemId::HEALING_SALVE, 1);
+        world.health.get_mut(taker).unwrap().hp -= Fixed::from_int(100);
+        world.settle();
+        assert!(world.sees_now(other, caster));
+        assert!(world.can_see_point(other, at), "the ground is visible");
+        assert!(!world.sees_now(other, taker), "the unit is invisible");
+        let events = item_use_events(
+            &mut world,
+            1,
+            ItemId::HEALING_SALVE,
+            Target::Unit(wire_id(taker)),
+        );
+        assert!(!world.sees_now(other, taker));
+        for (viewer, expected) in [
+            (None, Some(at)),
+            (Some(side), Some(at)),
+            (Some(other), None),
+        ] {
+            let at = item_point_told(&events, viewer, ItemId::HEALING_SALVE);
+            assert_eq!(
+                at, expected,
+                "viewer {viewer:?}: visible ground cannot expose an invisible unit"
+            );
+            assert_eq!(
+                item_target_told(&events, viewer, ItemId::HEALING_SALVE),
+                expected.map(|_| wire_id(taker)),
+                "the hidden target's id is private too"
+            );
+        }
+    }
+}
+
 #[test]
 fn a_hero_that_blinks_out_of_sight_is_not_shown_where_it_landed() {
     let mut world = World::new();
