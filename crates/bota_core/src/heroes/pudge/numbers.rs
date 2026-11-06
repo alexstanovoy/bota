@@ -32,6 +32,10 @@ pub const ROT_RADIUS: i32 = PUDGE_ROT.value("rot_radius").first().int();
 pub const ROT_DAMAGE_PER_SECOND: [i32; 4] = PUDGE_ROT.value("rot_damage").ints();
 /// Ticks between two burns of the rot: its `rot_tick`.
 pub const ROT_TICK_TICKS: u32 = PUDGE_ROT.value("rot_tick").first().secs().ticks();
+/// Ticks the rot's slow stays on what has left it or been left by it: its aura's linger of
+/// 0.5 s, which the script does not hold (Liquipedia, *Pudge*: "Aura Linger Duration: 0.5";
+/// "The lingering debuff only applies the movement speed slow component").
+pub const ROT_LINGER_TICKS: u32 = crate::Ms(500).ticks();
 /// Percent of speed the rot takes, by level: the script's `rot_slow`, which it writes as a
 /// change of speed.
 pub const ROT_SLOW_PCT: [i32; 4] = {

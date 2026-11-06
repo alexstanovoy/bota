@@ -396,7 +396,7 @@ fn a_hook_flies_no_further_than_it_reaches() {
 }
 
 #[test]
-fn the_rot_burns_and_slows_what_stands_in_it_and_lifts_when_switched_off() {
+fn the_rot_burns_and_slows_what_stands_in_it_and_lifts_its_linger_after_switched_off() {
     let (mut world, pudge, mark) = pudge_and_a_mark(150);
     set_level(&mut world, pudge, 1, 1);
     let full = world.health.get(mark).expect("standing").hp;
@@ -427,7 +427,7 @@ fn the_rot_burns_and_slows_what_stands_in_it_and_lifts_when_switched_off() {
         !carries(&world, pudge, ModifierKind::Rot { level: 0, since: 0 }),
         "it is switched off"
     );
-    run(&mut world, 3);
+    run(&mut world, rules::ROT_LINGER_TICKS + 1);
     assert!(
         !carries(
             &world,
@@ -483,6 +483,47 @@ fn the_rot_burns_at_once_and_every_fifth_of_a_second_its_owner_and_enemies_alike
         [(0, 6), (6, 6), (12, 6)],
         "and the creep in it, six a time"
     );
+}
+
+/// Whether a unit is slowed by a rot.
+fn rotting(world: &World, unit: Entity) -> bool {
+    carries(
+        world,
+        unit,
+        ModifierKind::Rotting {
+            level: 0,
+            slow_pct: 0,
+            since: 0,
+        },
+    )
+}
+
+/// What steps out of Rot stays slowed for its 0.5 s aura linger, but is burned no more
+/// (Liquipedia, *Pudge*: "Aura Linger Duration: 0.5"; "The lingering debuff only applies the
+/// movement speed slow component").
+#[test]
+fn the_rot_slows_half_a_second_past_leaving_it_and_burns_no_more() {
+    let (mut world, pudge, mark) = pudge_and_a_mark(150);
+    set_level(&mut world, pudge, 1, 1);
+    cast(&mut world, 1, Target::None);
+    run(&mut world, 3);
+    assert!(rotting(&world, mark), "slowed in it");
+    world.transform.get_mut(mark).expect("standing").pos =
+        world.pos(pudge).expect("Pudge stands") + Vec2::from_ints(rules::ROT_RADIUS + 200, 0);
+    // Held there, it walks back into nothing.
+    world.put_modifier(
+        mark,
+        Modifier::new(ModifierKind::Stunned, None, None, Some(60)),
+    );
+    let left = world.health.get(mark).expect("standing").hp;
+    run(&mut world, 13);
+    assert!(rotting(&world, mark), "still slowed a while out of it");
+    assert!(
+        world.health.get(mark).expect("standing").hp >= left,
+        "but burned no more"
+    );
+    run(&mut world, 5);
+    assert!(!rotting(&world, mark), "and freed half a second on");
 }
 
 /// Switched on and straight off, Rot still burns its owner once (Valve 2012-06-28: "Fixed a

@@ -333,9 +333,9 @@ impl World {
     /// from the tick it was laid on, on the same rhythm, while it stands there
     /// (Liquipedia, *Pudge*: "starting immediately upon debuff application").
     ///
-    /// What it lays is handed out afresh every tick for two ticks, so walking
-    /// out of it or switching it off lifts it. A rot whose owner is dead goes
-    /// out.
+    /// What it lays is handed out afresh every tick for its linger, so what
+    /// walks out of it, or is left by its switching off, stays slowed that
+    /// long, unburned. A rot whose owner is dead goes out.
     pub(crate) fn rot(&mut self, owner: Entity, level: u8, since: u32) {
         if !self.alive(owner) {
             self.rot_goes_out(owner);
@@ -402,7 +402,8 @@ impl World {
                     slow_pct,
                     since: laid,
                 };
-                self.put_modifier(other, Modifier::new(rotting, Some(owner), with, Some(2)));
+                let lingers = Some(rules::ROT_LINGER_TICKS);
+                self.put_modifier(other, Modifier::new(rotting, Some(owner), with, lingers));
                 if (self.tick - laid).is_multiple_of(rules::ROT_TICK_TICKS) {
                     self.push_hit(
                         Some(owner),
