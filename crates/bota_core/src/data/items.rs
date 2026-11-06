@@ -1991,3 +1991,24 @@ pub(crate) const ITEM_LIFESTEAL: ItemData = ItemData {
     builds: &[],
     values: &[("lifesteal_percent", &[Dec::of("18")])],
 };
+
+pub(crate) const ITEM_VOODOO_MASK: ItemData = ItemData {
+    id: ItemId(83),
+    key: "item_voodoo_mask",
+    retired: false,
+    cost: 650,
+    behavior: B::PASSIVE,
+    cast_range: 0,
+    cast_point: Ms::secs("0"),
+    channel: Ms::secs("0"),
+    cooldown: Ms::secs("0"),
+    mana: 0,
+    health: 0,
+    charges: 0,
+    stack: 0,
+    stock: None,
+    purchasable: true,
+    secret_shop: false,
+    builds: &[],
+    values: &[("spell_lifesteal", &[Dec::of("15")])],
+};

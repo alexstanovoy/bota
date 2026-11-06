@@ -226,6 +226,7 @@ impl Fnv {
             mana_pct,
             magic_resist_bp,
             lifesteal_pct,
+            spell_lifesteal_pct,
         } = value;
         self.attributes(attributes)
             .int(move_speed as i64)
@@ -247,6 +248,7 @@ impl Fnv {
             .int(mana_pct as i64)
             .int(magic_resist_bp as i64)
             .int(lifesteal_pct as i64)
+            .int(spell_lifesteal_pct as i64)
     }
 
     const fn mend(self, value: Mend) -> Fnv {

@@ -911,6 +911,16 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
         },
         ..from(&ITEM_LIFESTEAL)
     },
+    // Voodoo Mask: also Liquipedia's *Spell Lifesteal* and *Voodoo Mask* (several of one source do
+    // not stack).
+    ItemDef {
+        name: "Voodoo Mask",
+        carried: Carried {
+            spell_lifesteal_pct: int(&ITEM_VOODOO_MASK, "spell_lifesteal"),
+            ..NOTHING
+        },
+        ..from(&ITEM_VOODOO_MASK)
+    },
 ];
 
 /// One kind of lotus, as its script gives it.

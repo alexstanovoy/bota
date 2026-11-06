@@ -72,6 +72,11 @@ pub struct Carried {
     /// back, [`rules::LIFESTEAL_CREEP_PCT`] of it off what is no hero.
     /// Several carried add up.
     pub lifesteal_pct: i32,
+    /// Percent of the damage the carrier's spells deal healed back (and of
+    /// the magical damage riding with its attacks), pure damage aside;
+    /// [`rules::SPELL_LIFESTEAL_CREEP_PCT`] of it off what is no hero.
+    /// Several of one item count once, of different items add up.
+    pub spell_lifesteal_pct: i32,
 }
 
 /// Nothing carried at all, so an entry names only what it adds.
@@ -96,6 +101,7 @@ pub(crate) const NOTHING: Carried = Carried {
     mana_pct: 0,
     magic_resist_bp: 0,
     lifesteal_pct: 0,
+    spell_lifesteal_pct: 0,
 };
 
 /// Whole points of one attribute and none of the others.
@@ -723,6 +729,9 @@ pub const fn resist_both(first_bp: i32, second_bp: i32) -> i32 {
 /// fastest, the two added up.
 pub fn carried_bonus(items: impl Iterator<Item = CarriedItem>, ranged: bool) -> Carried {
     let mut total = Carried::default();
+    // The items whose spell lifesteal is counted, each once; past an
+    // inventory's worth, no more are.
+    let mut spell_lifesteal_of = [None; bota_proto::INVENTORY_SLOTS];
     for stack in items {
         let Some(def) = item_def(stack.id) else {
             continue;
@@ -752,6 +761,13 @@ pub fn carried_bonus(items: impl Iterator<Item = CarriedItem>, ranged: bool) -> 
         total.mana_pct += carried.mana_pct;
         total.magic_resist_bp = resist_both(total.magic_resist_bp, carried.magic_resist_bp);
         total.lifesteal_pct += carried.lifesteal_pct;
+        if carried.spell_lifesteal_pct > 0
+            && !spell_lifesteal_of.contains(&Some(stack.id))
+            && let Some(free) = spell_lifesteal_of.iter_mut().find(|seen| seen.is_none())
+        {
+            *free = Some(stack.id);
+            total.spell_lifesteal_pct += carried.spell_lifesteal_pct;
+        }
         // What an item is set to is worth points of that attribute alone.
         if let Some(mode) = stack.mode {
             total.attributes += points(mode, def.mode_bonus);

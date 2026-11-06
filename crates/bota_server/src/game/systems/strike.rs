@@ -201,6 +201,47 @@ impl World {
         }
     }
 
+    /// Mends the dealers of the blows felt by their spell lifesteal share of
+    /// what each took (Dota 7.38): physical and magical damage of spells and
+    /// the magic riding with an attack, never pure damage nor an attack's
+    /// own blow, and nothing off an ally, an illusion, a building, a ward or
+    /// a courier.
+    pub fn steal_spell_life(&mut self, felt: &[Landed]) {
+        for blow in felt {
+            let spell = match blow.kind {
+                DamageKind::Pure => false,
+                DamageKind::Physical => !blow.attack,
+                DamageKind::Magical => true,
+            };
+            let Some(by) = blow.source.filter(|by| self.entities.contains(*by)) else {
+                continue;
+            };
+            let pct = self
+                .stats
+                .get(by)
+                .map_or(0, |stats| stats.spell_lifesteal_pct);
+            let on = blow.target;
+            let target = self.kind.get(on).copied();
+            if !spell
+                || pct <= 0
+                || blow.amount <= 0
+                || !self.foes(by, on)
+                || target == Some(UnitKind::Courier)
+                || self.wears(on, ModifierKind::Illusion)
+                || !self.living_unit(by)
+            {
+                continue;
+            }
+            let creep_pct = if target == Some(UnitKind::Hero) {
+                100
+            } else {
+                rules::SPELL_LIFESTEAL_CREEP_PCT
+            };
+            let share = Fixed::from_ratio(pct * creep_pct, 10_000);
+            self.mend_part(by, Fixed::from_int(blow.amount) * share);
+        }
+    }
+
     /// One strike besides the splash, on a target that lives.
     fn lay_strike(&mut self, given: Proc, strike: Strike) {
         match strike {

@@ -85,6 +85,12 @@ pub struct Stats {
     ///
     /// [`rules::LIFESTEAL_CREEP_PCT`]: bota_core::rules::LIFESTEAL_CREEP_PCT
     pub creep_cut_lifesteal_pct: i32,
+    /// Percent of the damage its spells deal healed back, and of the
+    /// magical damage riding with its attacks, pure damage aside;
+    /// [`rules::SPELL_LIFESTEAL_CREEP_PCT`] of it off anything but a hero.
+    ///
+    /// [`rules::SPELL_LIFESTEAL_CREEP_PCT`]: bota_core::rules::SPELL_LIFESTEAL_CREEP_PCT
+    pub spell_lifesteal_pct: i32,
     /// Percent more magical damage it takes.
     pub magic_taken_pct: i32,
     /// Share of the damage that reaches it, after armor and resistance, that

@@ -1177,6 +1177,10 @@ pub const SHOP_RANGE: i32 = 1000;
 /// *Lifesteal* and *Morbid Mask*; the install's Vladmir's Offering: `lifesteal_aura` 20,
 /// `lifesteal_creeps_tooltip` 12).
 pub const LIFESTEAL_CREEP_PCT: i32 = 60;
+/// Percent of what a spell lifesteal heals off a unit that is no hero: a fifth since 7.38
+/// (Liquipedia, *Lifesteal*: "reduced by 80% when damaging non-heroes"; *Voodoo Mask*: 15% and
+/// 3% against creeps).
+pub const SPELL_LIFESTEAL_CREEP_PCT: i32 = 20;
 /// Percent of the price a sale returns.
 pub const SELL_PCT: i32 = 50;
 /// Ticks after purchase in which an unused item refunds in full.

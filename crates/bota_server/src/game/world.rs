@@ -861,6 +861,7 @@ impl World {
         if !self.hits.is_empty() {
             felt.extend(self.feel_hits());
         }
+        self.steal_spell_life(&felt);
         self.burst_bubbles();
         self.break_on_blows(&felt);
         self.damp_rune_regeneration(&felt);

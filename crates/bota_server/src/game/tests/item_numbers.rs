@@ -398,6 +398,7 @@ fn every_stat_item_bought_adds_what_its_script_says_and_nothing_else() {
                 "bonus_health_regen" | "bonus_regen" => expected.hp_regen += per_tick(*value),
                 "bonus_mana_regen" => expected.mana_regen += per_tick(*value),
                 "lifesteal_percent" => expected.creep_cut_lifesteal_pct += value.int(),
+                "spell_lifesteal" => expected.spell_lifesteal_pct += value.int(),
                 "bonus_magical_armor" => {
                     // Of what the hero's own resistance lets through, the item keeps out its
                     // percent.
@@ -423,7 +424,7 @@ fn every_stat_item_bought_adds_what_its_script_says_and_nothing_else() {
         expected.mana_regen = got.mana_regen;
         assert_eq!(got, expected, "{}", def.key);
     }
-    assert_eq!(checked, 44, "the shop's stat items");
+    assert_eq!(checked, 45, "the shop's stat items");
 }
 
 /// `stats` with `more` attributes and what they are worth: health, mana and their regeneration,
@@ -529,5 +530,72 @@ fn a_morbid_mask_heals_eighteen_percent_of_a_blow_on_a_hero_and_less_on_a_creep(
     assert!(
         within_a_hundredth(healed, Fixed::from_ratio(dealt * 108, 1000)),
         "{healed} of {dealt}"
+    );
+}
+
+/// What the near Shadowraze of a hero that bought `items` deals `on`, standing where it lands,
+/// and what the hero heals back in that tick, regeneration aside.
+fn raze_of_a_buyer(items: &[ItemId], on: impl FnOnce(&mut World, Vec2) -> Entity) -> (i32, Fixed) {
+    let (mut world, hero) = out_of_fountain_after_buying(items);
+    set_level(&mut world, hero, 0, 1);
+    let transform = world.transform.get_mut(hero).expect("standing");
+    transform.facing = bota_proto::Angle { brads: 0 };
+    let at = transform.pos + Vec2::from_ints(rules::RAZE_DISTANCE[0], 0);
+    let mark = on(&mut world, at);
+    world.health.get_mut(hero).expect("alive").hp = Fixed::from_int(200);
+    cast(&mut world, 0, Target::None);
+    for _ in 0..60 {
+        let before = world.health.get(hero).expect("alive").hp;
+        let regen = world.stats.get(hero).expect("derived").hp_regen;
+        let events = world.step();
+        if let Some(&dealt) = burns_on(&events, mark).first() {
+            let healed = world.health.get(hero).expect("alive").hp - before - regen;
+            return (dealt, healed);
+        }
+    }
+    panic!("the raze never landed")
+}
+
+/// A Voodoo Mask bought through the shop heals its carrier for 15% of what a Shadowraze takes off
+/// an enemy hero, a fifth of that off a creep (Liquipedia, *Voodoo Mask*: 15%, 3% against creeps),
+/// nothing off an illusion; a second Voodoo Mask adds nothing (one source), and without one a
+/// raze heals nothing.
+#[test]
+fn a_voodoo_mask_heals_fifteen_percent_of_a_raze_on_a_hero_and_a_fifth_of_that_on_a_creep() {
+    let foe =
+        |world: &mut World, at| world.spawn_hero(Team::Dire, at, SlotId(1), HeroId::SHADOW_FIEND);
+    let creep = |world: &mut World, at| world.spawn_unit(&bota_core::MELEE_CREEP, Team::Dire, at);
+    let (dealt, healed) = raze_of_a_buyer(&[ItemId::VOODOO_MASK], foe);
+    let share = |pct: i32| Fixed::from_int(dealt) * Fixed::from_ratio(pct, 10_000);
+    assert!(
+        within_a_hundredth(healed, share(1500)),
+        "{healed} of {dealt}"
+    );
+    let (twice, _) = raze_of_a_buyer(&[ItemId::VOODOO_MASK, ItemId::VOODOO_MASK], foe);
+    assert_eq!(twice, dealt);
+    let (_, healed_twice) = raze_of_a_buyer(&[ItemId::VOODOO_MASK, ItemId::VOODOO_MASK], foe);
+    assert!(
+        within_a_hundredth(healed_twice, share(1500)),
+        "two masks: {healed_twice}"
+    );
+    let (dealt, healed) = raze_of_a_buyer(&[ItemId::VOODOO_MASK], creep);
+    let share = Fixed::from_int(dealt) * Fixed::from_ratio(300, 10_000);
+    assert!(
+        within_a_hundredth(healed, share),
+        "{healed} of {dealt} off a creep"
+    );
+    let (_, healed) = raze_of_a_buyer(&[ItemId::VOODOO_MASK], |world, at| {
+        let illusion = foe(world, at);
+        put_on(world, illusion, bota_core::ModifierKind::Illusion, 300);
+        illusion
+    });
+    assert!(
+        within_a_hundredth(healed, Fixed::ZERO),
+        "{healed} off an illusion"
+    );
+    let (_, healed) = raze_of_a_buyer(&[], foe);
+    assert!(
+        within_a_hundredth(healed, Fixed::ZERO),
+        "{healed} without a mask"
     );
 }
