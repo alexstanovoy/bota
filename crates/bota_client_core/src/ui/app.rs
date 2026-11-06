@@ -288,6 +288,7 @@ pub enum CueKind {
 
 /// A cue: what, how loud from 0 to 1, and where in the world it happens;
 /// absent for one that belongs to the watched hero itself.
+/// Cloned rather than copied because visibility context owns shared unit history.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Cue {
     pub kind: CueKind,
@@ -304,6 +305,8 @@ pub struct Cue {
     pub told: Option<bota_proto::EventKind>,
     /// Referenced units just before the event, shared with the event history.
     pub before: Option<std::sync::Arc<[UnitView]>>,
+    /// A projectile's thrower at launch, including the visibility row of that snapshot.
+    pub thrower: Option<UnitView>,
 }
 
 /// Why an ally is no target of a click that attacks allies, which Dota's
@@ -1148,6 +1151,7 @@ impl App {
                 target,
                 told: None,
                 before: None,
+                thrower: None,
             });
         }
     }

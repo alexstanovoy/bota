@@ -349,11 +349,16 @@ impl App {
             let thrower = p.source.and_then(|id| view.unit(id));
             if let Some(hero) = thrower.filter(|unit| unit.kind == UnitKind::Hero) {
                 let gain = if Some(hero.id) == ears { 0.7 } else { 0.4 };
-                launched.push((hero.hero, gain, (hero.pos.x.to_f32(), hero.pos.y.to_f32())));
+                launched.push((hero.clone(), gain));
             }
         }
-        for (hero, gain, at) in launched.into_iter().take(4) {
-            self.cue_of(hero, CueKind::Attack, gain, Some(at));
+        for (hero, gain) in launched.into_iter().take(4) {
+            let at = (hero.pos.x.to_f32(), hero.pos.y.to_f32());
+            let next = self.cues.len();
+            self.cue_of(hero.hero, CueKind::Attack, gain, Some(at));
+            if let Some(cue) = self.cues.get_mut(next) {
+                cue.thrower = Some(hero);
+            }
         }
     }
 
