@@ -40,13 +40,13 @@ impl Derived {
             let items = unit
                 .items
                 .iter()
-                .map(|item| item.map_or(0, |item| item.cooldown_left))
+                .map(|item| item.map_or(0, |item| item.cooldown_left.max(item.mute_left)))
                 .enumerate()
                 .map(|(at, left)| (usize::from(ITEM_WAIT_BASE) + at, left));
             // The town portal slot keeps its wire number past the bag and the stash.
             let scrolls = unit.town_portal.map(|item| {
                 let at = usize::from(ITEM_WAIT_BASE) + usize::from(ItemSlot::TOWN_PORTAL.0);
-                (at, item.cooldown_left)
+                (at, item.cooldown_left.max(item.mute_left))
             });
             for (slot, left) in abilities.chain(items).chain(scrolls).take(128) {
                 if left == 0 || seen.len() >= MAX_TRACKED {

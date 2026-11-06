@@ -55,7 +55,7 @@ pub struct Look {
     /// Whether it has been learned. Always true for an item.
     pub learned: bool,
     /// Whether it looks ready: learned, not passive, off cooldown and
-    /// affordable; an item also in the inventory with charges left.
+    /// affordable; an item also active in the inventory with charges left.
     pub usable: bool,
     /// Whether it is a toggle that is currently on.
     pub toggled: bool,
@@ -338,12 +338,13 @@ pub fn item_look(item: Option<&ItemView>, at: u8, mana: i32) -> Look {
         usable: (at < INVENTORY_SLOTS || at == TOWN_PORTAL_SLOT)
             && item.aim.is_some()
             && item.cooldown_left == 0
+            && item.mute_left == 0
             && item.charges.is_none_or(|left| left > 0)
             && mana >= item.mana_cost,
         toggled: false,
         // An item with nothing to activate is worn rather than used, which is
         // what a passive ability is.
         passive: item.aim.is_none(),
-        cooldown_left: item.cooldown_left,
+        cooldown_left: item.cooldown_left.max(item.mute_left),
     }
 }

@@ -306,6 +306,35 @@ fn an_item_with_no_charges_at_all_is_not_an_empty_one() {
 }
 
 #[test]
+fn an_item_draws_the_longer_of_its_active_cooldown_and_backpack_inactivity() {
+    let mut item = an_item(None, 0, 0, Some(Aim::Own));
+    item.mute_left = 180;
+    let inactive = item_look(Some(&item), 0, 0);
+    assert!(
+        !inactive.usable,
+        "backpack inactivity prevents using the item"
+    );
+    assert_eq!(inactive.cooldown_left, 180, "inactivity must be shown");
+
+    item.cooldown_left = 300;
+    assert_eq!(
+        item_look(Some(&item), 0, 0).cooldown_left,
+        300,
+        "a longer active cooldown must not be hidden by inactivity"
+    );
+    item.cooldown_left = 30;
+    assert_eq!(
+        item_look(Some(&item), 0, 0).cooldown_left,
+        180,
+        "a shorter active cooldown must not hide inactivity"
+    );
+
+    item.cooldown_left = 0;
+    item.mute_left = 0;
+    assert!(item_look(Some(&item), 0, 0).usable, "both waits are over");
+}
+
+#[test]
 fn a_second_reach_for_the_same_thing_makes_a_pair() {
     let hero = Tap::Hero;
     let (again, kept) = tap_again(None, hero);
