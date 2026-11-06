@@ -601,6 +601,45 @@ fn a_lobby_offering_more_heroes_than_there_are_breaks_the_stream() {
     assert!(app.lobby.heroes.is_empty());
 }
 
+/// A unit told to see farther than any unit of the game can lights no more than the farthest
+/// sight there is: a view of thousands of such units cannot make the fog take for ever.
+#[test]
+fn a_unit_told_to_see_past_the_farthest_sight_there_is_lights_no_farther() {
+    use bota_core::{CellGrid, rules};
+    let cells = rules::GRID_CELLS * rules::GRID_CELLS;
+    let bota_proto::ServerMsg::MatchStart { mut info } = a_match_start() else {
+        unreachable!("a match start");
+    };
+    info.terrain_cells = rules::GRID_CELLS as u32;
+    info.terrain_rle = vec![
+        (u16::MAX, 0x80),
+        ((cells - usize::from(u16::MAX)) as u16, 0x80),
+    ];
+    let statics = crate::MatchStatic::new(&info).expect("an open map");
+    let ground = crate::SightGround::lay(&statics, None).expect("the sight rule's grid");
+    let centre = (rules::GRID_CELLS / 2, rules::GRID_CELLS / 2);
+    let mut unit = a_unit();
+    unit.pos = CellGrid::cell_center(centre);
+    unit.vision_radius = Fixed::MAX;
+    let mut lit = vec![false; cells];
+    ground.lit(&a_tick(1, vec![unit], Vec::new()), Team::Radiant, &mut lit);
+    let reach = (bota_core::MAX_VISION / rules::GRID_CELL_SIZE + 1) as usize;
+    let farthest = lit
+        .iter()
+        .enumerate()
+        .filter(|(_, lit)| **lit)
+        .map(|(at, _)| {
+            let (x, y) = (at % rules::GRID_CELLS, at / rules::GRID_CELLS);
+            x.abs_diff(centre.0).max(y.abs_diff(centre.1))
+        })
+        .max();
+    assert!(farthest.is_some(), "the unit sees");
+    assert!(
+        farthest <= Some(reach),
+        "a cell {farthest:?} cells away is lit, past the farthest sight's {reach}"
+    );
+}
+
 fn snapshot_of(tick: u32, units: Vec<UnitView>, players: Vec<PlayerView>) -> bota_proto::ServerMsg {
     bota_proto::ServerMsg::Snapshot {
         view: a_tick(tick, units, players),

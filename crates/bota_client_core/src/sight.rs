@@ -116,7 +116,9 @@ impl SightGround {
     }
 }
 
-/// A grant contributes sight only to the team it names.
+/// A grant contributes sight only to the team it names. No unit of the game sees farther than
+/// [`bota_core::MAX_VISION`], so neither does one here, whatever a view says: a view of thousands
+/// claiming to would have every cell worked out for each of them.
 fn viewers(view: &WorldView, team: Team) -> impl Iterator<Item = (&UnitView, Fixed)> {
     view.units.iter().filter_map(move |unit| {
         let own = if unit.team == team {
@@ -128,7 +130,7 @@ fn viewers(view: &WorldView, team: Team) -> impl Iterator<Item = (&UnitView, Fix
             .vision_grant
             .filter(|(side, _)| *side == team)
             .map_or(Fixed::ZERO, |(_, radius)| radius);
-        let radius = own.max(grant);
+        let radius = own.max(grant).min(Fixed::from_int(bota_core::MAX_VISION));
         (radius > Fixed::ZERO).then_some((unit, radius))
     })
 }

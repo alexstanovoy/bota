@@ -666,6 +666,77 @@ const fn tower_of(index: usize) -> UnitDef {
 /// Lane towers, indexed by tier less one.
 pub const TOWERS: [UnitDef; 4] = [tower_of(0), tower_of(1), tower_of(2), tower_of(3)];
 
+/// The farthest any unit of the game sees, by day or by night, in world units: the most of every
+/// kind of unit there is. The server asserts each unit it works out sight for is within it, so a
+/// kind left out of [`max_vision`] fails a test the day it sees farther; a client works out sight
+/// within it, whatever a view tells.
+pub const MAX_VISION: i32 = max_vision();
+
+const fn max_vision() -> i32 {
+    const FIXED: [&UnitDef; 28] = [
+        &BARE_UNIT,
+        &MELEE_CREEP,
+        &FLAGBEARER_CREEP,
+        &RANGED_CREEP,
+        &SUPER_MELEE_CREEP,
+        &MEGA_MELEE_CREEP,
+        &SUPER_RANGED_CREEP,
+        &MEGA_RANGED_CREEP,
+        &SIEGE_CREEP,
+        &SUPER_SIEGE_CREEP,
+        &HERO,
+        &BARRACKS_MELEE,
+        &BARRACKS_RANGED,
+        &FILLER,
+        &RADIANT_ANCIENT,
+        &DIRE_ANCIENT,
+        &FOUNTAIN,
+        &COURIER,
+        &OBSERVER_WARD,
+        &SENTRY_WARD,
+        &TOWERS[0],
+        &TOWERS[1],
+        &TOWERS[2],
+        &TOWERS[3],
+        &crate::LOTUS_POOL,
+        &crate::OUTPOST,
+        &crate::WATCHER,
+        &crate::SHRINE,
+    ];
+    const fn sight(most: i32, def: &UnitDef) -> i32 {
+        let farther = if def.day_vision > def.night_vision {
+            def.day_vision
+        } else {
+            def.night_vision
+        };
+        if farther > most { farther } else { most }
+    }
+    let mut most = 0;
+    let mut at = 0;
+    while at < FIXED.len() {
+        most = sight(most, FIXED[at]);
+        at += 1;
+    }
+    let mut at = 0;
+    while at < crate::HEROES.len() {
+        most = sight(most, crate::HEROES[at].unit);
+        at += 1;
+    }
+    let mut at = 0;
+    while at < crate::NEUTRALS.len() {
+        most = sight(most, &crate::NEUTRALS[at].def);
+        at += 1;
+    }
+    let mut at = 0;
+    while at < crate::ITEMS.len() {
+        if let crate::UseSpec::Ward { unit, .. } = crate::ITEMS[at].effect {
+            most = sight(most, unit);
+        }
+        at += 1;
+    }
+    most
+}
+
 /// The plain form of a tower of this tier, counted from one.
 #[inline]
 pub fn tower_def(tier: u8) -> &'static UnitDef {

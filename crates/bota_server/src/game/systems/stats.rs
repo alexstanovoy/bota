@@ -478,6 +478,10 @@ fn add_modifiers<'a>(
             }
             ModifierKind::VisionGrant { side, day, night } => {
                 let radius = if wearer.night { night } else { day };
+                debug_assert!(
+                    radius <= bota_core::MAX_VISION,
+                    "a vision grant sees farther than bota_core::MAX_VISION"
+                );
                 now.vision_grant = Some((side, Fixed::from_int(radius)));
             }
             ModifierKind::Mending { .. }
@@ -664,6 +668,10 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32, night: bool) -> Stats {
         team_gold: g.team_gold * levels + per.team_gold * steps,
     };
     let up = gained(&kind.per_level, &kind.per_upgrade);
+    debug_assert!(
+        kind.day_vision.max(kind.night_vision) <= bota_core::MAX_VISION,
+        "a kind of unit sees farther than bota_core::MAX_VISION: list it in max_vision"
+    );
     Stats {
         attributes: kind.attributes + up.attributes,
         primary: kind.primary,
