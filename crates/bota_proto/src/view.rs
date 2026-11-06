@@ -385,7 +385,6 @@ pub struct GatheringView {
     pub progress: u32,
     /// Ticks it runs to its end.
     pub ticks: u32,
-
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]

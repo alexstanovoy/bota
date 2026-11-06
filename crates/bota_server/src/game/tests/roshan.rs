@@ -693,8 +693,8 @@ fn lifesteal_from_roshan_keeps_fractional_health_with_the_creep_factor() {
         }) {
             assert!(pct > 0);
             let healed = world.health.get(attacker).expect("attacker").hp - before - regen;
-            let expected_raw = i64::from(damage) * i64::from(pct) * 60
-                * i64::from(Fixed::ONE.raw) / 10_000;
+            let expected_raw =
+                i64::from(damage) * i64::from(pct) * 60 * i64::from(Fixed::ONE.raw) / 10_000;
             assert_eq!(i64::from(healed.raw), expected_raw);
             return;
         }

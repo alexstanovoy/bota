@@ -117,7 +117,9 @@ class RulesIdentityBuildTests(unittest.TestCase):
         data.write_text(source + "\n" + appended + "\n")
         mechanics = tree / "crates/bota_core/src/data/item_mechanics.rs"
         source = mechanics.read_text()
-        end = source.index("\n];", source.index("pub(crate) const ITEM_ROWS:"))
+        declaration = re.search(r"pub\(crate\)\s+(?:const|static)\s+ITEM_ROWS\s*:", source)
+        self.assertIsNotNone(declaration, "catalogue row storage exists")
+        end = source.index("\n];", declaration.start())
         source = source[:end] + "\n    rules_test_row(&ITEM_RULES_TEST)," + source[end:]
         source += "\nconst fn rules_test_row(data: &ItemData) -> ItemDef { from(data) }\n"
         mechanics.write_text(source)

@@ -8,8 +8,8 @@ use bota_proto::{Aim, Attribute, Attributes, EffectId, Fixed, ItemId};
 use super::items::*;
 use crate::{
     Affects, AllyUse, Carried, Dec, DisassembleRule, Dispel, Drink, Grenade, Immunity, ItemData,
-    ItemDef, LOTUS_TAKE_RANGE, Mend, NOTHING, Odds, OnAttack, PLAIN, Pool, Recipe,
-    Scroll, Spends, Stock, UseSpec, hundredths_per_second, points, points_with, rules,
+    ItemDef, LOTUS_TAKE_RANGE, Mend, NOTHING, Odds, OnAttack, PLAIN, Pool, Recipe, Scroll, Spends,
+    Stock, UseSpec, hundredths_per_second, points, points_with, rules,
 };
 
 /// The row of an item as its script gives it; a row of the catalog adds what bota does with it.
