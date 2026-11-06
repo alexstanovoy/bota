@@ -126,6 +126,18 @@ impl World {
         self.stats.get(entity).is_some_and(|stats| stats.ethereal)
     }
 
+    /// Whether an entity is muted: it uses no item.
+    pub fn muted(&self, entity: Entity) -> bool {
+        self.wears_state(entity, ModifierKind::mutes)
+    }
+
+    /// Whether an entity wears an active modifier of a kind `state` holds for.
+    fn wears_state(&self, entity: Entity, state: fn(ModifierKind) -> bool) -> bool {
+        self.modifiers
+            .get(entity)
+            .is_some_and(|on_it| on_it.active().any(|held| state(held.kind)))
+    }
+
     /// Whether an entity is broken: its own passives do nothing. What the
     /// auras a Break silences put on stays on and does nothing
     /// ([`World::disabled`]); the blows it lays strikes on and the throes of

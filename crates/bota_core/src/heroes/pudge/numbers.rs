@@ -84,3 +84,12 @@ pub const MEAT_SHIELD_COOLDOWN: [u32; 4] = ticks_of(PUDGE_FLESH_HEAP.cooldown);
 pub const MEAT_SHIELD_BLOCK: [i32; 4] = PUDGE_FLESH_HEAP.value("damage_block").ints();
 /// Ticks the meat shield holds, by level.
 pub const MEAT_SHIELD_TICKS: [u32; 4] = PUDGE_FLESH_HEAP.value("duration").ticks();
+/// Ticks a hook's followthrough holds its thrower: the hook's reach over its speed, times its
+/// `self_stun_duration_percent` (Liquipedia, *Pudge*: "MaxTravelDistance / HookSpeed × 0.65").
+pub const HOOK_FOLLOWTHROUGH_TICKS: u32 = {
+    let percent = PUDGE_MEAT_HOOK
+        .value("self_stun_duration_percent")
+        .first()
+        .int();
+    crate::Ms((HOOK_RANGE * percent * 10 / HOOK_SPEED) as u32).ticks()
+};

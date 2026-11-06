@@ -10,7 +10,8 @@ use crate::game::{Hook, Modifier, Transform, World};
 use crate::engine::Entity;
 
 impl World {
-    /// Throws a hook in the aimed direction, always to its full reach.
+    /// Throws a hook in the aimed direction, always to its full reach, and holds its thrower
+    /// in its followthrough.
     pub fn cast_hook(&mut self, caster: Entity, level: usize, target: Target) -> bool {
         let Target::Pos(pos) = target else {
             return false;
@@ -27,6 +28,16 @@ impl World {
             point_along(from, pos, reach)
         };
         let damage_amp_bp = self.outgoing_damage_amp_bp(Some(caster), DamageKind::Pure);
+        let with = Some(Inflictor::Ability(AbilityId::MEAT_HOOK));
+        self.put_modifier(
+            caster,
+            Modifier::new(
+                ModifierKind::HookFollowthrough,
+                Some(caster),
+                with,
+                Some(rules::HOOK_FOLLOWTHROUGH_TICKS),
+            ),
+        );
         let hook = self.spawn_placed(from, facing_towards(from, aim), side);
         let links = std::array::from_fn(|_| self.spawn_mark(AbilityId::MEAT_HOOK, caster, from, 0));
         self.hook.insert(
@@ -109,8 +120,15 @@ impl World {
         self.recycle_entity_snapshot(entities);
     }
 
+    /// The hook latches: its thrower's followthrough lifts at once (Dota 7.34), and what it
+    /// caught is executed, or held and hurt.
     fn hook_hit(&mut self, hook: &mut Hook, caught: Entity) {
         hook.returning = true;
+        self.take_modifier(
+            hook.owner,
+            ModifierKind::HookFollowthrough,
+            Some(hook.owner),
+        );
         let enemy = self.team.get(caught) != self.team.get(hook.owner);
         if enemy
             && self

@@ -951,6 +951,9 @@ impl World {
             .flatten()
             .ok_or(RejectReason::EmptySlot)?;
         let def = item_def(stack.id).ok_or(RejectReason::EmptySlot)?;
+        if self.muted(unit) {
+            return Err(RejectReason::Disabled);
+        }
         let aim = self.usable(unit, &stack, def)?;
         // What is given away waits for nothing and costs nothing; what lands on an ally is a use.
         let ally = self.ally_use_on(unit, def, target);

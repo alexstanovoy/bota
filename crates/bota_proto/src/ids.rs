@@ -440,6 +440,10 @@ impl EffectId {
     /// unit channels a warp through it, at either end. Told to a side only
     /// while it sees where the gate stands.
     pub const TWIN_GATE_ACTIVE: EffectId = EffectId(99);
+    /// A Meat Hook's followthrough on its thrower
+    /// (`modifier_pudge_meat_hook_followthrough`), never shown: stunned and muted until the
+    /// hook latches or it runs out.
+    pub const HOOK_FOLLOWTHROUGH: EffectId = EffectId(100);
 }
 
 /// An index into a unit's ability slots, as listed in

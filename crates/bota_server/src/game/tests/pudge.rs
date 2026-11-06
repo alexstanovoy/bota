@@ -4,8 +4,8 @@ use bota_core::{ModifierKind, rules, tower_def};
 
 use crate::game::{Entity, Inventory, Modifier, Place, World, wire_id};
 use bota_proto::{
-    AbilityId, AbilitySlot, EffectId, Fixed, HeroId, Inflictor, Order, RejectReason, SlotId,
-    StatusFlags, Target, Team, Vec2,
+    AbilityId, AbilitySlot, EffectId, Fixed, HeroId, Inflictor, ItemId, ItemSlot, Order,
+    RejectReason, SlotId, StatusFlags, Target, Team, Vec2,
 };
 
 use super::support::*;
@@ -682,6 +682,126 @@ fn a_flesh_heap_outlives_the_death_of_the_one_carrying_it() {
         Some(bare + rules::FLESH_HEAP_STRENGTH_PER_STACK),
         "worth as much strength as it was before"
     );
+}
+
+/// Ticks a hook's followthrough holds its thrower, less one to spare: the hook's
+/// reach over its speed, times its `self_stun_duration_percent` of 65 (Liquipedia, *Pudge*:
+/// "MaxTravelDistance / HookSpeed × 0.65", 0.53 s).
+const FOLLOWTHROUGH_SURE_TICKS: u32 = 14;
+
+/// Throws a hook from Pudge east into nothing and steps until it flies.
+fn a_hook_into_nothing() -> (World, Entity) {
+    let (mut world, pudge, creep) = pudge_and_a_mark(600);
+    world.despawn(creep);
+    let home = world.pos(pudge).expect("Pudge stands");
+    cast(&mut world, 0, Target::Pos(home + Vec2::from_ints(600, 0)));
+    until_the_hook_flies(&mut world);
+    (world, pudge)
+}
+
+/// Meat Hook's followthrough (`modifier_pudge_meat_hook_followthrough`): rooted with his facing
+/// locked until it ends (Liquipedia, *Pudge*; Valve 2012-04-12 "Reduced the delay before being
+/// able to issue orders after casting").
+#[test]
+fn a_hook_thrower_neither_walks_nor_turns_during_its_followthrough() {
+    let (mut world, pudge) = a_hook_into_nothing();
+    let (home, facing) = {
+        let at = world.transform.get(pudge).expect("standing");
+        (at.pos, at.facing)
+    };
+    let behind = Target::Pos(home - Vec2::from_ints(600, 0));
+    seat_order(&mut world, Order::Move { target: behind });
+    run(&mut world, FOLLOWTHROUGH_SURE_TICKS - 1);
+    let at = *world.transform.get(pudge).expect("standing");
+    assert_eq!(at.pos, home, "he stands where he threw");
+    assert_eq!(at.facing, facing, "facing where he threw");
+    run(&mut world, rules::TICKS_PER_SECOND);
+    assert!(
+        world.pos(pudge).expect("standing").x < home.x,
+        "and walks once it ends"
+    );
+}
+
+/// The followthrough disarms: a foe right in front of him is not swung at until it ends.
+#[test]
+fn a_hook_thrower_swings_at_nothing_during_its_followthrough() {
+    let (mut world, pudge) = a_hook_into_nothing();
+    let home = world.pos(pudge).expect("Pudge stands");
+    // In front, in reach, and passed by the hook already: a courier, which it never catches.
+    let foe = world.spawn_courier(
+        Team::Dire,
+        home + Vec2::from_ints(120, 0),
+        SlotId(1),
+        Inventory::empty(6),
+    );
+    world.settle();
+    attack_click(&mut world, foe);
+    for _ in 0..FOLLOWTHROUGH_SURE_TICKS - 1 {
+        assert_eq!(swinging(&world, pudge), None, "no swing begins");
+        world.step();
+    }
+    run(&mut world, rules::TICKS_PER_SECOND / 2);
+    assert_eq!(swinging(&world, pudge), Some(foe), "until it ends");
+}
+
+/// The followthrough mutes: no item is used until it ends.
+#[test]
+fn a_hook_thrower_uses_no_item_during_its_followthrough() {
+    let (mut world, pudge) = a_hook_into_nothing();
+    hand_item(&mut world, pudge, ItemId::CLARITY, 1);
+    let drink = Order::Use {
+        slot: ItemSlot(0),
+        target: Target::Unit(wire_id(pudge)),
+    };
+    assert_eq!(
+        world.validate_order(SlotId(0), None, &drink),
+        Err(RejectReason::Disabled),
+        "an item is refused"
+    );
+    run(&mut world, FOLLOWTHROUGH_SURE_TICKS + 3);
+    assert_eq!(
+        world.validate_order(SlotId(0), None, &drink),
+        Ok(()),
+        "until it ends"
+    );
+}
+
+/// A hook that latches lifts the followthrough at once (Valve 7.34: "Cast stun on Pudge is
+/// now removed if the hook finds a target").
+#[test]
+fn a_hook_that_latches_frees_its_thrower_at_once() {
+    let (mut world, pudge, _mark) = pudge_and_a_hero_mark(250);
+    let home = world.pos(pudge).expect("Pudge stands");
+    cast(&mut world, 0, Target::Pos(home + Vec2::from_ints(250, 0)));
+    until_the_hook_flies(&mut world);
+    for _ in 0..6 {
+        if hook_holds(&world) {
+            break;
+        }
+        world.step();
+    }
+    assert!(hook_holds(&world), "the hook latches at once");
+    let facing = world.transform.get(pudge).expect("standing").facing;
+    seat_order(
+        &mut world,
+        Order::Move {
+            target: Target::Pos(home - Vec2::from_ints(600, 0)),
+        },
+    );
+    run(&mut world, 3);
+    assert_ne!(
+        world.transform.get(pudge).expect("standing").facing,
+        facing,
+        "and its thrower turns before the followthrough would have ended"
+    );
+}
+
+/// Whether a flying hook holds something.
+fn hook_holds(world: &World) -> bool {
+    world
+        .entities
+        .iter()
+        .any(|e| world.hook.get(e).is_some_and(|hook| hook.caught.is_some()))
 }
 
 /// Dismember takes `DOTA_UNIT_TARGET_HERO | DOTA_UNIT_TARGET_BASIC`

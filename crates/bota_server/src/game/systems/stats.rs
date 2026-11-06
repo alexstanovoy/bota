@@ -583,6 +583,7 @@ fn add_modifiers<'a>(
             | ModifierKind::Shadowraze { .. }
             | ModifierKind::Rot { .. }
             | ModifierKind::Rooted
+            | ModifierKind::HookFollowthrough
             | ModifierKind::Disarmed
             | ModifierKind::Broken
             | ModifierKind::LampOff

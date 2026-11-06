@@ -338,6 +338,11 @@ const EFFECT_ROWS: &[EffectDef] = &[
         sighted_only: true,
         ..buff(99, "modifier_twin_gate_fx", "TwinGateActive")
     },
+    hidden(
+        100,
+        "modifier_pudge_meat_hook_followthrough",
+        "HookFollowthrough",
+    ),
 ];
 
 /// How many effect ids the protocol has ever handed out, retired ones

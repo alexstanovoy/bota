@@ -309,6 +309,10 @@ pub enum ModifierKind {
     /// A Twin Gate a warp is channelled through, at either end
     /// (`modifier_twin_gate_fx`): it glows and hums while it lasts.
     TwinGateActive,
+    /// A Meat Hook's followthrough on its thrower
+    /// (`modifier_pudge_meat_hook_followthrough`): stunned and muted until the hook latches or
+    /// it runs out (Dota 7.34: "Cast stun on Pudge"; Liquipedia, *Pudge*).
+    HookFollowthrough,
     /// What a neutral's spell left, at the level it was cast at. `amount`
     /// is the spell's own count: the blows a Steal Weapon has counted, the
     /// magical damage a bubble has left to soak.
@@ -422,6 +426,7 @@ impl ModifierKind {
             },
             ModifierKind::Ethereal { .. } => EffectId::GHOST_FORM,
             ModifierKind::TwinGateActive => EffectId::TWIN_GATE_ACTIVE,
+            ModifierKind::HookFollowthrough => EffectId::HOOK_FOLLOWTHROUGH,
         }
     }
 
@@ -432,6 +437,11 @@ impl ModifierKind {
     /// Spring Cleaning 2022).
     pub const fn disables_auto_attack(self) -> bool {
         matches!(self, ModifierKind::FountainInvulnerable)
+    }
+
+    /// Whether wearing it keeps a unit from using items: Dota's `MODIFIER_STATE_MUTED`.
+    pub const fn mutes(self) -> bool {
+        matches!(self, ModifierKind::HookFollowthrough)
     }
 
     /// The souls the necromastery holds, `count` of them.
@@ -456,7 +466,9 @@ impl ModifierKind {
     pub fn controls(self, kind: Control) -> bool {
         match self {
             ModifierKind::Control { control, .. } => control == kind,
-            ModifierKind::DelayedSpell { .. } | ModifierKind::Stunned => kind == Control::Stun,
+            ModifierKind::DelayedSpell { .. }
+            | ModifierKind::Stunned
+            | ModifierKind::HookFollowthrough => kind == Control::Stun,
             ModifierKind::Rooted => kind == Control::Root,
             ModifierKind::Disarmed => kind == Control::Disarm,
             _ => false,

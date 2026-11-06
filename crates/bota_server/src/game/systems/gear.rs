@@ -691,6 +691,7 @@ impl World {
             return false;
         };
         if !(in_inventory(slot) || in_town_portal(slot))
+            || self.muted(entity)
             || self.usable(entity, &stack, def).is_err()
         {
             return false;
