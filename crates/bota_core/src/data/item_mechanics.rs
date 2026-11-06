@@ -83,6 +83,16 @@ const fn regen(d: &ItemData, key: &str) -> Fixed {
     hundredths_per_second(d.first(key).hundredths())
 }
 
+/// A value's first level, a percent of magic resistance, in basis points.
+const fn magic_resist(d: &ItemData, key: &str) -> i32 {
+    let value = int(d, key);
+    assert!(
+        value >= 0 && value < 100,
+        "a magic resistance past all of it"
+    );
+    value * rules::NOMINAL_BP / 100
+}
+
 /// A value's first level as armor.
 const fn armor(d: &ItemData, key: &str) -> Fixed {
     let value: Dec = d.first(key);
@@ -872,6 +882,24 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
             ..NOTHING
         },
         ..from(&ITEM_ULTIMATE_ORB)
+    },
+    // Shawl and Cloak: magic resistance, stacking as Dota's does (the items' notes: "Stacks
+    // multiplicatively with other sources of magic resistance").
+    ItemDef {
+        name: "Shawl",
+        carried: Carried {
+            magic_resist_bp: magic_resist(&ITEM_SHAWL, "bonus_magical_armor"),
+            ..NOTHING
+        },
+        ..from(&ITEM_SHAWL)
+    },
+    ItemDef {
+        name: "Cloak",
+        carried: Carried {
+            magic_resist_bp: magic_resist(&ITEM_CLOAK, "bonus_magical_armor"),
+            ..NOTHING
+        },
+        ..from(&ITEM_CLOAK)
     },
 ];
 

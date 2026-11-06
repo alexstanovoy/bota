@@ -124,7 +124,7 @@ pub fn derive_stats(cx: StatsCx<'_>) {
             Fixed::from_ratio(kind.armor * 2 + kind.per_upgrade.armor_halves * steps, 2)
                 + agility_armor(now.attributes);
         if let Some(carried) = &carried {
-            add_carried_shares(&mut now, carried);
+            add_carried_shares(&mut now, carried, illusion);
         }
         sums.bonus_damage += kept(illusion, soul_damage(held(ModifierKind::souls), levels + 1));
         // What a breakable aura put on does nothing while its source is
@@ -288,9 +288,12 @@ fn add_feast(now: &mut Stats, pace: &mut Pace, on_it: &Modifiers, book: Option<&
 }
 
 /// Adds what the inventory proper carries as shares of what the attributes
-/// already brought: of the maximum mana, and of the base pace and what
-/// agility adds to it, nothing else.
-fn add_carried_shares(now: &mut Stats, carried: &Carried) {
+/// already brought: of the maximum mana, of the base pace and what agility
+/// adds to it, and of the magic the base resistance (intelligence's
+/// included) lets through.
+fn add_carried_shares(now: &mut Stats, carried: &Carried, illusion: bool) {
+    now.magic_resist_bp =
+        bota_core::resist_both(now.magic_resist_bp, kept(illusion, carried.magic_resist_bp));
     if carried.mana_pct != 0 {
         now.max_mana += now.max_mana * Fixed::from_ratio(carried.mana_pct, 100);
     }

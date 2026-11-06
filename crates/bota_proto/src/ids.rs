@@ -211,6 +211,10 @@ impl ItemId {
     /// Dota's `item_royale_with_cheese` (public name Block of Cheese): three
     /// Greater Healing Lotuses and a Cheese combine into it.
     pub const ROYALE_WITH_CHEESE: ItemId = ItemId(61);
+    /// Dota's `item_shawl`: magic resistance.
+    pub const SHAWL: ItemId = ItemId(80);
+    /// Dota's `item_cloak`: magic resistance.
+    pub const CLOAK: ItemId = ItemId(81);
 }
 
 /// What did something: the ability or the item a unit used, as Dota's combat

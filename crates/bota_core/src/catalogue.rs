@@ -224,6 +224,7 @@ impl Fnv {
             pierce_unique,
             melee_range,
             mana_pct,
+            magic_resist_bp,
         } = value;
         self.attributes(attributes)
             .int(move_speed as i64)
@@ -243,6 +244,7 @@ impl Fnv {
             .flag(pierce_unique)
             .int(melee_range as i64)
             .int(mana_pct as i64)
+            .int(magic_resist_bp as i64)
     }
 
     const fn mend(self, value: Mend) -> Fnv {

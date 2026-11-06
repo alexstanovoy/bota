@@ -311,28 +311,32 @@ fn a_healing_salve_mends_thirty_a_second_for_thirteen_seconds() {
     );
 }
 
-/// The hero's stats walked out of the fountain past its lingering mending, after its seat
-/// bought `item` (none: bought nothing) through the shop.
-fn out_of_fountain_after_buying(item: Option<ItemId>) -> Stats {
-    let (mut world, hero) = a_hero_with_gold(10_000);
-    match item {
-        Some(item) => {
-            let events = seat_order(&mut world, Order::Buy { item });
-            assert!(
-                events.iter().any(|event| matches!(
-                    event.kind(),
-                    EventKind::ItemBought { item: bought, .. } if bought == item
-                )),
-                "{item:?} is sold"
-            );
-            assert_eq!(slot_of(&world, hero, 0).map(|held| held.id), Some(item));
-        }
-        None => {
-            world.step();
-        }
+/// A hero walked out of the fountain past its lingering mending, after its seat bought `items`
+/// through the shop, one a tick, into its first slots.
+fn out_of_fountain_after_buying(items: &[ItemId]) -> (World, Entity) {
+    let (mut world, hero) = a_hero_with_gold(30_000);
+    for (slot, &item) in items.iter().enumerate() {
+        let events = seat_order(&mut world, Order::Buy { item });
+        assert!(
+            events.iter().any(|event| matches!(
+                event.kind(),
+                EventKind::ItemBought { item: bought, .. } if bought == item
+            )),
+            "{item:?} is sold"
+        );
+        assert_eq!(slot_of(&world, hero, slot).map(|held| held.id), Some(item));
+    }
+    if items.is_empty() {
+        world.step();
     }
     world.transform.get_mut(hero).expect("standing").pos = Vec2::from_ints(9000, 9216);
     run(&mut world, rules::FOUNTAIN_HEAL_LINGER_TICKS + 1);
+    (world, hero)
+}
+
+/// The hero's stats once its seat bought `items` and it walked out of the fountain.
+fn stats_after_buying(items: &[ItemId]) -> Stats {
+    let (world, hero) = out_of_fountain_after_buying(items);
     *world.stats.get(hero).expect("derived")
 }
 
@@ -354,7 +358,7 @@ const STAT_ITEMS_TESTED_APART: [ItemId; 5] = [
 /// test does not know fails it, so no value goes unread.
 #[test]
 fn every_stat_item_bought_adds_what_its_script_says_and_nothing_else() {
-    let bare = out_of_fountain_after_buying(None);
+    let bare = stats_after_buying(&[]);
     let per_tick = |per_second: bota_core::Dec| {
         Fixed::from_ratio(per_second.0, 1000 * rules::TICKS_PER_SECOND as i32)
     };
@@ -369,10 +373,14 @@ fn every_stat_item_bought_adds_what_its_script_says_and_nothing_else() {
         if !stat_stick || STAT_ITEMS_TESTED_APART.contains(&item) {
             continue;
         }
-        let got = out_of_fountain_after_buying(Some(item));
+        let got = stats_after_buying(&[item]);
         let mut expected = bare;
         let mut attributes = Attributes::ZERO;
         for (key, levels) in def.values {
+            if key.starts_with("tooltip_") {
+                // A number only the tooltip shows: another of the item's, as Dota words it.
+                continue;
+            }
             let [value] = levels else {
                 panic!("{}: {key} has levels", def.key);
             };
@@ -389,6 +397,12 @@ fn every_stat_item_bought_adds_what_its_script_says_and_nothing_else() {
                 "bonus_mana" => expected.max_mana += points(*value),
                 "bonus_health_regen" | "bonus_regen" => expected.hp_regen += per_tick(*value),
                 "bonus_mana_regen" => expected.mana_regen += per_tick(*value),
+                "bonus_magical_armor" => {
+                    // Of what the hero's own resistance lets through, the item keeps out its
+                    // percent.
+                    let through = (10_000 - expected.magic_resist_bp) * (100 - value.int()) / 100;
+                    expected.magic_resist_bp = 10_000 - through;
+                }
                 other => panic!("{}: a value this test does not know: {other}", def.key),
             }
         }
@@ -408,7 +422,7 @@ fn every_stat_item_bought_adds_what_its_script_says_and_nothing_else() {
         expected.mana_regen = got.mana_regen;
         assert_eq!(got, expected, "{}", def.key);
     }
-    assert_eq!(checked, 41, "the shop's stat items");
+    assert_eq!(checked, 43, "the shop's stat items");
 }
 
 /// `stats` with `more` attributes and what they are worth: health, mana and their regeneration,
@@ -426,4 +440,37 @@ fn add_worth_of_attributes(stats: &mut Stats, more: Attributes) {
     stats.attack_speed += agility_attack_speed(now) - agility_attack_speed(was);
     stats.damage += primary_damage(now, stats.primary) - primary_damage(was, stats.primary);
     stats.magic_resist_bp += intelligence_magic_resist_bp(now) - intelligence_magic_resist_bp(was);
+}
+
+/// Shawl and Cloak, bought through the shop, each keep out their share of the magic that the
+/// hero's own resistance and the other let through (Dota: "Stacks multiplicatively with other
+/// sources of magic resistance"): a magical blow lands for that much less, and a Cloak lifts a
+/// base 25% to 38.5% (Liquipedia, *Cloak*).
+#[test]
+fn shawl_and_cloak_keep_out_their_share_of_the_magic_the_rest_let_through() {
+    let magic_taken = |items: &[ItemId]| {
+        let (mut world, hero) = out_of_fountain_after_buying(items);
+        world.push_hit(None, hero, 400, bota_proto::DamageKind::Magical, None);
+        let events = world.step();
+        events
+            .iter()
+            .find_map(|event| match event.kind() {
+                EventKind::Damaged { amount, .. } => Some(amount),
+                _ => None,
+            })
+            .expect("the blow lands")
+    };
+    let bare = magic_taken(&[]);
+    let cloak = magic_taken(&[ItemId::CLOAK]);
+    let both = magic_taken(&[ItemId::SHAWL, ItemId::CLOAK]);
+    assert!((cloak - bare * 82 / 100).abs() <= 1, "{bare} then {cloak}");
+    assert!(
+        (both - bare * 82 * 90 / 10_000).abs() <= 1,
+        "{bare} then {both}"
+    );
+    assert_eq!(
+        bota_core::resist_both(2500, 1800),
+        3850,
+        "a Cloak on a base 25%"
+    );
 }

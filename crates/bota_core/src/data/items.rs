@@ -1922,3 +1922,51 @@ pub(crate) const ITEM_ULTIMATE_ORB: ItemData = ItemData {
     builds: &[],
     values: &[("bonus_all_stats", &[Dec::of("15")])],
 };
+
+pub(crate) const ITEM_SHAWL: ItemData = ItemData {
+    id: ItemId(80),
+    key: "item_shawl",
+    retired: false,
+    cost: 450,
+    behavior: B::PASSIVE,
+    cast_range: 0,
+    cast_point: Ms::secs("0"),
+    channel: Ms::secs("0"),
+    cooldown: Ms::secs("0"),
+    mana: 0,
+    health: 0,
+    charges: 0,
+    stack: 0,
+    stock: None,
+    purchasable: true,
+    secret_shop: false,
+    builds: &[],
+    values: &[
+        ("bonus_magical_armor", &[Dec::of("10")]),
+        ("tooltip_resist", &[Dec::of("10")]),
+    ],
+};
+
+pub(crate) const ITEM_CLOAK: ItemData = ItemData {
+    id: ItemId(81),
+    key: "item_cloak",
+    retired: false,
+    cost: 900,
+    behavior: B::PASSIVE,
+    cast_range: 0,
+    cast_point: Ms::secs("0"),
+    channel: Ms::secs("0"),
+    cooldown: Ms::secs("0"),
+    mana: 0,
+    health: 0,
+    charges: 0,
+    stack: 0,
+    stock: None,
+    purchasable: true,
+    secret_shop: false,
+    builds: &[],
+    values: &[
+        ("bonus_magical_armor", &[Dec::of("18")]),
+        ("tooltip_resist", &[Dec::of("18")]),
+    ],
+};

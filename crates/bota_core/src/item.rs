@@ -63,6 +63,11 @@ pub struct Carried {
     pub melee_range: i32,
     /// Percent added to the carrier's maximum mana, attributes included.
     pub mana_pct: i32,
+    /// Magic resistance, in basis points of [`rules::NOMINAL_BP`]. Several
+    /// carried stack as Dota's magic resistance does, each keeping out its
+    /// share of what the others let through, and all of them of what the
+    /// carrier's own resistance lets through.
+    pub magic_resist_bp: i32,
 }
 
 /// Nothing carried at all, so an entry names only what it adds.
@@ -85,6 +90,7 @@ pub(crate) const NOTHING: Carried = Carried {
     pierce_unique: false,
     melee_range: 0,
     mana_pct: 0,
+    magic_resist_bp: 0,
 };
 
 /// Whole points of one attribute and none of the others.
@@ -695,6 +701,14 @@ pub fn carried_pierces(
     })
 }
 
+/// Two magic resistances in basis points as one: what the first lets
+/// through, the second lets its share of through.
+pub const fn resist_both(first_bp: i32, second_bp: i32) -> i32 {
+    let nominal = rules::NOMINAL_BP as i64;
+    let through = (nominal - first_bp as i64) * (nominal - second_bp as i64) / nominal;
+    (nominal - through) as i32
+}
+
 /// What the items carried add up to, for a carrier with a ranged attack
 /// or not: an item with a [`ranged`](ItemDef::ranged) variant adds that to
 /// a ranged one. Pass only the stacks that count: the inventory proper,
@@ -731,6 +745,7 @@ pub fn carried_bonus(items: impl Iterator<Item = CarriedItem>, ranged: bool) -> 
         total.evasion = total.evasion.or(carried.evasion);
         total.melee_range += carried.melee_range;
         total.mana_pct += carried.mana_pct;
+        total.magic_resist_bp = resist_both(total.magic_resist_bp, carried.magic_resist_bp);
         // What an item is set to is worth points of that attribute alone.
         if let Some(mode) = stack.mode {
             total.attributes += points(mode, def.mode_bonus);
