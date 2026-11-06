@@ -94,6 +94,8 @@ world_tables! {
         pub objectives: bota_proto::ObjectiveSet = bota_proto::ObjectiveSet::NONE;
         /// Trusted match setup's modifiers, put on each unit as it is stood up.
         pub spawn_modifiers: Vec<SpawnModifier> = Vec::new();
+        /// The FOW viewers showing, at most [`MAX_FOW_VIEWERS`](crate::game::MAX_FOW_VIEWERS).
+        pub fow_viewers: Vec<crate::game::FowViewer> = Vec::new();
         /// Trusted match setup's economic events still to come, in tick order.
         pub economy_events: crate::game::EconomySchedule = crate::game::EconomySchedule::default();
         /// Which kinds of rune the match spawns.
@@ -134,8 +136,6 @@ world_tables! {
         pub hook: Hook;
         /// What each entity that is an ability's mark shows.
         pub mark: Mark;
-        /// The sight each FOW viewer gives its side.
-        pub viewer: crate::game::Viewer;
         /// The line of a requiem each entity that is one is flying.
         pub requiem_line: RequiemLine;
         /// The chain of damage each entity that is one is leaping along.
@@ -864,13 +864,12 @@ impl World {
 
     /// Who sees what, from where everything stands.
     fn refresh_sight(&mut self) {
-        let scroll_sights: Vec<(Team, Vec2, i32, bool)> = self
-            .temporary_sights()
-            .chain(
-                self.fow_viewer_sights()
-                    .map(|(side, at, radius)| (side, at, radius, true)),
-            )
+        let mut scroll_sights: Vec<(Team, Vec2, i32, bool)> = self.temporary_sights().collect();
+        let viewers: Vec<_> = self
+            .fow_viewer_sights()
+            .map(|(side, at, radius)| (side, at, radius, true))
             .collect();
+        scroll_sights.extend(viewers);
         visibility_system(SightCx {
             pits: self.map.boss_zones,
             entities: &self.entities,

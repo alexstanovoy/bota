@@ -1,11 +1,11 @@
 //! Working out who sees what.
 
 use bota_core::{CellGrid, SightBlock, kind_def, rules};
-use bota_proto::{Angle, Fixed, Target, Team, UnitKind, Vec2};
+use bota_proto::{Fixed, Target, Team, UnitKind, Vec2};
 
 use crate::game::{
-    Entity, EntityAllocator, EventVisibility, Expiry, Exposure, ExposureCell, Ground, Spots, Stats,
-    Table, Transform, Viewer, Visibility, World,
+    Entity, EntityAllocator, EventVisibility, Exposure, ExposureCell, FowViewer, Ground, Spots,
+    Stats, Table, Transform, Visibility, World,
 };
 
 /// What working out sight reads and writes.
@@ -390,6 +390,10 @@ impl SightScratch {
     }
 }
 
+/// FOW viewers shown at once at most: a hook's latch leaves one for 4 s, so a handful show in
+/// a match; the bound keeps a flood of them bounded.
+pub const MAX_FOW_VIEWERS: usize = 64;
+
 /// The viewer a circle of sight shown to a side stands for: a scroll's
 /// landing, which flies, or a strike's circle.
 fn reveal(side: Team, at: Vec2, radius: i32, flying: bool, ground: &Ground) -> SightViewer {
@@ -405,19 +409,31 @@ fn reveal(side: Team, at: Vec2, radius: i32, flying: bool, ground: &Ground) -> S
 
 impl World {
     /// Gives a side unobstructed sight `radius` around `at` for `ticks`:
-    /// Dota's FOW viewer, which a hook's latch or a dismember's hold leaves.
+    /// Dota's FOW viewer, which a hook's latch leaves. With
+    /// [`MAX_FOW_VIEWERS`] showing, the one that ends soonest goes.
     pub fn add_fow_viewer(&mut self, side: Team, at: Vec2, radius: i32, ticks: u32) {
-        let viewer = self.spawn_placed(at, Angle::default(), side);
-        self.viewer.insert(viewer, Viewer { side, radius });
-        self.expiry.insert(viewer, Expiry { ticks_left: ticks });
+        if self.fow_viewers.len() >= MAX_FOW_VIEWERS
+            && let Some(soonest) =
+                (0..self.fow_viewers.len()).min_by_key(|&at| self.fow_viewers[at].until)
+        {
+            self.fow_viewers.remove(soonest);
+        }
+        self.fow_viewers.push(FowViewer {
+            side,
+            at,
+            radius,
+            until: self.tick + ticks,
+        });
     }
 
-    /// The sight every FOW viewer gives, as a side, a spot and a radius.
-    pub fn fow_viewer_sights(&self) -> impl Iterator<Item = (Team, Vec2, i32)> + '_ {
-        self.entities.iter().filter_map(|entity| {
-            let viewer = self.viewer.get(entity)?;
-            Some((viewer.side, self.pos(entity)?, viewer.radius))
-        })
+    /// The sight every FOW viewer still showing gives, as a side, a spot and a
+    /// radius; those that have run out go.
+    pub fn fow_viewer_sights(&mut self) -> impl Iterator<Item = (Team, Vec2, i32)> + '_ {
+        let tick = self.tick;
+        self.fow_viewers.retain(|viewer| viewer.until > tick);
+        self.fow_viewers
+            .iter()
+            .map(|viewer| (viewer.side, viewer.at, viewer.radius))
     }
 }
 
