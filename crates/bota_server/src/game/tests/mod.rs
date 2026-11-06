@@ -21,6 +21,7 @@ mod delay;
 mod determinism;
 mod disassembly;
 mod economy_events;
+mod enemy_base_shop;
 mod event_envelope;
 mod feast;
 mod fiend;

@@ -2,7 +2,7 @@
 
 use bota_proto::{Fixed, ShopZoneView, Vec2};
 
-use crate::{MapDef, ShopAccess, at_home_shop, segment_distance_squared};
+use crate::{MapDef, ShopAccess, at_base_shop, segment_distance_squared};
 
 /// A shopkeeper and the counter-clockwise footprint of its trigger volume.
 #[derive(Clone, Copy, Debug)]
@@ -73,9 +73,9 @@ pub fn at_secret_shop(map: &MapDef, pos: Vec2, bound: Fixed) -> bool {
         .any(|shop| shop_zone_touches(shop.corners, pos, bound))
 }
 
-pub fn shop_access(map: &MapDef, team: bota_proto::Team, pos: Vec2, bound: Fixed) -> ShopAccess {
+pub fn shop_access(map: &MapDef, pos: Vec2, bound: Fixed) -> ShopAccess {
     ShopAccess {
-        base: at_home_shop(map, team, pos),
+        base: at_base_shop(map, pos),
         secret: at_secret_shop(map, pos, bound),
     }
 }

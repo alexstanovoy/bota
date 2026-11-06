@@ -24,6 +24,14 @@ pub fn at_home_shop(map: &MapDef, team: Team, pos: Vec2) -> bool {
     pos.within(fountain_pos(map, team), rules::units(rules::SHOP_RANGE))
 }
 
+/// Either base shop serves every player, including access to their own stash.
+#[inline]
+pub fn at_base_shop(map: &MapDef, pos: Vec2) -> bool {
+    map.fountains
+        .iter()
+        .any(|fountain| pos.within(*fountain, rules::units(rules::SHOP_RANGE)))
+}
+
 /// Where a team's hero appears, beside the fountain rather than inside it.
 pub fn hero_spawn_pos(map: &MapDef, team: Team) -> Vec2 {
     let offset = match team {

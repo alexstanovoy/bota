@@ -908,6 +908,16 @@ impl App {
             .unwrap_or(false)
     }
 
+    /// Whether our hero can use a base shop, independent of its allegiance.
+    pub fn at_base_shop(&self) -> bool {
+        self.at_home_shop()
+    }
+
+    /// Whether a unit is within reach of either base shop and the personal stash.
+    pub fn unit_at_base_shop(&self, id: EntityId) -> bool {
+        self.unit_at_home_shop(id)
+    }
+
     /// The seat the bottom panel falls back to: our own, else the first one.
     pub fn default_slot(&self) -> Option<SlotId> {
         self.my_slot

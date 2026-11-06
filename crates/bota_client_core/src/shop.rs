@@ -6,7 +6,7 @@ use bota_core::{
     PurchaseCarrier, PurchaseContext, Shelf, ShopAccess, hero_def, missing_parts,
     place_shop_purchase, purchase_pool, sold,
 };
-use bota_proto::{Attribute, Fixed, ItemId, PlayerView, Team, UnitKind, UnitView, WorldView};
+use bota_proto::{Attribute, Fixed, ItemId, PlayerView, UnitKind, UnitView, WorldView};
 
 use crate::MatchStatic;
 
@@ -65,7 +65,7 @@ pub fn price_for(item: ItemId, held: &[ItemId], primary: Option<Attribute>) -> i
 }
 
 /// Whether the server finds room for what buying `item` still takes, whatever the seat can pay:
-/// base-shop parts go to the hero at home or the stash; secret-shop parts require a physical
+/// base-shop parts go to the hero at either base or the stash; secret-shop parts require a physical
 /// carrier there. Mergeable charges fill a stack first. A seat whose stash is not told
 /// (the other side's) has none to ask about.
 pub fn purchase_fits(
@@ -118,13 +118,11 @@ pub(crate) fn purchase_carrier<'a>(
     if unit.hp <= 0 {
         return None;
     }
-    let home = match unit.team {
-        Team::Radiant => Some(statics.fountains()[0]),
-        Team::Dire => Some(statics.fountains()[1]),
-        Team::Neutral => None,
-    };
     let shops = ShopAccess {
-        base: home.is_some_and(|at| unit.pos.within(at, Fixed::from_int(statics.shop_range()))),
+        base: statics
+            .fountains()
+            .iter()
+            .any(|at| unit.pos.within(*at, Fixed::from_int(statics.shop_range()))),
         secret: statics
             .secret_shops()
             .iter()

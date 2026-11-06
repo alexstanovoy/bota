@@ -3,8 +3,8 @@
 use bota_core::{
     AllyUse, Berth, Carried, CarriedItem, DisassembleRule, ITEMS, ItemDef, MAX_COMPONENTS, Mend,
     ModifierKind, Pool, PurchaseCarrier, PurchaseContext, Spends, clamp_to_map, effect_def,
-    fountain_pos, hero_def, item_def, learn_group, move_towards, place_shop_purchase,
-    purchase_pool, rules, shop_access,
+    hero_def, item_def, learn_group, move_towards, place_shop_purchase, purchase_pool, rules,
+    shop_access,
 };
 use bota_proto::{
     AbilityId, Aim, Attribute, EventKind, Fixed, HeroId, Inflictor, ItemId, RejectReason, SlotId,
@@ -485,7 +485,7 @@ impl World {
             {
                 assemble_pool(owner, tick, &mut [bag]);
             }
-            let home = self.at_home(self.seats[seat].unit);
+            let stash_in_reach = self.seats[seat].unit.is_some_and(|unit| self.at_shop(unit));
             let dead = self.seats[seat].dead();
             let seat_state = &mut self.seats[seat];
             let stash = &mut seat_state.stash;
@@ -493,7 +493,7 @@ impl World {
                 .unit
                 .and_then(|unit| self.inventory.get_mut(unit));
             match hero {
-                Some(hero) if home || dead => {
+                Some(hero) if stash_in_reach || dead => {
                     assemble_pool(owner, tick, &mut [hero, stash]);
                 }
                 Some(hero) => {
@@ -510,7 +510,7 @@ impl World {
     /// Buys an item for a seat that can afford it.
     ///
     /// Mergeable charges fill a compatible stack before taking an empty slot.
-    /// A base-shop purchase goes to the hero's bag at its own shop, and
+    /// A base-shop purchase goes to the hero's bag at either base shop, and
     /// to the stash when that bag is full. Anywhere else, and while the hero
     /// lies dead, it goes to the stash and waits there. Secret-shop parts
     /// instead need a living hero or courier in that shop's trigger zone.
@@ -593,11 +593,10 @@ impl World {
             return None;
         }
         let pos = self.pos(unit)?;
-        let team = *self.team.get(unit)?;
         let bound = self.hull.get(unit)?.bound;
         Some(PurchaseCarrier {
             bag: self.inventory.get(unit)?.shelf(),
-            shops: shop_access(self.map, team, pos, bound),
+            shops: shop_access(self.map, pos, bound),
         })
     }
 
@@ -648,12 +647,6 @@ impl World {
             None => bota_core::hero_def(self.seats[seat].hero).and_then(|hero| hero.unit.primary),
         };
         bota_core::missing_parts(item, &held, primary)
-    }
-
-    /// Whether a seat's hero stands in its home shop: never while it lies
-    /// dead.
-    fn at_home(&self, unit: Option<Entity>) -> bool {
-        unit.is_some_and(|unit| self.at_shop(unit))
     }
 
     pub fn item_def_in(&self, entity: Entity, slot: usize) -> Option<&'static ItemDef> {
@@ -1214,7 +1207,7 @@ impl World {
 
     /// Why two of a unit's slots may not swap what they hold, or nothing when
     /// they may: its bag's, a standing hero's or a dead one's, and the seat's
-    /// stash, which takes part only while the unit stands at its own shop (so
+    /// stash, which takes part only while the unit stands at a base shop (so
     /// never while it lies dead). The town portal slot takes a scroll stack
     /// from another slot, merging it, and gives nothing up: Dota's scrolls
     /// never leave it but to be read.
@@ -1432,7 +1425,7 @@ impl World {
     /// Sells every stack marked for sale that has reached the shop.
     ///
     /// A marked stack sells in a stash, or in any bag standing within
-    /// [`rules::SHOP_RANGE`] of its owner's fountain, however it got there;
+    /// [`rules::SHOP_RANGE`] of either fountain, however it got there;
     /// the gold goes to its owner.
     pub fn settle_sales(&mut self) {
         for seat in 0..self.seats.len() {
@@ -1458,6 +1451,9 @@ impl World {
             let Some(at_pos) = self.pos(holder) else {
                 continue;
             };
+            if !bota_core::at_base_shop(self.map, at_pos) {
+                continue;
+            }
             let Some(bag) = self.inventory.get(holder) else {
                 continue;
             };
@@ -1471,10 +1467,6 @@ impl World {
                 let Some(owner) = self.seats.iter().position(|s| s.slot == stack.owner) else {
                     continue;
                 };
-                let shop = fountain_pos(self.map, self.seats[owner].team);
-                if !at_pos.within(shop, rules::units(rules::SHOP_RANGE)) {
-                    continue;
-                }
                 let back = self.sale_price(&stack);
                 self.take_from_bag(holder, at);
                 self.seats[owner].gold += back;

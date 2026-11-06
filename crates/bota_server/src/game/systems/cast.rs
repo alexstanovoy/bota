@@ -1,7 +1,7 @@
 //! Casting abilities: the checks, the cost, and the charges a cast hands
 //! enemy items.
 
-use bota_core::{NeutralAbility, ability_def, at_home_shop, item_def, rules};
+use bota_core::{NeutralAbility, ability_def, at_base_shop, item_def, rules};
 use bota_proto::{AbilityId, AbilitySlot, Fixed, RejectReason, Target, UnitKind};
 
 use crate::game::{Entity, World, ability_hooks};
@@ -19,12 +19,10 @@ impl CastOutcome {
 }
 
 impl World {
-    /// Whether an entity stands in its own shop.
+    /// Whether an entity stands at either base shop.
     pub fn at_shop(&self, entity: Entity) -> bool {
-        let (Some(at), Some(side)) = (self.pos(entity), self.team.get(entity).copied()) else {
-            return false;
-        };
-        at_home_shop(self.map, side, at)
+        self.pos(entity)
+            .is_some_and(|at| at_base_shop(self.map, at))
     }
 
     /// Any shop location, for selling and backpack inactivity.
