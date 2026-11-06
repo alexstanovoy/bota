@@ -33,6 +33,12 @@ impl App {
         ))
     }
 
+    /// Whether this living carrier physically reaches the match's home shop.
+    pub fn unit_at_home_shop(&self, id: bota_proto::EntityId) -> bool {
+        self.unit_carrier(id)
+            .is_some_and(|carrier| carrier.shops.base)
+    }
+
     pub fn unit_at_secret_shop(&self, id: bota_proto::EntityId) -> bool {
         self.unit_carrier(id)
             .is_some_and(|carrier| carrier.shops.secret)
