@@ -2,7 +2,7 @@
 //! other, both gates glowing while it runs; broken off, it gives its mana
 //! back.
 
-use bota_core::{ModifierKind, TWIN_GATE, TwinGateDef, facing_towards};
+use bota_core::{ModifierKind, TWIN_GATE, TwinGateDef, WARP_RANGE, facing_towards, rules};
 use bota_proto::{AbilityId, EventKind, Fixed, Target, Team};
 
 use crate::game::{Entity, Event, EventVisibility, Modifier, TwinGate, Warp, World, wire_id};
@@ -58,6 +58,13 @@ impl World {
         let Some((gate, _)) = self.warp_gates(target) else {
             return false;
         };
+        let within = match (self.pos(caster), self.pos(gate)) {
+            (Some(from), Some(at)) => from.within(at, rules::units(WARP_RANGE)),
+            _ => false,
+        };
+        if !self.alive(caster) || !within {
+            return false;
+        }
         let paid = self.ability_mana_cost(caster, AbilityId::TWIN_GATE_WARP, 1);
         self.warp.insert(caster, Warp { gate, paid });
         self.light_gates(gate);

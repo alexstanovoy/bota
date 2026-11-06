@@ -543,7 +543,7 @@ impl World {
     }
 
     /// Starts the cast an entity was ordered to make, once it is in reach
-    /// and the caster faces its aim.
+    /// and the caster faces its aim; one whose caster has died is called off.
     ///
     /// One that holds the body for no time at all goes off from any state
     /// and leaves the body to what it was doing; one that does takes the
@@ -556,6 +556,12 @@ impl World {
         let Some(pending) = self.pending_cast(entity) else {
             return false;
         };
+        // A caster struck dead since its order was taken casts nothing: its
+        // body is buried with the tick's dead.
+        if !self.alive(entity) {
+            self.order_cast_off(entity);
+            return false;
+        }
         let spot = self.cast_spot(pending);
         if let bota_proto::Target::Unit(_) = pending.target()
             && spot.is_none()

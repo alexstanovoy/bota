@@ -556,6 +556,12 @@ impl World {
                 // targets are chosen.
                 if let Target::Unit(named) = target {
                     self.seen_by(seat, *named)?;
+                    // An order at a map objective casts its hidden ability, as
+                    // Dota turns the click into one: it is taken on a cast's
+                    // terms.
+                    if let Some(slot) = self.interaction_at(unit, *named) {
+                        return self.check_interaction(unit, seat, slot, target);
+                    }
                 }
                 Ok(())
             }
@@ -688,25 +694,56 @@ impl World {
         slot: bota_proto::AbilitySlot,
         target: &Target,
     ) -> Result<(), RejectReason> {
-        let held = self
-            .abilities
-            .get(unit)
-            .and_then(|book| book.slots.get(usize::from(slot.0)))
-            .copied()
-            .ok_or(RejectReason::EmptySlot)?;
+        let held = self.held_in(unit, slot)?;
         // A hidden ability is no slot a seat sees: only an order at what it
         // works on casts it.
         let def = bota_core::ability_def(held.id)
             .filter(|def| !def.hidden)
             .ok_or(RejectReason::EmptySlot)?;
-        if def.passive || self.wears_illusion(unit) {
-            return Err(RejectReason::NotCastable);
-        }
-        if held.level == 0 {
-            return Err(RejectReason::NotLearned);
-        }
-        if held.cooldown > 0 {
-            return Err(RejectReason::OnCooldown);
+        self.cast_refusal(unit, seat, held, def, target)
+    }
+
+    /// Whether a unit may cast the hidden ability of the map objective an
+    /// order at it names, as a cast of it would be taken.
+    fn check_interaction(
+        &self,
+        unit: Entity,
+        seat: &Seat,
+        slot: bota_proto::AbilitySlot,
+        target: &Target,
+    ) -> Result<(), RejectReason> {
+        let held = self.held_in(unit, slot)?;
+        let def = bota_core::ability_def(held.id).ok_or(RejectReason::EmptySlot)?;
+        self.cast_refusal(unit, seat, held, def, target)
+    }
+
+    /// The ability a unit holds in a slot.
+    fn held_in(
+        &self,
+        unit: Entity,
+        slot: bota_proto::AbilitySlot,
+    ) -> Result<crate::game::AbilityState, RejectReason> {
+        self.abilities
+            .get(unit)
+            .and_then(|book| book.slots.get(usize::from(slot.0)))
+            .copied()
+            .ok_or(RejectReason::EmptySlot)
+    }
+
+    /// What a cast of a held ability at a target is refused for right now:
+    /// what keeps it from going off at all ([`World::cast_blocked`], the
+    /// rule the cast itself goes by), a disabled caster, a target it may not
+    /// be aimed at, and too little mana.
+    fn cast_refusal(
+        &self,
+        unit: Entity,
+        seat: &Seat,
+        held: crate::game::AbilityState,
+        def: &bota_core::AbilityDef,
+        target: &Target,
+    ) -> Result<(), RejectReason> {
+        if let Some(reason) = self.cast_blocked(unit, held, def) {
+            return Err(reason);
         }
         // A channel is no bar: the order breaks it off, as in Dota.
         if self.held(unit) || self.feared(unit) {
@@ -724,8 +761,7 @@ impl World {
                 return Err(RejectReason::WrongTargetKind);
             }
         }
-        let held_mana = self.mana.get(unit).map_or(0, |mana| mana.mana.to_int());
-        if held_mana < self.ability_mana_cost(unit, held.id, held.level) {
+        if self.short_of_mana_for_cast(unit, held) {
             return Err(RejectReason::NotEnoughMana);
         }
         Ok(())

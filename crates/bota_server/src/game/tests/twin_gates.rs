@@ -8,8 +8,8 @@ use bota_core::{
     DOTA_TWIN_GATES, ModifierKind, WARP_CHANNEL_TICKS, WARP_MANA, facing_towards, map_of,
 };
 use bota_proto::{
-    AbilityId, EffectId, EventKind, Fixed, HeroId, MapId, ObjectiveKind, Order, Pick, SlotId,
-    Target, Team, UnitKind, Vec2,
+    AbilityId, EffectId, EventKind, Fixed, HeroId, MapId, ObjectiveKind, Order, Pick, RejectReason,
+    SlotId, Target, Team, UnitKind, Vec2,
 };
 
 use crate::game::{Command, Entity, Event, UnitOrder, World, wire_id};
@@ -312,16 +312,19 @@ fn a_root_breaks_the_warp_off_and_a_rooted_unit_cannot_begin_one() {
         "Dota 7.41e: a root interrupts it"
     );
     assert_eq!(mana(&world, caster).to_int(), before.to_int());
-    {
-        let at = gate(&world, 1);
-        order(&mut world, 0, None, click(at), false)
-    };
-    run(&mut world, 10);
-    assert!(!world.is_channelling(caster), "ROOT_DISABLES");
+    let at = gate(&world, 1);
     assert_eq!(
-        mana(&world, caster).to_int(),
-        before.to_int(),
-        "nothing spent"
+        intake(&world, 0, None, &click(at)),
+        Err(RejectReason::Disabled),
+        "ROOT_DISABLES"
+    );
+    let left = mana(&world, caster);
+    run(&mut world, 30);
+    assert!(!world.is_channelling(caster), "nothing begins while rooted");
+    assert!(
+        mana(&world, caster) >= left,
+        "nothing spent: {:?} of {left:?}",
+        mana(&world, caster)
     );
 }
 
@@ -350,17 +353,8 @@ fn damage_does_not_break_the_warp() {
 }
 
 #[test]
-fn a_hero_short_of_mana_cannot_warp_and_a_courier_warps_for_nothing() {
+fn a_courier_warps_for_nothing() {
     let mut world = gates_match(&[Team::Radiant]);
-    let caster = hero(&world, 0);
-    before_gate(&mut world, caster, 1);
-    world.mana.get_mut(caster).expect("a pool").mana = Fixed::from_int(WARP_MANA - 1);
-    {
-        let at = gate(&world, 1);
-        order(&mut world, 0, None, click(at), false)
-    };
-    run(&mut world, 10);
-    assert!(!world.is_channelling(caster), "29 mana is not enough");
     let courier = the_courier(&world);
     before_gate(&mut world, courier, 1);
     {
@@ -596,5 +590,243 @@ fn a_warp_shows_its_caster_to_nobody() {
             .get(caster)
             .is_none_or(|exposure| exposure.0.iter().all(Option::is_none)),
         "a neutral gate has no side to be shown the caster"
+    );
+}
+
+/// What a seat's order is refused for, or `Ok` when it is taken.
+fn intake(
+    world: &World,
+    slot: usize,
+    unit: Option<Entity>,
+    order: &Order,
+) -> Result<(), RejectReason> {
+    world.validate_order(world.seats[slot].slot, unit.map(wire_id), order)
+}
+
+#[test]
+fn a_click_on_a_gate_is_refused_to_a_stunned_or_rooted_hero_and_never_warps_it_later() {
+    for disable in [ModifierKind::Stunned, ModifierKind::Rooted] {
+        let mut world = gates_match(&[Team::Radiant]);
+        let caster = hero(&world, 0);
+        before_gate(&mut world, caster, 1);
+        put_on(&mut world, caster, disable, 15);
+        let at = gate(&world, 1);
+        assert_eq!(
+            intake(&world, 0, None, &click(at)),
+            Err(RejectReason::Disabled),
+            "{disable:?}: Dota refuses the cast"
+        );
+        // Refused at intake, the order never reaches the world: nothing is pending for when the
+        // disable lifts.
+        assert!(world.pending_cast(caster).is_none());
+        assert!(
+            until_warped(&mut world, 2 * WARP_CHANNEL_TICKS).is_none(),
+            "{disable:?}: no warp once it lifts"
+        );
+        assert!(!world.is_channelling(caster));
+    }
+}
+
+#[test]
+fn a_click_on_a_watcher_is_refused_to_a_stunned_hero() {
+    let mut world = gates_match(&[Team::Radiant]);
+    let caster = hero(&world, 0);
+    let at = map_of(MapId(0)).watchers[4];
+    world.transform.get_mut(caster).expect("standing").pos = at + Vec2::from_ints(100, 0);
+    world.settle();
+    let watcher = world
+        .entities
+        .iter()
+        .find(|e| world.kind.get(*e) == Some(&UnitKind::Watcher) && world.pos(*e) == Some(at))
+        .expect("the watcher");
+    put_on(&mut world, caster, ModifierKind::Stunned, 15);
+    assert_eq!(
+        intake(&world, 0, None, &click(watcher)),
+        Err(RejectReason::Disabled)
+    );
+}
+
+#[test]
+fn a_hero_short_of_mana_is_refused_at_the_click() {
+    let mut world = gates_match(&[Team::Radiant]);
+    let caster = hero(&world, 0);
+    before_gate(&mut world, caster, 1);
+    world.mana.get_mut(caster).expect("a pool").mana = Fixed::from_int(WARP_MANA - 1);
+    let at = gate(&world, 1);
+    assert_eq!(
+        intake(&world, 0, None, &click(at)),
+        Err(RejectReason::NotEnoughMana)
+    );
+}
+
+#[test]
+fn an_illusion_ordered_to_a_gate_is_refused_and_never_warps() {
+    let mut world = gates_match(&[Team::Radiant]);
+    let caster = hero(&world, 0);
+    before_gate(&mut world, caster, 1);
+    world.make_rune_illusions(caster);
+    let illusion = world
+        .entities
+        .iter()
+        .find(|e| world.illusion.get(*e).is_some_and(|i| i.of == caster))
+        .expect("an illusion");
+    let at = gate(&world, 1);
+    assert_eq!(
+        intake(&world, 0, Some(illusion), &click(at)),
+        Err(RejectReason::NotCastable),
+        "an illusion casts nothing (Liquipedia, Twin Gate)"
+    );
+}
+
+#[test]
+fn a_warp_begins_only_within_reach_of_a_standing_gate_for_a_living_caster() {
+    let mut world = gates_match(&[Team::Radiant]);
+    let caster = hero(&world, 0);
+    let at = gate(&world, 1);
+    let target = Target::Unit(wire_id(at));
+    world.transform.get_mut(caster).expect("standing").pos =
+        DOTA_TWIN_GATES[1].at + Vec2::from_ints(0, -600);
+    assert!(!world.warp_begins(caster, target), "out of reach");
+    assert!(world.warp.get(caster).is_none());
+    before_gate(&mut world, caster, 1);
+    assert!(world.warp_begins(caster, target), "within reach");
+    world.warp.remove(caster);
+}
+
+#[test]
+fn a_caster_dying_mid_channel_puts_the_gates_out_and_lands_nowhere() {
+    let mut world = gates_match(&[Team::Radiant, Team::Dire]);
+    let caster = hero(&world, 0);
+    before_gate(&mut world, caster, 1);
+    let at = gate(&world, 1);
+    order(&mut world, 0, None, click(at), false);
+    until_channelling(&mut world, caster);
+    let killer = hero(&world, 1);
+    world.kill_by_hp_removal(killer, caster);
+    assert!(world.warp.get(caster).is_none(), "the warp is gone with it");
+    assert!(!glowing(&world, gate(&world, 0)) && !glowing(&world, gate(&world, 1)));
+    assert!(until_warped(&mut world, 2 * WARP_CHANNEL_TICKS).is_none());
+}
+
+#[test]
+fn two_warps_through_one_gate_keep_it_lit_until_both_end() {
+    let mut world = gates_match(&[Team::Radiant, Team::Dire]);
+    let (first, second) = (hero(&world, 0), hero(&world, 1));
+    before_gate(&mut world, first, 1);
+    world.transform.get_mut(second).expect("standing").pos =
+        DOTA_TWIN_GATES[1].at + Vec2::from_ints(150, -120);
+    world.set_order(second, UnitOrder::Stand);
+    world.settle();
+    let at = gate(&world, 1);
+    order(&mut world, 0, None, click(at), false);
+    order(&mut world, 1, None, click(at), false);
+    until_channelling(&mut world, first);
+    until_channelling(&mut world, second);
+    put_on(&mut world, first, ModifierKind::Stunned, 10);
+    world.step();
+    assert!(!world.is_channelling(first));
+    assert!(glowing(&world, at), "the other warp still runs through it");
+    let (_, events) = until_warped(&mut world, 2 * WARP_CHANNEL_TICKS).expect("the second lands");
+    assert_eq!(
+        events.iter().find_map(|e| match e.kind() {
+            EventKind::GateWarped { unit, .. } => unit,
+            _ => None,
+        }),
+        Some(wire_id(second))
+    );
+    assert!(!glowing(&world, at) && !glowing(&world, gate(&world, 0)));
+}
+
+/// A hero struck dead after its click was taken but before its cast begins: its health is
+/// gone this tick, its body not yet buried.
+fn dead_in_reach(world: &mut World, caster: Entity, at: Vec2) {
+    world.health.get_mut(caster).expect("health").hp = Fixed::ZERO;
+    world.transform.get_mut(caster).expect("standing").pos = at;
+}
+
+#[test]
+fn a_caster_dead_before_its_warp_begins_never_begins_it() {
+    let mut world = gates_match(&[Team::Radiant]);
+    let caster = hero(&world, 0);
+    world.transform.get_mut(caster).expect("standing").pos =
+        DOTA_TWIN_GATES[1].at + Vec2::from_ints(0, -600);
+    world.set_order(caster, UnitOrder::Stand);
+    world.settle();
+    let at = gate(&world, 1);
+    order(&mut world, 0, None, click(at), false);
+    assert!(world.pending_cast(caster).is_some(), "walking in to it");
+    dead_in_reach(
+        &mut world,
+        caster,
+        DOTA_TWIN_GATES[1].at + Vec2::from_ints(0, -170),
+    );
+    world.step();
+    assert!(!world.is_channelling(caster));
+    assert!(world.warp.get(caster).is_none(), "no warp entry");
+    assert!(!glowing(&world, at) && !glowing(&world, gate(&world, 0)));
+    assert!(
+        until_warped(&mut world, 2 * WARP_CHANNEL_TICKS).is_none(),
+        "no landing"
+    );
+}
+
+#[test]
+fn a_caster_dead_before_its_lamp_begins_never_lights_the_watcher() {
+    let mut world = gates_match(&[Team::Radiant]);
+    let caster = hero(&world, 0);
+    let at = map_of(MapId(0)).watchers[4];
+    world.transform.get_mut(caster).expect("standing").pos = at + Vec2::from_ints(600, 0);
+    world.set_order(caster, UnitOrder::Stand);
+    world.settle();
+    let watcher = world
+        .entities
+        .iter()
+        .find(|e| world.kind.get(*e) == Some(&UnitKind::Watcher) && world.pos(*e) == Some(at))
+        .expect("the watcher");
+    order(&mut world, 0, None, click(watcher), false);
+    assert!(world.pending_cast(caster).is_some(), "walking in to it");
+    dead_in_reach(&mut world, caster, at + Vec2::from_ints(100, 0));
+    let events = world.step();
+    assert!(
+        !events.iter().any(|e| matches!(
+            e.kind(),
+            EventKind::AbilityCast { ability, .. } if ability == AbilityId::LAMP_USE
+        )),
+        "a dead hero casts nothing"
+    );
+    assert!(!world.is_channelling(caster));
+    assert!(
+        world.pending_cast(caster).is_none(),
+        "its cast is called off"
+    );
+}
+
+#[test]
+fn a_refused_click_is_told_back_and_leaves_nothing_pending() {
+    let mut world = gates_match(&[Team::Radiant]);
+    let caster = hero(&world, 0);
+    before_gate(&mut world, caster, 1);
+    put_on(&mut world, caster, ModifierKind::Stunned, 15);
+    let at = gate(&world, 1);
+    world.advance_checked(&[Command {
+        slot: world.seats[0].slot,
+        unit: None,
+        order: click(at),
+        queue: false,
+        seq: 7,
+    }]);
+    assert_eq!(
+        world
+            .refused
+            .iter()
+            .map(|refused| (refused.seq, refused.reason))
+            .collect::<Vec<_>>(),
+        vec![(7, RejectReason::Disabled)]
+    );
+    assert!(world.pending_cast(caster).is_none());
+    run(&mut world, 30);
+    assert!(
+        !world.is_channelling(caster),
+        "nothing goes off once the stun lifts"
     );
 }

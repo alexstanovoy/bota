@@ -2,7 +2,7 @@
 //! enemy items.
 
 use bota_core::{NeutralAbility, ability_def, at_home_shop, item_def, rules};
-use bota_proto::{AbilityId, AbilitySlot, Fixed, Target, UnitKind};
+use bota_proto::{AbilityId, AbilitySlot, Fixed, RejectReason, Target, UnitKind};
 
 use crate::game::{Entity, World, ability_hooks};
 
@@ -62,21 +62,15 @@ impl World {
         let Some(def) = ability_def(ability.id) else {
             return CastOutcome::Refused;
         };
-        // An illusion casts nothing, and uses no item.
-        if def.passive || ability.level == 0 || ability.cooldown > 0 || self.wears_illusion(entity)
+        if self.cast_blocked(entity, ability, def).is_some()
+            || self.short_of_mana_for_cast(entity, ability)
         {
             return CastOutcome::Refused;
         }
         if self.silenced(entity) && !def.cast_while_silenced {
             return CastOutcome::Refused;
         }
-        if def.root_disables && self.rooted(entity) {
-            return CastOutcome::Refused;
-        }
         let cost = self.ability_mana_cost(entity, ability.id, ability.level);
-        if self.mana.get(entity).map_or(0, |m| m.mana.to_int()) < cost {
-            return CastOutcome::Refused;
-        }
         let cooldown = self.ability_cooldown(entity, ability.id, ability.level);
         let blocked = if matches!(def.block, bota_core::BlockTiming::Cast) {
             let Some(blocked) = self.block_cast_target(entity, ability.id, target) else {
@@ -123,6 +117,43 @@ impl World {
             ability.cooldown = cooldown;
         }
         self.tell_ability_triggered(entity, ability);
+    }
+
+    /// What keeps a held ability from going off at all right now, whoever
+    /// asks: an order taken for it, or the cast itself. A passive one, or any
+    /// one of an illusion (which casts nothing, and uses no item), one not
+    /// learned or still cooling down, and one Dota marks `ROOT_DISABLES`
+    /// while its caster is rooted. Mana is asked last, by
+    /// [`World::short_of_mana_for_cast`].
+    pub(crate) fn cast_blocked(
+        &self,
+        entity: Entity,
+        held: crate::game::AbilityState,
+        def: &bota_core::AbilityDef,
+    ) -> Option<RejectReason> {
+        if def.passive || self.wears_illusion(entity) {
+            return Some(RejectReason::NotCastable);
+        }
+        if held.level == 0 {
+            return Some(RejectReason::NotLearned);
+        }
+        if held.cooldown > 0 {
+            return Some(RejectReason::OnCooldown);
+        }
+        if def.root_disables && self.rooted(entity) {
+            return Some(RejectReason::Disabled);
+        }
+        None
+    }
+
+    /// Whether an entity has less mana than a cast of a held ability costs.
+    pub(crate) fn short_of_mana_for_cast(
+        &self,
+        entity: Entity,
+        held: crate::game::AbilityState,
+    ) -> bool {
+        let cost = self.ability_mana_cost(entity, held.id, held.level);
+        self.mana.get(entity).map_or(0, |m| m.mana.to_int()) < cost
     }
 
     /// Gives every enemy item near a cast one charge of what it may hold.
