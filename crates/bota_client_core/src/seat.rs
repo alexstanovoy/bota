@@ -248,6 +248,7 @@ impl Seat {
     }
 
     /// Assigning a player's role must preserve the match-lifetime opening checks.
+    #[cfg(feature = "ui")]
     pub(crate) fn assign(&mut self, seated: Seated) {
         assert!(self.session.is_none(), "the match has already started");
         assert!(self.seated.is_none(), "the seat was already assigned");
