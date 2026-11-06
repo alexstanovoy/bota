@@ -40,8 +40,8 @@ pub use connect::{connect, connect_net, connect_within, spectate, take_seat};
 pub use game::{
     GAME, INFO_DEMO, check_handoff, fingerprint, is_demo, seat_hello, seat_key, seat_name,
 };
-pub use radovid_client::proto::{self, *};
 pub use radovid_client::{ClientError, Incoming};
+pub use radovid_proto::{self as proto, *};
 pub use report::decode_report;
 pub use search::{Offer, Search, Searches, SlotWait};
 pub use tls::Tls;

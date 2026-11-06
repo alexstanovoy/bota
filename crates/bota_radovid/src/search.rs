@@ -2,7 +2,8 @@
 //! service's replies and events.
 
 use radovid_client::proto::{
-    Activities, Event, MatchId, Proposal, ProposalId, QueueEntry, QueueEntryId, Reply, RulesetId,
+    Activities, Audience, Event, MatchId, Proposal, ProposalId, QueueEntry, QueueEntryId, Reply,
+    RulesetId,
 };
 
 use crate::clock::now_ms;
@@ -32,6 +33,9 @@ impl Offer {
 pub struct Search {
     pub entry: QueueEntryId,
     pub ruleset: RulesetId,
+    pub audience: Audience,
+    /// The first entry of this search; one search can hold two queue places.
+    pub search: QueueEntryId,
     /// 1 for the oldest entry of the ruleset's queue.
     pub position: u32,
     /// Entries in the ruleset's queue.
@@ -75,6 +79,23 @@ impl Searches {
         &self.entries
     }
 
+    /// One row per search, preferring its proposed entry when it has one.
+    pub fn groups(&self) -> Vec<&Search> {
+        let mut positions = std::collections::HashMap::new();
+        let mut groups: Vec<&Search> = Vec::new();
+        for entry in &self.entries {
+            if let Some(&position) = positions.get(&entry.search) {
+                if entry.offer.is_some() {
+                    groups[position] = entry;
+                }
+            } else {
+                positions.insert(entry.search, groups.len());
+                groups.push(entry);
+            }
+        }
+        groups
+    }
+
     /// The open proposals, oldest entry first.
     pub fn offers(&self) -> impl Iterator<Item = (&Search, &Offer)> {
         self.entries
@@ -114,8 +135,14 @@ impl Searches {
     }
 
     pub(crate) fn fold_reply(&mut self, reply: &Reply) {
-        if let Reply::Queued { entry } = reply {
-            self.put(entry);
+        match reply {
+            Reply::Queued { entry } => self.put(entry),
+            Reply::QueuesJoined { entries } => {
+                for entry in entries {
+                    self.put(entry);
+                }
+            }
+            _ => {}
         }
     }
 
@@ -173,16 +200,9 @@ impl Searches {
         }
     }
 
-    /// An accepted pairing became a match: its entry is gone without a word,
-    /// and which one it was is not told, so one that this client accepted goes (they are all spent).
+    /// QueueLeft(Matched) already consumed the exact entries. Repeated waiting
+    /// updates must never consume another concurrent search.
     fn slot_wait(&mut self, match_id: MatchId, ahead: u32, overloaded: bool) {
-        if let Some(at) = self
-            .entries
-            .iter()
-            .position(|s| s.offer.as_ref().is_some_and(|o| o.answered))
-        {
-            self.entries.remove(at);
-        }
         let wait = SlotWait {
             match_id,
             ahead,
@@ -222,6 +242,8 @@ impl Searches {
         self.entries.push(Search {
             entry: proposal.entry,
             ruleset: proposal.ruleset.clone(),
+            audience: proposal.audience,
+            search: proposal.search,
             position: 0,
             waiting: 0,
             overloaded: false,
@@ -243,6 +265,8 @@ fn search_of(entry: &QueueEntry, now: u64) -> Search {
     Search {
         entry: entry.entry,
         ruleset: entry.ruleset.clone(),
+        audience: entry.audience,
+        search: entry.search,
         position: entry.position,
         waiting: entry.waiting,
         overloaded: entry.overloaded,

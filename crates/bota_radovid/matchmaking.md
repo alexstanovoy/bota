@@ -54,17 +54,26 @@ arguments, replay/metadata files and the demo `info` byte consumed by `bota_rado
 and certificates are operator-supplied examples: use a server whose wire fingerprint matches the configured value.
 `lobby_teams = [5,5]` is explicit because the neutral service default is `[1,1]`; a mismatched layout fails loading.
 
-## Protocol 14 coordination
+## Queue audiences
 
-Rebuild every matchmaking client with the service's version-14 protocol/client crates. Versions below 14 are
-refused at `Hello`; catalog and limits records contain appended fields and retired positions. Read
+Every rated ruleset has humans and everyone queues. A bot uses `Client::queue` (everyone).
+A human client uses `queue_with_audiences(&ruleset, &[Audience::HumansOnly])`; when the player
+allows bots, pass `[Audience::HumansOnly, Audience::Everyone]`. This is one search holding two
+queue places, admitted and cancelled together. `Searches::entries()` exposes the raw places;
+`Searches::groups()` gives one display row per search. A proposal reserves both places; accepting
+consumes them, and a failed proposal restores both original places. Other searches remain independent.
+
+## Protocol 15 coordination
+
+Rebuild every matchmaking client with the service's version-15 protocol/client crates. Versions below 15 are
+refused at `Hello`; queue records gained appended audience/search fields and requests. Read
 `AccountGameLimit::Limited(n)` or `Unlimited`, rather than interpreting a numeric sentinel. Each account still
 holds one ladder rating per ruleset, shared across simultaneous matches.
 
 The service and rebuilt matchmaking clients need the same protocol boundary when they resume exchanging control
 messages. Keep game-server/client wire fingerprints matched separately: the control-protocol change does not alter
 bota's game wire or replay format. Existing source configurations keep working when their lobby layout is explicit.
-The service's [coordination note](../../../radovid/docs/protocol_14.md) describes the generic upgrade contract.
+The service's [coordination note](../../../radovid/docs/protocol_15.md) describes the generic upgrade contract.
 
 ## Integration tests
 

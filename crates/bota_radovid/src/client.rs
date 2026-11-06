@@ -2,7 +2,7 @@
 //! automatic answers.
 
 use radovid_client::proto::{
-    AccountInfo, AccountKind, ClientInfo, ClientMsg, Event, Limits, MatchId, ProposalId,
+    AccountInfo, AccountKind, Audience, ClientInfo, ClientMsg, Event, Limits, MatchId, ProposalId,
     QueueEntryId, Reply, RulesetId, RulesetInfo, Secret, SessionToken,
 };
 use radovid_client::{ClientError, Incoming};
@@ -153,6 +153,19 @@ impl Client {
     pub fn queue(&mut self, ruleset: &RulesetId) -> Result<u32, ClientError> {
         self.request(ClientMsg::QueueJoin {
             ruleset: ruleset.clone(),
+        })
+    }
+
+    /// Starts one search in humans, everyone, or both queues. Bots may use
+    /// everyone only. Leaving either entry cancels this whole search.
+    pub fn queue_with_audiences(
+        &mut self,
+        ruleset: &RulesetId,
+        audiences: &[Audience],
+    ) -> Result<u32, ClientError> {
+        self.request(ClientMsg::QueueJoinAudiences {
+            ruleset: ruleset.clone(),
+            audiences: audiences.to_vec(),
         })
     }
 

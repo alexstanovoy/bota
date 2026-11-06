@@ -232,6 +232,19 @@ impl Env {
     pub fn bot(&self, login: &str) -> Account {
         self.account(login, AccountKind::Bot)
     }
+
+    /// A fresh authenticated snapshot is a barrier through the real service.
+    pub fn activities(&self, login: &str) -> Activities {
+        let mut account = Account {
+            client: Client::open(&self.url, &self.tls).expect("connect"),
+            log: Vec::new(),
+        };
+        let seq = account.client.login(login, PASSWORD, None).expect("login");
+        match account.reply(seq).expect("authenticated") {
+            Reply::LoggedIn { activities, .. } => activities,
+            other => panic!("login reply: {other:?}"),
+        }
+    }
 }
 
 /// A client and what it has heard.

@@ -21,7 +21,27 @@ fn attack_move(session: &ClientSession) -> Option<IssuedOrder> {
 /// Plays the seat of `handoff` to the end of the match.
 fn play_seat(handoff: Handoff, hero: HeroId, tls: Tls) -> JoinHandle<Played> {
     thread::spawn(move || {
-        let (mut link, seated) = take_seat(&handoff, hero, &tls).expect("a seat");
+        let human = handoff
+            .seats
+            .iter()
+            .any(|seat| seat.slot == handoff.slot && seat.kind == AccountKind::Human);
+        let (mut link, seated) = if human {
+            let mut link = bota_radovid::connect(&handoff, &tls).expect("human connection");
+            let lobby = bota_client_core::greet(
+                &mut link,
+                bota_proto::Role::Player,
+                &bota_radovid::seat_name(&handoff).expect("name"),
+                Some(bota_radovid::seat_key(&handoff)),
+            )
+            .expect("human seat");
+            let mut seated = lobby.seated().expect("assigned seat");
+            link.send(&ClientMsg::PickHero { hero }).expect("pick");
+            link.send(&ClientMsg::SetReady(true)).expect("ready");
+            seated.hero = Some(hero);
+            (link, seated)
+        } else {
+            take_seat(&handoff, hero, &tls).expect("bot seat")
+        };
         play(&mut link, seated, &mut (), attack_move).expect("the match is played to its end")
     })
 }
@@ -79,6 +99,155 @@ fn two_bots_queue_accept_play_and_are_rated() {
     };
     let (won, lost) = (moved(usize::from(team)), moved(usize::from(1 - team)));
     assert!(won > 0.0 && lost < 0.0, "ratings moved: {won} {lost}");
+}
+
+fn queue_audiences(account: &mut Account, audiences: &[Audience]) -> Vec<QueueEntry> {
+    let seq = account
+        .client
+        .queue_with_audiences(&solo(), audiences)
+        .expect("send search");
+    match account.reply(seq).expect("queue admission") {
+        Reply::QueuesJoined { entries } => entries,
+        other => panic!("queue reply: {other:?}"),
+    }
+}
+
+#[test]
+fn a_human_opted_into_both_queues_plays_a_bot_and_both_entries_are_consumed() {
+    let env = start();
+    let mut human = env.account("human", AccountKind::Human);
+    let mut bot = env.bot("bot");
+    let humans = queue_audiences(&mut human, &[Audience::HumansOnly]);
+    bot.queue();
+    let isolated = env.activities("human");
+    assert!(
+        isolated.proposals.is_empty(),
+        "a humans-only search cannot pair with a waiting bot"
+    );
+    assert_eq!(isolated.queued[0].audience, Audience::HumansOnly);
+    human
+        .ask(bota_radovid::proto::ClientMsg::QueueLeave {
+            entry: humans[0].entry,
+        })
+        .expect("leave");
+    human.client.set_auto_accept(true);
+    let mixed = queue_audiences(&mut human, &[Audience::HumansOnly, Audience::Everyone]);
+    assert_eq!(mixed.len(), 2);
+    assert_eq!(mixed[0].search, mixed[1].search);
+    let handoffs = found(&mut [&mut human, &mut bot]);
+    assert_eq!(handoffs[0].match_id, handoffs[1].match_id);
+    assert!(human.client.searches().entries().is_empty());
+    assert!(
+        env.activities("human").queued.is_empty(),
+        "the service consumed the sibling atomically too"
+    );
+    let first = play_seat(handoffs[0].clone(), HeroId::SHADOW_FIEND, env.tls.clone());
+    let second = play_seat(handoffs[1].clone(), HeroId::PUDGE, env.tls.clone());
+    assert_eq!(
+        first.join().expect("human").winner,
+        second.join().expect("bot").winner
+    );
+    settle(&mut [&mut human, &mut bot], |account| {
+        account.result().is_some()
+    });
+    let result = human.result().expect("result");
+    assert!(result.rated);
+    assert!(
+        result.seats.iter().all(|seat| seat.before != seat.after),
+        "each account keeps its own updated ladder rating"
+    );
+}
+
+#[test]
+fn a_bot_cannot_enter_humans_and_no_bots_only_queue_exists() {
+    let env = start();
+    let mut bot = env.bot("bot");
+    let request = |audience| bota_radovid::proto::ClientMsg::QueueJoinAudiences {
+        ruleset: solo(),
+        audiences: vec![audience],
+    };
+    assert_eq!(
+        bot.ask(request(Audience::HumansOnly)),
+        Err(Error::AudienceMismatch)
+    );
+    assert_eq!(
+        bot.ask(request(Audience::BotsOnly)),
+        Err(Error::BadQueueAudiences)
+    );
+    assert!(env.activities("bot").queued.is_empty());
+}
+
+#[test]
+fn consuming_one_linked_search_preserves_another_concurrent_search() {
+    let env = start();
+    let mut human = env.account("human", AccountKind::Human);
+    let (mut first_bot, mut second_bot) = (env.bot("firstbot"), env.bot("secondbot"));
+    let first = queue_audiences(&mut human, &[Audience::HumansOnly, Audience::Everyone]);
+    let second = queue_audiences(&mut human, &[Audience::HumansOnly, Audience::Everyone]);
+    first_bot.queue();
+    second_bot.queue();
+    settle(
+        &mut [&mut human, &mut first_bot, &mut second_bot],
+        |account| {
+            account.client.searches().offers().count()
+                == if account.client.me().expect("signed in").kind == AccountKind::Human {
+                    2
+                } else {
+                    1
+                }
+        },
+    );
+    let snapshot = env.activities("human");
+    assert_eq!(
+        snapshot.proposals.len(),
+        2,
+        "independent searches may reserve concurrent games"
+    );
+    let proposal = snapshot
+        .proposals
+        .iter()
+        .find(|proposal| proposal.search == first[0].search)
+        .expect("first search")
+        .proposal;
+    let seq = human.client.accept(proposal).expect("accept first search");
+    human.reply(seq).expect("accepted");
+    settle(
+        &mut [&mut human, &mut first_bot, &mut second_bot],
+        |account| {
+            account.client.me().expect("signed in").kind != AccountKind::Human
+                || account.client.searches().groups().len() == 1
+        },
+    );
+    let snapshot = env.activities("human");
+    assert_eq!(snapshot.queued.len(), 2);
+    assert!(
+        snapshot
+            .queued
+            .iter()
+            .all(|entry| entry.search == second[0].search)
+    );
+    assert_eq!(
+        human.client.searches().entries().len(),
+        2,
+        "waiting updates consume only their own search"
+    );
+    assert!(
+        human
+            .client
+            .searches()
+            .entries()
+            .iter()
+            .all(|entry| entry.search == second[0].search)
+    );
+    let seq = human
+        .client
+        .leave_queue(second[0].entry)
+        .expect("cancel the reserved sibling");
+    human.reply(seq).expect("cancelled");
+    settle(&mut [&mut human], |account| {
+        account.client.searches().entries().is_empty()
+    });
+    assert!(env.activities("human").queued.is_empty());
 }
 
 #[test]
