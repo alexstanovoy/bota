@@ -749,20 +749,24 @@ fn at_the_match_end_a_peer_is_read_on_until_it_hangs_up() {
 }
 
 /// A peer refused at its Hello is read on for a while, and counts meanwhile towards
-/// `max_connections` as a stranger of its source: a newcomer that needs its place cuts it short.
-/// The test holds the linger, so only the newcomer can end it.
+/// `max_connections` as a stranger of its source: a newcomer from another source that needs its
+/// place cuts it short. The test holds the linger, so only the newcomer can end it.
 #[test]
 fn a_refused_peer_that_talks_on_is_cut_short_for_a_newcomer() {
     let mut opts = realtime(15);
     opts.max_connections = Some(1);
     let switch = crate::net::LingerSwitch::default();
-    let addr = start_hooked_server(
-        opts,
-        crate::game_loop::TestHooks {
-            linger: Some(switch.clone()),
-            ..Default::default()
-        },
-    );
+    let listener = TcpListener::bind("[::]:0").expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    let hooks = crate::game_loop::TestHooks {
+        linger: Some(switch.clone()),
+        ..Default::default()
+    };
+    thread::spawn(move || {
+        let _ = crate::game_loop::run_hooked(listener, opts, hooks);
+    });
+    let addr: std::net::SocketAddr = format!("127.0.0.1:{port}").parse().expect("an address");
+    let elsewhere: std::net::SocketAddr = format!("[::1]:{port}").parse().expect("an address");
     let mut refused = TestClient::connect(addr);
     refused.send(&ClientMsg::hello(
         Role::Bot,
@@ -772,7 +776,7 @@ fn a_refused_peer_that_talks_on_is_cut_short_for_a_newcomer() {
     ));
     refused.recv_until(|msg| matches!(msg, ServerMsg::WireMismatch { .. }).then_some(()));
     refused.send(&ClientMsg::Pong);
-    let (_seated, slot) = hello_as_bot(admitted(addr), "newcomer");
+    let (_seated, slot) = hello_as_bot(admitted(elsewhere), "newcomer");
     assert_eq!(slot, Some(SlotId(0)), "the newcomer took the place");
     // Cut short, the refused peer's words meet a closed connection.
     let pong = encode_frame_to_vec(&ClientMsg::Pong).expect("encode");

@@ -5,7 +5,7 @@
 
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use super::*;
 use crate::spectators::Spectators;
@@ -126,7 +126,7 @@ fn a_newcomer_takes_a_strangers_place_never_a_greeted_ones() {
     let mut opts = realtime(32);
     // A quarter of four: one stranger at a time.
     opts.max_connections = Some(4);
-    opts.spectators = Spectators::Open;
+    opts.players = 4;
     let (tcp, _) = start_on_both_families(opts);
     let near = SocketAddr::from(([127, 0, 0, 1], tcp));
     let far: SocketAddr = format!("[::1]:{tcp}").parse().expect("an address");
@@ -135,12 +135,17 @@ fn a_newcomer_takes_a_strangers_place_never_a_greeted_ones() {
     assert_eq!(slot, Some(SlotId(0)), "the fair client is seated");
     assert!(let_go(&mut stranger), "the stranger made room");
     // Full of connections that said Hello: a newcomer finds no room, and nobody is let go.
-    let _watchers: Vec<TestClient> = (0..3)
-        .map(|_| {
-            let mut watcher = TestClient::connect(far);
-            watcher.hello(Role::Spectator, None);
-            watcher.recv_until(|msg| matches!(msg, ServerMsg::Welcome { .. }).then_some(()));
-            watcher
+    let _others: Vec<TestClient> = (0..3)
+        .map(|n| {
+            let mut other = TestClient::connect(far);
+            other.send(&ClientMsg::hello(
+                Role::Bot,
+                format!("other{n}"),
+                None,
+                bota_core::WIRE_FINGERPRINT,
+            ));
+            other.recv_until(|msg| matches!(msg, ServerMsg::Welcome { .. }).then_some(()));
+            other
         })
         .collect();
     let mut late = TestClient::connect(near);
@@ -180,9 +185,11 @@ fn ten_players_from_one_address_all_join_at_once() {
 
 /// Threads that each dial `addr`, say Hello as a client of another wire, read the refusal and
 /// then talk on, so that the server reads them on until their linger runs out, and dial again,
-/// until the returned flag is raised.
-fn refused_flood(addr: SocketAddr, threads: usize) -> Arc<AtomicBool> {
+/// until the returned flag is raised; and how many times the server took in none of them, that
+/// is let one go before telling it anything.
+fn refused_flood(addr: SocketAddr, threads: usize) -> (Arc<AtomicBool>, Arc<AtomicUsize>) {
     let stop = Arc::new(AtomicBool::new(false));
+    let turned_away = Arc::new(AtomicUsize::new(0));
     let hello = encode_frame_to_vec(&ClientMsg::hello(
         Role::Bot,
         "old build",
@@ -193,6 +200,7 @@ fn refused_flood(addr: SocketAddr, threads: usize) -> Arc<AtomicBool> {
     let pong = encode_frame_to_vec(&ClientMsg::Pong).expect("encode");
     for _ in 0..threads {
         let (stop, hello, pong) = (Arc::clone(&stop), hello.clone(), pong.clone());
+        let turned_away = Arc::clone(&turned_away);
         thread::spawn(move || {
             while !stop.load(Ordering::Relaxed) {
                 let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_secs(1))
@@ -206,6 +214,21 @@ fn refused_flood(addr: SocketAddr, threads: usize) -> Arc<AtomicBool> {
                 // Whatever the server says, the refusal and its hang-up among it, the peer talks
                 // on until its words meet a closed connection.
                 let mut buf = [0u8; 4096];
+                // The refusal, or the server's hang-up when it took the connection in no more.
+                while !stop.load(Ordering::Relaxed) {
+                    match stream.read(&mut buf) {
+                        Ok(1..) => break,
+                        Err(error)
+                            if matches!(
+                                error.kind(),
+                                std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                            ) => {}
+                        Ok(0) | Err(_) => {
+                            turned_away.fetch_add(1, Ordering::Relaxed);
+                            break;
+                        }
+                    }
+                }
                 while !stop.load(Ordering::Relaxed) && stream.write_all(&pong).is_ok() {
                     if let Ok(0) = stream.read(&mut buf) {
                         thread::sleep(Duration::from_millis(100));
@@ -214,7 +237,7 @@ fn refused_flood(addr: SocketAddr, threads: usize) -> Arc<AtomicBool> {
             }
         });
     }
-    stop
+    (stop, turned_away)
 }
 
 /// A peer refused at its Hello is read on for a while, and counts meanwhile as a stranger of its
@@ -223,11 +246,17 @@ fn refused_flood(addr: SocketAddr, threads: usize) -> Arc<AtomicBool> {
 #[test]
 fn a_source_redialling_with_refused_hellos_cannot_keep_a_fair_client_out() {
     let mut opts = realtime(34);
-    opts.max_connections = Some(64);
+    // Few places, so that refused peers would fill them all at once.
+    opts.max_connections = Some(16);
     let (tcp, _) = start_on_both_families(opts);
-    let stop = refused_flood(SocketAddr::from(([127, 0, 0, 1], tcp)), 200);
-    // Let the refused peers pile up before the fair client comes.
-    thread::sleep(Duration::from_secs(2));
+    let (stop, turned_away) = refused_flood(SocketAddr::from(([127, 0, 0, 1], tcp)), 200);
+    // The fair client comes once the server takes in no more of the source's peers: it holds
+    // as many as it may.
+    let started = Instant::now();
+    while turned_away.load(Ordering::Relaxed) == 0 {
+        assert!(started.elapsed() < HANG_GUARD, "the server refuses nobody");
+        thread::sleep(Duration::from_millis(10));
+    }
     let far: SocketAddr = format!("[::1]:{tcp}").parse().expect("an address");
     let mut fair = TestClient::connect(far);
     fair.stream
@@ -267,10 +296,23 @@ fn players_from_one_address_that_break_off_together_all_join_again() {
     let near = SocketAddr::from(([127, 0, 0, 1], tcp));
     let join_all = |names: &str| -> Vec<(TestClient, Option<SlotId>)> {
         let clients: Vec<TestClient> = (0..10).map(|_| TestClient::connect(near)).collect();
+        // Seated and not ready, so that the match never starts under the test.
         clients
             .into_iter()
             .enumerate()
-            .map(|(n, client)| hello_as_bot(client, &format!("{names}{n}")))
+            .map(|(n, mut client)| {
+                client.send(&ClientMsg::hello(
+                    Role::Bot,
+                    format!("{names}{n}"),
+                    None,
+                    bota_core::WIRE_FINGERPRINT,
+                ));
+                let slot = client.recv_until(|msg| match msg {
+                    ServerMsg::Welcome { slot, .. } => Some(slot),
+                    _ => None,
+                });
+                (client, slot)
+            })
             .collect()
     };
     let first = join_all("lan");

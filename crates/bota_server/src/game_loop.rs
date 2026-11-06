@@ -1,5 +1,6 @@
 //! The server: lobby phase, then the tick loop in either mode.
 
+use std::collections::HashMap;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -721,7 +722,8 @@ impl Server {
             let strangers = self.strangers().count();
             let full = self.conns.len().max(self.live.count()) >= most;
             let crowded = strangers >= (most / STRANGERS_SHARE_DIVISOR).max(1);
-            if (full || crowded) && !self.make_room(most) {
+            let from = stream.peer().map(crate::net::source);
+            if (full || crowded) && !self.make_room(most, from) {
                 return;
             }
         }
@@ -742,24 +744,38 @@ impl Server {
         }
     }
 
-    /// Lets a connection that has not said Hello go, at once, for a newcomer: the oldest of the
-    /// source that holds the most of them, so that a source flooding the server lets its own go
-    /// and not a fair client's that is about to say Hello. Whether there is room then: a
-    /// connection let go still holds threads for a moment, so the live ones may pass `most` by
-    /// those, never by more than `most` again.
-    fn make_room(&mut self, most: usize) -> bool {
-        let strangers: Vec<&Connection> = self.strangers().collect();
-        let source = |c: &Connection| c.peer.map(crate::net::source);
-        let held =
-            |of: Option<crate::net::Group>| strangers.iter().filter(|c| source(c) == of).count();
-        let parting = |c: &Connection| self.parting.iter().any(|p| p.id == c.id);
+    /// Lets a stranger go, at once, for a newcomer from `from`: one let go and still read on
+    /// first, then one that has not said Hello, each time the oldest of the source that holds
+    /// the most, so that a source flooding the server lets its own go and not a fair client's
+    /// that is about to say Hello. A newcomer whose source holds as many strangers as that one
+    /// takes no place: it would only churn its own. Whether there is room then: a connection let
+    /// go still holds threads for a moment, so the live ones may pass `most` by those, never by
+    /// more than `most` again.
+    fn make_room(&mut self, most: usize, from: Option<crate::net::Group>) -> bool {
+        // The strangers, lingering ones marked, and how many each source holds, in one pass.
+        let mut held: HashMap<Option<crate::net::Group>, usize> = HashMap::new();
+        let unheard = self.conns.iter().filter(|c| !self.greeted(c.id));
+        let strangers: Vec<(bool, Option<crate::net::Group>, Instant, PlayerId)> = unheard
+            .map(|c| (false, c))
+            .chain(self.parting.iter().map(|c| (true, c)))
+            .map(|(parting, c)| {
+                let source = c.peer.map(crate::net::source);
+                *held.entry(source).or_default() += 1;
+                (parting, source, c.opened, c.id)
+            })
+            .collect();
         let oldest = strangers
             .iter()
-            .max_by_key(|c| (parting(c), held(source(c)), std::cmp::Reverse(c.opened)))
-            .map(|c| c.id);
-        let Some(oldest) = oldest else {
+            .max_by_key(|(parting, source, opened, _)| {
+                (*parting, held[source], std::cmp::Reverse(*opened))
+            })
+            .map(|(_, source, _, id)| (*id, *source));
+        let Some((oldest, source)) = oldest else {
             return false;
         };
+        if held.get(&from).copied().unwrap_or(0) >= held[&source] {
+            return false;
+        }
         match self.parting.iter().position(|c| c.id == oldest) {
             Some(at) => self.parting.remove(at).abort(),
             None => self.lose_conn(oldest),
