@@ -248,8 +248,10 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         };
         pool.hp -= lost;
         let fatal = pool.hp <= Fixed::ZERO;
+        // A dismember heals its holder by the bite's full damage, whatever
+        // the target's resistance took off (Liquipedia, *Pudge*).
         if blow.effect == HitEffect::Dismember {
-            heal_source(blow.source, applied, health, stats);
+            heal_source(blow.source, blow.amount, health, stats);
         }
         if !fatal && (applied > 0 || blow.effect.holds()) {
             apply_hit_effect(blow, stats, modifiers);

@@ -111,7 +111,7 @@ pub enum HitEffect {
     Stun { ticks: u32 },
     /// Roots a target that survives for `ticks`, the same way.
     Root { ticks: u32 },
-    /// Heals the source by the health the blow took, one bite of a dismember.
+    /// Heals the source by the blow's full damage, one bite of a dismember.
     Dismember,
     /// A shot of the fountain's Fountain Damage: before it deals anything it
     /// stacks one more [`ModifierKind::FountainDamage`] on a target it did not

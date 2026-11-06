@@ -1177,10 +1177,10 @@ fn a_hook_costs_120_mana_waits_18_seconds_and_deals_150_pure_damage_at_its_first
 
 /// The dismember bites six times, the first as it takes hold: each bite is
 /// the level's damage a second and 0.3 a point of strength, over 2.75 seconds
-/// shared six ways, and the one holding mends by what each takes. It pulls
+/// shared six ways, and the one holding mends by every bite. It pulls
 /// what it holds to 125 units away at 75 a second.
 #[test]
-fn a_dismember_bites_six_times_by_strength_pulls_and_heals_by_what_it_takes() {
+fn a_dismember_bites_six_times_by_strength_pulls_and_heals_by_every_bite() {
     let (mut world, pudge, mark) = pudge_and_a_mark(190);
     set_level(&mut world, pudge, 3, 1);
     world.fill_pools(pudge);
@@ -1239,6 +1239,38 @@ fn a_dismember_bites_six_times_by_strength_pulls_and_heals_by_what_it_takes() {
     assert!(
         (124..=126).contains(&apart.x.to_int()),
         "what it held was pulled in to 125: {apart:?}"
+    );
+}
+
+/// A dismember heals its holder by each bite's full damage, whatever the magic resistance
+/// of what it eats takes off (Liquipedia, *Pudge*: it "heals for the full value regardless
+/// of the damage instance value"; the hero data: "heals him for the total amount").
+#[test]
+fn a_dismember_heals_by_each_bites_full_damage_not_by_what_resistance_leaves() {
+    let (mut world, pudge, mark) = pudge_and_a_hero_mark(150);
+    set_level(&mut world, pudge, 3, 1);
+    world.fill_pools(pudge);
+    world.health.insert(pudge, health(200));
+    world.step();
+    assert!(
+        world.stats.get(mark).expect("settled").magic_resist_bp > 0,
+        "a hero resists magic"
+    );
+    let strength = world.stats.get(pudge).expect("settled").attributes.strength;
+    let bite = bota_core::dismember_bite_damage(
+        bota_core::Dec::of("80"),
+        bota_core::Dec::of("0.3"),
+        strength,
+        bota_core::Ms::secs("2.75"),
+        6,
+    );
+    let start = world.health.get(pudge).expect("standing").hp;
+    dismember(&mut world, mark);
+    let healed = (world.health.get(pudge).expect("standing").hp - start).to_int();
+    // The cast point's few ticks of his own regeneration come with it.
+    assert!(
+        (bite..=bite + 2).contains(&healed),
+        "the take-hold bite heals {bite}: healed {healed}"
     );
 }
 

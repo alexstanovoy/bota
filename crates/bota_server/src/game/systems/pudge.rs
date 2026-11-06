@@ -100,8 +100,8 @@ impl World {
 
     /// One bite of a dismember of `level` (from zero) that bites `bites`
     /// times over `channel`: magic damage by the holder's strength, which heals
-    /// the holder by what it takes. Its numbers are the holder's, talents and
-    /// all.
+    /// the holder by the bite's full damage. Its numbers are the holder's,
+    /// talents and all.
     pub fn dismember_bites(&mut self, caster: Entity, on: Entity, held: (usize, u32, Ms)) {
         let (level, bites, channel) = held;
         let strength = self
