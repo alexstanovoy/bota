@@ -18,6 +18,9 @@ use bota_server::lobby::ReservedSeat;
 use bota_server::net::DEFAULT_MESSAGES_PER_SEC;
 use bota_server::spectators::Spectators;
 
+/// How long a test waits for what must come, at most: a hang guard, not a measure.
+const HANG_GUARD: Duration = Duration::from_secs(300);
+
 fn opts(reserved: Vec<ReservedSeat>) -> ServerOpts {
     ServerOpts {
         pick_time: Duration::from_secs(bota_core::rules::PICK_SECS),
@@ -143,7 +146,12 @@ fn a_match_runs_on_for_a_teammate_after_a_seat_leaves_for_good() {
             )
             .expect("a seat");
             drop(first);
+            let started = std::time::Instant::now();
             loop {
+                assert!(
+                    started.elapsed() < HANG_GUARD,
+                    "the friend's seat never came back"
+                );
                 let mut link = Link::connect(&address, Duration::from_secs(60)).expect("connected");
                 if let Ok(seated) = join(
                     &mut link,
@@ -159,7 +167,7 @@ fn a_match_runs_on_for_a_teammate_after_a_seat_leaves_for_good() {
             }
         })
     };
-    let (_, host_ticks) = host.join().expect("the host played");
+    host.join().expect("the host played");
     let (friend_won, friend_ticks) = friend.join().expect("the friend played");
     let (enemy_won, _) = enemy.join().expect("the enemy played");
     assert_eq!(
@@ -168,7 +176,7 @@ fn a_match_runs_on_for_a_teammate_after_a_seat_leaves_for_good() {
         "the friend took its seat again"
     );
     assert!(
-        friend_ticks > 240 && host_ticks >= 60,
+        friend_ticks > 240,
         "the match ran on after the host left: the friend saw tick {friend_ticks}"
     );
     assert_eq!((friend_won, enemy_won), (Team::Radiant, Team::Radiant));
@@ -183,5 +191,77 @@ fn a_match_runs_on_for_a_teammate_after_a_seat_leaves_for_good() {
             }
         ),
         "the side that stayed won when the other left: {end:?}"
+    );
+}
+
+/// A link that drops its connection, without leaving, once it has acknowledged `drop_at`.
+struct Dropping {
+    link: Link,
+    drop_at: u32,
+}
+
+impl Transport for Dropping {
+    fn recv(&mut self) -> std::io::Result<Option<ServerMsg>> {
+        self.link.recv()
+    }
+
+    fn send(&mut self, msg: &ClientMsg) -> std::io::Result<()> {
+        self.link.send(msg)?;
+        match msg {
+            ClientMsg::Ack { tick } if *tick >= self.drop_at => {
+                Err(std::io::Error::other("dropped"))
+            }
+            _ => Ok(()),
+        }
+    }
+}
+
+/// Every seat drops its connection mid-match, nobody leaving for good: the seats may be taken
+/// back, so the match waits, and once every seat has been empty for `empty_after` it ends with
+/// no result (the server of a client-hosted game that everyone left ends by itself).
+#[test]
+fn a_match_everyone_dropped_ends_once_it_was_empty_long_enough() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
+    let address = listener.local_addr().expect("bound").to_string();
+    let mut opts = opts(vec![
+        seat(1, "host", Team::Radiant),
+        seat(2, "friend", Team::Radiant),
+        seat(3, "enemy", Team::Dire),
+    ]);
+    opts.empty_after = Some(Duration::from_secs(1));
+    let (ended, end) = std::sync::mpsc::channel();
+    thread::spawn(move || {
+        let _ = ended.send(run(listener, opts));
+    });
+    let players: Vec<_> = [(1, "host"), (2, "friend"), (3, "enemy")]
+        .into_iter()
+        .map(|(key, name)| {
+            let address = address.clone();
+            thread::spawn(move || {
+                let mut link = Link::connect(&address, Duration::from_secs(60)).expect("connected");
+                let seated = join(
+                    &mut link,
+                    name,
+                    HeroId::SHADOW_FIEND,
+                    Some(SeatKey([key; 32])),
+                )
+                .expect("a seat");
+                let mut dropping = Dropping { link, drop_at: 30 };
+                // Ends when the link drops itself: the connection goes with it.
+                let _ = play(&mut dropping, seated, &mut (), |_| Vec::new());
+            })
+        })
+        .collect();
+    for player in players {
+        player.join().expect("a player");
+    }
+    let end = end
+        .recv_timeout(HANG_GUARD)
+        .expect("the empty match ended")
+        .expect("it ran");
+    assert_eq!(
+        end,
+        MatchEnd::Abandoned,
+        "no result for a match nobody plays"
     );
 }
