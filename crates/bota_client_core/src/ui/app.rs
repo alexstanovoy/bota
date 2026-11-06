@@ -246,6 +246,8 @@ const DEFAULT_TICK_RATE: u16 = bota_core::rules::TICKS_PER_SECOND as u16;
 const MAX_FLOATERS: usize = 96;
 /// Kill feed lines kept at most.
 const MAX_FEED: usize = 8;
+/// Seconds a kill feed line is kept, for the front end to dress its coming and going within.
+pub const FEED_LINE_SECONDS: f32 = 8.0;
 /// Cues waiting for the front end at most; more are dropped.
 const MAX_CUES: usize = 64;
 /// Events one pump keeps for the front end at most; more are dropped.
@@ -1177,7 +1179,7 @@ impl App {
         for l in &mut self.feed {
             l.age += dt;
         }
-        self.feed.retain(|l| l.age < 8.0);
+        self.feed.retain(|l| l.age < FEED_LINE_SECONDS);
         self.chat.age(dt);
         count_down(&mut self.reject, dt);
         count_down(&mut self.refused, dt);
