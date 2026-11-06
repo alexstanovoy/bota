@@ -297,15 +297,6 @@ fn read_loop(
 /// failure (no file handles left) does not spin it.
 pub const ACCEPT_RETRY: Duration = Duration::from_millis(10);
 
-/// The accept thread body: hands every incoming stream to the server thread.
-pub fn accept_loop(listener: std::net::TcpListener, events: Sender<NetEvent>) {
-    accept_pending(
-        listener,
-        events,
-        super::pending::PendingAdmissions::default(),
-    );
-}
-
 pub(super) fn accept_pending(
     listener: std::net::TcpListener,
     events: Sender<NetEvent>,
