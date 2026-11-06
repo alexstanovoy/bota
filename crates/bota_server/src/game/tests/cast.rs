@@ -325,7 +325,7 @@ fn learning_an_ability_tells_of_no_cast() {
     assert!(
         !events
             .iter()
-            .any(|event| matches!(event.kind, EventKind::AbilityCast { .. })),
+            .any(|event| matches!(event.kind(), EventKind::AbilityCast { .. })),
         "a skill point is not a cast"
     );
 }

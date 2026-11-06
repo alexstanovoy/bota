@@ -59,7 +59,7 @@ impl World {
     /// dealt one only to a side that sees the dealer.
     pub fn tell_of(&self, felt: &[Landed], events: &mut Vec<Event>) {
         for blow in felt {
-            events.push(Event {
+            events.push(Event::Fact {
                 kind: EventKind::Damaged {
                     source: blow.source.map(wire_id),
                     target: wire_id(blow.target),
@@ -78,7 +78,7 @@ impl World {
     /// [`World::tell_of`].
     pub fn tell_of_misses(&self, missed: &[Missed], events: &mut Vec<Event>) {
         for miss in missed {
-            events.push(Event {
+            events.push(Event::Fact {
                 kind: EventKind::Missed {
                     source: miss.source.map(wire_id),
                     target: wire_id(miss.target),
@@ -199,7 +199,7 @@ impl World {
             .is_some_and(|theirs| Some(theirs) == side);
         let (paid, awards) = self.pay_for_report(entity, killer, events);
         let assists = self.credit_assists(entity, credited_hero.or(killer));
-        events.push(Event {
+        events.push(Event::Fact {
             kind: EventKind::Died {
                 unit: wire_id(entity),
                 killer: killer.map(wire_id),
@@ -226,7 +226,7 @@ impl World {
         });
         let structure = kind.zip(side).filter(|(kind, _)| kind_def(*kind).structure);
         if let Some((kind, side)) = structure {
-            events.push(Event {
+            events.push(Event::Fact {
                 kind: EventKind::StructureDestroyed {
                     unit: wire_id(entity),
                     team: side,

@@ -2,9 +2,7 @@
 //! ([`bota_core::ITEMS`]) turned into the change it makes.
 
 use bota_core::{AllyUse, ItemDef, Mend, UseSpec, item_def};
-use bota_proto::{
-    DispenserView, EventKind, Inflictor, ItemId, ItemView, StoredRune, Target, Team, Vec2,
-};
+use bota_proto::{DispenserView, Inflictor, ItemId, ItemView, StoredRune, Target, Team, Vec2};
 
 use crate::game::{Entity, Event, EventVisibility, Inventory, ItemStack, World, wire_id};
 
@@ -44,14 +42,12 @@ impl World {
             Target::Pos(pos) => Some(pos),
             Target::Unit(id) => self.of_wire(id).and_then(|aimed| self.pos(aimed)),
         };
-        self.events.push(Event {
-            kind: EventKind::ItemUsed {
-                caster: Some(wire_id(user)),
-                item,
-                at,
-            },
+        self.events.push(Event::ItemUsed {
+            caster: Some(wire_id(user)),
+            item,
+            at,
             visible_to: EventVisibility::of(told(Team::Radiant), told(Team::Dire)),
-            gold_hidden_from: None,
+            point_told_to: EventVisibility::Everyone,
             source_told_to: self.who_may_name(Some(user)),
         });
     }

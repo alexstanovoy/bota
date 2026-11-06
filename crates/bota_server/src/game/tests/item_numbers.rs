@@ -262,17 +262,17 @@ fn a_use_of_an_item_is_told_to_the_sides_that_see_it() {
     let aim = from + Vec2::from_ints(-500, 0);
     let mut told = Vec::new();
     assert!(world.use_item(hero, 0, Target::Pos(aim), &mut told));
-    told.retain(|event| matches!(event.kind, EventKind::ItemUsed { .. }));
+    told.retain(|event| matches!(event.kind(), EventKind::ItemUsed { .. }));
     assert_eq!(told.len(), 1, "one use");
     assert_eq!(
-        told[0].kind,
+        told[0].kind(),
         EventKind::ItemUsed {
             caster: Some(wire_id(hero)),
             item: ItemId::BLINK_DAGGER,
             at: Some(aim),
         }
     );
-    assert!(told[0].visible_to.tells(Team::Radiant), "its own side");
+    assert!(told[0].visible_to().tells(Team::Radiant), "its own side");
 }
 
 #[test]

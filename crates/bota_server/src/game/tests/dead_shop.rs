@@ -50,7 +50,7 @@ fn a_seat_whose_hero_lies_dead_buys_into_the_stash_with_what_the_body_carried_co
     assert_eq!(world.validate_order(SlotId(0), None, &treads), Ok(()));
     let gold = world.seats[0].gold;
     let events = seat_order(&mut world, treads);
-    assert!(events.iter().any(|event| event.kind
+    assert!(events.iter().any(|event| event.kind()
         == EventKind::ItemBought {
             slot: SlotId(0),
             item: ItemId::POWER_TREADS,

@@ -64,10 +64,10 @@ fn mango_mana_enables_a_validated_raze_without_changing_any_strategy() {
         target: Target::None,
     };
     let mut consumed = advance_validated(&mut world, None, use_mango);
-    consumed.retain(|event| !matches!(event.kind, EventKind::ItemUsed { .. }));
+    consumed.retain(|event| !matches!(event.kind(), EventKind::ItemUsed { .. }));
     assert_eq!(consumed.len(), 1);
     assert_eq!(
-        consumed[0].kind,
+        consumed[0].kind(),
         EventKind::Healed {
             source: Some(wire_id(caster)),
             target: wire_id(caster),
@@ -83,7 +83,7 @@ fn mango_mana_enables_a_validated_raze_without_changing_any_strategy() {
     assert!(
         !events
             .iter()
-            .any(|event| matches!(event.kind, EventKind::Healed { .. }))
+            .any(|event| matches!(event.kind(), EventKind::Healed { .. }))
     );
     assert_eq!(world.mana.get(caster).unwrap().mana, Fixed::from_int(25));
     assert_eq!(effects(&world, target), vec![effect(1, 180)]);

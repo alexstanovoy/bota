@@ -433,10 +433,7 @@ fn a_cloned_world_plays_on_as_the_original() {
         let events = world.advance(&commands);
         if let Some(fork) = &mut fork {
             let kinds = |events: &[crate::game::Event]| {
-                events
-                    .iter()
-                    .map(|event| event.kind.clone())
-                    .collect::<Vec<_>>()
+                events.iter().map(|event| event.kind()).collect::<Vec<_>>()
             };
             assert_eq!(
                 kinds(&fork.advance(&commands)),

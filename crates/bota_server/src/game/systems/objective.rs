@@ -120,7 +120,7 @@ impl World {
         self.set_team(entity, side);
         self.call_off_aims(entity, |_| true);
         self.apply_spawn_modifiers(entity);
-        self.events.push(Event {
+        self.events.push(Event::Fact {
             kind: EventKind::Captured {
                 unit: wire_id(entity),
                 team: side,

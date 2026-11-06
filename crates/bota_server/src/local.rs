@@ -249,7 +249,7 @@ impl LocalMatch {
         if !events.is_empty() {
             tape.push(ReplayRecord::Msg(ServerMsg::Events {
                 tick,
-                events: events.iter().map(|event| event.kind.clone()).collect(),
+                events: events.iter().map(|event| event.kind()).collect(),
             }));
         }
         if let Some(winner) = self.world.victor() {

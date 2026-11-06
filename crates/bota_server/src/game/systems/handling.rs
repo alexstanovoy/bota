@@ -245,7 +245,7 @@ impl World {
         let spot_seen = self.who_sees_spot(spot, side);
         let knows = |team| team == side || spot_seen.tells(team) && self.sees_now(team, unit);
         let told = crate::game::EventVisibility::of(knows(Team::Radiant), knows(Team::Dire));
-        self.events.push(Event {
+        self.events.push(Event::Fact {
             kind: EventKind::RuneDenied {
                 unit: wire_id(unit),
                 kind: held.kind,

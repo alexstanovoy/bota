@@ -148,7 +148,7 @@ impl World {
     fn burst(&mut self, grenade: Entity, shot: &Grenade) {
         let with = Inflictor::Item(shot.item);
         let side = self.team.get(grenade).copied().unwrap_or(Team::Neutral);
-        self.events.push(Event {
+        self.events.push(Event::Fact {
             kind: EventKind::Landed {
                 inflictor: with,
                 caster: Some(wire_id(shot.owner)),

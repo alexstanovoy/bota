@@ -612,7 +612,7 @@ impl World {
             self.level_courier(seat);
             if let Some(unit) = self.seats[seat].unit {
                 self.level.insert(unit, Level(level));
-                events.push(Event {
+                events.push(Event::Fact {
                     kind: EventKind::LevelUp {
                         unit: wire_id(unit),
                         level,

@@ -103,7 +103,7 @@ fn until(
 ) -> Option<(u32, Vec<Event>)> {
     for ticks in 1..=limit {
         let events = world.step();
-        if events.iter().any(|event| told(&event.kind)) {
+        if events.iter().any(|event| told(&event.kind())) {
             return Some((ticks, events));
         }
     }
@@ -118,7 +118,7 @@ fn is_capture(kind: &EventKind) -> bool {
 /// ticks from the channel's start and the events of the capture.
 fn capture_by(world: &mut World, orders: &[(usize, Order)]) -> Option<(u32, Vec<Event>)> {
     let begun = |kind: &EventKind| matches!(kind, EventKind::AbilityCast { ability, .. } if *ability == AbilityId::CAPTURE);
-    if !give(world, orders).iter().any(|event| begun(&event.kind)) {
+    if !give(world, orders).iter().any(|event| begun(&event.kind())) {
         until(world, rules::TICKS_PER_SECOND, begun)?;
     }
     until(world, 2 * CAPTURE_TICKS, is_capture)
@@ -573,7 +573,7 @@ fn is_gathered(kind: &EventKind) -> bool {
 
 /// The experience a gathering told.
 fn gathered(events: &[Event]) -> Option<(Team, i32, Option<EntityId>)> {
-    events.iter().find_map(|event| match event.kind {
+    events.iter().find_map(|event| match event.kind() {
         EventKind::ShrineActivated { team, xp, by, .. } => Some((team, xp, by)),
         _ => None,
     })

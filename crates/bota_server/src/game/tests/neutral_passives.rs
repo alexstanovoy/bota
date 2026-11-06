@@ -75,7 +75,7 @@ fn blows(world: &mut World, ticks: u32, from: Entity, on: Entity) -> Vec<(u32, i
                 amount,
                 kind,
                 ..
-            } = event.kind
+            } = event.kind()
                 && source == Some(wire_id(from))
                 && target == wire_id(on)
             {
@@ -876,7 +876,7 @@ fn accuracy_lets_blows_through_evasion() {
         let (mut hit, mut missed) = (0, 0);
         while hit + missed < 120 && world.tick < world.schedule().horn + 20_000 {
             for event in world.step() {
-                match event.kind {
+                match event.kind() {
                     EventKind::Damaged {
                         source,
                         target,

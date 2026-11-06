@@ -19,7 +19,7 @@ impl World {
         self.lay_sight_block();
         self.lay_passability();
         let side = self.team.get(by).copied().unwrap_or(Team::Neutral);
-        self.events.push(Event {
+        self.events.push(Event::Fact {
             kind: EventKind::TreeFelled {
                 at,
                 by: Some(wire_id(by)),
@@ -61,7 +61,7 @@ impl World {
             let (EventKind::TreeGrew { at } | EventKind::TreeFelled { at, .. }) = kind else {
                 continue;
             };
-            self.events.push(Event {
+            self.events.push(Event::Fact {
                 visible_to: self.who_sees_spot(at, Team::Neutral),
                 kind,
                 gold_hidden_from: None,

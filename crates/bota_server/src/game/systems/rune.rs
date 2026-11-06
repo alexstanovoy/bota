@@ -148,7 +148,7 @@ impl World {
                 gold,
             },
         );
-        self.events.push(Event {
+        self.events.push(Event::Fact {
             kind: EventKind::RuneSpawned { kind, at },
             // Finalized with the snapshot's sight after movement and actions.
             visible_to: EventVisibility::Nobody,
@@ -160,7 +160,7 @@ impl World {
     /// A spawn discloses exactly the rune that the completed tick's snapshot shows.
     pub(crate) fn note_rune_spawns(&self, events: &mut [Event]) {
         for event in events {
-            let EventKind::RuneSpawned { kind, at } = event.kind else {
+            let EventKind::RuneSpawned { kind, at } = event.kind() else {
                 continue;
             };
             let rune = self.entities.iter().find(|&entity| {
@@ -169,8 +169,7 @@ impl World {
             });
             let shown = |team| rune.is_some_and(|entity| self.shows(team, entity));
             let told = EventVisibility::of(shown(Team::Radiant), shown(Team::Dire));
-            event.visible_to = told;
-            event.source_told_to = told;
+            event.tell_to(told);
         }
     }
 
@@ -229,7 +228,7 @@ impl World {
                 .get(hero)
                 .copied()
                 .map_or(EventVisibility::Nobody, EventVisibility::OneTeam);
-            self.events.push(Event {
+            self.events.push(Event::Fact {
                 kind: EventKind::RuneBottled {
                     unit: wire_id(hero),
                     kind,
@@ -258,7 +257,7 @@ impl World {
     /// A rune takes effect on a hero, and both sides that see it are told.
     pub(crate) fn activate_rune(&mut self, hero: Entity, kind: RuneKind, gold: i32, bottled: bool) {
         let told = self.who_may_know(hero, self.team.get(hero).copied());
-        self.events.push(Event {
+        self.events.push(Event::Fact {
             kind: EventKind::RuneActivated {
                 unit: wire_id(hero),
                 kind,
@@ -455,7 +454,7 @@ impl World {
         if hp <= 0 && mana <= 0 {
             return;
         }
-        self.events.push(Event {
+        self.events.push(Event::Fact {
             kind: EventKind::Healed {
                 source: by.map(|(source, _)| wire_id(source)),
                 target: wire_id(on),

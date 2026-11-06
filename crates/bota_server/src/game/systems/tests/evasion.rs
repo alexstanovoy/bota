@@ -63,7 +63,7 @@ fn attacker_at_a_hero(attacker: &'static UnitDef, held: &[ItemId]) -> (World, En
 fn swings_in(events: &[Event], from: Entity, on: Entity) -> Vec<bool> {
     events
         .iter()
-        .filter_map(|event| match event.kind {
+        .filter_map(|event| match event.kind() {
             EventKind::Damaged { source, target, .. }
                 if source == Some(wire_id(from)) && target == wire_id(on) =>
             {

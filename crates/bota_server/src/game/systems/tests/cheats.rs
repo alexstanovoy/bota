@@ -78,7 +78,7 @@ fn levels_go_up_at_once_and_no_further_than_the_cap() {
     assert_eq!(
         events
             .iter()
-            .filter(|event| matches!(event.kind, EventKind::LevelUp { .. }))
+            .filter(|event| matches!(event.kind(), EventKind::LevelUp { .. }))
             .count(),
         3,
         "every level passed is told of"
@@ -134,7 +134,7 @@ fn an_item_is_handed_out_for_nothing_and_told_of_as_bought() {
     );
     assert_eq!(world.seats[0].gold, gold, "and nothing was paid");
     assert!(events.iter().any(|event| matches!(
-        event.kind,
+        event.kind(),
         EventKind::ItemBought {
             item: ItemId::BUTTERFLY,
             ..
@@ -436,7 +436,7 @@ fn gold_income_scales_the_bounty_a_kill_pays() {
     assert_eq!(world.seats[0].net_worth, net_worth + expected);
     assert!(
         events.iter().any(
-            |event| matches!(event.kind, EventKind::Died { bounty, .. } if bounty == Some(expected))
+            |event| matches!(event.kind(), EventKind::Died { bounty, .. } if bounty == Some(expected))
         ),
         "the death tells of what was paid"
     );

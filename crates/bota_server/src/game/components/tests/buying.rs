@@ -17,14 +17,14 @@ fn sixty_five_gold_buys_one_charge_and_emits_one_event() {
     assert_eq!(world.seats[0].gold, 0);
     assert_eq!(events.len(), 1);
     assert_eq!(
-        events[0].kind,
+        events[0].kind(),
         EventKind::ItemBought {
             slot: OWNER,
             item: MANGO
         }
     );
     assert_eq!(
-        events[0].visible_to,
+        events[0].visible_to(),
         EventVisibility::OneTeam(bota_proto::Team::Radiant)
     );
 }

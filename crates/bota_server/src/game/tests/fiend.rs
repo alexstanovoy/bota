@@ -143,7 +143,7 @@ fn a_raze_stands_through_its_cast_point_and_lands_when_it_is_over() {
     );
     assert!(
         events.iter().any(|event| matches!(
-            event.kind,
+            event.kind(),
             EventKind::AbilityCast {
                 ability: AbilityId::RAZE_NEAR,
                 ..
@@ -198,7 +198,7 @@ fn give(world: &mut World, order: Order, queue: bool) -> Vec<crate::game::Event>
 fn went_off(events: &[crate::game::Event]) -> Vec<AbilityId> {
     events
         .iter()
-        .filter_map(|event| match event.kind {
+        .filter_map(|event| match event.kind() {
             EventKind::AbilityCast { ability, .. } => Some(ability),
             _ => None,
         })
@@ -856,7 +856,7 @@ fn what_the_requiem_frightens_runs_from_the_fiend_and_swings_at_nothing() {
             .step()
             .into_iter()
             .filter(|event| {
-                matches!(event.kind, EventKind::Damaged { source, .. } if source == Some(wire_id(mark)))
+                matches!(event.kind(), EventKind::Damaged { source, .. } if source == Some(wire_id(mark)))
             })
             .count();
         assert_eq!(blows, 0, "feared, it lands no blow");

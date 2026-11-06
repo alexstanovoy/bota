@@ -117,7 +117,7 @@ fn a_bottle_is_bought_for_675_gold_with_three_charges() {
         },
     );
     assert!(events.iter().any(|event| matches!(
-        event.kind,
+        event.kind(),
         EventKind::ItemBought {
             item: ItemId::BOTTLE,
             ..
@@ -143,7 +143,7 @@ fn a_drink_mends_110_health_and_60_mana_over_2_7_seconds_and_costs_a_charge() {
     let (hp0, mana0) = hp_mana(&world, taker);
     let events = advance_validated(&mut world, None, drink());
     assert!(events.iter().any(|event| matches!(
-        event.kind,
+        event.kind(),
         EventKind::ItemUsed {
             item: ItemId::BOTTLE,
             ..
@@ -331,7 +331,7 @@ fn a_hero_with_a_bottle_stores_the_rune_it_takes_and_lets_it_out_when_it_uses_th
     bottled(&mut world, taker, 1);
     let events = world.step();
     assert!(events.iter().any(|event| matches!(
-        event.kind,
+        event.kind(),
         EventKind::RuneBottled {
             kind: RuneKind::Haste,
             ..
@@ -340,7 +340,7 @@ fn a_hero_with_a_bottle_stores_the_rune_it_takes_and_lets_it_out_when_it_uses_th
     assert!(
         !events
             .iter()
-            .any(|event| matches!(event.kind, EventKind::RuneActivated { .. })),
+            .any(|event| matches!(event.kind(), EventKind::RuneActivated { .. })),
         "stored, not activated"
     );
     assert!(lying(&world).is_empty());
@@ -360,7 +360,7 @@ fn a_hero_with_a_bottle_stores_the_rune_it_takes_and_lets_it_out_when_it_uses_th
     // Using the bottle lets the rune out and fills the bottle.
     let events = advance_validated(&mut world, None, drink());
     assert!(events.iter().any(|event| matches!(
-        event.kind,
+        event.kind(),
         EventKind::RuneActivated {
             kind: RuneKind::Haste,
             bottled: true,
@@ -419,7 +419,7 @@ fn a_stored_bounty_rune_pays_what_it_was_worth_when_it_appeared() {
     place(&mut world, taker, jungle);
     let events = world.step();
     assert!(events.iter().any(|event| matches!(
-        event.kind,
+        event.kind(),
         EventKind::RuneBottled {
             kind: RuneKind::Bounty,
             ..
@@ -442,7 +442,7 @@ fn a_second_rune_takes_effect_at_once_while_the_bottle_holds_one() {
     world.put_rune(RuneKind::Arcane, RIVER_TOP);
     let events = world.step();
     assert!(events.iter().any(|event| matches!(
-        event.kind,
+        event.kind(),
         EventKind::RuneActivated {
             kind: RuneKind::Arcane,
             bottled: false,
@@ -464,11 +464,10 @@ fn a_bottle_in_the_backpack_stores_nothing() {
         bag.slots[rules::INVENTORY_SLOTS] = Some(fresh_stack(ItemId::BOTTLE, 3));
     }
     let events = world.step();
-    assert!(
-        events
-            .iter()
-            .any(|event| matches!(event.kind, EventKind::RuneActivated { bottled: false, .. }))
-    );
+    assert!(events.iter().any(|event| matches!(
+        event.kind(),
+        EventKind::RuneActivated { bottled: false, .. }
+    )));
     assert!(carries(&world, taker, ModifierKind::RuneHaste));
 }
 
@@ -488,7 +487,7 @@ fn a_stored_rune_takes_effect_by_itself_after_90_seconds() {
         all
     };
     assert!(events.iter().any(|event| matches!(
-        event.kind,
+        event.kind(),
         EventKind::RuneActivated {
             kind: RuneKind::Arcane,
             bottled: true,

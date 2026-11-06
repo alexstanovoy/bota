@@ -33,7 +33,7 @@ impl World {
             }
             if grows && pool.lotuses < POOL_MAX_LOTUSES {
                 pool.lotuses += 1;
-                self.events.push(Event {
+                self.events.push(Event::Fact {
                     kind: EventKind::LotusGrown {
                         pool: wire_id(entity),
                         tier: pool.tier,
@@ -160,7 +160,7 @@ impl World {
         pool.lotuses -= 1;
         pool.plucked += 1;
         let seen_by = self.who_may_name(Some(hero));
-        self.events.push(Event {
+        self.events.push(Event::Fact {
             kind: EventKind::LotusPlucked {
                 pool: wire_id(pool_at),
                 unit: Some(wire_id(hero)),

@@ -97,7 +97,7 @@ fn lotuses_of(world: &World, unit: Entity) -> Vec<(ItemId, u8)> {
 fn grown(events: &[Event]) -> Vec<LotusTier> {
     events
         .iter()
-        .filter_map(|event| match event.kind {
+        .filter_map(|event| match event.kind() {
             EventKind::LotusGrown { tier, .. } => Some(tier),
             _ => None,
         })

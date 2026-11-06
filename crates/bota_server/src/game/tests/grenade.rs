@@ -38,7 +38,7 @@ fn magic_blows(events: &[Event], from: Entity, on: Entity) -> usize {
     events
         .iter()
         .filter(|event| {
-            matches!(event.kind, EventKind::Damaged { source, target, kind: DamageKind::Magical, .. }
+            matches!(event.kind(), EventKind::Damaged { source, target, kind: DamageKind::Magical, .. }
                 if source == Some(wire_id(from)) && target == wire_id(on))
         })
         .count()
@@ -220,11 +220,11 @@ fn a_grenade_names_its_item_in_flight_where_it_lands_in_its_blows_and_on_its_deb
     assert!(flew, "the other side sees the item fly, and who threw it");
     let landed: Vec<&Event> = events
         .iter()
-        .filter(|event| matches!(event.kind, EventKind::Landed { .. }))
+        .filter(|event| matches!(event.kind(), EventKind::Landed { .. }))
         .collect();
     assert_eq!(landed.len(), 1, "one landing");
     assert_eq!(
-        landed[0].kind,
+        landed[0].kind(),
         EventKind::Landed {
             inflictor: grenade,
             caster: Some(wire_id(hero)),
@@ -232,13 +232,13 @@ fn a_grenade_names_its_item_in_flight_where_it_lands_in_its_blows_and_on_its_deb
         }
     );
     assert_eq!(
-        landed[0].visible_to,
+        landed[0].visible_to(),
         EventVisibility::Everyone,
         "both sides see the spot"
     );
     let blows: Vec<_> = events
         .iter()
-        .filter_map(|event| match event.kind {
+        .filter_map(|event| match event.kind() {
             EventKind::Damaged {
                 source,
                 inflictor,

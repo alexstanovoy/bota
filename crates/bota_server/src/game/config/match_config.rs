@@ -1,6 +1,9 @@
 //! Everything a match is created from.
 
-use bota_proto::{EventKind, MapId, MatchInfo, ObjectiveSet, Pick, RuneSet, Team, TickMode};
+use bota_proto::{
+    EntityId, EventKind, ItemId, MapId, MatchInfo, ObjectiveSet, Pick, RuneSet, Team, TickMode,
+    Vec2,
+};
 
 use crate::game::{
     EconomyEvent, EconomyEventError, MAX_ECONOMY_EVENTS, MAX_SPAWN_MODIFIERS, MatchRng,
@@ -278,19 +281,79 @@ impl EventVisibility {
 
 /// One thing that happened during a tick, with its audience.
 #[derive(Clone, Debug)]
-pub struct Event {
-    /// What happened.
-    pub kind: EventKind,
-    /// Who may know.
-    pub visible_to: EventVisibility,
-    /// The side that must see zero for the gold a `Died` reports: the one
-    /// that did not earn a non-hero kill. A hero kill's gold is public, as in
-    /// Dota's kill feed, so it is `None` there and for every other event.
-    pub gold_hidden_from: Option<Team>,
-    /// The teams told who the event names as its dealer: the `source` of a
-    /// `Damaged`, `Missed` or `Healed`, the `killer` of a `Died`. The others
-    /// are told `None`: a team learns who it does not see only from what
-    /// Dota announces, a hero's or a tower's killer. `Everyone` for an event
-    /// that names no dealer.
-    pub source_told_to: EventVisibility,
+pub enum Event {
+    Fact {
+        kind: EventKind,
+        visible_to: EventVisibility,
+        /// Non-hero kill income is known only to the side that earned it.
+        gold_hidden_from: Option<Team>,
+        /// Hidden dealers are unnamed unless a public announcement names them.
+        source_told_to: EventVisibility,
+    },
+    /// An item can have a visible user and a private destination. That audience is local to
+    /// this fact rather than a default that an unrelated event could accidentally inherit.
+    ItemUsed {
+        caster: Option<EntityId>,
+        item: ItemId,
+        at: Option<Vec2>,
+        visible_to: EventVisibility,
+        point_told_to: EventVisibility,
+        source_told_to: EventVisibility,
+    },
+}
+
+impl Event {
+    pub fn kind(&self) -> EventKind {
+        match self {
+            Self::Fact { kind, .. } => kind.clone(),
+            Self::ItemUsed {
+                caster, item, at, ..
+            } => EventKind::ItemUsed {
+                caster: *caster,
+                item: *item,
+                at: *at,
+            },
+        }
+    }
+
+    pub fn visible_to(&self) -> EventVisibility {
+        match self {
+            Self::Fact { visible_to, .. } | Self::ItemUsed { visible_to, .. } => *visible_to,
+        }
+    }
+
+    pub fn source_told_to(&self) -> EventVisibility {
+        match self {
+            Self::Fact { source_told_to, .. } | Self::ItemUsed { source_told_to, .. } => {
+                *source_told_to
+            }
+        }
+    }
+
+    pub fn gold_hidden_from(&self) -> Option<Team> {
+        match self {
+            Self::Fact {
+                gold_hidden_from, ..
+            } => *gold_hidden_from,
+            Self::ItemUsed { .. } => None,
+        }
+    }
+
+    pub fn tell_to(&mut self, told: EventVisibility) {
+        match self {
+            Self::Fact {
+                visible_to,
+                source_told_to,
+                ..
+            }
+            | Self::ItemUsed {
+                visible_to,
+                source_told_to,
+                ..
+            } => {
+                *visible_to = told;
+                *source_told_to = told;
+            }
+        }
+    }
 }

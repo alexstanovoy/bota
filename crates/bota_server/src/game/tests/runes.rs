@@ -70,7 +70,7 @@ pub(super) fn step_at(world: &mut World, clock: u32) -> Vec<Event> {
 fn spawned(events: &[Event]) -> Vec<(RuneKind, Vec2)> {
     events
         .iter()
-        .filter_map(|event| match event.kind {
+        .filter_map(|event| match event.kind() {
             EventKind::RuneSpawned { kind, at } => Some((kind, at)),
             _ => None,
         })
@@ -321,7 +321,7 @@ fn took(sides: &[Team], kind: RuneKind) -> (World, Entity) {
     let events = world.step();
     assert!(
         events.iter().any(|event| matches!(
-            event.kind,
+            event.kind(),
             EventKind::RuneActivated { kind: got, bottled: false, .. } if got == kind
         )),
         "the rune took effect on the tick the hero stood on it"
@@ -724,7 +724,7 @@ fn an_attack_order_destroys_a_rune_for_neither_a_last_hit_nor_a_deny() {
     }
     assert!(lying(&world).is_empty(), "the rune is gone");
     assert!(told.iter().any(|event| matches!(
-        event.kind,
+        event.kind(),
         EventKind::RuneDenied {
             kind: RuneKind::Haste,
             ..

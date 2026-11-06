@@ -194,7 +194,7 @@ fn composite_buy_order_pays_missing_cost_and_assembles_owned_parts() {
         assert_eq!(
             events
                 .iter()
-                .filter(|event| event.kind
+                .filter(|event| event.kind()
                     == EventKind::ItemBought {
                         slot: SlotId(0),
                         item

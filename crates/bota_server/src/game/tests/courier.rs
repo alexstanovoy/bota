@@ -226,7 +226,7 @@ fn courier_auxiliary_casts_keep_delivery_tracking_a_moving_owner() {
         let events = advance_validated(&mut world, Some(courier), order);
 
         assert_eq!(world.errand.get(courier), Some(&Errand::ToOwner));
-        assert!(events.iter().any(|event| event.kind
+        assert!(events.iter().any(|event| event.kind()
             == EventKind::AbilityCast {
                 caster: wire_id(courier),
                 ability,

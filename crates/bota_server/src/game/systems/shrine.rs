@@ -144,7 +144,7 @@ impl World {
             self.grant_xp(seat, xp, &mut events);
         }
         self.events.append(&mut events);
-        self.events.push(Event {
+        self.events.push(Event::Fact {
             kind: EventKind::ShrineActivated {
                 unit: wire_id(shrine),
                 team: side,

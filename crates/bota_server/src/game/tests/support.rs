@@ -238,7 +238,7 @@ pub(crate) fn seat_hero(world: &mut World, slot: u8, team: Team, at: Vec2) -> En
 
 /// What the death the events tell of paid its killer.
 pub(crate) fn paid(events: &[Event]) -> Option<i32> {
-    events.iter().find_map(|event| match event.kind {
+    events.iter().find_map(|event| match event.kind() {
         EventKind::Died { bounty, .. } => bounty,
         _ => None,
     })
@@ -1089,7 +1089,7 @@ pub(crate) fn ranged_swings_after_ticks(
     let (mut landed, mut missed) = (0, 0);
     for _ in 0..512 {
         for event in world.step() {
-            match event.kind {
+            match event.kind() {
                 EventKind::Damaged { source, target, .. }
                     if source == Some(wire_id(attacker)) && target == wire_id(mark) =>
                 {
@@ -1276,7 +1276,7 @@ pub(crate) fn cast_through(world: &mut World, slot: u8, point_ms: u32) -> Vec<Ev
 pub(crate) fn burns_on(events: &[Event], unit: Entity) -> Vec<i32> {
     events
         .iter()
-        .filter_map(|event| match event.kind {
+        .filter_map(|event| match event.kind() {
             EventKind::Damaged {
                 target,
                 amount,

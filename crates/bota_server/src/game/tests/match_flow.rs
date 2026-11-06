@@ -30,7 +30,7 @@ fn a_fallen_ancient_ends_the_match() {
     assert!(
         events
             .iter()
-            .any(|e| matches!(e.kind, EventKind::StructureDestroyed { .. }))
+            .any(|e| matches!(e.kind(), EventKind::StructureDestroyed { .. }))
     );
 }
 
@@ -438,7 +438,7 @@ fn a_heros_blows_on_enemy_heroes_and_structures_are_counted_in_the_final_stats()
                     target,
                     amount,
                     ..
-                } = event.kind
+                } = event.kind()
                     && source == wire_id(hero)
                     && target == wire_id(aim)
                 {
@@ -715,7 +715,7 @@ fn a_hero_the_second_seat_has_hurt() -> (World, Entity, Entity, Entity) {
 }
 
 fn the_assists(events: &[crate::game::Event]) -> Option<u16> {
-    events.iter().find_map(|event| match event.kind {
+    events.iter().find_map(|event| match event.kind() {
         EventKind::Died { assists, .. } => Some(assists),
         _ => None,
     })
@@ -781,7 +781,7 @@ fn a_fallen_tower_tells_its_kind_lane_and_tier() {
         .expect("a tower with a lane and a tier");
     let mut events = Vec::new();
     world.bury(vec![(tower, None)], &mut events);
-    let told = events.iter().find_map(|event| match event.kind {
+    let told = events.iter().find_map(|event| match event.kind() {
         EventKind::StructureDestroyed {
             kind,
             lane,

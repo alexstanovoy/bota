@@ -94,14 +94,14 @@ fn assert_destroyed(events: &[Event], victim: Entity, team: Team) {
         .iter()
         .filter(|event| {
             matches!(
-                event.kind,
+                event.kind(),
                 EventKind::StructureDestroyed { unit, team: lost, .. }
                     if unit == wire_id(victim) && lost == team
             )
         })
         .collect::<Vec<_>>();
     assert_eq!(destroyed.len(), 1);
-    assert_eq!(destroyed[0].visible_to, EventVisibility::Everyone);
+    assert_eq!(destroyed[0].visible_to(), EventVisibility::Everyone);
 }
 
 #[test]
@@ -385,7 +385,7 @@ fn map2_immortal_structures_survive_sustained_attack_and_the_match_goes_on() {
         let events = world.advance(&[]);
         felt += events
             .iter()
-            .filter(|event| matches!(&event.kind, EventKind::Damaged { target, amount, .. } if *target == wire_id(victim) && *amount > 0))
+            .filter(|event| matches!(&event.kind(), EventKind::Damaged { target, amount, .. } if *target == wire_id(victim) && *amount > 0))
             .count();
         assert!(world.alive(victim));
         assert!(world.health.get(victim).expect("health").hp >= Fixed::from_int(1));
@@ -460,7 +460,7 @@ fn map2_both_sides_losing_on_one_tick_draw_in_either_hit_order() {
             assert_eq!(world.victor(), Some(Team::Neutral), "{case}");
             let felled = events
                 .iter()
-                .filter(|event| matches!(event.kind, EventKind::StructureDestroyed { .. }))
+                .filter(|event| matches!(event.kind(), EventKind::StructureDestroyed { .. }))
                 .count();
             assert_eq!(felled, by_tower.iter().filter(|&&t| t).count(), "{case}");
             for (seat, tower_lost) in by_tower.into_iter().enumerate() {
@@ -735,8 +735,8 @@ fn map2_step_and_match_advance_share_completion_events_stats_and_hash() {
         assert_eq!(direct.view_full(), adapter.view_full());
         assert_eq!(direct_events.len(), adapter_events.len());
         for (direct, adapter) in direct_events.iter().zip(&adapter_events) {
-            assert_eq!(direct.kind, adapter.kind);
-            assert_eq!(direct.visible_to, adapter.visible_to);
+            assert_eq!(direct.kind(), adapter.kind());
+            assert_eq!(direct.visible_to(), adapter.visible_to());
         }
     }
 }
@@ -766,7 +766,7 @@ fn map2_native_frames_and_replay_preserve_world_result_and_final_statistics() {
             },
             ServerMsg::Events {
                 tick: world.tick,
-                events: events.into_iter().map(|event| event.kind).collect(),
+                events: events.into_iter().map(|event| event.kind()).collect(),
             },
             ServerMsg::MatchOver {
                 winner: world.victor().expect("completed tick"),

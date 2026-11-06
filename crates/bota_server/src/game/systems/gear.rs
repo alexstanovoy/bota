@@ -531,7 +531,7 @@ impl World {
         debug_assert!(price >= 0 && self.seats[seat].gold >= price);
         self.seats[seat].gold -= price;
         self.take_from_stock(self.seats[seat].team, item);
-        events.push(Event {
+        events.push(Event::Fact {
             kind: EventKind::ItemBought {
                 slot: self.seats[seat].slot,
                 item,
@@ -1027,7 +1027,7 @@ impl World {
         amount: i32,
         mana: i32,
     ) {
-        self.events.push(Event {
+        self.events.push(Event::Fact {
             kind: EventKind::Healed {
                 source: Some(wire_id(source)),
                 target: wire_id(on),

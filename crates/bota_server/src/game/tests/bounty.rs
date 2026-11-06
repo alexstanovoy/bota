@@ -249,7 +249,7 @@ fn death_gold_awards_disclose_each_recipients_income_only_to_its_own_side() {
         receipt(2, Team::Radiant, 45),
         receipt(1, Team::Dire, 40),
     ];
-    let event = Event {
+    let event = Event::Fact {
         kind: EventKind::Died {
             credited_hero: None,
             unit: EntityId {
@@ -268,7 +268,7 @@ fn death_gold_awards_disclose_each_recipients_income_only_to_its_own_side() {
         source_told_to: EventVisibility::Everyone,
     };
     assert_disclosed_awards(&event, &receipts);
-    let only_radiant = Event {
+    let only_radiant = Event::Fact {
         kind: EventKind::Died {
             credited_hero: None,
             unit: EntityId {
@@ -283,7 +283,8 @@ fn death_gold_awards_disclose_each_recipients_income_only_to_its_own_side() {
             awards: Some(Box::new(receipts[..2].to_vec())),
         },
         gold_hidden_from: None,
-        ..event
+        visible_to: event.visible_to(),
+        source_told_to: event.source_told_to(),
     };
     let told = visible_events(std::slice::from_ref(&only_radiant), Some(Team::Dire));
     assert!(
@@ -297,11 +298,8 @@ fn death_gold_awards_disclose_each_recipients_income_only_to_its_own_side() {
         ),
         "award privacy does not depend on the legacy bounty's disclosure marker"
     );
-    let unseen = Event {
-        visible_to: EventVisibility::Nobody,
-        source_told_to: EventVisibility::Nobody,
-        ..only_radiant
-    };
+    let mut unseen = only_radiant;
+    unseen.tell_to(EventVisibility::Nobody);
     let own = visible_events(std::slice::from_ref(&unseen), Some(Team::Radiant));
     assert!(
         matches!(&own[0], EventKind::Died { killer: None, awards: Some(awards), .. }

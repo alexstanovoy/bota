@@ -45,7 +45,7 @@ fn until_cast(world: &mut World, caster: Entity, ability: NeutralAbility, ticks:
     for _ in 0..ticks {
         let events = world.step();
         let cast = events.iter().any(|event| {
-            matches!(event.kind, EventKind::AbilityCast { caster: who, ability: id }
+            matches!(event.kind(), EventKind::AbilityCast { caster: who, ability: id }
                 if who == wire_id(caster) && id == ability.id())
         });
         if cast {
@@ -63,7 +63,7 @@ fn casts_over(world: &mut World, ability: NeutralAbility, ticks: u32) -> usize {
             .step()
             .iter()
             .filter(|event| {
-                matches!(event.kind, EventKind::AbilityCast { ability: id, .. } if id == ability.id())
+                matches!(event.kind(), EventKind::AbilityCast { ability: id, .. } if id == ability.id())
             })
             .count();
     }
@@ -198,7 +198,7 @@ fn a_golem_hurls_its_boulder_at_a_unit_under_300_health_and_the_other_waits() {
         casts += world
             .step()
             .iter()
-            .filter(|event| matches!(event.kind, EventKind::AbilityCast { ability, .. } if ability == NeutralAbility::HurlBoulder.id()))
+            .filter(|event| matches!(event.kind(), EventKind::AbilityCast { ability, .. } if ability == NeutralAbility::HurlBoulder.id()))
             .count();
         stunned |= carries(&world, hero, ModifierKind::Stunned);
     }
@@ -228,7 +228,7 @@ fn a_boulder_names_its_spell_and_its_golem_in_flight_in_its_blow_and_on_its_stun
                 && shot.target == Some(wire_id(hero))
                 && shot.ability.is_none()
         });
-        let blow = events.iter().find_map(|event| match event.kind {
+        let blow = events.iter().find_map(|event| match event.kind() {
             EventKind::Damaged {
                 source,
                 target,
@@ -621,7 +621,7 @@ fn the_spells_that_are_never_cast_stay_uncast() {
     rouse(&mut world, beasts[0], hero);
     for _ in 0..600 {
         for event in world.step() {
-            if let EventKind::AbilityCast { ability, .. } = event.kind {
+            if let EventKind::AbilityCast { ability, .. } = event.kind() {
                 let which = NeutralAbility::of(ability).expect("only neutrals cast here");
                 assert!(
                     !matches!(which.spell(), Spell::Uncast),

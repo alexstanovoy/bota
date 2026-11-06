@@ -73,7 +73,7 @@ impl World {
             ability.cooldown = cooldown;
         }
         let visible_to = self.who_may_know(entity, None);
-        self.events.push(Event {
+        self.events.push(Event::Fact {
             kind: EventKind::AbilityCast {
                 caster: wire_id(entity),
                 ability: ability.id,

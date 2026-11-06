@@ -255,7 +255,7 @@ fn learning_a_talent_leaves_a_cast_point_under_way() {
         cast |= world
             .step()
             .iter()
-            .any(|event| matches!(event.kind, EventKind::AbilityCast { .. }));
+            .any(|event| matches!(event.kind(), EventKind::AbilityCast { .. }));
     }
     assert!(cast, "the raze still goes off");
 }
@@ -318,7 +318,7 @@ fn talented_fiend(apart: i32, talent: Option<u8>) -> (World, Entity, Entity) {
 fn blows_on(events: &[Event], unit: Entity) -> Vec<i32> {
     events
         .iter()
-        .filter_map(|event| match event.kind {
+        .filter_map(|event| match event.kind() {
             EventKind::Damaged {
                 target,
                 amount,

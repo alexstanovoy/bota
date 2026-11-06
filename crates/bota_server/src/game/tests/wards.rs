@@ -379,7 +379,7 @@ fn swings_to_fell_a_ward(hero: bool) -> usize {
         swings += events
             .iter()
             .filter(|event| {
-                matches!(event.kind, bota_proto::EventKind::Damaged { target, .. }
+                matches!(event.kind(), bota_proto::EventKind::Damaged { target, .. }
                     if target == crate::game::wire_id(ward))
             })
             .count();

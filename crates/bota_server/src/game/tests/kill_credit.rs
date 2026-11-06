@@ -112,7 +112,7 @@ fn kill_credit_assigns_a_creep_or_tower_finish_to_the_single_recent_enemy_damage
         );
         // Level-one bounty 125+8, First Blood 135; assist 15 + 50 + 0.037 * 1000, equal team worth.
         assert_eq!(world.seats[0].gold - before, 370);
-        assert!(events.iter().any(|event| matches!(event.kind, EventKind::Died { unit, killer: Some(killer), ref credited_hero, .. } if unit == wire_id(victim) && killer == wire_id(source) && credited_hero.as_deref() == Some(&wire_id(ours[0])))));
+        assert!(events.iter().any(|event| matches!(event.kind(), EventKind::Died { unit, killer: Some(killer), ref credited_hero, .. } if unit == wire_id(victim) && killer == wire_id(source) && credited_hero.as_deref() == Some(&wire_id(ours[0])))));
     }
 }
 
@@ -197,7 +197,7 @@ fn kill_credit_does_not_assign_an_arbitrary_hero_after_multiple_or_expired_damag
                 world.seats[2].gold - before[2],
                 if expired { 205 } else { 211 }
             );
-            assert!(events.iter().any(|event| matches!(event.kind, EventKind::Died { unit, killer: Some(killer), .. } if unit == wire_id(victim) && killer == wire_id(source))));
+            assert!(events.iter().any(|event| matches!(event.kind(), EventKind::Died { unit, killer: Some(killer), .. } if unit == wire_id(victim) && killer == wire_id(source))));
         }
     }
 }
@@ -299,7 +299,7 @@ fn kill_credit_neutral_finishes_and_denies_keep_the_physical_killer() {
         world.set_order(source, UnitOrder::Stand);
         let events = finish(&mut world, victim, source);
         assert_eq!(world.seats[0].kills, 0);
-        assert!(events.iter().any(|event| matches!(event.kind,
+        assert!(events.iter().any(|event| matches!(event.kind(),
             EventKind::Died { unit, killer: Some(killer), denied, .. }
                 if unit == wire_id(victim) && killer == wire_id(source) && denied == (side == Team::Dire))));
     }
@@ -308,10 +308,14 @@ fn kill_credit_neutral_finishes_and_denies_keep_the_physical_killer() {
 fn death_awards(events: &[crate::game::Event], victim: Entity) -> &[bota_proto::GoldAward] {
     events
         .iter()
-        .find_map(|event| match &event.kind {
-            EventKind::Died {
-                unit,
-                awards: Some(awards),
+        .find_map(|event| match event {
+            crate::game::Event::Fact {
+                kind:
+                    EventKind::Died {
+                        unit,
+                        awards: Some(awards),
+                        ..
+                    },
                 ..
             } if *unit == wire_id(victim) => Some(awards.as_slice()),
             _ => None,
@@ -671,7 +675,7 @@ fn kill_credit_a_zero_damage_blow_earns_an_assist_but_not_the_kill() {
     world.settle();
     world.push_hit(Some(ours[0]), victim, 100, DamageKind::Magical, None);
     let events = world.step();
-    assert!(events.iter().any(|event| matches!(event.kind, EventKind::Damaged { target, amount: 0, .. } if target == wire_id(victim))));
+    assert!(events.iter().any(|event| matches!(event.kind(), EventKind::Damaged { target, amount: 0, .. } if target == wire_id(victim))));
     let entry = world.seats[1]
         .hurt_by
         .iter()
@@ -721,7 +725,7 @@ fn kill_credit_death_reports_the_physical_finisher() {
     touch(&mut world, ours[0], victim, true);
     let source = finisher(&mut world, true);
     let events = finish(&mut world, victim, source);
-    assert!(events.iter().any(|event| matches!(event.kind, EventKind::Died { unit, killer: Some(killer), .. } if unit == wire_id(victim) && killer == wire_id(source))), "Died.killer preserves the killing-blow unit");
+    assert!(events.iter().any(|event| matches!(event.kind(), EventKind::Died { unit, killer: Some(killer), .. } if unit == wire_id(victim) && killer == wire_id(source))), "Died.killer preserves the killing-blow unit");
     assert_eq!(world.seats[0].kills, 1);
 }
 
@@ -827,10 +831,13 @@ fn kill_credit_announces_credit_while_preserving_physical_attacker_privacy() {
     let mut events = finish(&mut world, victim, source);
     let event = events
         .iter_mut()
-        .find(|event| matches!(event.kind, EventKind::Died { .. }))
+        .find(|event| matches!(event.kind(), EventKind::Died { .. }))
         .unwrap();
     // Explicitly exercise a finisher hidden from Dire, independent of fixture vision.
-    event.source_told_to = crate::game::EventVisibility::OneTeam(Team::Radiant);
+    let crate::game::Event::Fact { source_told_to, .. } = event else {
+        unreachable!("a death is a fact");
+    };
+    *source_told_to = crate::game::EventVisibility::OneTeam(Team::Radiant);
     for side in [None, Some(Team::Radiant), Some(Team::Dire)] {
         let projected = crate::game_loop::visible_events(&events, side);
         let EventKind::Died {

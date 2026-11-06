@@ -27,7 +27,7 @@ fn mango_reports_actual_whole_mana_once_per_consumed_charge() {
 
             assert!(world.use_item(hero, 0, target, &mut events));
 
-            events.retain(|event| !matches!(event.kind, EventKind::ItemUsed { .. }));
+            events.retain(|event| !matches!(event.kind(), EventKind::ItemUsed { .. }));
 
             let restored = deficit.min(Fixed::from_int(100));
             assert_eq!(
@@ -39,7 +39,7 @@ fn mango_reports_actual_whole_mana_once_per_consumed_charge() {
             assert!(held(&world, hero, 0).touched);
             assert_eq!(events.len(), 1);
             assert_eq!(
-                events[0].kind,
+                events[0].kind(),
                 EventKind::Healed {
                     source: Some(wire_id(hero)),
                     target: wire_id(hero),
@@ -67,7 +67,7 @@ fn subpoint_mango_restoration_consumes_without_a_zero_point_event() {
 
         assert!(world.use_item(hero, 0, Target::None, &mut events));
 
-        events.retain(|event| !matches!(event.kind, EventKind::ItemUsed { .. }));
+        events.retain(|event| !matches!(event.kind(), EventKind::ItemUsed { .. }));
 
         assert_eq!(world.mana.get(hero).unwrap().mana, maximum);
         assert!(world.inventory.get(hero).unwrap().slots[0].is_none());
@@ -89,11 +89,11 @@ fn mango_mana_event_uses_upstream_visibility_and_round_trips_on_the_wire() {
 
         assert!(world.use_item(hero, 0, Target::None, &mut events));
 
-        events.retain(|event| !matches!(event.kind, EventKind::ItemUsed { .. }));
+        events.retain(|event| !matches!(event.kind(), EventKind::ItemUsed { .. }));
 
         assert_eq!(events.len(), 1);
         assert_eq!(
-            events[0].visible_to,
+            events[0].visible_to(),
             if observed {
                 EventVisibility::Everyone
             } else {
@@ -102,7 +102,7 @@ fn mango_mana_event_uses_upstream_visibility_and_round_trips_on_the_wire() {
         );
         let message = ServerMsg::Events {
             tick: world.tick,
-            events: vec![events[0].kind.clone()],
+            events: vec![events[0].kind()],
         };
         let encoded = bota_proto::encode_frame_to_vec(&message).unwrap();
         let decoded: ServerMsg =
@@ -118,7 +118,7 @@ fn mango_passive_regeneration_does_not_repeat_its_consumption_event() {
     world.transform.get_mut(hero).unwrap().pos = AWAY;
     let mut events = Vec::new();
     assert!(world.use_item(hero, 0, Target::None, &mut events));
-    events.retain(|event| !matches!(event.kind, EventKind::ItemUsed { .. }));
+    events.retain(|event| !matches!(event.kind(), EventKind::ItemUsed { .. }));
     assert_eq!(events.len(), 1);
 
     let later = world.step();
@@ -126,7 +126,7 @@ fn mango_passive_regeneration_does_not_repeat_its_consumption_event() {
     assert!(
         !later
             .iter()
-            .any(|event| matches!(event.kind, EventKind::Healed { .. }))
+            .any(|event| matches!(event.kind(), EventKind::Healed { .. }))
     );
     assert_eq!(held(&world, hero, 0).charges, 2);
 }

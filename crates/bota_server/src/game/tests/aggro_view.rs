@@ -125,7 +125,7 @@ fn a_swing_strikes_on_the_tick_the_wire_said() {
     }
     let struck = world.step().into_iter().any(|event| {
         matches!(
-            event.kind,
+            event.kind(),
             EventKind::Damaged { source: Some(by), target, .. }
                 if by == wire_id(theirs) && target == wire_id(ours)
         )

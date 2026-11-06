@@ -272,7 +272,7 @@ impl World {
         if !in_hand && !self.seats[seat].stash.receive(stack) {
             return;
         }
-        events.push(Event {
+        events.push(Event::Fact {
             kind: EventKind::ItemBought { slot: owner, item },
             visible_to: EventVisibility::OneTeam(self.seats[seat].team),
             gold_hidden_from: None,

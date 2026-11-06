@@ -123,11 +123,11 @@ fn a_hook_executes_non_ancient_creeps_and_passes_ancients() {
                 "Hook executes {:?}, even at {before:?} hp",
                 def.kind
             );
-            assert!(events.iter().any(|event| matches!(event.kind,
+            assert!(events.iter().any(|event| matches!(event.kind(),
                 bota_proto::EventKind::Died { unit, killer: Some(killer), bounty: Some(bounty), .. }
                     if unit == wire_id(creep) && killer == wire_id(pudge) && Some(bounty) == damage_bounty
             )), "ordinary death credit and bounty");
-            assert!(!events.iter().any(|event| matches!(event.kind,
+            assert!(!events.iter().any(|event| matches!(event.kind(),
                 bota_proto::EventKind::Damaged { target, inflictor: Some(Inflictor::Ability(AbilityId::MEAT_HOOK)), .. }
                     if target == wire_id(creep)
             )), "HP removal is not spell damage");
@@ -154,7 +154,7 @@ fn damage_kill_bounty(world: &World, source: Entity, target: Entity) -> i32 {
     control
         .step()
         .into_iter()
-        .find_map(|event| match event.kind {
+        .find_map(|event| match event.kind() {
             bota_proto::EventKind::Died {
                 unit,
                 killer: Some(killer),
@@ -750,7 +750,7 @@ fn a_hook_costs_120_mana_waits_18_seconds_and_deals_150_pure_damage_at_its_first
                 kind,
                 inflictor: Some(Inflictor::Ability(AbilityId::MEAT_HOOK)),
                 ..
-            } = event.kind
+            } = event.kind()
                 && target == wire_id(mark)
             {
                 impact = Some((

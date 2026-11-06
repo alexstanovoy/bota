@@ -22,7 +22,7 @@ fn a_drink_is_told_of_as_what_was_missing_and_a_full_hero_is_not_told_at_all() {
         "a full hero still drinks"
     );
     let told = |events: &[Event]| {
-        events.iter().find_map(|event| match event.kind {
+        events.iter().find_map(|event| match event.kind() {
             EventKind::Healed { target, amount, .. } => Some((target, amount)),
             _ => None,
         })
@@ -60,7 +60,7 @@ fn a_salve_and_a_tango_mend_alike_and_each_names_its_own_item() {
             world.use_item(hero, 0, aim, &mut events),
             "item {item:?} is used"
         );
-        let told = events.iter().find_map(|event| match event.kind {
+        let told = events.iter().find_map(|event| match event.kind() {
             EventKind::Healed { inflictor, .. } => Some(inflictor),
             _ => None,
         });
@@ -104,7 +104,7 @@ fn a_clarity_is_told_of_by_the_mana_that_was_missing() {
         world.use_item(hero, 0, Target::None, &mut events),
         "it drinks"
     );
-    let told = events.iter().find_map(|event| match event.kind {
+    let told = events.iter().find_map(|event| match event.kind() {
         EventKind::Healed { amount, mana, .. } => Some((amount, mana)),
         _ => None,
     });
@@ -369,7 +369,7 @@ fn an_enemy_heros_swing_or_raze_puts_the_drinks_out_and_sets_a_blink_back() {
             let events = cast_through(&mut world, 0, rules::RAZE_CAST_POINT_MS);
             assert!(!burns_on(&events, drinker).is_empty(), "the raze lands");
             assert!(
-                !events.iter().any(|event| matches!(event.kind,
+                !events.iter().any(|event| matches!(event.kind(),
                     EventKind::Damaged { target, kind: DamageKind::Physical, .. }
                         if target == wire_id(drinker))),
                 "and nothing else does"
@@ -415,7 +415,7 @@ fn a_creeps_swing_or_ones_own_rot_leaves_the_drinks_running() {
     let burnt = (0..rules::BURN_PERIOD_TICKS * 2)
         .flat_map(|_| world.step())
         .any(|event| {
-            matches!(event.kind, EventKind::Damaged { target, amount, .. }
+            matches!(event.kind(), EventKind::Damaged { target, amount, .. }
                 if target == wire_id(pudge) && amount > 0)
         });
     assert!(burnt, "the rot burns its owner");

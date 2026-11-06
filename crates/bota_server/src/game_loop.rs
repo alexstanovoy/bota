@@ -1693,7 +1693,7 @@ impl Server {
         if !events.is_empty() {
             replay.record(&ReplayRecord::Msg(ServerMsg::Events {
                 tick: world.tick,
-                events: events.iter().map(|e| e.kind.clone()).collect(),
+                events: events.iter().map(|e| e.kind()).collect(),
             }));
         }
         self.delayed.as_ref()?;
@@ -1984,16 +1984,16 @@ fn encoded_snapshot(message: &ServerMsg) -> Option<Vec<u8>> {
 pub(crate) fn visible_events(events: &[Event], viewing: Option<Team>) -> Vec<EventKind> {
     events
         .iter()
-        .filter(|e| {
+        .filter(|event| {
             viewing.is_none_or(|mine| {
-                e.visible_to.tells(mine)
-                    || matches!(&e.kind,
-                EventKind::Died { awards: Some(awards), .. }
-                    if awards.iter().any(|award| award.team == mine))
+                event.visible_to().tells(mine)
+                    || matches!(event,
+                        Event::Fact { kind: EventKind::Died { awards: Some(awards), .. }, .. }
+                            if awards.iter().any(|award| award.team == mine))
             })
         })
         .map(|e| {
-            let mut kind = e.kind.clone();
+            let mut kind = e.kind();
             if let Some(mine) = viewing {
                 told_as(&mut kind, e, mine);
             }
@@ -2004,7 +2004,7 @@ pub(crate) fn visible_events(events: &[Event], viewing: Option<Team>) -> Vec<Eve
 
 /// Blanks what an event tells that one side may not learn from it.
 fn told_as(kind: &mut EventKind, event: &Event, mine: Team) {
-    let hide_dealer = !event.source_told_to.tells(mine);
+    let hide_dealer = !event.source_told_to().tells(mine);
     match kind {
         // What it was dealt with would name what an unseen dealer carries.
         EventKind::Damaged {
@@ -2039,7 +2039,7 @@ fn told_as(kind: &mut EventKind, event: &Event, mine: Team) {
                 *killer = None;
                 *assists = 0;
             }
-            if event.gold_hidden_from == Some(mine) {
+            if event.gold_hidden_from() == Some(mine) {
                 *bounty = None;
             }
             if let Some(disclosed) = awards {

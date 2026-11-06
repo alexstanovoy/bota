@@ -225,7 +225,7 @@ impl World {
         };
         teleport.live = false;
         teleport.sight_until = tick + rules::SCROLL_SIGHT_LINGER_TICKS;
-        self.events.push(Event {
+        self.events.push(Event::Fact {
             kind: EventKind::Teleported {
                 slot: self.seats[seat].slot,
                 landed,

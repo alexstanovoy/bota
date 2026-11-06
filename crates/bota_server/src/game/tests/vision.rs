@@ -863,10 +863,10 @@ fn use_on_the_forest(world: &mut World, at: Vec2) -> Vec<Event> {
 /// whom, and where each grew back.
 fn trees_told(events: &[Event], team: Team) -> (Vec<(Vec2, Option<EntityId>)>, Vec<Vec2>) {
     let (mut felled, mut grown) = (Vec::new(), Vec::new());
-    for event in events.iter().filter(|event| event.visible_to.tells(team)) {
-        match event.kind {
+    for event in events.iter().filter(|event| event.visible_to().tells(team)) {
+        match event.kind() {
             EventKind::TreeFelled { at, by } => {
-                felled.push((at, by.filter(|_| event.source_told_to.tells(team))));
+                felled.push((at, by.filter(|_| event.source_told_to().tells(team))));
             }
             EventKind::TreeGrew { at } => grown.push(at),
             _ => {}

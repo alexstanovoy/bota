@@ -81,8 +81,8 @@ impl Skirmish {
             let view = self.world.view(team);
             let told: Vec<EventKind> = events
                 .iter()
-                .filter(|event| event.visible_to.tells(team))
-                .map(|event| event.kind.clone())
+                .filter(|event| event.visible_to().tells(team))
+                .map(|event| event.kind())
                 .collect();
             fold(&mut self.digest, &view, told.len());
         }

@@ -367,7 +367,7 @@ fn neither_side_takes_every_kill_of_an_even_race() {
         }
         let killer = (0..90)
             .flat_map(|_| world.step())
-            .find_map(|event| match event.kind {
+            .find_map(|event| match event.kind() {
                 EventKind::Died { unit, killer, .. } if unit == wire_id(mark) => killer,
                 _ => None,
             })

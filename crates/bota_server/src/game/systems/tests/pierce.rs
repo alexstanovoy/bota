@@ -42,7 +42,7 @@ struct Told {
 fn told_in(events: &[Event], from: Entity, on: Entity) -> Told {
     let mut told = Told::default();
     for event in events {
-        match event.kind {
+        match event.kind() {
             EventKind::Damaged {
                 source,
                 target,
