@@ -151,8 +151,8 @@ impl World {
             let outranked = self.modifiers.get(target).is_some_and(|on_it| {
                 on_it.outranks(&fresh, |held| disabled_in(&self.modifiers, held))
             });
-            if !outranked && let Some(on_it) = self.modifiers.get_mut(target) {
-                on_it.put(fresh);
+            if !outranked {
+                self.store_modifier(target, fresh);
             }
             if let Some(storm) = storm {
                 self.rain_on(

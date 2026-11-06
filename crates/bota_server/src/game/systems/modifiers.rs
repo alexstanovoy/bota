@@ -131,11 +131,20 @@ impl World {
     /// A timed disable or slow is shortened first by the target's status
     /// resistance, down to one tick.
     pub fn put_modifier(&mut self, on: Entity, mut modifier: Modifier) {
-        if hostile(modifier.kind) {
-            self.note_hurt_by(modifier.source, on);
-        }
         if let Some(ticks) = modifier.ticks_left {
             modifier.ticks_left = Some(resisted_ticks(&self.stats, on, modifier.kind, ticks));
+        }
+        self.store_modifier(on, modifier);
+    }
+
+    /// Stores an already resisted modifier, recording effective harmful participation.
+    /// Auras pass here too without resisting their linger a second time.
+    pub(super) fn store_modifier(&mut self, on: Entity, modifier: Modifier) {
+        if self.modifiers.get(on).is_none() {
+            return;
+        }
+        if hostile(modifier.kind) && !disabled_in(&self.modifiers, &modifier) {
+            self.note_hurt_by(modifier.source, on);
         }
         if let Some(on_it) = self.modifiers.get_mut(on) {
             on_it.put(modifier);

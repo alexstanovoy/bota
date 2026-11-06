@@ -116,20 +116,34 @@ fn a_frame_of_the_largest_size_allocates_little_more_than_itself_whatever_it_cla
     }
 }
 
-/// The most events a frame holds, each three bytes: the heaviest thing a frame makes a reader keep.
+/// The largest legal event collection, with the unchanged decoded-memory ceiling.
 #[test]
 fn the_most_events_a_frame_holds_are_read_within_the_decoded_bound() {
     let _turn = TURN.lock().unwrap();
     let event = EventKind::TreeGrew { at: Vec2::ZERO };
-    let events = vec![event; (MAX_PAYLOAD_LEN - 16) / 3];
+    let events = vec![event.clone(); bota_proto::MAX_EVENTS_PER_BATCH];
     let payload = postcard::to_allocvec(&ServerMsg::Events { tick: 1, events }).expect("a payload");
     assert!(payload.len() <= MAX_PAYLOAD_LEN, "{}", payload.len());
     let (read, peak) = peak_of(|| decode_payload::<ServerMsg>(&payload));
-    assert!(matches!(read, Ok(ServerMsg::Events { .. })));
+    assert!(
+        matches!(&read, Ok(ServerMsg::Events { events, .. }) if events.len() == bota_proto::MAX_EVENTS_PER_BATCH)
+    );
     assert!(
         peak <= MAX_DECODED_BYTES,
         "{peak} bytes to read {} of them",
         payload.len()
+    );
+    drop(read);
+    // This formerly fit the minimum-size wire bound, but exceeds the new
+    // memory-based count limit. Refuse it explicitly without dropping entries.
+    let events = vec![event; (MAX_PAYLOAD_LEN - 16) / 3];
+    let payload = postcard::to_allocvec(&ServerMsg::Events { tick: 1, events }).unwrap();
+    assert!(payload.len() <= MAX_PAYLOAD_LEN);
+    let (read, peak) = peak_of(|| decode_payload::<ServerMsg>(&payload));
+    assert_eq!(read, Err(CodecError::Malformed));
+    assert!(
+        peak <= MAX_DECODED_BYTES,
+        "{peak} bytes while rejecting an oversized collection"
     );
 }
 
@@ -195,6 +209,10 @@ fn a_full_frame_of_death_awards_fits_the_same_decoded_memory_budget() {
         amount: 49,
     };
     let event = EventKind::Died {
+        credited_hero: Some(Box::new(EntityId {
+            idx: 2,
+            generation: 1,
+        })),
         unit: EntityId {
             idx: 1,
             generation: 1,

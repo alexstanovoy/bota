@@ -31,6 +31,7 @@ mod illusions;
 mod item_numbers;
 mod items;
 mod jungle;
+mod kill_credit;
 mod local;
 mod lotus;
 mod map2;

@@ -54,7 +54,7 @@ pub struct ManaRestorationObservation {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DeathObservation {
     pub tick: u32,
-    /// Entity credited with the kill, when one was reported.
+    /// Physical killing-blow unit, when one was reported.
     pub killer: Option<EntityId>,
     pub denied: bool,
     /// Gold paid directly for the death, as this side was told; absent when

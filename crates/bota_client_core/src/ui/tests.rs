@@ -1372,6 +1372,7 @@ fn death_awards_keep_one_hero_feed_line_and_do_not_repeat_its_gold_caption_guard
     app.handle(bota_proto::ServerMsg::Events {
         tick: 11,
         events: vec![EventKind::Died {
+            credited_hero: None,
             unit: theirs,
             killer: Some(us),
             denied: false,
@@ -1417,6 +1418,7 @@ fn an_unseen_kill_award_floats_over_its_recipients_own_hero() {
     app.handle(bota_proto::ServerMsg::Events {
         tick: 10,
         events: vec![EventKind::Died {
+            credited_hero: None,
             unit: theirs,
             killer: Some(us),
             denied: false,
@@ -1451,6 +1453,7 @@ fn a_hero_slain_in_the_fog_is_fed_by_its_seat_with_its_killer() {
     app.handle(bota_proto::ServerMsg::Events {
         tick: 10,
         events: vec![EventKind::Died {
+            credited_hero: None,
             unit: theirs,
             killer: Some(us),
             denied: false,
@@ -1520,6 +1523,7 @@ fn a_fallen_tower_is_fed_with_the_hero_that_brought_it_down() {
                 bounty: None,
                 assists: 0,
                 awards: None,
+                credited_hero: None,
             },
             EventKind::StructureDestroyed {
                 unit: tower,
@@ -1551,6 +1555,7 @@ fn our_hero_slain_from_the_fog_names_the_hero_the_feed_announced() {
     app.handle(bota_proto::ServerMsg::Events {
         tick: 10,
         events: vec![EventKind::Died {
+            credited_hero: None,
             unit: us,
             killer: Some(theirs),
             denied: false,
@@ -1580,6 +1585,7 @@ fn our_kill_of_a_creep_never_in_sight_sounds_its_last_hit() {
     app.handle(bota_proto::ServerMsg::Events {
         tick: 10,
         events: vec![EventKind::Died {
+            credited_hero: None,
             unit: EntityId {
                 idx: 3,
                 generation: 1,
@@ -1609,6 +1615,7 @@ fn a_hero_falling_cues_its_death_for_that_hero() {
     app.handle(bota_proto::ServerMsg::Events {
         tick: 10,
         events: vec![EventKind::Died {
+            credited_hero: None,
             unit: theirs,
             killer: Some(us),
             denied: false,
@@ -2130,5 +2137,135 @@ fn quick_buy_refuses_an_excess_copy_with_a_message_and_denial_cue() {
         app.quick_buy.targets(),
         &[ItemId::CLARITY.0],
         "replacement still works at the bound"
+    );
+}
+
+#[test]
+fn assist_gold_floats_over_its_recipient_when_the_victim_is_unseen() {
+    use bota_proto::{GoldAward, GoldAwardKind};
+    let (mut app, us, victim) = a_duel_app();
+    assert!(app.view().unwrap().unit(victim).is_none());
+    app.handle(bota_proto::ServerMsg::Events {
+        tick: 10,
+        events: vec![EventKind::Died {
+            credited_hero: None,
+            unit: victim,
+            killer: None,
+            denied: false,
+            gold: 0,
+            bounty: Some(345),
+            assists: 1,
+            awards: Some(Box::new(vec![
+                GoldAward {
+                    recipient: SlotId(0),
+                    team: Team::Radiant,
+                    kind: GoldAwardKind::AssistGold,
+                    amount: 77,
+                },
+                GoldAward {
+                    recipient: SlotId(1),
+                    team: Team::Dire,
+                    kind: GoldAwardKind::AssistGold,
+                    amount: 99,
+                },
+            ])),
+        }],
+    });
+    let gold: Vec<_> = app
+        .floaters
+        .iter()
+        .filter(|floater| floater.kind == crate::ui::app::FloaterKind::Gold)
+        .map(|floater| (floater.unit, floater.amount))
+        .collect();
+    assert_eq!(
+        gold,
+        [(us, 77)],
+        "only the watched recipient's actual credit is presented"
+    );
+}
+
+#[test]
+fn shared_kill_gold_floats_over_its_recipient_when_no_hero_lands_the_last_blow() {
+    use bota_proto::{GoldAward, GoldAwardKind};
+    let (mut app, us, victim) = a_duel_app();
+    app.handle(bota_proto::ServerMsg::Events {
+        tick: 10,
+        events: vec![EventKind::Died {
+            credited_hero: None,
+            unit: victim,
+            killer: None,
+            denied: false,
+            gold: 0,
+            bounty: Some(133),
+            assists: 0,
+            awards: Some(Box::new(vec![GoldAward {
+                recipient: SlotId(0),
+                team: Team::Radiant,
+                kind: GoldAwardKind::KillBounty,
+                amount: 133,
+            }])),
+        }],
+    });
+    let gold: Vec<_> = app
+        .floaters
+        .iter()
+        .filter(|floater| floater.kind == crate::ui::app::FloaterKind::Gold)
+        .map(|floater| (floater.unit, floater.amount))
+        .collect();
+    assert_eq!(gold, [(us, 133)]);
+}
+
+#[test]
+fn a_credited_tower_kill_names_the_hero_but_tracks_the_physical_attacker() {
+    let (mut app, us, victim) = a_duel_app();
+    let tower = EntityId {
+        idx: 9,
+        generation: 1,
+    };
+    let mut view = app.view().unwrap().clone();
+    view.tick += 1;
+    let mut enemy = owned(2, UnitKind::Hero, Some(SlotId(1)));
+    enemy.team = Team::Dire;
+    view.units.push(enemy);
+    view.units.push(owned(9, UnitKind::Tower, None));
+    app.handle(bota_proto::ServerMsg::Snapshot { view });
+    app.handle(bota_proto::ServerMsg::Events {
+        tick: 11,
+        events: vec![EventKind::Died {
+            unit: victim,
+            killer: Some(tower),
+            denied: false,
+            gold: 0,
+            bounty: Some(370),
+            assists: 0,
+            awards: None,
+            credited_hero: Some(Box::new(us)),
+        }],
+    });
+    assert!(
+        matches!(
+            app.feed.last().unwrap().kind,
+            FeedKind::HeroDied {
+                killer: Some(Killer::Seat(SlotId(0))),
+                ..
+            }
+        ),
+        "the public announcement names the credited hero"
+    );
+    assert_eq!(
+        app.session()
+            .unwrap()
+            .entity(victim)
+            .unwrap()
+            .last_death
+            .unwrap()
+            .killer,
+        Some(tower),
+        "the physical death observation retains its meaning"
+    );
+    assert!(
+        app.cues
+            .iter()
+            .any(|cue| cue.kind == crate::ui::app::CueKind::HeroKill)
     );
 }

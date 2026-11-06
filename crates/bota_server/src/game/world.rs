@@ -38,6 +38,9 @@ world_tables! {
         pub catalogue: bota_core::Catalogue = bota_core::Catalogue::FULL;
         /// The completed result; `Team::Neutral` denotes a Map2 draw.
         pub winner: Option<Team> = None;
+        /// An eligible hero death already claimed First Blood. Shared kills do
+        /// not advance an individual kill counter, so counters cannot retain it.
+        pub first_blood_claimed: bool = false;
         /// Whether cheat orders are honoured.
         pub cheats: bool = false;
         /// Whether abilities and items cost no mana and leave no cooldown, for

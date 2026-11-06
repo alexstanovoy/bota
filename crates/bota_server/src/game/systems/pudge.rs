@@ -181,8 +181,10 @@ impl World {
 
     /// Feeds the flesh heap of every hero standing near an enemy hero's
     /// death, whoever brought it down. Nothing else that falls feeds one.
-    pub fn feed_flesh_heaps(&mut self, fallen: Entity) {
-        if !self.is_hero(fallen) {
+    /// Flesh Heap also follows credited kills and active harmful debuffs outside
+    /// its death radius (Liquipedia, Pudge / Flesh Heap). Necromastery does not.
+    pub fn feed_flesh_heaps(&mut self, fallen: Entity, credited: Option<Entity>) {
+        if !self.is_real_hero(fallen) {
             return;
         }
         let (Some(at), Some(theirs)) = (self.pos(fallen), self.team.get(fallen).copied()) else {
@@ -193,10 +195,21 @@ impl World {
             // The fallen is dead by now, so it is its side that is looked at,
             // not whether it could still be fought.
             let enemy = self.team.get(hero).is_some_and(|mine| *mine != theirs);
-            if hero == fallen || !self.keeps_flesh_heap(hero) || !enemy {
+            if hero == fallen || !self.alive(hero) || !self.keeps_flesh_heap(hero) || !enemy {
                 continue;
             }
-            if !self.pos(hero).is_some_and(|pos| pos.within(at, reach)) {
+            let debuffed = self.modifiers.get(fallen).is_some_and(|modifiers| {
+                modifiers.0.iter().any(|held| {
+                    held.source == Some(hero)
+                        && bota_core::effect_def(held.kind.effect_id())
+                            .is_some_and(|def| def.harmful)
+                        && !crate::game::disabled_in(&self.modifiers, held)
+                })
+            });
+            if credited != Some(hero)
+                && !debuffed
+                && !self.pos(hero).is_some_and(|pos| pos.within(at, reach))
+            {
                 continue;
             }
             if let Some(on_it) = self.modifiers.get_mut(hero) {

@@ -608,6 +608,7 @@ pub fn all_events() -> Vec<EventKind> {
             inflictor: Some(Inflictor::Item(ItemId::TANGO)),
         },
         EventKind::Died {
+            credited_hero: None,
             unit: entity(100),
             killer: Some(entity(7)),
             denied: false,

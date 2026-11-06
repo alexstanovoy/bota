@@ -251,6 +251,7 @@ fn death_gold_awards_disclose_each_recipients_income_only_to_its_own_side() {
     ];
     let event = Event {
         kind: EventKind::Died {
+            credited_hero: None,
             unit: EntityId {
                 idx: 9,
                 generation: 1,
@@ -269,6 +270,7 @@ fn death_gold_awards_disclose_each_recipients_income_only_to_its_own_side() {
     assert_disclosed_awards(&event, &receipts);
     let only_radiant = Event {
         kind: EventKind::Died {
+            credited_hero: None,
             unit: EntityId {
                 idx: 9,
                 generation: 1,

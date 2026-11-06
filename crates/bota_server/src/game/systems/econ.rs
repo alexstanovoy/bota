@@ -7,7 +7,8 @@ use bota_core::{
 use bota_proto::{EventKind, GoldAward, GoldAwardKind, Team, UnitKind, Vec2};
 
 use crate::game::{
-    Bounty, Entity, Event, EventVisibility, Landed, Level, Modifier, Purpose, World, wire_id,
+    Bounty, Entity, Event, EventVisibility, KILL_CREDIT_WINDOW_TICKS, Landed, Level, Modifier,
+    Purpose, World, wire_id,
 };
 
 use super::fight::other_side;
@@ -21,6 +22,13 @@ struct Worths {
     fallen_side: i64,
     /// The side that brought it down.
     killer_side: i64,
+}
+
+/// Who receives a hero's bounty and whether this death ends a killing streak.
+struct HeroCredit {
+    credited: Option<usize>,
+    earners: Vec<usize>,
+    counts_as_kill: bool,
 }
 
 impl World {
@@ -44,7 +52,9 @@ impl World {
 
     /// Pays for one entity brought down, and says how much gold that paid.
     ///
-    /// Gold goes to the seat whose hero struck last, drawn evenly from the
+    /// Gold goes to the credited killer: the last hero to strike, or the sole
+    /// recent hero damager when a hostile creep or tower finishes it. It is
+    /// drawn evenly from the
     /// fallen's [`GoldRange`] at that moment; experience is shared
     /// among the killer side's living heroes within [`rules::XP_RADIUS`], and
     /// the killer of a hero shares wherever it stands. Bringing down one of
@@ -78,11 +88,17 @@ impl World {
         killer: Option<Entity>,
         events: &mut Vec<Event>,
     ) -> (i32, Option<Vec<GoldAward>>) {
-        let Some((mut bounty, fallen_seat, worths)) = self.price_of_fall(fallen) else {
+        let credit = self.hero_credit(fallen, killer);
+        let reward_source = credit
+            .as_ref()
+            .and_then(|credit| credit.credited)
+            .and_then(|index| self.seats[index].unit)
+            .or(killer);
+        let counts_as_kill = credit.as_ref().is_some_and(|credit| credit.counts_as_kill);
+        let Some((mut bounty, fallen_seat, worths)) = self.price_of_fall(fallen, counts_as_kill)
+        else {
             return (0, None);
         };
-        // An illusion pays its experience for a player's kill alone [LIQ
-        // Runes: "Illusion Bounty"; the experience only for a player kill].
         if self.wears_illusion(fallen) && !killer.is_some_and(|killer| self.is_hero(killer)) {
             bounty.xp = 0;
         }
@@ -90,24 +106,11 @@ impl World {
             return (0, None);
         };
         let at = self.pos(fallen).unwrap_or(Vec2::ZERO);
-        let killer_side = killer.and_then(|k| self.team.get(k).copied());
+        let killer_side = killer.and_then(|unit| self.team.get(unit).copied());
         let denied = killer_side == Some(side);
-        let kill_paid = self.credit_killer(killer, denied, fallen_seat.is_some(), bounty.gold);
-        let mut paid = kill_paid;
-        let mut awards = None;
-        let striker_seat = killer.and_then(|k| self.seat_of(k));
-        if let Some(worths) = worths
-            && !denied
-            && striker_seat.is_some()
-        {
-            paid += self.pay_assist_gold(at, other_side(side), worths, striker_seat);
-        }
-        if !denied && bounty.bonus > 0 {
-            let (bonus, breakdown) =
-                self.report_flag_bonus(at, other_side(side), bounty.bonus, striker_seat, kill_paid);
-            paid += bonus;
-            awards = Some(breakdown);
-        }
+        let striker_seat = reward_source.and_then(|unit| self.seat_of(unit));
+        let (mut paid, awards) =
+            self.pay_death_components(fallen, reward_source, bounty, credit.as_ref(), worths);
         if bounty.team > 0 {
             // The side that brought it down: a lane building's enemy, and
             // for a neutral the side of whoever struck the blow.
@@ -133,30 +136,99 @@ impl World {
         let Some(earners) = killer_side else {
             return (paid, awards);
         };
-        let killer_seat = fallen_seat.and_then(|_| killer.and_then(|entity| self.seat_of(entity)));
+        let killer_seat =
+            fallen_seat.and_then(|_| reward_source.and_then(|entity| self.seat_of(entity)));
         self.grant_xp_around(at, earners, bounty.xp, killer_seat, events);
         (paid, awards)
     }
 
+    /// Credits the bounty and each additional gold component before the
+    /// contribution ledger is spent by the scoreboard's assist stage.
+    fn pay_death_components(
+        &mut self,
+        fallen: Entity,
+        killer: Option<Entity>,
+        bounty: Bounty,
+        credit: Option<&HeroCredit>,
+        worths: Option<Worths>,
+    ) -> (i32, Option<Vec<GoldAward>>) {
+        let side = *self.team.get(fallen).expect("a priced fall has a side");
+        let at = self.pos(fallen).unwrap_or(Vec2::ZERO);
+        let denied = killer.and_then(|unit| self.team.get(unit).copied()) == Some(side);
+        let striker_seat = killer.and_then(|unit| self.seat_of(unit));
+        let detailed = !denied && (credit.is_some() || bounty.bonus > 0);
+        let before = detailed.then(|| self.gold_balances());
+        let mut paid = self.credit_killer(killer, denied, worths.is_some(), bounty.gold);
+        if striker_seat.is_none()
+            && let Some(credit) = credit
+            && !credit.earners.is_empty()
+        {
+            let share = self.roll_gold(bounty.gold)
+                / i32::try_from(credit.earners.len()).expect("seats are few");
+            self.pay_seats(credit.earners.iter().copied(), share, None);
+        }
+        let mut awards =
+            before.map(|before| self.gold_awards_since(&before, GoldAwardKind::KillBounty));
+        if let Some(worths) = worths
+            && credit.is_some()
+        {
+            let before = self.gold_balances();
+            paid += self.pay_assist_gold(fallen, at, other_side(side), worths, striker_seat);
+            Self::append_gold_awards(
+                &mut awards,
+                self.gold_awards_since(&before, GoldAwardKind::AssistGold),
+            );
+        }
+        if !denied && bounty.bonus > 0 {
+            let (bonus, breakdown) =
+                self.report_flag_bonus(at, other_side(side), bounty.bonus, striker_seat);
+            paid += bonus;
+            Self::append_gold_awards(&mut awards, breakdown);
+        }
+        if worths.is_some()
+            && striker_seat.is_none()
+            && let Some(awards) = &awards
+        {
+            // There is no personal aggregate for a shared kill: the feed tells
+            // the total actually paid, while awards retain every recipient.
+            paid = awards
+                .iter()
+                .map(|award| i64::from(award.amount))
+                .sum::<i64>()
+                .min(i64::from(i32::MAX)) as i32;
+        }
+        (paid, awards)
+    }
+
     /// What the fallen is worth, the seat it was a hero of and the net
-    /// worths around a hero's fall as they stood before the death moved any
-    /// gold: a hero's head is priced by its level and streak and by whether
-    /// it is the match's first, and its death costs its seat the share of
-    /// its net worth. Nothing for a fallen that is worth nothing.
-    fn price_of_fall(&mut self, fallen: Entity) -> Option<(Bounty, Option<usize>, Option<Worths>)> {
+    /// worths before gold moves. Only a credited hero kill or shared assisted
+    /// kill claims First Blood and ends a streak; an undamaged creep/tower
+    /// finish shares the base bounty without claiming those rewards [LIQ Gold].
+    fn price_of_fall(
+        &mut self,
+        fallen: Entity,
+        counts_as_kill: bool,
+    ) -> Option<(Bounty, Option<usize>, Option<Worths>)> {
         let fallen_seat = self.seat_of(fallen);
         let Some(index) = fallen_seat else {
             let bounty = self.bounty.get(fallen).copied()?;
             return Some((bounty, None, None));
         };
-        let first_blood = self.seats.iter().all(|seat| seat.kills == 0);
+        let first_blood = counts_as_kill
+            && !self.first_blood_claimed
+            && self.seats.iter().all(|seat| seat.kills == 0);
+        self.first_blood_claimed |= counts_as_kill;
         let seat = &self.seats[index];
         let (level, streak) = (i32::from(seat.level), i32::from(seat.streak));
         let bounty = Bounty {
-            gold: GoldRange::exactly(hero_bounty(level, streak, first_blood)),
+            gold: GoldRange::exactly(hero_bounty(
+                level,
+                if counts_as_kill { streak } else { 0 },
+                first_blood,
+            )),
             bonus: 0,
             team: 0,
-            xp: hero_kill_xp(seat.xp, streak, level),
+            xp: hero_kill_xp(seat.xp, if counts_as_kill { streak } else { 0 }, level),
         };
         let worths = Worths {
             fallen: seat.net_worth,
@@ -167,7 +239,9 @@ impl World {
         let loss = (seat.net_worth / rules::DEATH_GOLD_LOSS_SHARE).clamp(0, seat.gold);
         seat.gold -= loss;
         seat.net_worth -= loss;
-        seat.streak = 0;
+        if counts_as_kill {
+            seat.streak = 0;
+        }
         Some((bounty, fallen_seat, Some(worths)))
     }
 
@@ -179,19 +253,26 @@ impl World {
             .sum()
     }
 
-    /// Pays the assist gold of a hero an enemy hero brought down to every
-    /// seat of the earning side whose living hero stands within
-    /// [`rules::XP_RADIUS`] of the fall, and to the killer's seat wherever
-    /// it stands, each through its own hero's gold income: the same
-    /// [`assist_gold`] to each. Answers what the killer's seat was paid.
+    /// Pays assist gold to living nearby heroes, the killer, and recent damage
+    /// or debuff contributors even if distant or dead [LIQ Gold]. Each receives
+    /// the same share through its own gold income modifier.
+    /// The wiki does not specify an AoE-gold contribution window; we use the
+    /// same twenty seconds as scoreboard assists as an explicit simulation policy.
     fn pay_assist_gold(
         &mut self,
+        fallen: Entity,
         at: Vec2,
         earners: Team,
         worths: Worths,
         killer_seat: Option<usize>,
     ) -> i32 {
-        let paid_seats = self.seats_near(at, earners, rules::XP_RADIUS, killer_seat);
+        let mut paid_seats = self.seats_near(at, earners, rules::ASSIST_GOLD_RADIUS, killer_seat);
+        if let Some(index) = self.seat_of(fallen) {
+            paid_seats.extend(self.seats[index].assisted_by(self.tick, None));
+        }
+        paid_seats.retain(|&index| self.seats[index].team == earners);
+        paid_seats.sort_unstable();
+        paid_seats.dedup();
         let share = assist_gold(
             worths.fallen,
             paid_seats.len(),
@@ -235,8 +316,14 @@ impl World {
         let mut to_killer = 0;
         for index in seats {
             let paid = self.bounty_after(self.seats[index].unit, amount);
-            self.seats[index].gold += paid;
-            self.seats[index].net_worth += paid;
+            let seat = &mut self.seats[index];
+            let capacity = i32::MAX
+                .saturating_sub(seat.gold)
+                .min(i32::MAX.saturating_sub(seat.net_worth))
+                .max(0);
+            let paid = paid.min(capacity);
+            seat.gold += paid;
+            seat.net_worth += paid;
             if killer_seat == Some(index) {
                 to_killer = paid;
             }
@@ -316,39 +403,49 @@ impl World {
         self.pay_seats(paid_seats, bonus, killer_seat)
     }
 
-    /// Observe the existing credit stage rather than recomputing eligibility, scaling or RNG.
+    /// Reports this payout stage's actual flagbearer credits without replacing
+    /// components already reported by another stage.
     fn report_flag_bonus(
         &mut self,
         at: Vec2,
         earners: Team,
         bonus: i32,
         killer_seat: Option<usize>,
-        kill_paid: i32,
     ) -> (i32, Vec<GoldAward>) {
-        let before: Vec<_> = self.seats.iter().map(|seat| seat.gold).collect();
+        let before = self.gold_balances();
         let paid = self.pay_flag_bonus(at, earners, bonus, killer_seat);
-        let mut awards = Vec::with_capacity(self.seats.len() + 1);
-        if let Some(index) = killer_seat.filter(|_| kill_paid > 0) {
-            awards.push(GoldAward {
-                recipient: self.seats[index].slot,
-                team: self.seats[index].team,
-                kind: GoldAwardKind::KillBounty,
-                amount: kill_paid,
-            });
-        }
-        for (seat, before) in self.seats.iter().zip(before) {
-            let amount = seat.gold - before;
-            if amount > 0 {
-                awards.push(GoldAward {
+        (
+            paid,
+            self.gold_awards_since(&before, GoldAwardKind::FlagbearerBonus),
+        )
+    }
+
+    fn gold_balances(&self) -> Vec<i32> {
+        self.seats.iter().map(|seat| seat.gold).collect()
+    }
+
+    fn append_gold_awards(awards: &mut Option<Vec<GoldAward>>, more: Vec<GoldAward>) {
+        let awards = awards.get_or_insert_with(Vec::new);
+        assert!(awards.len() + more.len() <= bota_proto::MAX_DEATH_GOLD_AWARDS);
+        awards.extend(more);
+    }
+
+    /// Reports each stage's actual income-scaled credits, once per recipient.
+    fn gold_awards_since(&self, before: &[i32], kind: GoldAwardKind) -> Vec<GoldAward> {
+        assert_eq!(before.len(), self.seats.len());
+        self.seats
+            .iter()
+            .zip(before)
+            .filter_map(|(seat, before)| {
+                let amount = seat.gold - before;
+                (amount > 0).then_some(GoldAward {
                     recipient: seat.slot,
                     team: seat.team,
-                    kind: GoldAwardKind::FlagbearerBonus,
+                    kind,
                     amount,
-                });
-            }
-        }
-        debug_assert!(awards.len() <= bota_proto::MAX_DEATH_GOLD_AWARDS);
-        (paid, awards)
+                })
+            })
+            .collect()
     }
 
     /// One payout of a gold range, drawn evenly from it on the match's
@@ -389,20 +486,82 @@ impl World {
     /// no damage counts: Dota credits a negated one as well).
     pub fn note_hurt(&mut self, felt: &[Landed]) {
         for blow in felt {
-            self.note_hurt_by(blow.source, blow.target);
+            self.note_hero_contribution(blow.source, blow.target, blow.amount > 0);
         }
     }
 
     /// Notes that `source`, if it is a seat's hero, hurt `target`, if that is an enemy seat's.
     pub(super) fn note_hurt_by(&mut self, source: Option<Entity>, target: Entity) {
+        self.note_hero_contribution(source, target, false);
+    }
+
+    fn note_hero_contribution(&mut self, source: Option<Entity>, target: Entity, damage: bool) {
         let (Some(by), Some(hurt)) = (source.and_then(|s| self.seat_of(s)), self.seat_of(target))
         else {
             return;
         };
         if self.seats[by].team != self.seats[hurt].team {
             let tick = self.tick;
-            self.seats[hurt].note_hurt_by(by, tick);
+            if damage {
+                self.seats[hurt].note_damage_by(by, tick);
+            } else {
+                self.seats[hurt].note_hurt_by(by, tick);
+            }
         }
+    }
+
+    /// A hostile creep or tower finish credits the sole recent damager.
+    pub(super) fn credited_hero(&self, fallen: Entity, killer: Option<Entity>) -> Option<Entity> {
+        if !self.is_real_hero(fallen) {
+            return None;
+        }
+        self.hero_credit(fallen, killer)
+            .and_then(|credit| credit.credited)
+            .and_then(|seat| self.seats[seat].unit)
+    }
+
+    /// Hero bounty recipients for the three nonhero-finisher cases [LIQ Gold]:
+    /// one damager owns the kill; several share with helpers; none share across
+    /// the enemy team without claiming First Blood or ending a streak.
+    fn hero_credit(&self, fallen: Entity, killer: Option<Entity>) -> Option<HeroCredit> {
+        let victim = self.seat_of(fallen)?;
+        let source = killer?;
+        let side = *self.team.get(source)?;
+        if side == Team::Neutral || side == self.seats[victim].team {
+            return None;
+        }
+        if let Some(index) = self.seat_of(source) {
+            return Some(HeroCredit {
+                credited: Some(index),
+                earners: vec![index],
+                counts_as_kill: true,
+            });
+        }
+        let kind = *self.kind.get(source)?;
+        if !kind_def(kind).lane_creep && kind != UnitKind::Tower {
+            return None;
+        }
+        let mut damagers = self.seats[victim].hurt_by.iter().filter(|held| {
+            held.damage_at
+                .is_some_and(|tick| self.tick.saturating_sub(tick) <= KILL_CREDIT_WINDOW_TICKS)
+        });
+        let (credited, mut earners, counts_as_kill) = match (damagers.next(), damagers.next()) {
+            (Some(held), None) => (Some(held.by), vec![held.by], true),
+            (Some(_), Some(_)) => (None, self.seats[victim].assisted_by(self.tick, None), true),
+            _ => (
+                None,
+                (0..self.seats.len())
+                    .filter(|&index| self.seats[index].team == side)
+                    .collect(),
+                false,
+            ),
+        };
+        earners.retain(|&index| self.seats[index].team == side);
+        Some(HeroCredit {
+            credited,
+            earners,
+            counts_as_kill,
+        })
     }
 
     pub(super) fn seat_of(&self, entity: Entity) -> Option<usize> {

@@ -83,10 +83,11 @@ impl App {
                 bounty,
                 assists,
                 awards,
+                credited_hero,
                 ..
             } => self.on_death(
                 unit,
-                killer,
+                credited_hero.map(|hero| *hero).or(killer),
                 denied,
                 bounty.unwrap_or(0),
                 assists,
@@ -303,7 +304,9 @@ impl App {
         {
             let unit = match award.kind {
                 GoldAwardKind::KillBounty if self.spot(fallen).is_some() => fallen,
-                GoldAwardKind::KillBounty | GoldAwardKind::FlagbearerBonus => self
+                GoldAwardKind::KillBounty
+                | GoldAwardKind::FlagbearerBonus
+                | GoldAwardKind::AssistGold => self
                     .body_of(award.recipient)
                     .filter(|hero| self.freshest(*hero).is_some())
                     .unwrap_or(fallen),

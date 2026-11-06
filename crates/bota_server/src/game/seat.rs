@@ -47,6 +47,16 @@ impl Sighting {
     };
 }
 
+/// One enemy seat's participation in this hero's current life.
+#[derive(Clone, Copy, Debug)]
+pub struct HeroContribution {
+    pub by: usize,
+    /// Last damage or debuff, for assists and their gold.
+    pub at: u32,
+    /// Last damage separately: a later debuff cannot renew kill credit.
+    pub damage_at: Option<u32>,
+}
+
 /// One player's place at the match. Everything here outlives the body.
 #[derive(Clone, Debug)]
 pub struct Seat {
@@ -113,27 +123,42 @@ pub struct Seat {
     pub created: bool,
     /// Its hero takes no damage (a cheat), dead and back again.
     pub invulnerable: bool,
-    /// The enemy seats that last dealt damage to its hero or put a debuff on it, and the tick
-    /// they last did, one entry for each: who an assist is credited to when the hero falls.
-    pub hurt_by: Vec<(usize, u32)>,
+    /// Recent enemy participation, one entry per seat: who assisted this life.
+    pub hurt_by: Vec<HeroContribution>,
 }
 
-/// Ticks before a hero's fall in which an enemy hero's damage or debuff on it makes the enemy an
-/// assist of the kill.
-///
-/// Borrowed, not Dota's own: Dota's wiki (*Gold*, "Assists") gives the twenty seconds as the
-/// time in which damage to a hero credits the kill to its dealers when a tower or creeps finish
-/// it, and says the scoreboard counts "dealt damage or applied a debuff to the victim". The
-/// engine's own assist window is not published (other sources say 15 to 30 seconds).
+/// Damage within twenty seconds can credit a creep or tower finish to its sole
+/// enemy hero damager [LIQ Gold]. Also used for the scoreboard's assist ledger:
+/// its engine window is not published, so this existing assist policy shares
+/// the documented kill-credit window. AoE assist gold also uses this policy
+/// where the wiki leaves the participation window unspecified.
 pub const KILL_CREDIT_WINDOW_TICKS: u32 = 20 * bota_core::rules::TICKS_PER_SECOND;
 
 impl Seat {
     /// Notes that the enemy seat `by` hurt this seat's hero on `tick`.
     pub fn note_hurt_by(&mut self, by: usize, tick: u32) {
-        match self.hurt_by.iter_mut().find(|(seat, _)| *seat == by) {
-            Some(entry) => entry.1 = tick,
-            None => self.hurt_by.push((by, tick)),
+        assert!(by < bota_proto::limits::MAX_SEATS);
+        match self.hurt_by.iter_mut().find(|held| held.by == by) {
+            Some(held) => held.at = tick,
+            None => {
+                assert!(self.hurt_by.len() < bota_proto::limits::MAX_SEATS);
+                self.hurt_by.push(HeroContribution {
+                    by,
+                    at: tick,
+                    damage_at: None,
+                });
+            }
         }
+    }
+
+    /// Records damage without allowing a later debuff to renew it.
+    pub fn note_damage_by(&mut self, by: usize, tick: u32) {
+        self.note_hurt_by(by, tick);
+        self.hurt_by
+            .iter_mut()
+            .find(|held| held.by == by)
+            .expect("participation was recorded")
+            .damage_at = Some(tick);
     }
 
     /// The enemy seats that hurt this seat's hero within [`KILL_CREDIT_WINDOW_TICKS`] of `tick`, but
@@ -142,10 +167,10 @@ impl Seat {
         let mut seats: Vec<usize> = self
             .hurt_by
             .iter()
-            .filter(|(by, last)| {
-                Some(*by) != killer && tick.saturating_sub(*last) <= KILL_CREDIT_WINDOW_TICKS
+            .filter(|held| {
+                Some(held.by) != killer && tick.saturating_sub(held.at) <= KILL_CREDIT_WINDOW_TICKS
             })
-            .map(|(by, _)| *by)
+            .map(|held| held.by)
             .collect();
         seats.sort_unstable();
         seats
@@ -192,6 +217,7 @@ impl Seat {
     }
 }
 
+state_hash!(HeroContribution { by, at, damage_at });
 state_hash!(Teleport {
     building,
     landing,

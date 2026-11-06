@@ -82,35 +82,31 @@ pub fn hero_bounty(level: i32, streak: i32, first_blood: bool) -> i32 {
     rules::HERO_KILL_GOLD_BASE + rules::HERO_KILL_GOLD_PER_LEVEL * level + streak_gold + first
 }
 
-/// What each of `earners` heroes is paid in assist gold for a hero worth
-/// `fallen_worth`, by Dota 7.40's `15 + (50 + 0.037 * worth) / earners`,
-/// rounded down, times the net worth factor of the earning side.
-///
-/// Liquipedia (*Gold*, "Assists") gives the factor as the fallen side's net
-/// worth over the earning side's, which grows without bound for a
-/// far-behind earner; the Dota 2 wiki gives it piecewise, `1 - gap /
-/// leading worth` for the leading side and `1 + gap / leading worth` for
-/// the trailing one, between zero and two. The two agree for a side that
-/// leads; this takes the bounded form for one that trails.
+/// Assist gold per eligible hero: 7.40's base share, multiplied by the victim
+/// team's net worth over the earning team's net worth [LIQ Gold, Assists].
+/// Wide intermediates retain the ratio for a trailing team; results fit the
+/// protocol's gold integer. When the earning team has no worth, retain the neutral factor.
 pub fn assist_gold(fallen_worth: i32, earners: usize, earning_side: i64, fallen_side: i64) -> i32 {
     if earners == 0 {
         return 0;
     }
-    let earners = i64::try_from(earners).expect("seats are few");
-    let base = rules::ASSIST_GOLD_FLAT_MILLI
-        + (rules::ASSIST_GOLD_SHARED_MILLI
-            + rules::ASSIST_GOLD_NET_WORTH_MILLI * i64::from(fallen_worth.max(0)))
-            / earners;
-    let (earning_side, fallen_side) = (earning_side.max(0), fallen_side.max(0));
-    let leading = earning_side.max(fallen_side);
-    let milli = if leading == 0 {
-        base
-    } else if earning_side >= fallen_side {
-        base * fallen_side / leading
+    let earners = i128::try_from(earners).expect("seats are few");
+    let (earning_side, fallen_side) = if earning_side <= 0 {
+        (1, 1)
     } else {
-        base * (2 * leading - earning_side) / leading
+        (earning_side, fallen_side.max(0))
     };
-    i32::try_from(milli / 1000).expect("assist gold fits an i32")
+    let numerator = i128::from(fallen_side);
+    // Scale before splitting: truncating the unscaled share first can lose
+    // a whole gold after the trailing team's factor is applied.
+    let shared = (i128::from(rules::ASSIST_GOLD_SHARED_MILLI)
+        + i128::from(rules::ASSIST_GOLD_NET_WORTH_MILLI) * i128::from(fallen_worth.max(0)))
+        * numerator
+        / earners;
+    let gold = (i128::from(rules::ASSIST_GOLD_FLAT_MILLI) * numerator + shared)
+        / i128::from(earning_side.max(1))
+        / 1000;
+    gold.clamp(0, i128::from(i32::MAX)) as i32
 }
 
 /// The experience a lane creep denied by its own side pays the other side.
@@ -241,6 +237,32 @@ fn parts_beyond<'a>(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn assist_gold_zero_earning_worth_uses_a_neutral_multiplier() {
+        assert_eq!(super::assist_gold(4000, 2, 0, 4000), 114);
+        assert_eq!(super::assist_gold(4000, 2, -1000, 4000), 114);
+        assert_eq!(super::assist_gold(i32::MAX, 1, 0, i64::MAX), 79_456_959);
+    }
+
+    #[test]
+    fn assist_gold_rounds_only_after_scaling_the_complete_share() {
+        assert_eq!(super::assist_gold(2000, 3, 1000, 3000), 169);
+    }
+
+    #[test]
+    fn assist_gold_ratio_uses_wide_arithmetic_and_a_bounded_result() {
+        assert_eq!(super::assist_gold(i32::MAX, 1, 1, i64::MAX), i32::MAX);
+        assert_eq!(super::assist_gold(4000, 0, 0, 0), 0);
+        assert_eq!(super::assist_gold(4000, 2, 0, 0), 114);
+    }
+
+    #[test]
+    fn assist_gold_uses_the_victim_to_earner_team_worth_ratio() {
+        assert_eq!(super::assist_gold(4000, 2, 2000, 4000), 228);
+        assert_eq!(super::assist_gold(4000, 2, 1000, 4000), 456);
+        assert_eq!(super::assist_gold(4000, 2, 4000, 2000), 57);
+    }
+
     use bota_proto::ItemId;
 
     use crate::missing_parts;

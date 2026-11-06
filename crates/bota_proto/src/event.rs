@@ -25,6 +25,7 @@ pub enum DamageKind {
 pub enum GoldAwardKind {
     KillBounty,
     FlagbearerBonus,
+    AssistGold,
 }
 
 /// One actual credit associated with a death, before presentation or aggregation.
@@ -84,19 +85,17 @@ pub enum EventKind {
     Died {
         /// The unit that died.
         unit: EntityId,
-        /// Who landed the killing blow, if a unit did. `None` to a side that
-        /// does not see the killer, unless the kill feed names it: a hero
-        /// that brought down a hero, a tower or a barracks is told to both
-        /// sides.
+        /// The unit that dealt the killing blow. Hidden from a side that is
+        /// not told the physical attacker; it is not replaced by kill credit.
         killer: Option<EntityId>,
         /// Whether the killer was on the same team, making this a deny.
         denied: bool,
         /// Retired: always zero. `bounty` tells it.
         gold: i32,
-        /// Gold paid to the seat of the hero that struck last: the bounty
-        /// drawn for this kill, a flagbearer's bonus and a tower's team
-        /// bounty on top. On a deny only a tower's half team bounty. Zero
-        /// when no hero struck last. Absent to the side that did not earn a
+        /// Gold paid to the credited hero's seat: its bounty and assist-gold
+        /// share, a flagbearer's bonus and a tower's team bounty on top.
+        /// On a deny only a tower's half team bounty. A shared nonhero finish
+        /// reports the total paid to its recipients. Absent to the side that did not earn a
         /// non-hero kill: another's income is its own. A hero kill's gold
         /// is public, as Dota's kill feed tells it.
         bounty: Option<i32>,
@@ -108,11 +107,16 @@ pub enum EventKind {
         assists: u16,
         /// Disclosed credit components, when a breakdown is provided. Each side learns only
         /// its own recipients' awards; a full spectator learns all of them. An income recipient
-        /// can receive this fact without seeing the fallen unit or its killer. Last on the wire.
+        /// can receive this fact without seeing the fallen unit or its killer.
         #[serde(
             deserialize_with = "crate::bounded::option_boxed_seq::<_, _, { crate::limits::MAX_DEATH_GOLD_AWARDS }>"
         )]
         awards: Option<Box<Vec<GoldAward>>>,
+        /// The publicly announced hero awarded credit for a real hero death.
+        /// May differ from the physical killer. None for other unit deaths or
+        /// when no individual hero receives the kill. Last on the wire.
+        // Keep the optional handle out of the common event footprint.
+        credited_hero: Option<Box<EntityId>>,
     },
     /// A unit's ability took effect.
     ///
@@ -297,9 +301,15 @@ impl EventKind {
                 source.iter_mut().for_each(&mut *visit);
                 visit(target);
             }
-            EventKind::Died { unit, killer, .. } => {
+            EventKind::Died {
+                unit,
+                killer,
+                credited_hero,
+                ..
+            } => {
                 visit(unit);
-                killer.iter_mut().for_each(visit);
+                killer.iter_mut().for_each(&mut *visit);
+                credited_hero.as_deref_mut().into_iter().for_each(visit);
             }
             EventKind::Landed { caster, .. }
             | EventKind::TreeFelled { by: caster, .. }

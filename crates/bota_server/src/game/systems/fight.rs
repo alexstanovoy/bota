@@ -184,19 +184,21 @@ impl World {
         events: &mut Vec<Event>,
     ) -> Option<(UnitKind, Team)> {
         assert!(self.entities.contains(entity));
+        let credited_hero = self.credited_hero(entity, killer);
         self.cancel_action(entity);
         self.rot_goes_out(entity);
         self.carry_fights_on(entity);
         self.death_throes(entity);
-        self.feed_flesh_heaps(entity);
+        self.feed_flesh_heaps(entity, credited_hero);
+        // Necromastery follows the physical OnDeath attacker; Flesh Heap follows credit.
         self.feed_souls(entity, killer);
         let kind = self.kind.get(entity).copied();
         let side = self.team.get(entity).copied();
         let denied = killer
             .and_then(|k| self.team.get(k).copied())
             .is_some_and(|theirs| Some(theirs) == side);
-        let assists = self.credit_assists(entity, killer);
         let (paid, awards) = self.pay_for_report(entity, killer, events);
+        let assists = self.credit_assists(entity, credited_hero.or(killer));
         events.push(Event {
             kind: EventKind::Died {
                 unit: wire_id(entity),
@@ -206,6 +208,7 @@ impl World {
                 bounty: Some(paid),
                 assists,
                 awards: awards.map(Box::new),
+                credited_hero: credited_hero.map(|hero| Box::new(wire_id(hero))),
             },
             visible_to: told.fall,
             gold_hidden_from: if kind == Some(UnitKind::Hero) {
@@ -253,7 +256,7 @@ impl World {
         let scroll_due = side_of_killer.is_some_and(|side| side != Team::Neutral);
         let by_neutrals = side_of_killer == Some(Team::Neutral);
         self.bury_seat(entity, scroll_due, by_neutrals);
-        if let Some(index) = killer.and_then(|k| self.seat_of(k))
+        if let Some(index) = credited_hero.and_then(|k| self.seat_of(k))
             && kind == Some(UnitKind::Hero)
             && !denied
         {

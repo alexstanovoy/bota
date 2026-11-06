@@ -683,3 +683,7 @@ field GoldAward 1 team: Team
 field GoldAward 2 kind: GoldAwardKind
 field GoldAward 3 amount: i32
 field EventKind::Died 6 awards: Option<Vec<GoldAward>>
+
+variant GoldAwardKind 2 AssistGold
+
+field EventKind::Died 7 credited_hero: Option<EntityId>

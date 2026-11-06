@@ -100,8 +100,10 @@ limits! {
     /// ticks a second, the bound past which the server closes the
     /// connection.
     MAX_SKIPPED_TICKS: usize = 900;
-    /// Most events in one batch: every event needs at least three wire bytes.
-    MAX_EVENTS_PER_BATCH: usize = MAX_PAYLOAD_LEN / 3;
+    /// Most events in one batch: at most 56 bytes inline each, plus three times the
+    /// payload reserved for nested credits, stay within 80 MiB. Fixed across
+    /// architectures so clients and servers share the same wire limit.
+    MAX_EVENTS_PER_BATCH: usize = 1_273_270;
     /// Most entries in the shop of a match: room for every item there is.
     MAX_SHOP_ENTRIES: usize = 1_024;
     /// Most shelves of limited stock a view lists: both sides' for every entry
@@ -129,8 +131,8 @@ limits! {
     MAX_SECRET_SHOPS: usize = 8;
     /// Corners of one convex shop trigger footprint.
     MAX_SHOP_ZONE_CORNERS: usize = 32;
-    /// One kill credit plus at most one flagbearer bonus per seat.
-    MAX_DEATH_GOLD_AWARDS: usize = MAX_SEATS + 1;
+    /// At most one bounty, assist share and flagbearer bonus per seat.
+    MAX_DEATH_GOLD_AWARDS: usize = 3 * MAX_SEATS;
 }
 
 /// A hero's bag: the inventory and the backpack.
@@ -152,7 +154,8 @@ const _: () = {
     assert!(MAX_VIEW_UNITS * unit <= MAX_DECODED_BYTES);
     // An award uses at least four wire bytes; a death with a disclosed list has at
     // least nine bytes of header. Each nested allocation therefore weighs at most
-    // three times its wire bytes, including the boxed Vec header. The outer Vec
+    // three times its wire bytes, including the boxed Vec header. A credited
+    // hero box costs eight bytes and its Some handle uses at least three. The outer Vec
     // never reserves more than MAX_EVENTS_PER_BATCH entries (bounded::Capped).
     assert!(size_of::<crate::GoldAward>() <= 3 * 4);
     assert!(size_of::<Vec<crate::GoldAward>>() <= 3 * 9);

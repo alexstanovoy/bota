@@ -1269,6 +1269,9 @@ const _: () = assert!(STREAK_GOLD.len() as i32 == STREAK_XP_CAP - STREAK_GOLD_FR
 /// Radius around a death within which enemy heroes receive experience.
 pub const XP_RADIUS: i32 = 1500;
 
+/// Living nearby heroes also qualify for assist gold, without participating [LIQ Gold].
+pub const ASSIST_GOLD_RADIUS: i32 = 1500;
+
 /// A friendly lane creep may be denied when its health is strictly below
 /// this percent of its maximum.
 pub const DENY_HP_PCT: i32 = 50;
