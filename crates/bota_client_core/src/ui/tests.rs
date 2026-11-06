@@ -1404,7 +1404,50 @@ fn a_fallen_tower_is_fed_with_what_it_was_and_where_it_stood() {
             lane: Some(2),
             tier: Some(1),
             ranged: None,
+            killer: None,
         })
+    );
+}
+
+#[test]
+fn a_fallen_tower_is_fed_with_the_hero_that_brought_it_down() {
+    let (mut app, us, _) = a_duel_app();
+    let tower = EntityId {
+        idx: 9,
+        generation: 1,
+    };
+    app.handle(bota_proto::ServerMsg::Events {
+        tick: 10,
+        events: vec![
+            EventKind::Died {
+                unit: tower,
+                killer: Some(us),
+                denied: false,
+                gold: 0,
+                bounty: None,
+                assists: 0,
+            },
+            EventKind::StructureDestroyed {
+                unit: tower,
+                team: Team::Dire,
+                kind: UnitKind::Tower,
+                lane: Some(0),
+                tier: Some(1),
+                ranged: None,
+            },
+        ],
+    });
+    assert_eq!(
+        app.feed.last().map(|line| line.kind.clone()),
+        Some(FeedKind::StructureFell {
+            team: Team::Dire,
+            kind: UnitKind::Tower,
+            lane: Some(0),
+            tier: Some(1),
+            ranged: None,
+            killer: Some(Killer::Seat(SlotId(0))),
+        }),
+        "the line names the hero that struck it"
     );
 }
 

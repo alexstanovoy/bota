@@ -84,6 +84,7 @@ impl App {
                 ..
             } => self.on_death(unit, killer, denied, bounty.unwrap_or(0), assists),
             EventKind::StructureDestroyed {
+                unit,
                 team,
                 kind,
                 lane,
@@ -91,12 +92,18 @@ impl App {
                 ranged,
                 ..
             } => {
+                // The fall of a building is told just after its death, which names who struck it.
+                let killer = match self.fallen_to.take() {
+                    Some((fallen, killer)) if fallen == unit => killer,
+                    _ => None,
+                };
                 self.push_feed(FeedKind::StructureFell {
                     team,
                     kind,
                     lane,
                     tier,
                     ranged,
+                    killer: killer.and_then(|k| self.killer_of(k)),
                 });
             }
             EventKind::LevelUp { unit, level } => {
@@ -217,6 +224,7 @@ impl App {
         gold: i32,
         assists: u16,
     ) {
+        self.fallen_to = Some((unit, killer));
         let victim = self
             .freshest(unit)
             .map(|victim| (victim.pos.x.to_f32(), victim.pos.y.to_f32(), victim.kind));
@@ -367,19 +375,25 @@ impl App {
         // The feed only tells hero deaths, whose gold is public as in Dota;
         // the killer it names may never have been in sight, a hero the feed
         // named, known by its seat.
-        let killer = killer.and_then(|k| match self.freshest(k) {
-            Some(k) => Some(match (k.kind, k.owner) {
-                (UnitKind::Hero, Some(slot)) => Killer::Seat(slot),
-                (kind, _) => Killer::Unit { kind, team: k.team },
-            }),
-            None => self.seat_of_hero(k).map(Killer::Seat),
-        });
+        let killer = killer.and_then(|k| self.killer_of(k));
         Some(FeedKind::HeroDied {
             victim,
             killer,
             gold,
             assists,
         })
+    }
+
+    /// Who struck a blow, as a feed line names it: a hero by its seat, which it may never have
+    /// been in sight for, any other unit by its kind and side.
+    fn killer_of(&self, id: EntityId) -> Option<Killer> {
+        match self.freshest(id) {
+            Some(k) => Some(match (k.kind, k.owner) {
+                (UnitKind::Hero, Some(slot)) => Killer::Seat(slot),
+                (kind, _) => Killer::Unit { kind, team: k.team },
+            }),
+            None => self.seat_of_hero(id).map(Killer::Seat),
+        }
     }
 
     /// The seat whose hero a unit is or was, by the bodies the scoreboard

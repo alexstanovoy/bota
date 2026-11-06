@@ -362,6 +362,8 @@ pub enum FeedKind {
         lane: Option<u8>,
         tier: Option<u8>,
         ranged: Option<bool>,
+        /// Who brought it down, when the feed names one (a hero, by its seat).
+        killer: Option<Killer>,
     },
     /// The seat's connection left the match.
     Disconnected { seat: SlotId },
@@ -474,6 +476,8 @@ pub struct App {
     pub eyes: Option<SlotId>,
     pub floaters: Vec<Floater>,
     pub feed: Vec<FeedLine>,
+    /// The unit that last fell and who struck it, for the line its fall makes if it is a building.
+    pub(crate) fallen_to: Option<(EntityId, Option<EntityId>)>,
     /// The chat log and this client's last refused line.
     pub chat: Chat,
     /// Which slot the order of a sequence number came from, so a refusal
@@ -542,6 +546,7 @@ impl App {
             eyes: None,
             floaters: Vec::new(),
             feed: Vec::new(),
+            fallen_to: None,
             chat: Chat::default(),
             aimed_from: None,
             refused: None,
