@@ -659,7 +659,10 @@ impl World {
         let takes = if self.rune.get(mark).is_some() {
             self.is_real_hero(unit)
         } else {
-            self.loot.get(mark).is_some() && self.inventory.get(unit).is_some()
+            self.loot.get(mark).is_some_and(|loot| {
+                item_def(loot.0.id)
+                    .is_none_or(|def| def.reincarnation.is_none() || self.is_real_hero(unit))
+            }) && self.inventory.get(unit).is_some()
         };
         if !takes {
             return Err(RejectReason::WrongTargetKind);
@@ -761,6 +764,9 @@ impl World {
         if held.owner != seat.slot {
             return Err(RejectReason::NotYourItem);
         }
+        if item_def(held.id).is_some_and(|def| !def.limits.sellable) {
+            return Err(RejectReason::Unsellable);
+        }
         if held.free_charges > 0 {
             return Err(RejectReason::Unsellable);
         }
@@ -841,6 +847,13 @@ impl World {
         }
         if !self.holds(unit, seat, at) {
             return Err(RejectReason::EmptySlot);
+        }
+        if self
+            .held_in_bag(unit, at)
+            .and_then(|stack| item_def(stack.id))
+            .is_some_and(|def| !def.limits.droppable)
+        {
+            return Err(RejectReason::ItemRestricted);
         }
         if self.holds_rune_at(unit, at) {
             return Err(RejectReason::HoldsRune);

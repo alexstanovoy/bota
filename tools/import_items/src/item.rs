@@ -34,6 +34,11 @@ pub struct Item {
     /// `SpellImmunityType` without its `SPELL_IMMUNITY_` prefix: `ENEMIES_NO` or `ENEMIES_YES`;
     /// none where the item names none.
     pub immunity: Option<&'static str>,
+    pub droppable: bool,
+    pub sellable: bool,
+    pub killable: bool,
+    pub backpack: bool,
+    pub cooldown_in_inventory: bool,
     /// A recipe's `ItemResult` and its `ItemRequirements`, each a list of item keys.
     pub recipe: Option<(String, Vec<Vec<String>>)>,
     /// `AbilityValues` by key, one number a level.
@@ -62,7 +67,7 @@ pub const BEHAVIORS: [&str; 17] = [
 ];
 
 /// Keys read into [`Item`].
-const READ: [&str; 21] = [
+const READ: &[&str] = &[
     "AbilityBehavior",
     "AbilityCastPoint",
     "AbilityCastRange",
@@ -74,6 +79,11 @@ const READ: [&str; 21] = [
     "ItemCost",
     "ItemInitialCharges",
     "ItemPurchasable",
+    "ItemDroppable",
+    "ItemSellable",
+    "ItemKillable",
+    "AllowedInBackpack",
+    "CooldownPausedOutOfInventory",
     "ItemRequirements",
     "ItemResult",
     "ItemStackable",
@@ -88,7 +98,7 @@ const READ: [&str; 21] = [
 
 /// Keys known and left out: presentation, the shop's suggestions, and rules bota models
 /// elsewhere or not yet (targets, sharing, dispels, the shared cooldown's name).
-const LEFT_OUT: [&str; 34] = [
+const LEFT_OUT: &[&str] = &[
     "AbilitySharedCooldown",
     "AbilityUnitTargetFlags",
     "AbilityUnitTargetTeam",
@@ -108,7 +118,6 @@ const LEFT_OUT: [&str; 34] = [
     "ItemRecipe",
     "ItemRecipeConsumesCharges",
     "ItemRequiresCharges",
-    "ItemSellable",
     "ItemShareability",
     "ItemShopTags",
     "ItemSupport",
@@ -212,6 +221,11 @@ pub fn read(key: &str, block: &Kv) -> Result<Item, String> {
         secret_shop,
         dispel,
         immunity,
+        droppable: whole("ItemDroppable", 1)? == 1,
+        sellable: whole("ItemSellable", 1)? == 1,
+        killable: whole("ItemKillable", 1)? == 1,
+        backpack: whole("AllowedInBackpack", 1)? == 1,
+        cooldown_in_inventory: whole("CooldownPausedOutOfInventory", 0)? == 1,
         recipe,
         values: values(block).map_err(fail)?,
     })

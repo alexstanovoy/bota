@@ -7,6 +7,10 @@ use bota_proto::{DamageKind, EffectId, Fixed, IdSpace, RegisteredId, registered}
 /// the match below until it is listed here as well.
 fn every_modifier() -> Vec<ModifierKind> {
     let mut every = vec![
+        ModifierKind::Recovery {
+            health_pct: 20,
+            mana_pct: 20,
+        },
         ModifierKind::Mending {
             per_tick: Fixed::ZERO,
             breaks: false,
@@ -94,7 +98,8 @@ fn every_modifier() -> Vec<ModifierKind> {
     );
     for kind in &every {
         match kind {
-            ModifierKind::Mending { .. }
+            ModifierKind::Recovery { .. }
+            | ModifierKind::Mending { .. }
             | ModifierKind::Clarity { .. }
             | ModifierKind::Fountain { .. }
             | ModifierKind::Stunned

@@ -251,8 +251,12 @@ impl Tracks {
             let attacker = index_of(&self.entities, entry.unit);
             self.entities[attacker].fight = Some(*entry);
             let side = usize::from(Some(self.entities[attacker].unit.team) != viewer);
-            if let Some(target) = entry.target {
-                let target = index_of(&self.entities, target);
+            // Loot can be attacked but has no unit threat counter of its own.
+            if let Some(target) = entry.target
+                && let Ok(target) = self
+                    .entities
+                    .binary_search_by_key(&target, |entity| entity.id)
+            {
                 let count = &mut self.entities[target].attackers[side];
                 *count = count.saturating_add(1);
             }
@@ -403,7 +407,10 @@ impl Tracks {
             | EventKind::RuneBottled { .. }
             | EventKind::RuneDenied { .. }
             | EventKind::LotusGrown { .. }
-            | EventKind::LotusPlucked { .. } => {}
+            | EventKind::LotusPlucked { .. }
+            | EventKind::BossFell { .. }
+            | EventKind::ItemDestroyed { .. }
+            | EventKind::ItemTaken { .. } => {}
         }
     }
 

@@ -23,7 +23,7 @@ pub struct SightCx<'a> {
     /// Sight strikes showed the sides struck at.
     pub exposure: &'a Table<Exposure>,
     /// Where a Town Portal Scroll shows its side the ground it lands on.
-    pub scroll_sights: &'a [(Team, Vec2, i32)],
+    pub scroll_sights: &'a [(Team, Vec2, i32, bool)],
     /// The tick being worked out, for which of that sight still shows.
     pub tick: u32,
     /// Where the answer goes.
@@ -171,8 +171,8 @@ pub fn visibility_system(cx: SightCx<'_>) {
     sight.judged.clear();
     sight.gather_viewers();
     sight.gather_exposures(exposure, tick, ground);
-    for &(side, at, radius) in scroll_sights {
-        sight.viewers.push(reveal(side, at, radius, true, ground));
+    for &(side, at, radius, flying) in scroll_sights {
+        sight.viewers.push(reveal(side, at, radius, flying, ground));
     }
     sight.reset_rows();
     sight.trace(sight_block);
@@ -493,10 +493,13 @@ impl World {
             let tier = self.ground.tier(cell.at);
             cell.flying || (tier >= target_tier && self.sight_block.clear(cell.at, tier, at))
         });
-        let landing = self.teleport_sights().any(|(side, from, radius)| {
+        let landing = self.temporary_sights().any(|(side, from, radius, flying)| {
             side == team
                 && from.within(at, rules::units(radius))
                 && bota_core::pit_sight_clear(self.map.boss_zones, from, at)
+                && (flying
+                    || (self.ground.tier(from) >= target_tier
+                        && self.sight_block.clear(from, self.ground.tier(from), at)))
         });
         exposed
             || landing

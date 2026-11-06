@@ -333,18 +333,32 @@ impl World {
             seat.stash.lapse();
         }
         self.lapse_loot();
+        let mut expired = Vec::new();
         for entity in self.entities.iter() {
             if let Some(book) = self.abilities.get_mut(entity) {
                 for slot in book.slots.iter_mut() {
                     slot.cooldown = slot.cooldown.saturating_sub(1);
                 }
             }
+            let hero = self.kind.get(entity) == Some(&bota_proto::UnitKind::Hero);
             if let Some(bag) = self.inventory.get_mut(entity) {
-                for stack in bag.every_stack_mut() {
-                    stack.cooldown = stack.cooldown.saturating_sub(1);
+                for (slot, held) in bag
+                    .slots
+                    .iter_mut()
+                    .chain(bag.town_portal.iter_mut())
+                    .enumerate()
+                {
+                    let Some(stack) = held else {
+                        continue;
+                    };
+                    let paused = item_def(stack.id).is_some_and(|def| def.cooldown_in_inventory)
+                        && !(hero && in_inventory(slot));
+                    if !paused {
+                        stack.cooldown = stack.cooldown.saturating_sub(1);
+                    }
                     stack.mute = stack.mute.saturating_sub(1);
                 }
-                bag.lapse();
+                bag.lapse_with(|stack| expired.push((entity, stack)));
             }
             if let Some(on_it) = self.modifiers.get_mut(entity) {
                 let mut lapsed = false;
@@ -359,6 +373,9 @@ impl World {
                     self.lapsed_lives.push(entity);
                 }
             }
+        }
+        for (entity, stack) in expired {
+            self.recover_expired_item(entity, stack.id);
         }
         self.tick_teleports();
     }
@@ -652,6 +669,15 @@ impl World {
         let cooldown = self.item_cooldown(entity, used.id);
         if def.shared_wait {
             self.owe_wait(entity, def.wait_key.unwrap_or(used.id), cooldown);
+        }
+        if let Some(group) = def.cooldown_group
+            && let Some(bag) = self.inventory.get_mut(entity)
+        {
+            for stack in bag.every_stack_mut() {
+                if item_def(stack.id).is_some_and(|entry| entry.cooldown_group == Some(group)) {
+                    stack.cooldown = stack.cooldown.max(cooldown);
+                }
+            }
         }
         if let Some(bag) = self.inventory.get_mut(entity)
             && let Some(held) = bag.slot_mut(slot)
@@ -1154,6 +1180,14 @@ impl World {
         };
         if leaves_the_hand(Some(held), to) || leaves_the_hand(self.stack_at(unit, seat, to), from) {
             return Some(RejectReason::HoldsRune);
+        }
+        let restricted = |stack: Option<ItemStack>, at: usize| {
+            stack
+                .and_then(|stack| item_def(stack.id))
+                .is_some_and(|def| !def.limits.backpack && !in_inventory(at))
+        };
+        if restricted(Some(held), to) || restricted(self.stack_at(unit, seat, to), from) {
+            return Some(RejectReason::ItemRestricted);
         }
         let has_portal = self
             .inventory

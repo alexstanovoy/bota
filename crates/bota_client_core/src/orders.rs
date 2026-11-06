@@ -279,7 +279,16 @@ pub fn reconcile_directive(
     // A truncated view cannot prove a visibility loss: the session owns the
     // complete validated snapshot, sorted by full-generation handle.
     let current = session.current().expect("a snapshot");
-    if current.unit(target).is_some_and(unit_alive) {
+    if current.unit(target).is_some_and(unit_alive)
+        || current
+            .loot
+            .binary_search_by_key(&target, |loot| loot.id)
+            .is_ok()
+        || current
+            .runes
+            .binary_search_by_key(&target, |rune| rune.id)
+            .is_ok()
+    {
         return Some(issued);
     }
     let observed = session.entity(target)?;

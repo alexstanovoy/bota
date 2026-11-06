@@ -12,7 +12,25 @@ type Change = (&'static str, fn(&mut ItemDef));
 #[test]
 fn every_rule_of_an_item_moves_its_digest() {
     let bottle = *item_def(ItemId::BOTTLE).expect("the Bottle is in the catalogue");
-    let changes: [Change; 22] = [
+    let changes: [Change; 32] = [
+        ("cooldown group", |d| {
+            d.cooldown_group = Some(ItemId::REFRESHER_SHARD)
+        }),
+        ("inventory cooldown", |d| d.cooldown_in_inventory = true),
+        ("public loot", |d| d.public_loot = true),
+        ("drop rule", |d| d.limits.droppable = false),
+        ("sale rule", |d| d.limits.sellable = false),
+        ("ground destruction", |d| d.limits.killable = false),
+        ("backpack rule", |d| d.limits.backpack = false),
+        ("pickup lifetime", |d| d.pickup_lifetime = 1),
+        ("reincarnation", |d| d.reincarnation = Some(1)),
+        ("expiry recovery", |d| {
+            d.expiry_recovery = Some(crate::Recovery {
+                ticks: 1,
+                health_pct: 20,
+                mana_pct: 20,
+            })
+        }),
         ("retired", |d| d.retired = !d.retired),
         ("cast_range", |d| d.cast_range += 1),
         ("spends", |d| {
@@ -61,4 +79,15 @@ fn drink(def: &mut ItemDef) -> &mut crate::Drink {
         UseSpec::Bottle(drink) => drink,
         _ => panic!("the Bottle drinks"),
     }
+}
+
+#[test]
+fn adding_roshan_items_keeps_the_preexisting_catalogue_prefix_identical() {
+    let previous = bota_proto::CataloguePrefix {
+        items: 62,
+        digest: 0xe0e7_501a_8b65_4c20,
+    };
+    let shared = crate::Catalogue::agreeing(previous)
+        .expect("the prefix published before Roshan still negotiates");
+    assert_eq!(shared.prefix(), previous);
 }

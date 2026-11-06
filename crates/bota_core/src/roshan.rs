@@ -86,6 +86,32 @@ pub const ROSHAN_LAIR: LairDef = LairDef {
     night: ROSHAN_NIGHT_PIT,
     move_after: 15 * 60,
     respawn: [8 * 60, 11 * 60],
+    drops: &ROSHAN_DROPS,
 };
 
 const _: () = assert!(U.first("MovementTurnRate").int() == 1);
+
+/// 7.37 made Banner permanent from the second death; 7.38 removed Blessing.
+/// Current 7.41f drop table is independent of day and night (Roshan, Kill Rewards).
+pub const ROSHAN_DROPS: [crate::LairDrop; 4] = [
+    crate::LairDrop {
+        item: bota_proto::ItemId::AEGIS,
+        from: 1,
+        reclaimed: true,
+    },
+    crate::LairDrop {
+        item: bota_proto::ItemId::ROSHANS_BANNER,
+        from: 2,
+        reclaimed: false,
+    },
+    crate::LairDrop {
+        item: bota_proto::ItemId::CHEESE,
+        from: 3,
+        reclaimed: false,
+    },
+    crate::LairDrop {
+        item: bota_proto::ItemId::REFRESHER_SHARD,
+        from: 3,
+        reclaimed: false,
+    },
+];

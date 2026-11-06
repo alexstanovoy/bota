@@ -347,6 +347,18 @@ impl World {
     /// that does not break and an item with no break cooldown are left alone.
     pub fn break_on_blows(&mut self, felt: &[Landed]) {
         for blow in felt.iter().filter(|blow| !blow.removal) {
+            if blow.amount > 0
+                && blow.source.is_some_and(|source| {
+                    source != blow.target
+                        && (self.owner.get(source).is_some()
+                            || self.kind.get(source) == Some(&bota_proto::UnitKind::Roshan))
+                })
+                && let Some(on_it) = self.modifiers.get_mut(blow.target)
+            {
+                on_it
+                    .0
+                    .retain(|held| !matches!(held.kind, ModifierKind::Recovery { .. }));
+            }
             let breaks = blow.source.is_some_and(|from| {
                 self.kind.get(from).is_some_and(|&kind| {
                     let side = self.team.get(from).copied().unwrap_or(Team::Neutral);

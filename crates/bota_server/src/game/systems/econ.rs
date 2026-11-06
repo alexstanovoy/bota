@@ -634,7 +634,11 @@ impl World {
             }
             self.seats[index].respawn_left -= 1;
             if !self.seats[index].dead() {
-                self.respawn(index);
+                if let Some(at) = self.seats[index].reincarnating_at.take() {
+                    self.raise_fallen_hero(index, at);
+                } else {
+                    self.respawn(index);
+                }
             }
         }
     }

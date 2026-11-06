@@ -22,3 +22,27 @@ keeps objectives disabled unless the host enables them.
 
 The respawn distribution is not specified by Valve. The simulator draws uniformly among
 whole seconds in the inclusive 480–660 second window, independently for each death.
+
+## Loot and reincarnation
+
+The installed item scripts supply Aegis' 5-second delay and 300-second pickup lifetime,
+Cheese's restoration, Shard's 200 mana cost and 180-second cooldown, and carry restrictions.
+Valve [7.41](https://www.dota2.com/patches/7.41) and the script's `refresh_items=0` make Shard
+refresh abilities only. Its stack cooldown pauses outside active inventory; held copies share
+one use's cooldown, while a future fresh drop does not inherit a destroyed item's clock.
+
+Valve [7.37](https://www.dota2.com/patches/7.37) establishes Banner from death two. The current
+[Roshan drop table](https://liquipedia.net/dota2/Roshan) establishes Cheese and Shard together
+from death three, independent of day/night; Valve 7.38 removes Blessing. The earlier 7.37
+night-only Blessing text is superseded by that removal and the current table.
+
+[Aegis, Reincarnation](https://liquipedia.net/dota2/Aegis_of_the_Immortal) supplies the details
+not exposed in the item script: return at the death position, preserved cooldowns, full pools,
+no ordinary death rewards, 1800/800 ground vision during the delay, denial before pickup,
+reclaim on Roshan's return, and expiry/reclaim recovery of both maxima over five seconds.
+Other players' positive damage or Roshan interrupts that recovery; self damage does not.
+The recovery values and ghost vision are documented mechanics rather than script fields.
+
+Aegis' timer is an appended `ItemView` field. New wire builds negotiate the registry/rules
+fingerprint. Every pre-existing 62-item catalogue prefix digest remains unchanged; a test
+pins the digest recorded from the preceding implementation.

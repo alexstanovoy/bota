@@ -249,6 +249,10 @@ impl StateHash for ModifierKind {
             }
             ModifierKind::RuneInvisibility => fnv.u8(47),
             ModifierKind::RuneShield { left } => hash_tagged(fnv, 48, &[left]),
+            ModifierKind::Recovery {
+                health_pct,
+                mana_pct,
+            } => hash_tagged(fnv, 50, &[health_pct, mana_pct]),
             ModifierKind::BottleRegeneration {
                 hp_per_tick,
                 mana_per_tick,

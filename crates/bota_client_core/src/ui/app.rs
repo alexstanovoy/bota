@@ -3,8 +3,9 @@
 use std::sync::Arc;
 
 use bota_proto::{
-    AbilityId, ClientMsg, EntityId, EventKind, MatchStats, Order, PlayerView, RuneKind, ServerMsg,
-    SlotId, StockView, TalentSlot, TalentView, Team, UnitKind, UnitView, Vec2, WorldView,
+    AbilityId, ClientMsg, EntityId, EventKind, ItemId, MatchStats, Order, PlayerView, RuneKind,
+    ServerMsg, SlotId, StockView, TalentSlot, TalentView, Team, UnitKind, UnitView, Vec2,
+    WorldView,
 };
 
 use crate::commands::CommandError;
@@ -354,6 +355,18 @@ pub struct FeedLine {
 /// What a kill feed line tells of.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FeedKind {
+    /// A public loot pickup or denial.
+    Loot {
+        item: ItemId,
+        by: Option<SlotId>,
+        team: Team,
+        destroyed: bool,
+    },
+    /// A map boss fell to this side.
+    BossFell {
+        objective: bota_proto::ObjectiveKind,
+        team: Option<Team>,
+    },
     /// A hero fell, to the killer if one is known, and the gold it paid.
     HeroDied {
         victim: Victim,

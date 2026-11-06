@@ -82,6 +82,8 @@ pub struct Seat {
     /// Ticks before its fallen hero stands again; nonzero exactly while it
     /// lies dead.
     pub respawn_left: u32,
+    /// A reincarnation returns here instead of to the fountain.
+    pub reincarnating_at: Option<Vec2>,
     /// The tick its hero last fell: what was bought since may be sold back
     /// while it lies dead, as in Dota.
     pub fell: u32,
@@ -190,6 +192,7 @@ impl Seat {
             xp: 0,
             level: 1,
             respawn_left: 0,
+            reincarnating_at: None,
             fell: 0,
             stash: Inventory::stash(stash_slots),
             courier: None,
@@ -238,6 +241,7 @@ state_hash!(Seat {
     xp,
     level,
     respawn_left,
+    reincarnating_at,
     fell,
     stash,
     courier,

@@ -762,3 +762,19 @@ pub const fn lane_creep_def(kind: UnitKind) -> Option<&'static UnitDef> {
         _ => None,
     }
 }
+
+/// A destroyable ground item: one attack, unaffected by spells or damage amount.
+pub const GROUND_ITEM: UnitDef = UnitDef {
+    kind: UnitKind::Ward,
+    max_hp: 1,
+    hit_count: Some(crate::HitCount {
+        melee_hero: 1,
+        ranged_hero: 1,
+        other: 1,
+    }),
+    ..BARE_UNIT
+};
+pub const UNBREAKABLE_ITEM: UnitDef = UnitDef {
+    invulnerable: true,
+    ..GROUND_ITEM
+};

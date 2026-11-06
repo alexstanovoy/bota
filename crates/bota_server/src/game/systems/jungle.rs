@@ -168,6 +168,7 @@ impl World {
     /// that no such unit stands for (items, trees, the dead) does not count.
     fn blocks_camp(&self, entity: Entity, spawn_box: SpawnBox) -> bool {
         self.alive(entity)
+            && self.loot.get(entity).is_none()
             && self.kind.get(entity) != Some(&UnitKind::Courier)
             && self.pos(entity).is_some_and(|pos| spawn_box.contains(pos))
     }

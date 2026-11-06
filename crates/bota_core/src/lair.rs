@@ -12,4 +12,12 @@ pub struct LairDef {
     pub move_after: u32,
     /// Delay after a death, inclusive, in seconds.
     pub respawn: [u32; 2],
+    pub drops: &'static [LairDrop],
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct LairDrop {
+    pub item: bota_proto::ItemId,
+    pub from: u32,
+    pub reclaimed: bool,
 }

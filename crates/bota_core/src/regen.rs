@@ -47,6 +47,13 @@ fn share_a_tick(max: Fixed, pct: i32) -> Fixed {
 #[inline]
 fn from_modifier(kind: ModifierKind, max: Regen) -> Regen {
     let (hp, mana) = match kind {
+        ModifierKind::Recovery {
+            health_pct,
+            mana_pct,
+        } => (
+            share_a_tick(max.hp, health_pct),
+            share_a_tick(max.mana, mana_pct),
+        ),
         ModifierKind::Mending { per_tick, .. } => (per_tick, Fixed::ZERO),
         ModifierKind::Clarity { per_tick, .. } => (Fixed::ZERO, per_tick),
         ModifierKind::BottleRegeneration {

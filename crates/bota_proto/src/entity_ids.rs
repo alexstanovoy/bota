@@ -48,7 +48,10 @@ impl EventKind {
                 visit(pool);
                 unit.iter_mut().for_each(visit);
             }
-            EventKind::ItemBought { .. }
+            EventKind::BossFell { .. }
+            | EventKind::ItemDestroyed { .. }
+            | EventKind::ItemTaken { .. }
+            | EventKind::ItemBought { .. }
             | EventKind::Teleported { .. }
             | EventKind::TreeGrew { .. }
             | EventKind::RuneSpawned { .. } => {}

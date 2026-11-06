@@ -64,6 +64,21 @@ impl App {
     /// What one event sets off: its floaters, its feed line, its cues.
     fn take_in(&mut self, event: EventKind) {
         match event {
+            EventKind::ItemDestroyed { item, by, team, .. } => self.push_feed(FeedKind::Loot {
+                item,
+                by,
+                team,
+                destroyed: true,
+            }),
+            EventKind::ItemTaken { item, by, team } => self.push_feed(FeedKind::Loot {
+                item,
+                by: Some(by),
+                team,
+                destroyed: false,
+            }),
+            EventKind::BossFell { objective, team } => {
+                self.push_feed(FeedKind::BossFell { objective, team })
+            }
             EventKind::Damaged {
                 source,
                 target,

@@ -2,11 +2,11 @@
 //! ground.
 
 use bota_core::rules;
-use bota_proto::{Angle, EntityId, EventKind, Fixed, Target, Team, Vec2};
+use bota_proto::{EntityId, EventKind, Fixed, Target, Team, Vec2};
 
 use crate::game::{
-    BAG_SLOTS, Entity, Event, Handling, ItemStack, Loot, Transform, UnitOrder, Visibility, World,
-    wire_id,
+    BAG_SLOTS, Entity, Event, EventVisibility, Handling, ItemStack, Loot, UnitOrder, Visibility,
+    World, wire_id,
 };
 
 impl World {
@@ -16,11 +16,7 @@ impl World {
     /// unit's own feet; aimed at an allied unit with a bag, handed into it.
     /// The walking and the doing live with [`World::tick_handling`].
     pub fn put_item(&mut self, unit: Entity, slot: usize, target: Target) -> bool {
-        if slot >= BAG_SLOTS
-            || self
-                .held_in_bag(unit, slot)
-                .is_none_or(|stack| stack.rune.is_some())
-        {
+        if slot >= BAG_SLOTS || !self.may_put_item(unit, slot) {
             return false;
         }
         let errand = match target {
@@ -46,6 +42,13 @@ impl World {
         };
         self.handling.insert(unit, errand);
         true
+    }
+
+    fn may_put_item(&self, unit: Entity, slot: usize) -> bool {
+        self.held_in_bag(unit, slot).is_some_and(|stack| {
+            stack.rune.is_none()
+                && bota_core::item_def(stack.id).is_some_and(|def| def.limits.droppable)
+        })
     }
 
     /// Starts walking a hero over to a rune to destroy it: an attack order
@@ -112,7 +115,7 @@ impl World {
 
     /// Walks a unit within reach of a spot and lays the stack there.
     fn lay_at(&mut self, unit: Entity, slot: usize, pos: Vec2) -> bool {
-        if self.held_in_bag(unit, slot).is_none() {
+        if !self.may_put_item(unit, slot) {
             return true;
         }
         if self.pos(unit).is_none() {
@@ -133,7 +136,7 @@ impl World {
 
     /// Walks a unit within reach of an ally and hands the stack into its bag.
     fn hand_to(&mut self, unit: Entity, slot: usize, to: Entity) -> bool {
-        if self.held_in_bag(unit, slot).is_none() {
+        if !self.may_put_item(unit, slot) {
             return true;
         }
         if !self.alive(to) || self.team.get(to) != self.team.get(unit) {
@@ -204,6 +207,20 @@ impl World {
         if !taken {
             return true;
         }
+        if bota_core::item_def(received.id).is_some_and(|def| def.public_loot)
+            && let Some(seat) = self.seat_of(unit)
+        {
+            self.events.push(Event::Fact {
+                kind: EventKind::ItemTaken {
+                    item: received.id,
+                    by: self.seats[seat].slot,
+                    team: self.seats[seat].team,
+                },
+                visible_to: EventVisibility::Everyone,
+                gold_hidden_from: None,
+                source_told_to: EventVisibility::Everyone,
+            });
+        }
         self.loot.remove(loot);
         self.despawn(loot);
         true
@@ -213,6 +230,14 @@ impl World {
     /// unit its owner does not drive can no longer be taken apart (Dota ends the
     /// window there).
     fn as_received_by(&self, unit: Entity, stack: ItemStack) -> ItemStack {
+        let mut stack = stack;
+        if stack.owner == bota_proto::SlotId(u8::MAX) {
+            if let Some(owner) = self.owner.get(unit).copied() {
+                stack.owner = owner;
+            }
+            stack.life = bota_core::item_def(stack.id)
+                .map_or(stack.life, |def| def.pickup_lifetime.max(stack.life));
+        }
         if self.owner.get(unit) == Some(&stack.owner) {
             return stack;
         }
@@ -287,14 +312,12 @@ impl World {
 
     /// Stands a ground item up holding a stack.
     pub fn lay_loot(&mut self, stack: ItemStack, pos: Vec2) -> Entity {
-        let entity = self.spawn();
-        self.transform.insert(
-            entity,
-            Transform {
-                pos,
-                facing: Angle::default(),
-            },
-        );
+        let def = if bota_core::item_def(stack.id).is_none_or(|def| def.limits.killable) {
+            &bota_core::GROUND_ITEM
+        } else {
+            &bota_core::UNBREAKABLE_ITEM
+        };
+        let entity = self.spawn_body(def, Team::Neutral, pos);
         self.loot.insert(
             entity,
             Loot(ItemStack {

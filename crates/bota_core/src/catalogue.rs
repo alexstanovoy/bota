@@ -273,6 +273,7 @@ impl Fnv {
     /// What a use does, each kind under a tag of its own.
     const fn effect(self, value: UseSpec) -> Fnv {
         match value {
+            UseSpec::Refresh { items } => self.u64(15).flag(items),
             UseSpec::None => self.u64(0),
             UseSpec::Mend(mend) => self.u64(1).mend(mend),
             UseSpec::PlantTree { ticks } => self.u64(2).u64(ticks as u64),
@@ -346,6 +347,13 @@ impl Fnv {
 /// [`ItemDef`] fail to build here until it is digested too.
 pub(crate) const fn item_digest(def: &ItemDef) -> u64 {
     let ItemDef {
+        limits,
+        public_loot,
+        cooldown_group,
+        cooldown_in_inventory,
+        pickup_lifetime,
+        reincarnation,
+        expiry_recovery,
         id,
         key,
         name: _,
@@ -474,6 +482,36 @@ pub(crate) const fn item_digest(def: &ItemDef) -> u64 {
     while at < charge_recipes.len() {
         fnv = fnv.u64(0xA3).ids(charge_recipes[at]);
         at += 1;
+    }
+    if !limits.droppable || !limits.sellable || !limits.killable || !limits.backpack {
+        fnv = fnv
+            .u64(0xA4)
+            .flag(limits.droppable)
+            .flag(limits.sellable)
+            .flag(limits.killable)
+            .flag(limits.backpack);
+    }
+    if let Some(group) = cooldown_group {
+        fnv = fnv.u64(0xA9).u64(group.0 as u64);
+    }
+    if cooldown_in_inventory {
+        fnv = fnv.u64(0xAA);
+    }
+    if public_loot {
+        fnv = fnv.u64(0xA8);
+    }
+    if pickup_lifetime > 0 {
+        fnv = fnv.u64(0xA5).u64(pickup_lifetime as u64);
+    }
+    if let Some(delay) = reincarnation {
+        fnv = fnv.u64(0xA6).u64(delay as u64);
+    }
+    if let Some(recovery) = expiry_recovery {
+        fnv = fnv
+            .u64(0xA7)
+            .u64(recovery.ticks as u64)
+            .int(recovery.health_pct as i64)
+            .int(recovery.mana_pct as i64);
     }
     fnv.0
 }

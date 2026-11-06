@@ -5,7 +5,8 @@
 //! dealt them only a dealer it sees.
 
 use crate::{
-    AbilityId, EntityId, Inflictor, ItemId, LotusTier, RuneKind, SlotId, Team, UnitKind, Vec2,
+    AbilityId, EntityId, Inflictor, ItemId, LotusTier, ObjectiveKind, RuneKind, SlotId, Team,
+    UnitKind, Vec2,
 };
 use serde::{Deserialize, Serialize};
 
@@ -297,6 +298,24 @@ pub enum EventKind {
         unit: Option<EntityId>,
         /// Which lotus.
         tier: LotusTier,
+    },
+    /// A map boss fell; both sides know which side landed the last hit.
+    BossFell {
+        objective: ObjectiveKind,
+        team: Option<Team>,
+    },
+
+    /// Public ground loot was destroyed by a seat, or by a unit of a side.
+    ItemDestroyed {
+        item: ItemId,
+        by: Option<SlotId>,
+        team: Team,
+    },
+    /// Public ground loot was picked up by a seat.
+    ItemTaken {
+        item: ItemId,
+        by: SlotId,
+        team: Team,
     },
 }
 

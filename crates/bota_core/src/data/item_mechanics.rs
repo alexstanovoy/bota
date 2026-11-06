@@ -1010,6 +1010,39 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
         }),
         ..from(&ITEM_ORB_OF_FROST)
     },
+    ItemDef {
+        name: "Aegis of the Immortal",
+        limits: ITEM_AEGIS.limits,
+        public_loot: true,
+        pickup_lifetime: ticks(&ITEM_AEGIS, "disappear_time"),
+        reincarnation: Some(ticks(&ITEM_AEGIS, "reincarnate_time")),
+        // The script has no recovery values. Aegis, Reincarnation documents full
+        // maximum-pool recovery over five seconds, dispelled by other players' damage.
+        expiry_recovery: Some(crate::Recovery {
+            ticks: 5 * rules::TICKS_PER_SECOND,
+            health_pct: 20,
+            mana_pct: 20,
+        }),
+        ..from(&ITEM_AEGIS)
+    },
+    ItemDef {
+        name: "Refresher Shard",
+        limits: ITEM_REFRESHER_SHARD.limits,
+        cooldown_group: Some(ItemId::REFRESHER_SHARD),
+        cooldown_in_inventory: ITEM_REFRESHER_SHARD.cooldown_in_inventory,
+        aim: Some(Aim::Own),
+        spends: Spends::One,
+        immediate: true,
+        effect: UseSpec::Refresh {
+            items: int(&ITEM_REFRESHER_SHARD, "refresh_items") != 0,
+        },
+        ..from(&ITEM_REFRESHER_SHARD)
+    },
+    ItemDef {
+        name: "Roshan's Banner",
+        limits: ITEM_ROSHANS_BANNER.limits,
+        ..from(&ITEM_ROSHANS_BANNER)
+    },
 ];
 
 /// One kind of lotus, as its script gives it.

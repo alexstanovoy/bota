@@ -268,6 +268,8 @@ pub enum RejectReason {
     /// away out of the inventory: it stays in hand until the rune takes
     /// effect.
     HoldsRune,
+    /// This catalogue row prohibits the requested item transfer or slot.
+    ItemRestricted,
 }
 
 /// Final numbers for one seat.

@@ -9,7 +9,7 @@
 
 use bota_proto::ItemId;
 
-use crate::{Behavior as B, Dec, Dispel, Immunity, ItemData, Ms, StockData};
+use crate::{Behavior as B, Dec, Dispel, Immunity, ItemData, ItemLimits, Ms, StockData};
 
 pub(crate) const ITEM_BOOTS: ItemData = ItemData {
     id: ItemId(0),
@@ -30,6 +30,13 @@ pub(crate) const ITEM_BOOTS: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_movement_speed", &[Dec::of("45")])],
 };
@@ -60,6 +67,13 @@ pub(crate) const ITEM_CLARITY: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Basic,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[
         ("mana_regen", &[Dec::of("6")]),
@@ -93,6 +107,13 @@ pub(crate) const ITEM_FLASK: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Basic,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[
         ("buff_duration", &[Dec::of("13")]),
@@ -120,6 +141,13 @@ pub(crate) const ITEM_BRANCHES: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[
         ("bonus_all_stats", &[Dec::of("1")]),
@@ -153,6 +181,13 @@ pub(crate) const ITEM_WARD_OBSERVER: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[
         ("lifetime", &[Dec::of("360")]),
@@ -181,6 +216,13 @@ pub(crate) const ITEM_QUELLING_BLADE: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[
         ("damage_bonus", &[Dec::of("8")]),
@@ -215,6 +257,13 @@ pub(crate) const ITEM_WARD_SENTRY: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[
         ("lifetime", &[Dec::of("420")]),
@@ -248,6 +297,13 @@ pub(crate) const ITEM_TANGO: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[
         ("health_regen", &[Dec::of("7")]),
@@ -279,6 +335,13 @@ pub(crate) const ITEM_TPSCROLL: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[
         ("minimum_distance", &[Dec::of("70")]),
@@ -307,6 +370,13 @@ pub(crate) const ITEM_CIRCLET: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_all_stats", &[Dec::of("2")])],
 };
@@ -330,6 +400,13 @@ pub(crate) const ITEM_GAUNTLETS: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_strength", &[Dec::of("3")])],
 };
@@ -353,6 +430,13 @@ pub(crate) const ITEM_SLIPPERS: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_agility", &[Dec::of("3")])],
 };
@@ -376,6 +460,13 @@ pub(crate) const ITEM_MANTLE: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_intellect", &[Dec::of("3")])],
 };
@@ -399,6 +490,13 @@ pub(crate) const ITEM_BELT_OF_STRENGTH: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_strength", &[Dec::of("6")])],
 };
@@ -422,6 +520,13 @@ pub(crate) const ITEM_BOOTS_OF_ELVES: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_agility", &[Dec::of("6")])],
 };
@@ -445,6 +550,13 @@ pub(crate) const ITEM_ROBE: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_intellect", &[Dec::of("6")])],
 };
@@ -468,6 +580,13 @@ pub(crate) const ITEM_OGRE_AXE: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_strength", &[Dec::of("10")])],
 };
@@ -491,6 +610,13 @@ pub(crate) const ITEM_BLADE_OF_ALACRITY: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_agility", &[Dec::of("10")])],
 };
@@ -514,6 +640,13 @@ pub(crate) const ITEM_STAFF_OF_WIZARDRY: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_intellect", &[Dec::of("10")])],
 };
@@ -537,6 +670,13 @@ pub(crate) const ITEM_GLOVES: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_attack_speed", &[Dec::of("20")])],
 };
@@ -560,6 +700,13 @@ pub(crate) const ITEM_BLADES_OF_ATTACK: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_damage", &[Dec::of("9")])],
 };
@@ -583,6 +730,13 @@ pub(crate) const ITEM_BROADSWORD: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_damage", &[Dec::of("15")])],
 };
@@ -606,6 +760,13 @@ pub(crate) const ITEM_QUARTERSTAFF: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[
         ("bonus_speed", &[Dec::of("10")]),
@@ -632,6 +793,13 @@ pub(crate) const ITEM_RING_OF_PROTECTION: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_armor", &[Dec::of("2")])],
 };
@@ -655,6 +823,13 @@ pub(crate) const ITEM_CHAINMAIL: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_armor", &[Dec::of("4")])],
 };
@@ -678,6 +853,13 @@ pub(crate) const ITEM_RING_OF_REGEN: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_health_regen", &[Dec::of("1.25")])],
 };
@@ -701,6 +883,13 @@ pub(crate) const ITEM_SOBI_MASK: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_mana_regen", &[Dec::of("0.7")])],
 };
@@ -724,6 +913,13 @@ pub(crate) const ITEM_VITALITY_BOOSTER: ItemData = ItemData {
     secret_shop: true,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_health", &[Dec::of("250")])],
 };
@@ -747,6 +943,13 @@ pub(crate) const ITEM_ENERGY_BOOSTER: ItemData = ItemData {
     secret_shop: true,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_mana", &[Dec::of("250")])],
 };
@@ -770,6 +973,13 @@ pub(crate) const ITEM_POWER_TREADS: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[
         &[ItemId(0), ItemId(19), ItemId(13)],
         &[ItemId(0), ItemId(19), ItemId(15)],
@@ -803,6 +1013,13 @@ pub(crate) const ITEM_PHASE_BOOTS: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[&[ItemId(0), ItemId(24), ItemId(20)]],
     values: &[
         ("bonus_movement_speed", &[Dec::of("50")]),
@@ -838,6 +1055,13 @@ pub(crate) const ITEM_BLINK: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[
         ("blink_range", &[Dec::of("1200")]),
@@ -865,6 +1089,13 @@ pub(crate) const ITEM_BRACER: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[&[ItemId(9), ItemId(10), ItemId(38)]],
     values: &[
         ("bonus_strength", &[Dec::of("5")]),
@@ -895,6 +1126,13 @@ pub(crate) const ITEM_WRAITH_BAND: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[&[ItemId(9), ItemId(11), ItemId(39)]],
     values: &[
         ("bonus_agility", &[Dec::of("5")]),
@@ -924,6 +1162,13 @@ pub(crate) const ITEM_NULL_TALISMAN: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[&[ItemId(9), ItemId(12), ItemId(40)]],
     values: &[
         ("bonus_intellect", &[Dec::of("5")]),
@@ -953,6 +1198,13 @@ pub(crate) const ITEM_MAGIC_STICK: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[
         ("max_charges", &[Dec::of("10")]),
@@ -980,6 +1232,13 @@ pub(crate) const ITEM_MAGIC_WAND: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[&[ItemId(35), ItemId(3), ItemId(3), ItemId(41)]],
     values: &[
         ("max_charges", &[Dec::of("20")]),
@@ -1008,6 +1267,13 @@ pub(crate) const ITEM_RECIPE_PHASE_BOOTS: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[],
 };
@@ -1031,6 +1297,13 @@ pub(crate) const ITEM_RECIPE_BRACER: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[],
 };
@@ -1054,6 +1327,13 @@ pub(crate) const ITEM_RECIPE_WRAITH_BAND: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[],
 };
@@ -1077,6 +1357,13 @@ pub(crate) const ITEM_RECIPE_NULL_TALISMAN: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[],
 };
@@ -1100,6 +1387,13 @@ pub(crate) const ITEM_RECIPE_MAGIC_WAND: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[],
 };
@@ -1131,6 +1425,13 @@ pub(crate) const ITEM_ENCHANTED_MANGO: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[
         ("hp_regen", &[Dec::of("0.4")]),
@@ -1157,6 +1458,13 @@ pub(crate) const ITEM_EAGLE: ItemData = ItemData {
     secret_shop: true,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_agility", &[Dec::of("25")])],
 };
@@ -1180,6 +1488,13 @@ pub(crate) const ITEM_CLAYMORE: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_damage", &[Dec::of("20")])],
 };
@@ -1203,6 +1518,13 @@ pub(crate) const ITEM_TALISMAN_OF_EVASION: ItemData = ItemData {
     secret_shop: true,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_evasion", &[Dec::of("15")])],
 };
@@ -1226,6 +1548,13 @@ pub(crate) const ITEM_BUTTERFLY: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[&[ItemId(43), ItemId(44), ItemId(45)]],
     values: &[
         ("bonus_agility", &[Dec::of("30")]),
@@ -1254,6 +1583,13 @@ pub(crate) const ITEM_JAVELIN: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[
         ("bonus_chance", &[Dec::of("25")]),
@@ -1280,6 +1616,13 @@ pub(crate) const ITEM_DEMON_EDGE: ItemData = ItemData {
     secret_shop: true,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_damage", &[Dec::of("40")])],
 };
@@ -1303,6 +1646,13 @@ pub(crate) const ITEM_BLITZ_KNUCKLES: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_attack_speed", &[Dec::of("35")])],
 };
@@ -1326,6 +1676,13 @@ pub(crate) const ITEM_RECIPE_MONKEY_KING_BAR: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[],
 };
@@ -1349,6 +1706,13 @@ pub(crate) const ITEM_MONKEY_KING_BAR: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[&[ItemId(48), ItemId(49), ItemId(47), ItemId(50)]],
     values: &[
         ("bonus_damage", &[Dec::of("50")]),
@@ -1378,6 +1742,13 @@ pub(crate) const ITEM_WIND_LACE: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("movement_speed", &[Dec::of("15")])],
 };
@@ -1408,6 +1779,13 @@ pub(crate) const ITEM_BLOOD_GRENADE: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[
         ("speed", &[Dec::of("1100")]),
@@ -1443,6 +1821,13 @@ pub(crate) const ITEM_WARD_DISPENSER: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[
         &[ItemId(6), ItemId(4)],
         &[ItemId(6), ItemId(54)],
@@ -1483,6 +1868,13 @@ pub(crate) const ITEM_TANGO_SINGLE: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: false,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[
         ("health_regen", &[Dec::of("3.5")]),
@@ -1513,6 +1905,13 @@ pub(crate) const ITEM_BOTTLE: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[
         ("health_restore", &[Dec::of("110")]),
@@ -1549,6 +1948,13 @@ pub(crate) const ITEM_FAMANGO: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("replenish_amount", &[Dec::of("125")])],
 };
@@ -1576,6 +1982,13 @@ pub(crate) const ITEM_GREAT_FAMANGO: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[&[ItemId(57), ItemId(57), ItemId(57)]],
     values: &[("replenish_amount", &[Dec::of("400")])],
 };
@@ -1603,6 +2016,13 @@ pub(crate) const ITEM_GREATER_FAMANGO: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[&[ItemId(58), ItemId(58)]],
     values: &[("replenish_amount", &[Dec::of("900")])],
 };
@@ -1626,6 +2046,13 @@ pub(crate) const ITEM_CHEESE: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[
         ("health_restore", &[Dec::of("2500")]),
@@ -1652,6 +2079,13 @@ pub(crate) const ITEM_ROYALE_WITH_CHEESE: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::No,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[
         ("shield", &[Dec::of("500")]),
@@ -1682,6 +2116,13 @@ pub(crate) const ITEM_CROWN: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_all_stats", &[Dec::of("4")])],
 };
@@ -1705,6 +2146,13 @@ pub(crate) const ITEM_DIADEM: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_all_stats", &[Dec::of("6")])],
 };
@@ -1728,6 +2176,13 @@ pub(crate) const ITEM_SPLINTMAIL: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_armor", &[Dec::of("7")])],
 };
@@ -1751,6 +2206,13 @@ pub(crate) const ITEM_HELM_OF_IRON_WILL: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[
         ("bonus_armor", &[Dec::of("4")]),
@@ -1777,6 +2239,13 @@ pub(crate) const ITEM_MITHRIL_HAMMER: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_damage", &[Dec::of("24")])],
 };
@@ -1800,6 +2269,13 @@ pub(crate) const ITEM_FLUFFY_HAT: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_health", &[Dec::of("125")])],
 };
@@ -1823,6 +2299,13 @@ pub(crate) const ITEM_WIZARD_HAT: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_mana", &[Dec::of("125")])],
 };
@@ -1846,6 +2329,13 @@ pub(crate) const ITEM_RING_OF_HEALTH: ItemData = ItemData {
     secret_shop: true,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_health_regen", &[Dec::of("4.5")])],
 };
@@ -1869,6 +2359,13 @@ pub(crate) const ITEM_VOID_STONE: ItemData = ItemData {
     secret_shop: true,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_mana_regen", &[Dec::of("1.75")])],
 };
@@ -1892,6 +2389,13 @@ pub(crate) const ITEM_PLATEMAIL: ItemData = ItemData {
     secret_shop: true,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_armor", &[Dec::of("10")])],
 };
@@ -1915,6 +2419,13 @@ pub(crate) const ITEM_RING_OF_TARRASQUE: ItemData = ItemData {
     secret_shop: true,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_health_regen", &[Dec::of("12")])],
 };
@@ -1938,6 +2449,13 @@ pub(crate) const ITEM_TIARA_OF_SELEMENE: ItemData = ItemData {
     secret_shop: true,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_mana_regen", &[Dec::of("6")])],
 };
@@ -1961,6 +2479,13 @@ pub(crate) const ITEM_HYPERSTONE: ItemData = ItemData {
     secret_shop: true,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_attack_speed", &[Dec::of("60")])],
 };
@@ -1984,6 +2509,13 @@ pub(crate) const ITEM_POINT_BOOSTER: ItemData = ItemData {
     secret_shop: true,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[
         ("bonus_mana", &[Dec::of("175")]),
@@ -2010,6 +2542,13 @@ pub(crate) const ITEM_RELIC: ItemData = ItemData {
     secret_shop: true,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_damage", &[Dec::of("55")])],
 };
@@ -2033,6 +2572,13 @@ pub(crate) const ITEM_REAVER: ItemData = ItemData {
     secret_shop: true,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_strength", &[Dec::of("25")])],
 };
@@ -2056,6 +2602,13 @@ pub(crate) const ITEM_MYSTIC_STAFF: ItemData = ItemData {
     secret_shop: true,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_intellect", &[Dec::of("25")])],
 };
@@ -2079,6 +2632,13 @@ pub(crate) const ITEM_ULTIMATE_ORB: ItemData = ItemData {
     secret_shop: true,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("bonus_all_stats", &[Dec::of("15")])],
 };
@@ -2102,6 +2662,13 @@ pub(crate) const ITEM_SHAWL: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[
         ("bonus_magical_armor", &[Dec::of("10")]),
@@ -2128,6 +2695,13 @@ pub(crate) const ITEM_CLOAK: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[
         ("bonus_magical_armor", &[Dec::of("18")]),
@@ -2154,6 +2728,13 @@ pub(crate) const ITEM_LIFESTEAL: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("lifesteal_percent", &[Dec::of("18")])],
 };
@@ -2177,6 +2758,13 @@ pub(crate) const ITEM_VOODOO_MASK: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[("spell_lifesteal", &[Dec::of("15")])],
 };
@@ -2200,6 +2788,13 @@ pub(crate) const ITEM_FAERIE_FIRE: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[
         ("bonus_damage", &[Dec::of("2")]),
@@ -2226,6 +2821,13 @@ pub(crate) const ITEM_BLIGHT_STONE: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Basic,
     immunity: Immunity::Pierced,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[
         ("corruption_armor", &[Dec::of("-2")]),
@@ -2252,6 +2854,13 @@ pub(crate) const ITEM_ORB_OF_VENOM: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Basic,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[
         ("damage", &[Dec::of("12")]),
@@ -2279,11 +2888,131 @@ pub(crate) const ITEM_ORB_OF_FROST: ItemData = ItemData {
     secret_shop: false,
     dispel: Dispel::Unstated,
     immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
     builds: &[],
     values: &[
         ("slow_melee", &[Dec::of("-6")]),
         ("slow_ranged", &[Dec::of("-13")]),
         ("duration", &[Dec::of("3")]),
         ("heal_reduction", &[Dec::of("15")]),
+    ],
+};
+
+pub(crate) const ITEM_AEGIS: ItemData = ItemData {
+    id: ItemId(88),
+    key: "item_aegis",
+    retired: false,
+    cost: 0,
+    behavior: B::PASSIVE,
+    cast_range: 0,
+    cast_point: Ms::secs("0"),
+    channel: Ms::secs("0"),
+    cooldown: Ms::secs("0"),
+    mana: 0,
+    health: 0,
+    charges: 0,
+    stack: 0,
+    stock: None,
+    purchasable: false,
+    secret_shop: false,
+    dispel: Dispel::Unstated,
+    immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: false,
+        sellable: false,
+        killable: true,
+        backpack: false,
+    },
+    cooldown_in_inventory: false,
+    builds: &[],
+    values: &[
+        ("reincarnate_time", &[Dec::of("5")]),
+        ("disappear_time", &[Dec::of("300")]),
+        ("disappear_time_minutes_tooltip", &[Dec::of("5")]),
+        ("disappear_time_turbo", &[Dec::of("240")]),
+    ],
+};
+
+pub(crate) const ITEM_REFRESHER_SHARD: ItemData = ItemData {
+    id: ItemId(89),
+    key: "item_refresher_shard",
+    retired: false,
+    cost: 1000,
+    behavior: B::IMMEDIATE.and(B::NO_TARGET),
+    cast_range: 0,
+    cast_point: Ms::secs("0"),
+    channel: Ms::secs("0"),
+    cooldown: Ms::secs("180"),
+    mana: 200,
+    health: 0,
+    charges: 1,
+    stack: 0,
+    stock: None,
+    purchasable: false,
+    secret_shop: false,
+    dispel: Dispel::Unstated,
+    immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: true,
+    builds: &[],
+    values: &[
+        ("bonus_health_regen", &[Dec::of("0")]),
+        ("bonus_mana_regen", &[Dec::of("0")]),
+        ("bonus_damage", &[Dec::of("0")]),
+        ("refresh_items", &[Dec::of("0")]),
+    ],
+};
+
+pub(crate) const ITEM_ROSHANS_BANNER: ItemData = ItemData {
+    id: ItemId(90),
+    key: "item_roshans_banner",
+    retired: false,
+    cost: 0,
+    behavior: B::POINT.and(B::AOE),
+    cast_range: 1200,
+    cast_point: Ms::secs("0"),
+    channel: Ms::secs("0"),
+    cooldown: Ms::secs("1"),
+    mana: 0,
+    health: 0,
+    charges: 0,
+    stack: 0,
+    stock: None,
+    purchasable: false,
+    secret_shop: false,
+    dispel: Dispel::Unstated,
+    immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: false,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
+    builds: &[],
+    values: &[
+        ("duration", &[Dec::of("120")]),
+        ("radius", &[Dec::of("600"), Dec::of("900"), Dec::of("1200")]),
+        ("health", &[Dec::of("24"), Dec::of("32"), Dec::of("40")]),
+        (
+            "health_tooltip",
+            &[Dec::of("6"), Dec::of("8"), Dec::of("10")],
+        ),
+        ("hp_bonus", &[Dec::of("75")]),
+        ("damage_bonus", &[Dec::of("50")]),
+        ("model_scale", &[Dec::of("25")]),
+        ("buff_linger_duration", &[Dec::of("0.1")]),
+        ("max_level", &[Dec::of("3")]),
     ],
 };

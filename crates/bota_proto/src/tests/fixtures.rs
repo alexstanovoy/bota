@@ -31,6 +31,7 @@ pub fn ability_view(slot: u16) -> AbilityView {
 
 pub fn item_view(slot: u16) -> ItemView {
     ItemView {
+        expires_in: None,
         id: ItemId(slot),
         charges: Some(3),
         cooldown_left: 0,

@@ -13,6 +13,7 @@ impl World {
             self.lairs.push(Lair {
                 unit: Some(unit),
                 falls: 0,
+                last_killer: None,
                 respawn_at: 0,
                 home: def.day,
                 travelling: false,
@@ -53,6 +54,7 @@ impl World {
                     self.lairs[index].travelling = false;
                 }
             } else if clock >= self.lairs[index].respawn_at {
+                self.reclaim_lair_items(def);
                 let unit = self.spawn_neutral_home(def.neutral, home, None, 0);
                 self.lairs[index].unit = Some(unit);
                 self.lairs[index].home = home;
@@ -67,7 +69,7 @@ impl World {
             .any(|lair| lair.unit == Some(unit) && lair.travelling)
     }
 
-    pub(crate) fn bury_lair(&mut self, unit: Entity) {
+    pub(crate) fn bury_lair(&mut self, unit: Entity, killer: Option<Entity>) {
         let Some(index) = self.lairs.iter().position(|lair| lair.unit == Some(unit)) else {
             return;
         };
@@ -78,7 +80,30 @@ impl World {
             .filter(|def| self.objectives.has(def.objective))
             .nth(index)
             .expect("lair row");
+        let team = killer
+            .and_then(|killer| self.team.get(killer).copied())
+            .filter(|team| *team != bota_proto::Team::Neutral);
+        self.lairs[index].last_killer = team;
+        self.events.push(crate::game::Event::Fact {
+            kind: bota_proto::EventKind::BossFell {
+                objective: def.objective,
+                team,
+            },
+            visible_to: crate::game::EventVisibility::Everyone,
+            gold_hidden_from: None,
+            source_told_to: crate::game::EventVisibility::Everyone,
+        });
         let falls = self.lairs[index].falls.saturating_add(1);
+        if let Some(at) = self.pos(unit) {
+            for drop in def.drops {
+                if falls >= drop.from
+                    && self.catalogue.holds(drop.item)
+                    && let Some(stack) = crate::game::ItemStack::dropped(drop.item)
+                {
+                    self.lay_loot(stack, at);
+                }
+            }
+        }
         let mut random = self.rng.for_unit(
             Purpose::Lair,
             EntityId {
@@ -92,5 +117,51 @@ impl World {
         self.lairs[index].travelling = false;
         self.lairs[index].falls = falls;
         self.lairs[index].respawn_at = self.clock().saturating_add(delay * rules::TICKS_PER_SECOND);
+    }
+    fn reclaim_lair_items(&mut self, def: &bota_core::LairDef) {
+        let mut recovered = Vec::new();
+        for unit in self.entities.iter() {
+            if let Some(bag) = self.inventory.get_mut(unit) {
+                for slot in &mut bag.slots {
+                    if let Some(stack) = *slot
+                        && def
+                            .drops
+                            .iter()
+                            .any(|drop| drop.reclaimed && drop.item == stack.id)
+                    {
+                        recovered.push((unit, stack.id));
+                        *slot = None;
+                    }
+                }
+            }
+        }
+        for seat in &mut self.seats {
+            seat.stash.slots.iter_mut().for_each(|slot| {
+                if slot.is_some_and(|stack| {
+                    def.drops
+                        .iter()
+                        .any(|drop| drop.reclaimed && drop.item == stack.id)
+                }) {
+                    *slot = None;
+                }
+            });
+        }
+        let ground: Vec<_> = self
+            .entities
+            .iter()
+            .filter(|unit| {
+                self.loot.get(*unit).is_some_and(|loot| {
+                    def.drops
+                        .iter()
+                        .any(|drop| drop.reclaimed && drop.item == loot.0.id)
+                })
+            })
+            .collect();
+        for unit in ground {
+            self.despawn(unit);
+        }
+        for (unit, item) in recovered {
+            self.recover_expired_item(unit, item);
+        }
     }
 }

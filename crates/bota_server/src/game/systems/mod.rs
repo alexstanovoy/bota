@@ -32,6 +32,7 @@ mod objective;
 mod pudge;
 mod queue;
 mod regen;
+mod reincarnation;
 mod rouse;
 mod rune;
 mod shrine;

@@ -76,6 +76,15 @@ impl ItemStack {
         })
     }
 
+    pub fn dropped(id: ItemId) -> Option<Self> {
+        let def = item_def(id)?;
+        Some(Self {
+            mode: def.mode,
+            life: def.lifetime,
+            ..Self::granted(id, SlotId(u8::MAX), 0, def.charges)
+        })
+    }
+
     /// `charges` of an item that comes for nothing, as a lotus does: touched, so
     /// that no purchase window refunds it.
     pub fn granted(id: ItemId, owner: SlotId, tick: u32, charges: u8) -> Self {
@@ -94,7 +103,7 @@ impl ItemStack {
             sentry_active: false,
             locked: false,
             disassemble_until: 0,
-            life: item_def(id).map_or(0, |def| def.lifetime),
+            life: item_def(id).map_or(0, |def| def.lifetime.max(def.pickup_lifetime)),
             rune: None,
         }
     }
@@ -381,7 +390,10 @@ impl Inventory {
 
     /// Where a whole arriving stack would go: [`bota_core::Shelf::receiving_slot`].
     pub fn receiving_slot(&self, incoming: &ItemStack) -> Option<usize> {
-        self.shelf().receiving_slot(incoming)
+        self.shelf().receiving_slot(incoming).filter(|at| {
+            item_def(incoming.id)
+                .is_none_or(|def| def.limits.backpack || *at < rules::INVENTORY_SLOTS)
+        })
     }
 
     /// Receives one whole stack or changes nothing; merges only when the entire stack fits.
@@ -455,17 +467,22 @@ impl Inventory {
     /// Runs the life of every stack that has one a tick down, and clears the slot of one that
     /// has run out.
     pub fn lapse(&mut self) {
-        let run = |slot: &mut Option<ItemStack>| {
+        self.lapse_with(|_| {});
+    }
+
+    pub fn lapse_with(&mut self, mut expired: impl FnMut(ItemStack)) {
+        let mut run = |slot: &mut Option<ItemStack>| {
             if let Some(stack) = slot
                 && stack.life > 0
             {
                 stack.life -= 1;
                 if stack.life == 0 {
+                    expired(*stack);
                     *slot = None;
                 }
             }
         };
-        self.slots.iter_mut().for_each(run);
+        self.slots.iter_mut().for_each(&mut run);
         self.town_portal.iter_mut().for_each(run);
     }
 

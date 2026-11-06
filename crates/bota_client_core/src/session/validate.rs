@@ -403,15 +403,30 @@ fn effects(view: &WorldView) -> Result<(), SessionError> {
     Ok(())
 }
 
-/// Projectiles naming visible units only, as their sources and their targets,
+/// Combat targets are visible units or ground items; sources remain units.
+fn attack_target_visible(view: &WorldView, target: EntityId) -> bool {
+    view.unit(target).is_some()
+        || view
+            .loot
+            .binary_search_by_key(&target, |loot| loot.id)
+            .is_ok()
+}
+
+/// Projectiles name visible source units and target units; attack missiles can target loot.
 /// each looking as no more than it shows: an attack's missile as its
 /// thrower's kind of unit throws, of its side, and a spell's as its
 /// inflictor alone.
 fn projectiles(view: &WorldView) -> Result<(), SessionError> {
     for shot in &view.projectiles {
-        for id in [shot.source, shot.target].into_iter().flatten() {
-            view.unit(id)
-                .ok_or(SessionError::UnknownProjectileUnit(id))?;
+        if let Some(source) = shot.source {
+            view.unit(source)
+                .ok_or(SessionError::UnknownProjectileUnit(source))?;
+        }
+        if let Some(target) = shot.target
+            && view.unit(target).is_none()
+            && !(shot.inflictor.is_none() && attack_target_visible(view, target))
+        {
+            return Err(SessionError::UnknownProjectileUnit(target));
         }
         let Some(model) = shot.model else {
             continue;
@@ -435,7 +450,7 @@ fn thrown_by(unit: &bota_proto::UnitView) -> Option<ProjectileModel> {
     bota_core::projectile_model(unit.kind, unit.hero, unit.neutral)
 }
 
-/// Aggro entries sorted strictly by unit, naming visible units only, their timers within the
+/// Aggro entries sorted by attacker, naming visible unit or loot targets, with timers within the
 /// rules' bounds and a swing striking within its attacker's attack point.
 fn aggro(view: &WorldView) -> Result<(), SessionError> {
     let unit_of = |id: EntityId| view.unit(id).ok_or(SessionError::UnknownAggroUnit(id));
@@ -444,8 +459,10 @@ fn aggro(view: &WorldView) -> Result<(), SessionError> {
             return Err(SessionError::UnsortedAggro);
         }
         let unit = unit_of(entry.unit)?;
-        if let Some(target) = entry.target {
-            unit_of(target)?;
+        if let Some(target) = entry.target
+            && !attack_target_visible(view, target)
+        {
+            return Err(SessionError::UnknownAggroUnit(target));
         }
         // Widened: the attack point is the view's word, and `ms_to_ticks_ceil` is u32.
         let point = u64::from(unit.attack_point) * u64::from(rules::TICKS_PER_SECOND);
@@ -453,8 +470,10 @@ fn aggro(view: &WorldView) -> Result<(), SessionError> {
         let strikes_in_bounds = entry
             .swing
             .is_none_or(|swing| (1..=strike_bound).contains(&u64::from(swing.strike_in)));
-        if let Some(swing) = entry.swing {
-            unit_of(swing.target)?;
+        if let Some(swing) = entry.swing
+            && !attack_target_visible(view, swing.target)
+        {
+            return Err(SessionError::UnknownAggroUnit(swing.target));
         }
         if !strikes_in_bounds
             || entry.held_for > Some(rules::ORDER_AGGRO_HOLD_TICKS)

@@ -185,6 +185,9 @@ item 84 live item_faerie_fire
 item 85 live item_blight_stone
 item 86 live item_orb_of_venom
 item 87 live item_orb_of_frost
+item 88 live item_aegis
+item 89 live item_refresher_shard
+item 90 live item_roshans_banner
 
 effect 0 retired bota_haste
 effect 1 live modifier_flask_healing
@@ -317,3 +320,5 @@ neutral 45 live npc_dota_dark_troll_warlord_skeleton_warrior
 neutral 46 live npc_dota_enraged_wildkin_tornado
 
 neutral 47 live npc_dota_roshan
+
+effect 81 live modifier_aegis_regen

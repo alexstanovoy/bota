@@ -180,6 +180,8 @@ pub struct Drink {
 /// turns each variant into the change it makes to the world.
 #[derive(Clone, Copy, Debug)]
 pub enum UseSpec {
+    /// Resets ability cooldowns, optionally the items too.
+    Refresh { items: bool },
     /// Nothing: the item cannot be used.
     None,
     /// Mends a pool over time.
@@ -315,6 +317,20 @@ pub const MAX_COMPONENTS: usize = 4;
 /// One entry of the catalog.
 #[derive(Clone, Copy, Debug)]
 pub struct ItemDef {
+    /// Rules declared by this row for carrying and destroying the item.
+    pub limits: crate::ItemLimits,
+    /// Picking up or destroying it is public information for both sides.
+    pub public_loot: bool,
+    /// Held copies in this group receive the cooldown when one is used.
+    pub cooldown_group: Option<ItemId>,
+    /// Its stack cooldown advances only in a hero's active inventory.
+    pub cooldown_in_inventory: bool,
+    /// Lifetime begun when an unowned ground item is first picked up.
+    pub pickup_lifetime: u32,
+    /// Delay before its hero returns at the death position.
+    pub reincarnation: Option<u32>,
+    /// Recovery applied to its carrier when its lifetime ends or it is reclaimed.
+    pub expiry_recovery: Option<Recovery>,
     /// The id it answers to on the wire, which [`ITEMS`]
     /// places it at.
     pub id: ItemId,
@@ -632,6 +648,13 @@ impl ItemDef {
 /// An item that costs nothing, carries nothing and does nothing, so an entry
 /// names only what sets it apart.
 pub(crate) const PLAIN: ItemDef = ItemDef {
+    limits: crate::ItemLimits::UNRESTRICTED,
+    public_loot: false,
+    cooldown_group: None,
+    cooldown_in_inventory: false,
+    pickup_lifetime: 0,
+    reincarnation: None,
+    expiry_recovery: None,
     id: ItemId(u16::MAX),
     key: "",
     name: "",
@@ -824,4 +847,12 @@ pub fn carried_bonus(items: impl Iterator<Item = CarriedItem>, ranged: bool) -> 
         }
     }
     total
+}
+
+/// Maximum-pool recovery over time, used by expired reincarnation items.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Recovery {
+    pub ticks: u32,
+    pub health_pct: i32,
+    pub mana_pct: i32,
 }

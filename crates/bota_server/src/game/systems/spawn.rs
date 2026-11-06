@@ -29,7 +29,7 @@ impl World {
     ///
     /// Health and mana start empty; [`derive_stats`](crate::game::derive_stats)
     /// fills them the first time it sees the entity.
-    fn spawn_body(&mut self, def: &'static UnitDef, team: Team, pos: Vec2) -> Entity {
+    pub(super) fn spawn_body(&mut self, def: &'static UnitDef, team: Team, pos: Vec2) -> Entity {
         let entity = self.spawn();
         self.def.insert(entity, Def(def));
         self.kind.insert(entity, def.kind);
@@ -202,6 +202,7 @@ impl World {
         let body = hero_def(self.seats[index].hero).map_or(&HERO, |def| def.unit);
         self.stand_on_the_map(hero, body, at);
         self.seats[index].respawn_left = 0;
+        self.seats[index].reincarnating_at = None;
         self.settle();
         self.fill_pools(hero);
     }

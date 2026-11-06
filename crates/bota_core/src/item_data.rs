@@ -134,6 +134,10 @@ pub struct StockData {
 /// One item as the script has it: numbers and Dota's internal names, nothing to show.
 #[derive(Clone, Copy, Debug)]
 pub struct ItemData {
+    /// Script restrictions, applied by catalogue rows that declare these mechanics.
+    pub limits: ItemLimits,
+    /// `CooldownPausedOutOfInventory`.
+    pub cooldown_in_inventory: bool,
     /// Its id, its line of the id registry.
     pub id: ItemId,
     /// Its Dota key.
@@ -255,4 +259,22 @@ impl ScriptData {
         }
         panic!("missing script field")
     }
+}
+
+/// Item script restrictions. Catalogue rows opt into these mechanics explicitly so adding a
+/// row does not change any previously published catalogue prefix.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ItemLimits {
+    pub droppable: bool,
+    pub sellable: bool,
+    pub killable: bool,
+    pub backpack: bool,
+}
+impl ItemLimits {
+    pub const UNRESTRICTED: Self = Self {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    };
 }

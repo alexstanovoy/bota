@@ -65,3 +65,4 @@ mod wards;
 mod waves;
 
 mod roshan;
+mod roshan_loot;

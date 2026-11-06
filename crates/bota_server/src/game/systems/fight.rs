@@ -59,6 +59,10 @@ impl World {
     /// dealt one only to a side that sees the dealer.
     pub fn tell_of(&self, felt: &[Landed], events: &mut Vec<Event>) {
         for blow in felt {
+            // Loot has attack health internally, but is not a unit on the wire.
+            if self.loot.get(blow.target).is_some() {
+                continue;
+            }
             events.push(Event::Fact {
                 kind: EventKind::Damaged {
                     source: blow.source.map(wire_id),
@@ -96,7 +100,7 @@ impl World {
     /// An attack order at it becomes an attack-move to the spot it was last
     /// seen; a follow becomes a walk to that spot. A follower with orders
     /// queued is done with it instead, and takes up the next.
-    fn carry_fights_on(&mut self, fallen: Entity) {
+    pub(super) fn carry_fights_on(&mut self, fallen: Entity) {
         for follower in self.entities.iter().collect::<Vec<_>>() {
             let queued = self.has_queued(follower);
             match self.orders.get(follower).map(|o| o.current) {
@@ -130,6 +134,12 @@ impl World {
             if !self.entities.contains(entity) {
                 continue;
             }
+            if self.bury_ground_item(entity, killer, events) {
+                continue;
+            }
+            if self.begin_reincarnation(entity) {
+                continue;
+            }
             self.refresh_glyph_for(entity);
             if let Some((kind, side)) = self.bury_entity(entity, killer, told, events) {
                 structure_fell = true;
@@ -144,6 +154,37 @@ impl World {
             self.lay_passability();
         }
         self.finish_map2_tick(tower_losses);
+    }
+
+    fn bury_ground_item(
+        &mut self,
+        entity: Entity,
+        killer: Option<Entity>,
+        events: &mut Vec<Event>,
+    ) -> bool {
+        let Some(loot) = self.loot.get(entity) else {
+            return false;
+        };
+        if bota_core::item_def(loot.0.id).is_some_and(|def| def.public_loot) {
+            let by =
+                killer.and_then(|killer| self.seat_of(killer).map(|seat| self.seats[seat].slot));
+            let team = killer
+                .and_then(|killer| self.team.get(killer).copied())
+                .unwrap_or(Team::Neutral);
+            events.push(Event::Fact {
+                kind: EventKind::ItemDestroyed {
+                    item: loot.0.id,
+                    by,
+                    team,
+                },
+                visible_to: EventVisibility::Everyone,
+                gold_hidden_from: None,
+                source_told_to: EventVisibility::Everyone,
+            });
+        }
+        self.carry_fights_on(entity);
+        self.despawn(entity);
+        true
     }
 
     /// Who is told of a fall, and who is told who brought it down: both
@@ -190,7 +231,7 @@ impl World {
         self.rot_goes_out(entity);
         self.carry_fights_on(entity);
         self.death_throes(entity);
-        self.bury_lair(entity);
+        self.bury_lair(entity, killer);
         self.feed_flesh_heaps(entity, credited_hero);
         // Necromastery follows the physical OnDeath attacker; Flesh Heap follows credit.
         self.feed_souls(entity, killer);

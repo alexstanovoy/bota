@@ -515,7 +515,8 @@ fn add_modifiers<'a>(
                 let radius = if wearer.night { night } else { day };
                 now.vision_grant = Some((side, Fixed::from_int(radius)));
             }
-            ModifierKind::Mending { .. }
+            ModifierKind::Recovery { .. }
+            | ModifierKind::Mending { .. }
             | ModifierKind::Clarity { .. }
             | ModifierKind::Fountain { .. }
             | ModifierKind::FountainDamage { .. }

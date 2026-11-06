@@ -74,7 +74,7 @@ fn header(build: &str) -> String {
         }
     }
     out.push_str(
-        "\nuse bota_proto::ItemId;\n\nuse crate::{Behavior as B, Dec, Dispel, Immunity, ItemData, Ms, StockData};\n",
+        "\nuse bota_proto::ItemId;\n\nuse crate::{Behavior as B, Dec, Dispel, Immunity, ItemData, ItemLimits, Ms, StockData};\n",
     );
     out
 }
@@ -173,6 +173,16 @@ fn write_row(out: &mut String, entry: &Registered, row: &Item, builds: &[Vec<u16
             (true, Some(max)) => max.to_string(),
         },
         purchasable = row.purchasable,
+    );
+    let _ = writeln!(
+        out,
+        "    limits: ItemLimits {{ droppable: {}, sellable: {}, killable: {}, backpack: {} }},",
+        row.droppable, row.sellable, row.killable, row.backpack
+    );
+    let _ = writeln!(
+        out,
+        "    cooldown_in_inventory: {},",
+        row.cooldown_in_inventory
     );
     let ways: Vec<String> = builds
         .iter()

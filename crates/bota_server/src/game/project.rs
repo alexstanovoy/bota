@@ -57,37 +57,42 @@ impl World {
                 runes.extend(self.project_rune(viewer, entity));
             }
         }
-        if keep_within_bounds(viewer, &mut units) {
+        let units_trimmed = keep_within_bounds(viewer, &mut units);
+        let loot_trimmed = loot.len() > bota_proto::limits::MAX_SNAPSHOT_LOOT;
+        loot.truncate(bota_proto::limits::MAX_SNAPSHOT_LOOT);
+        runes.truncate(bota_proto::limits::MAX_SNAPSHOT_RUNES);
+        if units_trimmed || loot_trimmed {
             let ids: Vec<bota_proto::EntityId> = units.iter().map(|unit| unit.id).collect();
             let carried = |id| ids.binary_search(&id).is_ok();
+            let target_kept = |id| carried(id) || loot.binary_search_by_key(&id, |item| item.id).is_ok();
             // A unit kept tells whom it fights only if that one is kept too: what it does stays
             // told, at whom does not, and no hold is told on nobody.
             aggro.retain(|entry| carried(entry.unit));
             for entry in &mut aggro {
-                if entry.target.is_some_and(|target| !carried(target)) {
+                if entry.target.is_some_and(|target| !target_kept(target)) {
                     entry.target = None;
                     entry.held_for = None;
                 }
-                entry.swing = entry.swing.filter(|swing| carried(swing.target));
+                entry.swing = entry.swing.filter(|swing| target_kept(swing.target));
             }
             projectiles
-                .retain(|shot| shot.source.is_none_or(carried) && shot.target.is_none_or(carried));
+                .retain(|shot| shot.source.is_none_or(carried) && shot.target.is_none_or(target_kept));
             for effect in units.iter_mut().flat_map(|unit| &mut unit.effects) {
                 effect.caster = effect.caster.filter(|caster| carried(*caster));
             }
         }
         projectiles.truncate(bota_proto::game_limits::MAX_PROJECTILES);
-        loot.truncate(bota_proto::game_limits::MAX_SNAPSHOT_LOOT);
-        runes.truncate(bota_proto::game_limits::MAX_SNAPSHOT_RUNES);
         debug_assert!(aggro.iter().all(|entry| {
             let carried = |id| units.binary_search_by_key(&id, |unit| unit.id).is_ok();
+            let target_kept = |id| carried(id) || loot.binary_search_by_key(&id, |item| item.id).is_ok();
             carried(entry.unit)
-                && entry.target.is_none_or(carried)
-                && entry.swing.is_none_or(|swing| carried(swing.target))
+                && entry.target.is_none_or(target_kept)
+                && entry.swing.is_none_or(|swing| target_kept(swing.target))
         }));
         debug_assert!(projectiles.iter().all(|shot| {
             let carried = |id| units.binary_search_by_key(&id, |unit| unit.id).is_ok();
-            shot.source.is_none_or(carried) && shot.target.is_none_or(carried)
+            let target_kept = |id| carried(id) || loot.binary_search_by_key(&id, |item| item.id).is_ok();
+            shot.source.is_none_or(carried) && shot.target.is_none_or(target_kept)
         }));
         debug_assert!(units.iter().flat_map(|unit| &unit.effects).all(|effect| {
             let carried = |id| units.binary_search_by_key(&id, |unit| unit.id).is_ok();
@@ -522,6 +527,9 @@ impl World {
 
     /// One unit, or nothing when the entity is not one.
     fn project_unit(&self, viewer: Option<Team>, entity: Entity) -> Option<UnitView> {
+        if self.loot.get(entity).is_some() {
+            return None;
+        }
         let kind = *self.kind.get(entity)?;
         let transform = self.transform.get(entity)?;
         let stats = self.stats.get(entity)?;

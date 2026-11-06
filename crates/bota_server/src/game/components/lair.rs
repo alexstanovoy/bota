@@ -5,6 +5,7 @@ use bota_proto::Vec2;
 pub struct Lair {
     pub unit: Option<Entity>,
     pub falls: u32,
+    pub last_killer: Option<bota_proto::Team>,
     pub respawn_at: u32,
     pub home: Vec2,
     /// A natural pit change is under way; damage never calls it off.
@@ -13,6 +14,7 @@ pub struct Lair {
 state_hash!(Lair {
     unit,
     falls,
+    last_killer,
     respawn_at,
     home,
     travelling

@@ -290,12 +290,15 @@ pub enum ModifierKind {
         level: u8,
         amount: u16,
     },
+    /// Percentage-of-maximum recovery, recalculated as the pools change.
+    Recovery { health_pct: i32, mana_pct: i32 },
 }
 
 impl ModifierKind {
     /// The number the wire names this kind of modifier with.
     pub const fn effect_id(self) -> EffectId {
         match self {
+            ModifierKind::Recovery { .. } => EffectId::AEGIS_REGENERATION,
             ModifierKind::Mending { .. } => EffectId::MENDING,
             ModifierKind::Clarity { .. } => EffectId::CLARITY,
             ModifierKind::Fountain { .. } => EffectId::FOUNTAIN,

@@ -29,6 +29,9 @@ impl World {
         candidates.spots.clear();
         candidates.widest = 0;
         for entity in self.entities.iter() {
+            if self.loot.get(entity).is_some() {
+                continue;
+            }
             let Some(at) = self.transform.get(entity) else {
                 continue;
             };

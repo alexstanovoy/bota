@@ -102,8 +102,10 @@ pub struct ItemView {
     /// an item that cannot be taken apart now, and on a unit of another side.
     pub disassembly: Option<Disassembly>,
     /// The rune a Bottle holds. Absent for any other item and for a Bottle
-    /// holding none; told to the Bottle's own side alone. Last on the wire.
+    /// holding none; told to the Bottle's own side alone.
     pub rune: Option<StoredRune>,
+    /// Remaining lifetime after pickup; absent for an item that does not expire.
+    pub expires_in: Option<u32>,
 }
 
 /// When an item may be taken apart.

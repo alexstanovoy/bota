@@ -247,6 +247,7 @@ fn what_keeps_an_ability_from_working_is_told_apart_from_what_it_is() {
 /// An item view with the numbers given.
 fn an_item(charges: Option<u8>, cooldown: u32, mana_cost: i32, aim: Option<Aim>) -> ItemView {
     ItemView {
+        expires_in: None,
         id: ItemId::BOOTS,
         charges,
         cooldown_left: cooldown,
@@ -2529,5 +2530,36 @@ fn shop_context_dead_hero_has_no_physical_home_access_but_can_buy_into_stash() {
     assert!(
         app.can_disassemble(BAG_SLOTS),
         "the server permits stash disassembly during death"
+    );
+}
+
+#[test]
+fn an_attack_click_resolves_a_ground_item_to_its_handle() {
+    use crate::ui::Intent;
+    let mut app = a_started_app();
+    let hero = owned(1, UnitKind::Hero, Some(SlotId(0)));
+    let id = hero.id;
+    let mut view = a_tick(10, vec![hero], vec![a_seat(SlotId(0), Some(id))]);
+    let item = EntityId {
+        idx: 21,
+        generation: 1,
+    };
+    view.loot.push(bota_proto::LootView {
+        id: item,
+        pos: Vec2::from_ints(1000, 1000),
+        item: ItemId::AEGIS,
+        charges: None,
+        seen_by: None,
+    });
+    app.handle(bota_proto::ServerMsg::Snapshot { view });
+    app.act(Intent::AttackAt {
+        at: (1000.0, 1000.0),
+        unit: None,
+    });
+    assert_eq!(
+        app.shown_orders.last().map(|shown| shown.order),
+        Some(Order::Attack {
+            target: Target::Unit(item)
+        })
     );
 }

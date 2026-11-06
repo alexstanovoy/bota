@@ -697,3 +697,20 @@ field UnitView 44 gathering: Option<GatheringView>
 field UnitView 45 lit_for: Option<Team>
 
 variant UnitKind 17 Roshan
+
+variant RejectReason 31 ItemRestricted
+
+field ItemView 15 expires_in: Option<u32>
+
+variant EventKind 21 BossFell {}
+field EventKind::BossFell 0 objective: ObjectiveKind
+field EventKind::BossFell 1 team: Option<Team>
+
+variant EventKind 22 ItemDestroyed {}
+field EventKind::ItemDestroyed 0 item: ItemId
+field EventKind::ItemDestroyed 1 by: Option<SlotId>
+field EventKind::ItemDestroyed 2 team: Team
+variant EventKind 23 ItemTaken {}
+field EventKind::ItemTaken 0 item: ItemId
+field EventKind::ItemTaken 1 by: SlotId
+field EventKind::ItemTaken 2 team: Team

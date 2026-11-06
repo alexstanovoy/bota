@@ -230,6 +230,12 @@ impl ItemId {
     /// Dota's `item_orb_of_frost`: its carrier's attacks slow and cut Health
     /// Restoration.
     pub const ORB_OF_FROST: ItemId = ItemId(87);
+    /// Aegis of the Immortal, reclaimed by Roshan.
+    pub const AEGIS: ItemId = ItemId(88);
+    /// Consumable ability cooldown refresh.
+    pub const REFRESHER_SHARD: ItemId = ItemId(89);
+    /// A planted lane-creep protection aura.
+    pub const ROSHANS_BANNER: ItemId = ItemId(90);
 }
 
 /// What did something: the ability or the item a unit used, as Dota's combat
@@ -413,6 +419,8 @@ impl EffectId {
     /// An Orb of Frost's Frost (`modifier_orb_of_frost_debuff`): a slow and
     /// less Health Restoration.
     pub const FROST: EffectId = EffectId(80);
+    /// Recovery when an Aegis expires or is reclaimed.
+    pub const AEGIS_REGENERATION: EffectId = EffectId(81);
 }
 
 /// An index into a unit's ability slots, as listed in

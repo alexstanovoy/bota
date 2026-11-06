@@ -27,7 +27,13 @@ impl World {
 
     /// Tells a use that took effect to the sides that see the user where it stood or where it
     /// stands now, and to its own.
-    fn tell_item_used(&mut self, user: Entity, item: ItemId, target: Target, before: Option<Vec2>) {
+    pub(crate) fn tell_item_used(
+        &mut self,
+        user: Entity,
+        item: ItemId,
+        target: Target,
+        before: Option<Vec2>,
+    ) {
         let side = self.team.get(user).copied().unwrap_or(Team::Neutral);
         let after = self.pos(user);
         let told = |team| {
@@ -78,6 +84,7 @@ impl World {
     ) -> bool {
         let with = Inflictor::Item(item);
         match def.effect {
+            UseSpec::Refresh { items } => self.refresh_cooldowns(user, items),
             UseSpec::None => false,
             UseSpec::Mend(drink) => {
                 let drink = self.shared_with_ally(user, def, target, drink);
@@ -209,6 +216,7 @@ pub fn item_view(
         .max()
         .unwrap_or(0);
     ItemView {
+        expires_in: (stack.life > 0).then_some(stack.life),
         id: stack.id,
         charges: def
             .filter(|def| def.charges > 0 || def.cast_charges > 0)

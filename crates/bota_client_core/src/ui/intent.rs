@@ -280,6 +280,7 @@ impl App {
     /// An armed attack-move click. A unit the front end found takes the
     /// attack order itself: on an ally this is the aggro-drop click.
     fn attack_at(&mut self, at: (f32, f32), unit: Option<EntityId>) {
+        let unit = unit.or_else(|| self.lying_at(at).map(|lying| lying.id));
         let target = match unit {
             Some(target) => Target::Unit(target),
             None => Target::Pos(world_vec(at)),

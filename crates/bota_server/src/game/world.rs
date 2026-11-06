@@ -824,7 +824,7 @@ impl World {
 
     /// Who sees what, from where everything stands.
     fn refresh_sight(&mut self) {
-        let scroll_sights: Vec<(Team, Vec2, i32)> = self.teleport_sights().collect();
+        let scroll_sights: Vec<(Team, Vec2, i32, bool)> = self.temporary_sights().collect();
         visibility_system(SightCx {
             pits: self.map.boss_zones,
             entities: &self.entities,
