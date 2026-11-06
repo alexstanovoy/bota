@@ -481,6 +481,9 @@ pub struct App {
     pub aimed_from: Option<(u32, crate::ui::slots::Slot)>,
     /// The slot whose order was last refused, and the seconds left on it.
     pub refused: Option<(crate::ui::slots::Slot, f32)>,
+    /// Sequences refused during the last pump, so front ends can roll back
+    /// an optimistic transaction without guessing from an elapsed timeout.
+    pub rejected_orders: Vec<u32>,
     /// The last rejected order, shown briefly: why, and seconds left. A
     /// front end words it (or keeps quiet) as its game does.
     pub reject: Option<(Refused, f32)>,
@@ -542,6 +545,7 @@ impl App {
             chat: Chat::default(),
             aimed_from: None,
             refused: None,
+            rejected_orders: Vec::new(),
             reject: None,
             console: None,
             over: None,
@@ -1013,6 +1017,9 @@ impl App {
 
     /// Shows a refused order, on the slot that earned it.
     fn on_rejected(&mut self, seq: u32, reason: bota_proto::RejectReason) {
+        if self.rejected_orders.len() < MAX_TOLD {
+            self.rejected_orders.push(seq);
+        }
         self.refuse(reason);
         self.refused = self
             .aimed_from
@@ -1053,6 +1060,7 @@ impl App {
     /// One frame of the client: takes in whatever arrived, moves the
     /// clock between snapshots on, and ages the transient effects.
     pub fn pump(&mut self, dt: f32) {
+        self.rejected_orders.clear();
         self.told.clear();
         self.before_told.clear();
         self.smooth.advance(dt);

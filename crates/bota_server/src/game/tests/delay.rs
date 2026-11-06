@@ -112,6 +112,7 @@ fn an_order_that_no_longer_holds_on_its_tick_is_refused_then() {
         }
         let commands = line.release(&world, &mut refused);
         world.advance(&commands);
+        refused.append(&mut world.refused);
     }
     assert_eq!(
         refused,

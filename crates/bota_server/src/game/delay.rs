@@ -160,7 +160,7 @@ impl DelayLine {
     ) -> Result<(), RejectReason> {
         // The one door of a seat's orders: no ground off the map goes further.
         cmd.order = bota_core::order_on_map(cmd.order);
-        world.check_order(cmd.slot, cmd.unit, &cmd.order, cmd.queue)?;
+        world.check_incoming_order(cmd.slot, cmd.unit, &cmd.order, cmd.queue)?;
         let Some(line) = self.seats.iter_mut().find(|line| line.slot == cmd.slot) else {
             return Err(RejectReason::NotYourUnit);
         };
@@ -193,7 +193,8 @@ impl DelayLine {
 
     /// The orders that take effect on the tick after the one `world` stands
     /// on, seat by seat in slot order and each seat's in the order given,
-    /// validated again. Those no longer valid are appended to `refused`.
+    /// validated again; inventory-dependent orders are checked in ordered
+    /// application. Those no longer valid are appended to `refused`.
     pub fn release(&mut self, world: &World, refused: &mut Vec<RefusedOrder>) -> Vec<Command> {
         let next = world.tick + 1;
         let mut commands = Vec::with_capacity(self.seats.len());
@@ -205,7 +206,7 @@ impl DelayLine {
                 }
                 let held = line.held.pop_front().expect("the front was just seen");
                 let cmd = held.cmd;
-                match world.check_order(cmd.slot, cmd.unit, &cmd.order, cmd.queue) {
+                match world.check_incoming_order(cmd.slot, cmd.unit, &cmd.order, cmd.queue) {
                     Ok(()) => {
                         commands.push(cmd);
                         if let Some(seen) = held.seen.filter(|&seen| seen < next) {

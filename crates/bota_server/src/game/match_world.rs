@@ -83,7 +83,22 @@ impl World {
         let mut events = Vec::new();
         self.economy_events_due(&mut events);
         for cmd in cmds {
+            if inventory_dependent(cmd.order)
+                && let Err(reason) = self.check_order(cmd.slot, cmd.unit, &cmd.order, cmd.queue)
+            {
+                self.refused.push(crate::game::RefusedOrder {
+                    slot: cmd.slot,
+                    seq: cmd.seq,
+                    reason,
+                });
+                continue;
+            }
             self.take_order(cmd, &mut events);
+            if inventory_transaction(cmd.order) {
+                // Stat-dependent uses and casts must see this transaction too,
+                // including pools rescaled by a changed attribute bonus.
+                self.settle();
+            }
         }
         events.extend(self.step());
         events
@@ -467,6 +482,27 @@ impl World {
     /// The seat at a slot, if that slot is in the match.
     pub fn seat(&self, slot: SlotId) -> Option<&Seat> {
         self.seats.iter().find(|s| s.slot == slot)
+    }
+
+    /// Admission cannot read an inventory that preceding transactions have
+    /// yet to change. Check authority here; `advance` checks each dependent
+    /// order against the state left by its predecessors, before applying it.
+    pub(crate) fn check_incoming_order(
+        &self,
+        slot: SlotId,
+        named: Option<bota_proto::EntityId>,
+        order: &Order,
+        queue: bool,
+    ) -> Result<(), RejectReason> {
+        if !inventory_dependent(*order) {
+            return self.check_order(slot, named, order, queue);
+        }
+        self.driven_by(slot, named).ok_or(if named.is_some() {
+            RejectReason::NotYourUnit
+        } else {
+            RejectReason::HeroDead
+        })?;
+        Ok(())
     }
 
     /// Whether a seat may issue an order right now.
@@ -983,4 +1019,28 @@ fn is_halt(order: Order) -> bool {
             target: Target::None
         }
     )
+}
+
+/// Transactions mutate storage immediately, beside the body's queued action.
+/// Their validation and application must share the same ordered world state.
+fn inventory_transaction(order: Order) -> bool {
+    matches!(
+        order,
+        Order::Buy { .. }
+            | Order::Sell { .. }
+            | Order::Swap { .. }
+            | Order::SwitchWard { .. }
+            | Order::Disassemble { .. }
+            | Order::SetCombineLock { .. }
+    )
+}
+
+/// Inventory-dependent actions validate against the same ordered state as
+/// storage transactions; reading an item or its bonuses is not an exception.
+fn inventory_dependent(order: Order) -> bool {
+    inventory_transaction(order)
+        || matches!(
+            order,
+            Order::Use { .. } | Order::Put { .. } | Order::Take { .. } | Order::Cast { .. }
+        )
 }
