@@ -358,9 +358,12 @@ pub struct UnitView {
     /// whoever sees the objective: the server's particle on the building itself
     /// (`experience_shrine_active`, the progress circle), no side's alone; "a ring particle
     /// effect indicates the gathering time ... also pauses when an enemy interrupts" (Liquipedia,
-    /// *Shrine of Wisdom*; *Lotus Pool*: "also reverses"). Absent while none runs. Last on the
-    /// wire.
+    /// *Shrine of Wisdom*; *Lotus Pool*: "also reverses"). Absent while none runs.
     pub gathering: Option<GatheringView>,
+    /// The side a neutral map objective is lit for while it is (a Watcher a hero of that side
+    /// lit), which Dota shows everyone who sees it by its colours, as it does an Outpost's
+    /// [`team`](Self::team). Absent for anything else. Last on the wire.
+    pub lit_for: Option<Team>,
 }
 
 /// A countdown a side runs by standing near a map objective.

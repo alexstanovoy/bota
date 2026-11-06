@@ -594,6 +594,39 @@ fn a_watchers_vision_grant_is_told_only_to_its_recipient_and_full_view() {
     assert_eq!(shown(&world, Some(Team::Dire), watcher).vision_grant, None);
 }
 
+/// The side a Watcher is lit for is public, as Dota's colours show it to everyone who sees the
+/// Watcher: told to both sides and the whole map's view, the grant itself to its recipient only;
+/// put out, it is lit for nobody in every view.
+#[test]
+fn the_side_a_watcher_is_lit_for_is_told_to_every_view() {
+    let (mut world, watcher) = a_watcher_and_its_lighter();
+    for viewer in [None, Some(Team::Radiant), Some(Team::Dire)] {
+        assert_eq!(
+            shown(&world, viewer, watcher).lit_for,
+            None,
+            "{viewer:?}: at rest"
+        );
+    }
+    assert!(light(&mut world, 0, watcher));
+    for viewer in [None, Some(Team::Radiant), Some(Team::Dire)] {
+        assert_eq!(
+            shown(&world, viewer, watcher).lit_for,
+            Some(Team::Radiant),
+            "{viewer:?}: lit"
+        );
+    }
+    let at = world.transform.get(watcher).expect("standing").pos;
+    place_hero(&mut world, 1, at + Vec2::from_ints(-100, 0));
+    assert!(light(&mut world, 1, watcher));
+    for viewer in [None, Some(Team::Radiant), Some(Team::Dire)] {
+        assert_eq!(
+            shown(&world, viewer, watcher).lit_for,
+            None,
+            "{viewer:?}: put out"
+        );
+    }
+}
+
 #[test]
 fn disabling_a_watcher_removes_the_vision_grant_from_every_view() {
     let (mut world, watcher) = a_watcher_and_its_lighter();

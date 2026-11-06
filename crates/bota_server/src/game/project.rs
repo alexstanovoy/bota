@@ -571,6 +571,7 @@ impl World {
             vision_radius: stats.vision,
             vision_grant: stats.vision_grant,
             cast_rates: self.cast_rates_shown(viewer, entity, stats),
+            lit_for: self.lit_for(entity),
             gathering: self.zone.get(entity).and_then(|zone| {
                 Some(bota_proto::GatheringView {
                     side: zone.side?,

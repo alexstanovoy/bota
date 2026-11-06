@@ -694,3 +694,4 @@ field GatheringView 0 side: Team
 field GatheringView 1 progress: u32
 field GatheringView 2 ticks: u32
 field UnitView 44 gathering: Option<GatheringView>
+field UnitView 45 lit_for: Option<Team>

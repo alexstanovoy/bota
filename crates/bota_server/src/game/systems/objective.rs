@@ -241,7 +241,7 @@ impl World {
     }
 
     /// The side a Watcher is lit for, while it is.
-    fn lit_for(&self, watcher: Entity) -> Option<Team> {
+    pub(crate) fn lit_for(&self, watcher: Entity) -> Option<Team> {
         self.modifiers
             .get(watcher)?
             .active()

@@ -116,6 +116,7 @@ pub fn hero_unit() -> UnitView {
         vision_grant: None,
         cast_rates: None,
         gathering: None,
+        lit_for: None,
         seen_by: Some(SeenBy {
             radiant: true,
             dire: true,
@@ -190,6 +191,7 @@ pub fn creep_unit(idx: u32) -> UnitView {
         vision_grant: None,
         cast_rates: None,
         gathering: None,
+        lit_for: None,
         seen_by: None,
         attack_range: fixed(100),
         attack_time: 1000,
