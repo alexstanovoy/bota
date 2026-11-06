@@ -80,10 +80,24 @@ impl App {
                 killer,
                 denied,
                 bounty,
+                assists,
                 ..
-            } => self.on_death(unit, killer, denied, bounty.unwrap_or(0)),
-            EventKind::StructureDestroyed { team, .. } => {
-                self.push_feed(FeedKind::StructureFell { team });
+            } => self.on_death(unit, killer, denied, bounty.unwrap_or(0), assists),
+            EventKind::StructureDestroyed {
+                team,
+                kind,
+                lane,
+                tier,
+                ranged,
+                ..
+            } => {
+                self.push_feed(FeedKind::StructureFell {
+                    team,
+                    kind,
+                    lane,
+                    tier,
+                    ranged,
+                });
             }
             EventKind::LevelUp { unit, level } => {
                 self.float(unit, i32::from(level), FloaterKind::Level);
@@ -194,7 +208,14 @@ impl App {
     /// feed announces wherever it falls (named by its seat), and a kill of
     /// this side's own in the fog, whose gold is told: its last hit sounds,
     /// with no spot to draw a number at.
-    fn on_death(&mut self, unit: EntityId, killer: Option<EntityId>, denied: bool, gold: i32) {
+    fn on_death(
+        &mut self,
+        unit: EntityId,
+        killer: Option<EntityId>,
+        denied: bool,
+        gold: i32,
+        assists: u16,
+    ) {
         let victim = self
             .freshest(unit)
             .map(|victim| (victim.pos.x.to_f32(), victim.pos.y.to_f32(), victim.kind));
@@ -214,7 +235,7 @@ impl App {
             || self.seat_of_hero(unit).is_some(),
             |(_, _, kind)| kind == UnitKind::Hero,
         );
-        if let Some(kind) = self.death_line(unit, killer, gold) {
+        if let Some(kind) = self.death_line(unit, killer, gold, assists) {
             self.push_feed(kind);
         }
         let ears = self.ears();
@@ -327,7 +348,13 @@ impl App {
     }
 
     /// The kill feed line of a death. Only a hero's death has one.
-    fn death_line(&self, unit: EntityId, killer: Option<EntityId>, gold: i32) -> Option<FeedKind> {
+    fn death_line(
+        &self,
+        unit: EntityId,
+        killer: Option<EntityId>,
+        gold: i32,
+        assists: u16,
+    ) -> Option<FeedKind> {
         let victim = match self.freshest(unit) {
             Some(victim) if victim.kind != UnitKind::Hero => return None,
             Some(victim) => match victim.owner {
@@ -350,6 +377,7 @@ impl App {
             victim,
             killer,
             gold,
+            assists,
         })
     }
 

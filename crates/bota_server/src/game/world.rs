@@ -863,6 +863,7 @@ impl World {
         self.rouse_camps(&felt);
         self.owe_backdoor(&felt);
         self.credit_damage(&felt);
+        self.note_hurt(&felt);
         self.tell_of(&felt, events);
         let missed: Vec<Missed> = self.missed.drain(..).collect();
         self.tell_of_misses(&missed, events);

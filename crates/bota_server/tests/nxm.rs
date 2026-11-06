@@ -349,6 +349,7 @@ fn replayed(path: &std::path::Path) -> Replayed {
                     if let EventKind::StructureDestroyed {
                         unit,
                         team: Team::Dire,
+                        ..
                     } = event
                         && let Some((_, pos)) = at.get(&unit)
                     {

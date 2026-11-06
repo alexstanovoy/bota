@@ -2021,9 +2021,15 @@ fn told_as(kind: &mut EventKind, event: &Event, mine: Team) {
             *by = None
         }
         EventKind::LotusPlucked { unit, .. } if hide_dealer => *unit = None,
-        EventKind::Died { killer, bounty, .. } => {
+        EventKind::Died {
+            killer,
+            bounty,
+            assists,
+            ..
+        } => {
             if hide_dealer {
                 *killer = None;
+                *assists = 0;
             }
             if event.gold_hidden_from == Some(mine) {
                 *bounty = None;

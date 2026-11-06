@@ -613,6 +613,7 @@ pub fn all_events() -> Vec<EventKind> {
             denied: false,
             gold: 0,
             bounty: Some(43),
+            assists: 0b0000_0110,
         },
         EventKind::AbilityCast {
             caster: entity(7),
@@ -629,6 +630,10 @@ pub fn all_events() -> Vec<EventKind> {
         EventKind::StructureDestroyed {
             unit: entity(200),
             team: Team::Dire,
+            kind: UnitKind::Tower,
+            lane: Some(1),
+            tier: Some(2),
+            ranged: None,
         },
         EventKind::Teleported {
             slot: SlotId(1),

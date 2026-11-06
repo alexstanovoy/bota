@@ -195,6 +195,7 @@ impl World {
         let denied = killer
             .and_then(|k| self.team.get(k).copied())
             .is_some_and(|theirs| Some(theirs) == side);
+        let assists = self.credit_assists(entity, killer);
         let paid = self.pay_for(entity, killer, events);
         events.push(Event {
             kind: EventKind::Died {
@@ -203,6 +204,7 @@ impl World {
                 denied,
                 gold: 0,
                 bounty: Some(paid),
+                assists,
             },
             visible_to: told.fall,
             gold_hidden_from: killer
@@ -217,6 +219,10 @@ impl World {
                 kind: EventKind::StructureDestroyed {
                     unit: wire_id(entity),
                     team: side,
+                    kind,
+                    lane: self.lane.get(entity).map(|lane| lane.0),
+                    tier: self.tier.get(entity).map(|tier| tier.0),
+                    ranged: self.rax.get(entity).map(|rax| rax.ranged),
                 },
                 visible_to: EventVisibility::Everyone,
                 gold_hidden_from: None,
@@ -252,6 +258,29 @@ impl World {
             assert!(!self.entities.contains(entity));
         }
         structure
+    }
+
+    /// Credits an assist to each enemy hero that hurt a fallen hero within the window before it
+    /// fell, but the killer, and answers their seats as the bits of [`EventKind::Died`]'s
+    /// `assists`. The fallen's ledger is spent: nothing carries into its next life.
+    fn credit_assists(&mut self, fallen: Entity, killer: Option<Entity>) -> u16 {
+        let Some(index) = self.seat_of(fallen) else {
+            return 0;
+        };
+        let killer_seat = killer.and_then(|k| self.seat_of(k));
+        let helpers = self.seats[index].assisted_by(self.tick, killer_seat);
+        self.seats[index].hurt_by.clear();
+        let mut bits = 0u16;
+        for seat in helpers {
+            self.seats[seat].assists += 1;
+            let slot = self.seats[seat].slot.0;
+            assert!(
+                u32::from(slot) < u16::BITS,
+                "a seat's bit is in an assist mask"
+            );
+            bits |= 1 << slot;
+        }
+        bits
     }
 
     fn bury_seat(&mut self, entity: Entity, scroll_due: bool, by_neutrals: bool) {

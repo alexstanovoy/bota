@@ -113,6 +113,43 @@ pub struct Seat {
     pub created: bool,
     /// Its hero takes no damage (a cheat), dead and back again.
     pub invulnerable: bool,
+    /// The enemy seats that last dealt damage to its hero or put a debuff on it, and the tick
+    /// they last did, one entry for each: who an assist is credited to when the hero falls.
+    pub hurt_by: Vec<(usize, u32)>,
+}
+
+/// Ticks before a hero's fall in which an enemy hero's damage or debuff on it makes the enemy an
+/// assist of the kill.
+///
+/// Borrowed, not Dota's own: Dota's wiki (*Gold*, "Assists") gives the twenty seconds as the
+/// time in which damage to a hero credits the kill to its dealers when a tower or creeps finish
+/// it, and says the scoreboard counts "dealt damage or applied a debuff to the victim". The
+/// engine's own assist window is not published (other sources say 15 to 30 seconds).
+pub const KILL_CREDIT_WINDOW_TICKS: u32 = 20 * bota_core::rules::TICKS_PER_SECOND;
+
+impl Seat {
+    /// Notes that the enemy seat `by` hurt this seat's hero on `tick`.
+    pub fn note_hurt_by(&mut self, by: usize, tick: u32) {
+        match self.hurt_by.iter_mut().find(|(seat, _)| *seat == by) {
+            Some(entry) => entry.1 = tick,
+            None => self.hurt_by.push((by, tick)),
+        }
+    }
+
+    /// The enemy seats that hurt this seat's hero within [`KILL_CREDIT_WINDOW_TICKS`] of `tick`, but
+    /// the killer's, in seat order.
+    pub fn assisted_by(&self, tick: u32, killer: Option<usize>) -> Vec<usize> {
+        let mut seats: Vec<usize> = self
+            .hurt_by
+            .iter()
+            .filter(|(by, last)| {
+                Some(*by) != killer && tick.saturating_sub(*last) <= KILL_CREDIT_WINDOW_TICKS
+            })
+            .map(|(by, _)| *by)
+            .collect();
+        seats.sort_unstable();
+        seats
+    }
 }
 
 impl Seat {
@@ -145,6 +182,7 @@ impl Seat {
             sighted: [Sighting::START; 2],
             created: false,
             invulnerable: false,
+            hurt_by: Vec::new(),
         }
     }
 
@@ -190,5 +228,6 @@ state_hash!(Seat {
     teleport,
     sighted,
     created,
-    invulnerable
+    invulnerable,
+    hurt_by
 });

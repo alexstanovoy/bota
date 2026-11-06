@@ -1364,6 +1364,7 @@ fn a_hero_slain_in_the_fog_is_fed_by_its_seat_with_its_killer() {
             denied: false,
             gold: 0,
             bounty: Some(200),
+            assists: 0b100,
         }],
     });
     assert_eq!(
@@ -1372,8 +1373,38 @@ fn a_hero_slain_in_the_fog_is_fed_by_its_seat_with_its_killer() {
             victim: Victim::Seat(SlotId(1)),
             killer: Some(Killer::Seat(SlotId(0))),
             gold: 200,
+            assists: 0b100,
         }),
-        "the feed names the hero never in sight by its seat"
+        "the feed names the hero never in sight by its seat, and the seats that assisted"
+    );
+}
+
+#[test]
+fn a_fallen_tower_is_fed_with_what_it_was_and_where_it_stood() {
+    let (mut app, _, _) = a_duel_app();
+    app.handle(bota_proto::ServerMsg::Events {
+        tick: 10,
+        events: vec![EventKind::StructureDestroyed {
+            unit: EntityId {
+                idx: 9,
+                generation: 1,
+            },
+            team: Team::Dire,
+            kind: UnitKind::Tower,
+            lane: Some(2),
+            tier: Some(1),
+            ranged: None,
+        }],
+    });
+    assert_eq!(
+        app.feed.last().map(|line| line.kind.clone()),
+        Some(FeedKind::StructureFell {
+            team: Team::Dire,
+            kind: UnitKind::Tower,
+            lane: Some(2),
+            tier: Some(1),
+            ranged: None,
+        })
     );
 }
 
@@ -1388,6 +1419,7 @@ fn our_hero_slain_from_the_fog_names_the_hero_the_feed_announced() {
             denied: false,
             gold: 0,
             bounty: Some(200),
+            assists: 0,
         }],
     });
     let line = app.feed.last().map(|line| line.kind.clone()).expect("fed");
@@ -1418,6 +1450,7 @@ fn our_kill_of_a_creep_never_in_sight_sounds_its_last_hit() {
             denied: false,
             gold: 0,
             bounty: Some(40),
+            assists: 0,
         }],
     });
     app.pump(0.0);
@@ -1442,6 +1475,7 @@ fn a_hero_falling_cues_its_death_for_that_hero() {
             denied: false,
             gold: 0,
             bounty: Some(200),
+            assists: 0,
         }],
     });
     app.pump(0.0);

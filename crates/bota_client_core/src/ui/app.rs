@@ -347,9 +347,18 @@ pub enum FeedKind {
         victim: Victim,
         killer: Option<Killer>,
         gold: i32,
+        /// The seats of the enemy heroes besides the killer that helped, a bit for each
+        /// (`EventKind::Died::assists`).
+        assists: u16,
     },
-    /// A structure of this side fell.
-    StructureFell { team: Team },
+    /// A structure of this side fell: what it was, and where it stood.
+    StructureFell {
+        team: Team,
+        kind: UnitKind,
+        lane: Option<u8>,
+        tier: Option<u8>,
+        ranged: Option<bool>,
+    },
     /// The seat's connection left the match.
     Disconnected { seat: SlotId },
     /// The server's stream broke the rules of a match; `why` is the

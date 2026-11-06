@@ -291,7 +291,7 @@ impl Recorder {
                     );
                 }
             }
-            EventKind::StructureDestroyed { unit, team } => {
+            EventKind::StructureDestroyed { unit, team, .. } => {
                 if let (Some((kind, _)), Some(team)) = (self.structures.get(unit), side(*team)) {
                     self.out.push(
                         &MetaRecord::Structure {

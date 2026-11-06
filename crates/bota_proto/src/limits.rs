@@ -145,6 +145,8 @@ const _: () = {
         + MAX_QUEUED_ORDERS * size_of::<crate::Order>()
         + HERO_ITEM_SLOTS * size_of::<Option<crate::ItemView>>()
         + MAX_ABILITY_SLOTS * size_of::<crate::AbilityView>();
+    // A hero's fall names its assists as one bit for each seat.
+    assert!(MAX_SEATS <= u16::BITS as usize);
     assert!(MAX_VIEW_UNITS * unit <= MAX_DECODED_BYTES);
     assert!(MAX_EVENTS_PER_BATCH * size_of::<crate::EventKind>() <= MAX_DECODED_BYTES);
     assert!(MAX_SNAPSHOT_LOOT * size_of::<crate::LootView>() <= MAX_DECODED_BYTES);

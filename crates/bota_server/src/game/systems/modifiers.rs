@@ -131,6 +131,9 @@ impl World {
     /// A timed disable or slow is shortened first by the target's status
     /// resistance, down to one tick.
     pub fn put_modifier(&mut self, on: Entity, mut modifier: Modifier) {
+        if hostile(modifier.kind) {
+            self.note_hurt_by(modifier.source, on);
+        }
         if let Some(ticks) = modifier.ticks_left {
             modifier.ticks_left = Some(resisted_ticks(&self.stats, on, modifier.kind, ticks));
         }
@@ -331,4 +334,11 @@ impl World {
             }
         }
     }
+}
+
+/// Whether a modifier is a debuff its bearer's enemies put on it, which credits them an assist
+/// should the bearer fall soon after (Dota's wiki, *Gold*: "dealt damage or applied a debuff"):
+/// the effect it shows is a harmful one.
+fn hostile(kind: ModifierKind) -> bool {
+    bota_core::effect_def(kind.effect_id()).is_some_and(|def| def.harmful)
 }

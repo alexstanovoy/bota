@@ -4,7 +4,9 @@
 //! [contract](crate::contract) says: those of the units it sees, and of who
 //! dealt them only a dealer it sees.
 
-use crate::{AbilityId, EntityId, Inflictor, ItemId, LotusTier, RuneKind, SlotId, Team, Vec2};
+use crate::{
+    AbilityId, EntityId, Inflictor, ItemId, LotusTier, RuneKind, SlotId, Team, UnitKind, Vec2,
+};
 use serde::{Deserialize, Serialize};
 
 /// How a chunk of damage is reduced before it is applied.
@@ -81,6 +83,12 @@ pub enum EventKind {
         /// non-hero kill: another's income is its own. A hero kill's gold
         /// is public, as Dota's kill feed tells it.
         bounty: Option<i32>,
+        /// The seats of the enemy heroes besides the killer that dealt damage
+        /// to, or put a debuff on, the fallen hero in the twenty seconds
+        /// before it fell (Dota's assists), one bit for each: bit `n` is the
+        /// seat numbered `n`. Zero for any other unit, and withheld with the
+        /// killer from a side that is not told it.
+        assists: u16,
     },
     /// A unit's ability took effect.
     ///
@@ -112,6 +120,14 @@ pub enum EventKind {
         unit: EntityId,
         /// Which team lost it.
         team: Team,
+        /// What kind of building it was.
+        kind: UnitKind,
+        /// The lane it stands on, from zero, if it belongs to one.
+        lane: Option<u8>,
+        /// Its tier, from one, if it has one (a tower's).
+        tier: Option<u8>,
+        /// Whether a barracks feeds the ranged creeps; absent for any other building.
+        ranged: Option<bool>,
     },
     /// A teleport channel ended, told on the tick it did and to both sides, as
     /// its [`TeleportView`](crate::TeleportView) is.
@@ -285,4 +301,11 @@ impl EventKind {
             | EventKind::RuneSpawned { .. } => {}
         }
     }
+}
+
+/// The seats a [`EventKind::Died`] names as assisting, in seat order.
+pub fn assisting_seats(bits: u16) -> impl Iterator<Item = SlotId> {
+    (0..u16::BITS as u8)
+        .filter(move |seat| bits & (1 << seat) != 0)
+        .map(SlotId)
 }

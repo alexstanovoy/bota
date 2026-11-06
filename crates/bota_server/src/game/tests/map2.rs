@@ -93,11 +93,11 @@ fn assert_destroyed(events: &[Event], victim: Entity, team: Team) {
     let destroyed = events
         .iter()
         .filter(|event| {
-            event.kind
-                == EventKind::StructureDestroyed {
-                    unit: wire_id(victim),
-                    team,
-                }
+            matches!(
+                event.kind,
+                EventKind::StructureDestroyed { unit, team: lost, .. }
+                    if unit == wire_id(victim) && lost == team
+            )
         })
         .collect::<Vec<_>>();
     assert_eq!(destroyed.len(), 1);

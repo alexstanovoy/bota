@@ -690,3 +690,141 @@ fn cast_rates_are_told_to_the_own_side_and_the_whole_map_only() {
         "the other side sees the hero, not the rates"
     );
 }
+
+/// Seats 0 and 1 on Radiant and seat 2 on Dire, all in reach of one another, and the hero of seat
+/// 1 having struck the Dire hero with real swings until it was hurt.
+fn a_hero_the_second_seat_has_hurt() -> (World, Entity, Entity, Entity) {
+    let mut world = World::new();
+    let killer = seat_hero(&mut world, 0, Team::Radiant, Vec2::from_ints(5_000, 5_000));
+    let helper = seat_hero(&mut world, 1, Team::Radiant, Vec2::from_ints(5_040, 5_000));
+    let prey = seat_hero(&mut world, 2, Team::Dire, Vec2::from_ints(5_080, 5_000));
+    world.settle();
+    let whole = world.health.get(prey).expect("alive").hp;
+    world.set_target(helper, prey);
+    for _ in 0..90 {
+        world.step();
+        if world.health.get(prey).is_some_and(|h| h.hp < whole) {
+            break;
+        }
+    }
+    assert!(
+        world.health.get(prey).expect("alive").hp < whole,
+        "it was hurt"
+    );
+    (world, killer, helper, prey)
+}
+
+fn the_assists(events: &[crate::game::Event]) -> Option<u16> {
+    events.iter().find_map(|event| match event.kind {
+        EventKind::Died { assists, .. } => Some(assists),
+        _ => None,
+    })
+}
+
+/// Dota's wiki: damage to a hero credits its dealer an assist when an ally kills it soon after.
+#[test]
+fn an_ally_that_hurt_a_hero_a_moment_before_it_fell_is_told_as_an_assist() {
+    let (mut world, killer, _, prey) = a_hero_the_second_seat_has_hurt();
+    let mut events = Vec::new();
+    world.bury(vec![(prey, Some(killer))], &mut events);
+    assert_eq!(
+        the_assists(&events),
+        Some(0b10),
+        "seat 1 assisted, seat 0 killed"
+    );
+    assert_eq!(world.seats[1].assists, 1, "and the scoreboard counts it");
+    assert_eq!(world.seats[0].assists, 0, "the killer is no assist");
+}
+
+#[test]
+fn an_ally_that_hurt_a_hero_long_before_it_fell_is_no_assist() {
+    let (mut world, killer, _, prey) = a_hero_the_second_seat_has_hurt();
+    world.tick += crate::game::KILL_CREDIT_WINDOW_TICKS + 1;
+    let mut events = Vec::new();
+    world.bury(vec![(prey, Some(killer))], &mut events);
+    assert_eq!(the_assists(&events), Some(0));
+    assert_eq!(world.seats[1].assists, 0);
+}
+
+/// A kill by a tower or creeps credits the heroes that hurt the fallen.
+#[test]
+fn a_hero_a_creep_finishes_is_assisted_by_those_who_hurt_it() {
+    let (mut world, _, _, prey) = a_hero_the_second_seat_has_hurt();
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(5_100, 5_000));
+    world.settle();
+    let mut events = Vec::new();
+    world.bury(vec![(prey, Some(creep))], &mut events);
+    assert_eq!(the_assists(&events), Some(0b10));
+}
+
+#[test]
+fn what_hurt_a_hero_in_its_last_life_credits_nothing_in_the_next() {
+    let (mut world, killer, _, prey) = a_hero_the_second_seat_has_hurt();
+    world.bury(vec![(prey, Some(killer))], &mut Vec::new());
+    assert!(world.seats[2].hurt_by.is_empty());
+}
+
+/// The fall of a building tells what it was, for a feed to word as Dota does.
+#[test]
+fn a_fallen_tower_tells_its_kind_lane_and_tier() {
+    let cfg = config();
+    let mut world = World::for_match(&cfg, cfg.rng());
+    let (tower, lane, tier) = world
+        .entities
+        .iter()
+        .find_map(|entity| {
+            if world.kind.get(entity) != Some(&bota_proto::UnitKind::Tower) {
+                return None;
+            }
+            Some((entity, world.lane.get(entity)?.0, world.tier.get(entity)?.0))
+        })
+        .expect("a tower with a lane and a tier");
+    let mut events = Vec::new();
+    world.bury(vec![(tower, None)], &mut events);
+    let told = events.iter().find_map(|event| match event.kind {
+        EventKind::StructureDestroyed {
+            kind,
+            lane,
+            tier,
+            ranged,
+            ..
+        } => Some((kind, lane, tier, ranged)),
+        _ => None,
+    });
+    assert_eq!(
+        told,
+        Some((bota_proto::UnitKind::Tower, Some(lane), Some(tier), None))
+    );
+}
+
+/// A side that is not told who struck the blow is not told who helped: the helpers would name
+/// the unseen killer's side's heroes.
+#[test]
+fn a_side_that_cannot_see_the_killer_is_told_no_assists() {
+    let (mut world, _, _, prey) = a_hero_the_second_seat_has_hurt();
+    // A Radiant creep out of every Dire eye finishes the hero.
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(1_000, 1_000));
+    world.settle();
+    let mut events = Vec::new();
+    world.bury(vec![(prey, Some(creep))], &mut events);
+    let told = |team| {
+        crate::game_loop::visible_events(&events, Some(team))
+            .into_iter()
+            .find_map(|event| match event {
+                EventKind::Died {
+                    killer, assists, ..
+                } => Some((killer.is_some(), assists)),
+                _ => None,
+            })
+    };
+    assert_eq!(
+        told(Team::Radiant),
+        Some((true, 0b10)),
+        "its own side knows both"
+    );
+    assert_eq!(
+        told(Team::Dire),
+        Some((false, 0)),
+        "the fallen's side knows neither"
+    );
+}

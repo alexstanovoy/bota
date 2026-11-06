@@ -117,6 +117,10 @@ fn tick_records(tick: u32) -> Vec<ReplayRecord> {
                     generation: 0,
                 },
                 team: Team::Dire,
+                kind: bota_proto::UnitKind::Tower,
+                lane: Some(1),
+                tier: Some(1),
+                ranged: None,
             }],
         }),
         ReplayRecord::Orders {

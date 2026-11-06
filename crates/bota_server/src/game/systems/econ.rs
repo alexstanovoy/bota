@@ -335,6 +335,26 @@ impl World {
         }
     }
 
+    /// Notes, for the assists of a fall, the blows an enemy hero landed on a hero (a blow that did
+    /// no damage counts: Dota credits a negated one as well).
+    pub fn note_hurt(&mut self, felt: &[Landed]) {
+        for blow in felt {
+            self.note_hurt_by(blow.source, blow.target);
+        }
+    }
+
+    /// Notes that `source`, if it is a seat's hero, hurt `target`, if that is an enemy seat's.
+    pub(super) fn note_hurt_by(&mut self, source: Option<Entity>, target: Entity) {
+        let (Some(by), Some(hurt)) = (source.and_then(|s| self.seat_of(s)), self.seat_of(target))
+        else {
+            return;
+        };
+        if self.seats[by].team != self.seats[hurt].team {
+            let tick = self.tick;
+            self.seats[hurt].note_hurt_by(by, tick);
+        }
+    }
+
     pub(super) fn seat_of(&self, entity: Entity) -> Option<usize> {
         self.seats.iter().position(|s| s.unit == Some(entity))
     }
