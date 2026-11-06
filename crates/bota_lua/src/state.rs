@@ -1,5 +1,5 @@
 use bota_client_core::{ClientSession, IssuedOrder};
-use bota_proto::{EntityId, HeroId, SlotId, Team, UnitView};
+use bota_proto::{AbilityView, EntityId, HeroId, ItemSlot, ItemView, Kit, SlotId, Team, UnitView};
 use luagee::{LuaError, TableId, Value, Vm};
 
 use crate::{BindingError, BotSeat};
@@ -14,8 +14,11 @@ pub(crate) struct Player {
     pub slot: SlotId,
     pub team: Team,
     pub hero: HeroId,
+    pub level: u8,
     pub unit: Option<EntityId>,
     pub gold: Option<i32>,
+    pub kit: Option<Kit>,
+    pub stash: Option<Vec<Option<ItemView>>>,
     pub respawn_left: u32,
 }
 
@@ -34,7 +37,13 @@ pub(crate) struct Snapshot {
 impl Snapshot {
     pub(crate) fn capture(session: &ClientSession) -> Result<Self, BindingError> {
         let view = session.current().ok_or(BindingError::Configuration("a current view is required"))?;
-        let bytes = session.entities().iter().try_fold(0usize, |bytes, track| {
+        let players = view.players.iter().try_fold(0usize, |bytes, player| {
+            bytes.checked_add(std::mem::size_of::<Player>())?
+                .checked_add(player.stash.as_ref().map_or(0, |slots| slots.len()).checked_mul(std::mem::size_of::<Option<ItemView>>())?)?
+                .checked_add(player.kit.as_ref().map_or(0, |kit| kit.abilities.len()).checked_mul(std::mem::size_of::<AbilityView>())?)?
+                .checked_add(player.kit.as_ref().map_or(0, |kit| kit.items.len()).checked_mul(std::mem::size_of::<Option<ItemView>>())?)
+        });
+        let bytes = session.entities().iter().try_fold(players.unwrap_or(usize::MAX), |bytes, track| {
             let unit = &track.unit;
             bytes.checked_add(std::mem::size_of::<KnownUnit>())?
                 .checked_add(unit.abilities.len().checked_mul(std::mem::size_of::<bota_proto::AbilityView>())?)?
@@ -47,7 +56,12 @@ impl Snapshot {
         }
         Ok(Self {
             team: session.team(), tick: view.tick, horn: session.map().pregame_ticks, map: session.map(),
-            players: view.players.iter().map(|player| Player { slot: player.slot, team: player.team, hero: player.hero, unit: player.unit, gold: player.gold, respawn_left: player.respawn_left }).collect(),
+            players: view.players.iter().map(|player| {
+                let own = player.team == session.team();
+                Player { slot: player.slot, team: player.team, hero: player.hero, level: player.level, unit: player.unit,
+                    gold: own.then_some(player.gold).flatten(), kit: own.then(|| player.kit.clone()).flatten(),
+                    stash: own.then(|| player.stash.clone()).flatten(), respawn_left: player.respawn_left }
+            }).collect(),
             damage: session.recent_events().iter().filter_map(|event| match event.kind { bota_proto::EventKind::Damaged { source: Some(source), target, .. } => Some((event.tick, source, target)), _ => None }).collect(),
             units: session.entities().iter().map(|track| KnownUnit { unit: track.unit.clone(), visible: view.units.binary_search_by_key(&track.unit.id, |unit| unit.id).is_ok() }).collect(),
         })
@@ -87,6 +101,30 @@ impl State {
         self.snapshot.as_ref()?.units.iter().find(|known| known.unit.id == id).map(|known| &known.unit)
     }
 
+    pub fn player(&self, id: EntityId) -> Option<&Player> {
+        self.snapshot.as_ref()?.players.iter().find(|player| player.unit == Some(id))
+    }
+
+    pub fn hero(&self, id: EntityId) -> Option<HeroId> {
+        self.player(id).map(|player| player.hero).or_else(|| self.unit(id)?.hero)
+    }
+
+    pub fn ability_book(&self, id: EntityId) -> Option<&[AbilityView]> {
+        self.player(id).and_then(|player| player.kit.as_ref()).map(|kit| kit.abilities.as_slice()).or_else(|| self.unit(id).map(|unit| unit.abilities.as_slice()))
+    }
+
+    pub fn item(&self, id: EntityId, slot: ItemSlot) -> Option<&ItemView> {
+        let player = self.player(id);
+        let kit = player.and_then(|player| player.kit.as_ref());
+        let unit = self.unit(id);
+        match usize::from(slot.0) {
+            index @ 0..=8 => kit.map(|kit| kit.items.as_slice()).or_else(|| unit.map(|unit| unit.items.as_slice()))?.get(index)?.as_ref(),
+            index @ 9..=14 => player?.stash.as_ref()?.get(index - 9)?.as_ref(),
+            15 => kit.map(|kit| &kit.town_portal).or_else(|| unit.map(|unit| &unit.town_portal))?.as_ref(),
+            _ => None,
+        }
+    }
+
     pub fn id(&self, table: Value) -> Option<EntityId> {
         self.units.iter().find(|(_, handle)| table == Value::Table(*handle)).map(|(id, _)| *id)
     }
@@ -112,5 +150,30 @@ impl State {
         if self.orders.len() >= MAX_ORDERS { return Err(vm.error("order limit exceeded")); }
         self.orders.push(order);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    mod support { include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/support/mod.rs")); }
+
+    #[test]
+    fn the_opposing_snapshot_never_captures_private_inventory_or_gold() {
+        let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+        let item = bota_core::item_by_key("item_branches").expect("item");
+        let buy = sessions[0].issue(IssuedOrder::hero(bota_proto::Order::Buy { item })).expect("buy");
+        let streams = local.step(&[&[buy], &[]]).expect("step");
+        for (session, stream) in sessions.iter_mut().zip(streams) { support::fold(session, stream); }
+        let own = Snapshot::capture(&sessions[0]).expect("own snapshot");
+        let enemy = Snapshot::capture(&sessions[1]).expect("opposing snapshot");
+        let own_player = own.players.iter().find(|player| player.slot == SlotId(0)).expect("own player");
+        let hidden_player = enemy.players.iter().find(|player| player.slot == SlotId(0)).expect("opposing player");
+        assert!(own_player.gold.is_some());
+        assert!(own_player.stash.is_some());
+        assert_eq!(hidden_player.gold, None);
+        assert!(hidden_player.stash.is_none());
+        assert!(hidden_player.kit.is_none());
+        assert!(!enemy.units.iter().any(|known| Some(known.unit.id) == own_player.unit));
     }
 }
