@@ -342,6 +342,7 @@ pub(crate) const fn item_digest(def: &ItemDef) -> u64 {
         key,
         name: _,
         cost,
+        secret_shop,
         charges,
         stack_limit,
         cast_charges,
@@ -426,6 +427,7 @@ pub(crate) const fn item_digest(def: &ItemDef) -> u64 {
         .flag(immediate)
         .flag(ignores_channel)
         .flag(unbuyable)
+        .flag(secret_shop)
         .flag(kept_empty)
         .flag(ally_target)
         .effect(effect)

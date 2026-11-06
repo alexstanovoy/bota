@@ -646,10 +646,10 @@ const PINS: [Pinned; 7] = [
             (12000, 0xa226_27c3_9143_b93d, 0xd095_309a_230a_3326),
             (13500, 0xf4c2_857d_a287_4035, 0x9704_6027_f2a2_510e),
             (15000, 0xd484_196a_2be8_233a, 0xd4d1_ddc4_2bb9_e582),
-            (16500, 0xc2a4_79fe_c296_a0e8, 0x28ad_79bc_1f45_048a),
-            (18000, 0x43ef_8935_5d36_cc88, 0x56b8_359d_992e_88c2),
+            (16500, 0xc2a4_79fe_c296_a0e8, 0x5b6f_7a5d_a7cd_e153),
+            (18000, 0x13fe_e8f4_9ab7_ccb8, 0x0d1c_31df_5a6a_bb58),
         ],
-        last: 0xc3d5_79f2_d05b_6d16,
+        last: 0xf4ab_0147_3cc3_ff8c,
     },
     Pinned {
         map: MapId(1),

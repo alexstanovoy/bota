@@ -165,6 +165,8 @@ pub struct ItemData {
     pub stock: Option<StockData>,
     /// `ItemPurchasable`.
     pub purchasable: bool,
+    /// `SecretShop`: sold only through a secret-shop zone.
+    pub secret_shop: bool,
     /// The ways it is built, each the parts a recipe asks for and the recipe scroll where that
     /// costs gold. Empty for one bought whole.
     pub builds: &'static [&'static [ItemId]],

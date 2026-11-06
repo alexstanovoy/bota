@@ -27,6 +27,7 @@ pub struct Item {
     /// `ItemStockInitial`, `ItemStockMax` and `ItemStockTime` (thousandths of seconds).
     pub stock: Option<(i64, i64, Milli)>,
     pub purchasable: bool,
+    pub secret_shop: bool,
     /// A recipe's `ItemResult` and its `ItemRequirements`, each a list of item keys.
     pub recipe: Option<(String, Vec<Vec<String>>)>,
     /// `AbilityValues` by key, one number a level.
@@ -55,7 +56,7 @@ pub const BEHAVIORS: [&str; 17] = [
 ];
 
 /// Keys read into [`Item`].
-const READ: [&str; 18] = [
+const READ: [&str; 19] = [
     "AbilityBehavior",
     "AbilityCastPoint",
     "AbilityCastRange",
@@ -74,11 +75,12 @@ const READ: [&str; 18] = [
     "ItemStockInitial",
     "ItemStockMax",
     "ItemStockTime",
+    "SecretShop",
 ];
 
 /// Keys known and left out: presentation, the shop's suggestions, and rules bota models
 /// elsewhere or not yet (targets, sharing, dispels, the shared cooldown's name).
-const LEFT_OUT: [&str; 35] = [
+const LEFT_OUT: [&str; 34] = [
     "AbilitySharedCooldown",
     "AbilityUnitTargetFlags",
     "AbilityUnitTargetTeam",
@@ -103,7 +105,6 @@ const LEFT_OUT: [&str; 35] = [
     "ItemSupport",
     "Model",
     "ModelAlternate",
-    "SecretShop",
     "ShouldNotSuggestMainGame",
     "ShowGiveIndicatorOnTargetCast",
     "SpeciallyBannedFromNeutralSlot",
@@ -155,6 +156,11 @@ pub fn read(key: &str, block: &Kv) -> Result<Item, String> {
         None => None,
         Some(result) => Some((result.to_owned(), requirements(block).map_err(fail)?)),
     };
+    let secret_shop = match whole("SecretShop", 0)? {
+        0 => false,
+        1 => true,
+        _ => return Err(fail("SecretShop must be 0 or 1".to_owned())),
+    };
     Ok(Item {
         key: key.to_owned(),
         cost: whole("ItemCost", 0)?,
@@ -173,6 +179,7 @@ pub fn read(key: &str, block: &Kv) -> Result<Item, String> {
             .map_err(fail)?,
         stock,
         purchasable: whole("ItemPurchasable", 1)? == 1,
+        secret_shop,
         recipe,
         values: values(block).map_err(fail)?,
     })
@@ -248,6 +255,29 @@ mod tests {
     use crate::install::Source;
 
     use super::read;
+
+    #[test]
+    fn secret_shop_flag_is_read_and_rejects_values_other_than_zero_or_one() {
+        let parse = |value: &str| {
+            let source = Source::new(
+                "fixture".into(),
+                &format!(r#""DOTAAbilities" {{ "item_x" {{ {value} }} }}"#),
+            )
+            .expect("KV");
+            read("item_x", source.items().get("item_x").expect("item"))
+        };
+        assert!(!parse("").expect("default base shop").secret_shop);
+        assert!(!parse(r#""SecretShop" "0""#).expect("base shop").secret_shop);
+        assert!(
+            parse(r#""SecretShop" "1""#)
+                .expect("secret shop")
+                .secret_shop
+        );
+        assert_eq!(
+            parse(r#""SecretShop" "2""#).expect_err("invalid flag"),
+            "item_x: SecretShop must be 0 or 1"
+        );
+    }
 
     /// A patch that brings a key or a behaviour this tool does not know fails the import.
     #[test]

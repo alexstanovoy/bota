@@ -308,6 +308,8 @@ pub struct ItemDef {
     pub name: &'static str,
     /// Price in gold.
     pub cost: i32,
+    /// Dota's `SecretShop`: the item needs a carrier at a secret shop.
+    pub secret_shop: bool,
     /// Uses it is bought with. Zero for one that is never used up.
     ///
     /// A stack left holding none is gone, unless it may gain them again
@@ -570,6 +572,7 @@ pub(crate) const PLAIN: ItemDef = ItemDef {
     key: "",
     name: "",
     cost: 0,
+    secret_shop: false,
     charges: 0,
     stack_limit: 0,
     cast_charges: 0,
@@ -633,6 +636,7 @@ pub fn shop_entries(catalogue: crate::Catalogue) -> Vec<bota_proto::ShopEntry> {
         .map(|(id, def)| bota_proto::ShopEntry {
             id,
             cost: def.cost,
+            secret_shop: def.secret_shop,
             components: def.components.to_vec(),
             alternatives: def
                 .alternatives

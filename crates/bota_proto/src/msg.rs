@@ -109,6 +109,18 @@ pub struct ShopEntry {
         deserialize_with = "crate::bounded::seq_of_seq::<_, _, { crate::limits::MAX_SHOP_RECIPES }, { crate::limits::MAX_SHOP_COMPONENTS }>"
     )]
     pub alternatives: Vec<Vec<ItemId>>,
+    /// Sold only at a secret shop unless the match uses universal shops.
+    pub secret_shop: bool,
+}
+
+/// A neutral secret shop: its shopkeeper and convex counter-clockwise trigger footprint.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct ShopZoneView {
+    pub pos: Vec2,
+    #[serde(
+        deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_SHOP_ZONE_CORNERS }>"
+    )]
+    pub corners: Vec<Vec2>,
 }
 
 /// The public description of a match.
@@ -167,8 +179,13 @@ pub struct MatchInfo {
     /// Which kinds of rune the match spawns.
     pub runes: RuneSet,
     /// The items the match plays with: the catalogue every seat holds. No
-    /// id past it is sold, held or told in the match. Last on the wire.
+    /// id past it is sold, held or told in the match.
     pub catalogue: CataloguePrefix,
+    #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_SECRET_SHOPS }>")]
+    pub secret_shops: Vec<ShopZoneView>,
+    /// Each shop sells every item, as in Dota's Hero Demo. Last on the wire:
+    /// append new fields after it to keep the wire order.
+    pub universal_shop: bool,
 }
 
 /// Why the server refused an order, or a [`ClientMsg::Hello`].
@@ -199,8 +216,7 @@ pub enum RejectReason {
     NotYourUnit,
     /// No item with this id is sold.
     UnknownItem,
-    /// Moving an item into or out of the stash requires standing at the
-    /// home shop.
+    /// The order requires shop access: stash transfer or a secret-shop purchase.
     NotAtShop,
     InventoryFull,
     /// The unit is stunned, feared or channelling.

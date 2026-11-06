@@ -676,6 +676,8 @@ fn a_match_start() -> bota_proto::ServerMsg {
             shop: Vec::new(),
             fountains: [Vec2::ZERO; 2],
             shop_range: 0,
+            secret_shops: Vec::new(),
+            universal_shop: false,
             cheats: false,
             objectives: bota_proto::ObjectiveSet::NONE,
             runes: bota_proto::RuneSet::NONE,
@@ -1826,4 +1828,49 @@ fn a_match_whose_end_is_still_on_the_way_when_the_link_closes_is_not_lost() {
     app.pump(0.016);
     assert!(app.over.is_some(), "the end of the match came");
     assert!(!app.lost, "a match that ended is not a lost connection");
+}
+
+#[test]
+fn dead_carriers_grant_neither_secret_shop_access_nor_purchase_space() {
+    let mut hero = a_unit();
+    hero.kind = UnitKind::Hero;
+    hero.owner = Some(SlotId(0));
+    hero.pos = Vec2::from_ints(200, 200);
+    hero.hp = 0;
+    let mut player = a_player();
+    player.unit = Some(hero.id);
+    player.stash = Some(vec![None; bota_core::rules::STASH_SLOTS]);
+    for courier in [false, true] {
+        let mut body = hero.clone();
+        if courier {
+            body.kind = UnitKind::Courier;
+            body.hero = None;
+            player.unit = None;
+        }
+        let mut start = a_match_start();
+        let bota_proto::ServerMsg::MatchStart { info } = &mut start else {
+            unreachable!()
+        };
+        info.secret_shops = vec![bota_proto::ShopZoneView {
+            pos: Vec2::from_ints(200, 200),
+            corners: [(100, 100), (300, 100), (300, 300), (100, 300)]
+                .map(|(x, y)| Vec2::from_ints(x, y))
+                .to_vec(),
+        }];
+        let mut app = a_silent_app();
+        app.my_slot = Some(SlotId(0));
+        app.handle(start);
+        app.handle(snapshot_of(1, vec![body.clone()], vec![player.clone()]));
+        assert!(!app.at_secret_shop());
+        assert!(!app.unit_at_secret_shop(body.id));
+        // The pure prediction must likewise ignore a dead physical carrier on Dota's map.
+        let mut view = a_tick(1, vec![body], vec![player.clone()]);
+        view.units[0].pos = bota_core::DOTA_SECRET_SHOPS[0].pos;
+        assert!(!crate::shop::purchase_fits(
+            &view,
+            &player,
+            bota_core::map_of(bota_proto::MapId(2)),
+            ItemId::DEMON_EDGE
+        ));
+    }
 }

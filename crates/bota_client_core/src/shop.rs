@@ -3,7 +3,8 @@
 //! server buys by.
 
 use bota_core::{
-    MapDef, Shelf, at_home_shop, hero_def, missing_parts, place_purchase, purchase_pool, sold,
+    MapDef, PurchaseCarrier, PurchaseContext, Shelf, hero_def, missing_parts, place_shop_purchase,
+    purchase_pool, shop_access, sold,
 };
 use bota_proto::{Attribute, ItemId, PlayerView, UnitKind, WorldView};
 
@@ -66,26 +67,47 @@ pub fn price_for(item: ItemId, held: &[ItemId], primary: Option<Attribute>) -> i
 }
 
 /// Whether the server finds room for what buying `item` still takes, whatever the seat can pay:
-/// its parts go to the hero's bag while the hero stands in its shop and to the stash otherwise,
-/// mergeable charges filling a stack first ([`place_purchase`]). A seat whose stash is not told
+/// base-shop parts go to the hero at home or the stash; secret-shop parts require a physical
+/// carrier there. Mergeable charges fill a stack first. A seat whose stash is not told
 /// (the other side's) has none to ask about.
 pub fn purchase_fits(view: &WorldView, p: &PlayerView, map: &MapDef, item: ItemId) -> bool {
     let Some(stash) = p.stash.as_deref() else {
         return false;
     };
     let hero = p.unit.and_then(|id| view.unit(id));
+    let courier = view
+        .units
+        .iter()
+        .find(|unit| unit.kind == UnitKind::Courier && unit.owner == Some(p.slot));
     let parts = missing_for(item, &held_items(view, p), primary_of(p));
-    let bag = hero
-        .filter(|hero| at_home_shop(map, hero.team, hero.pos))
-        .map(|hero| Shelf {
-            slots: hero.items.as_slice(),
-            town_portal: Some(&hero.town_portal),
-            combines: true,
-        });
     let stash = Shelf {
         slots: stash,
         town_portal: None,
         combines: false,
     };
-    place_purchase(p.slot, &parts, bag.as_ref(), &stash).is_some()
+    let context = PurchaseContext {
+        hero: hero
+            .filter(|unit| unit.hp > 0)
+            .map(|unit| purchase_carrier(unit, map)),
+        courier: courier
+            .filter(|unit| unit.hp > 0)
+            .map(|unit| purchase_carrier(unit, map)),
+        stash,
+        universal_shop: map.universal_shop,
+    };
+    place_shop_purchase(p.slot, &parts, &context).is_ok()
+}
+
+fn purchase_carrier<'a>(
+    unit: &'a bota_proto::UnitView,
+    map: &MapDef,
+) -> PurchaseCarrier<'a, bota_proto::ItemView> {
+    PurchaseCarrier {
+        bag: Shelf {
+            slots: unit.items.as_slice(),
+            town_portal: (unit.kind == UnitKind::Hero).then_some(&unit.town_portal),
+            combines: true,
+        },
+        shops: shop_access(map, unit.team, unit.pos, unit.bound),
+    }
 }

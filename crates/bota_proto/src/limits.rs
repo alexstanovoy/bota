@@ -125,6 +125,10 @@ limits! {
     MAX_RUNES_AT_SPOT: usize = 16;
     /// Most Lotus Pools one view lists.
     MAX_LOTUS_POOLS: usize = 16;
+    /// Secret-shop trigger volumes in one match.
+    MAX_SECRET_SHOPS: usize = 8;
+    /// Corners of one convex shop trigger footprint.
+    MAX_SHOP_ZONE_CORNERS: usize = 32;
 }
 
 /// A hero's bag: the inventory and the backpack.
@@ -147,6 +151,11 @@ const _: () = {
     assert!(MAX_SNAPSHOT_RUNES * size_of::<crate::RuneView>() <= MAX_DECODED_BYTES);
     assert!(MAX_PROJECTILES * size_of::<crate::ProjectileView>() <= MAX_DECODED_BYTES);
     assert!(MAX_SHOP_ENTRIES * size_of::<crate::ShopEntry>() <= MAX_DECODED_BYTES);
+    assert!(
+        MAX_SECRET_SHOPS
+            * (size_of::<crate::ShopZoneView>() + MAX_SHOP_ZONE_CORNERS * size_of::<crate::Vec2>())
+            <= MAX_DECODED_BYTES
+    );
     assert!(MAX_ORDERS_TOLD * size_of::<crate::SlotOrder>() <= MAX_DECODED_BYTES);
 };
 

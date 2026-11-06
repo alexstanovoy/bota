@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use bota_core::{Catalogue, CellGrid, cell_tier, rules};
 use bota_proto::{
-    Fixed, ItemId, MapId, MatchInfo, ObjectiveSet, Pick, RuneSet, ShopEntry, SlotId, Team,
-    TickMode, Vec2,
+    Fixed, ItemId, MapId, MatchInfo, ObjectiveSet, Pick, RuneSet, ShopEntry, ShopZoneView, SlotId,
+    Team, TickMode, Vec2,
 };
 
 use crate::limits::{
@@ -32,6 +32,7 @@ pub struct MatchMetadata {
     pub objectives: ObjectiveSet,
     /// Which kinds of rune spawn.
     pub runes: RuneSet,
+    pub universal_shop: bool,
 }
 
 /// The validated, immutable inputs of a match: shared by every session of it.
@@ -45,6 +46,7 @@ pub struct MatchStatic {
     opaque_cells: Vec<(u16, u16)>,
     terrain: Vec<u8>,
     shop: Vec<ShopEntry>,
+    secret_shops: Vec<ShopZoneView>,
     fountains: [Vec2; 2],
     shop_range: i32,
     /// The items the match plays with.
@@ -75,6 +77,7 @@ impl MatchStatic {
                 cheats: info.cheats,
                 objectives: info.objectives,
                 runes: info.runes,
+                universal_shop: info.universal_shop,
             },
             roster,
             trees: info.trees.clone(),
@@ -82,6 +85,7 @@ impl MatchStatic {
             opaque_cells: info.opaque_cells.clone(),
             terrain: decode_terrain(info),
             shop: info.shop.clone(),
+            secret_shops: info.secret_shops.clone(),
             fountains: info.fountains,
             shop_range: info.shop_range,
             catalogue,
@@ -136,6 +140,10 @@ impl MatchStatic {
     /// prices and places by.
     pub fn shop(&self) -> &[ShopEntry] {
         &self.shop
+    }
+
+    pub fn secret_shops(&self) -> &[ShopZoneView] {
+        &self.secret_shops
     }
 
     /// The items the match plays with: no item past it is sold or offered.
@@ -308,6 +316,7 @@ fn validate_static_inputs(info: &MatchInfo) -> Result<Catalogue, SessionError> {
         MAX_OPAQUE_CELLS,
     )?;
     check_limit("MatchInfo.shop", info.shop.len(), MAX_SHOP_ITEMS)?;
+    validate_shop_zones(info)?;
     let catalogue =
         bota_core::Catalogue::agreeing(info.catalogue).ok_or(SessionError::OtherCatalogue {
             told: info.catalogue,
@@ -376,6 +385,42 @@ fn validate_static_inputs(info: &MatchInfo) -> Result<Catalogue, SessionError> {
     }
     validate_recipes(&info.shop)?;
     Ok(catalogue)
+}
+
+fn validate_shop_zones(info: &MatchInfo) -> Result<(), SessionError> {
+    check_limit(
+        "MatchInfo.secret_shops",
+        info.secret_shops.len(),
+        bota_proto::MAX_SECRET_SHOPS,
+    )?;
+    for shop in &info.secret_shops {
+        check_limit(
+            "ShopZoneView.corners",
+            shop.corners.len(),
+            bota_proto::MAX_SHOP_ZONE_CORNERS,
+        )?;
+        validate_positions(
+            "ShopZoneView.pos",
+            [shop.pos],
+            RawExtent::map(info.terrain_cells),
+        )?;
+        validate_positions(
+            "ShopZoneView.corners",
+            shop.corners.iter().copied(),
+            RawExtent::map(info.terrain_cells),
+        )?;
+        if !bota_core::shop_zone_is_convex(&shop.corners) {
+            return Err(SessionError::Stream(
+                "shop zone must be a convex counter-clockwise polygon",
+            ));
+        }
+        if !bota_core::shop_zone_touches(&shop.corners, shop.pos, Fixed::ZERO) {
+            return Err(SessionError::Stream(
+                "shopkeeper must be inside its shop zone",
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Every item once, every part of a recipe sold, no item built from itself,

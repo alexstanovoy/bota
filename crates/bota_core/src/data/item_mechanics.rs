@@ -19,6 +19,7 @@ const fn from(d: &ItemData) -> ItemDef {
         key: d.key,
         retired: d.retired,
         cost: d.cost,
+        secret_shop: d.secret_shop,
         charges: d.charges,
         stack_limit: d.stack,
         cooldown: d.cooldown.ticks(),

@@ -81,3 +81,28 @@ fn empty_collections_survive() {
     let view = empty_world_view();
     assert_eq!(roundtrip(&view), view);
 }
+
+#[test]
+fn secret_shop_sequences_are_bounded_before_decoding() {
+    for (shops, corners) in [(MAX_SECRET_SHOPS + 1, 3), (1, MAX_SHOP_ZONE_CORNERS + 1)] {
+        let mut info = match_info();
+        info.secret_shops = vec![
+            ShopZoneView {
+                pos: Vec2::ZERO,
+                corners: vec![Vec2::ZERO; corners]
+            };
+            shops
+        ];
+        let bytes = encode_frame_to_vec(&ServerMsg::MatchStart { info })
+            .expect("encode invalid server data");
+        let mut reader = FrameReader::new();
+        reader.push(&bytes);
+        assert!(
+            matches!(
+                reader.next_message::<ServerMsg>(),
+                Err(CodecError::Malformed)
+            ),
+            "shops={shops} corners={corners}"
+        );
+    }
+}

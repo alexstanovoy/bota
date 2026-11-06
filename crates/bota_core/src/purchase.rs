@@ -2,10 +2,10 @@
 //! client asks before it sends a buy order.
 //!
 //! A stack is read through [`HeldItem`], so the server's stacks and a view's items answer the
-//! same questions. A bought item goes to the hero's bag when the hero stands in its shop, and to
-//! the stash otherwise (or when the bag is full); mergeable charges fill a compatible stack first.
+//! same questions. A base-shop item goes to the hero at home or the stash;
+//! a secret-shop item needs a physical carrier there. Mergeable charges fill a compatible stack first.
 
-use bota_proto::{Attribute, ItemId, SlotId};
+use bota_proto::{Attribute, ItemId, RejectReason, SlotId};
 
 use crate::{item_def, rules, sold};
 
@@ -110,6 +110,28 @@ pub enum Berth {
     Bag(usize),
     /// The stash, by slot number.
     Stash(usize),
+    /// The owner's courier, which must be at the required shop.
+    Courier(usize),
+}
+
+/// Which physical shops a carrier currently touches.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ShopAccess {
+    pub base: bool,
+    pub secret: bool,
+}
+
+pub struct PurchaseCarrier<'a, P> {
+    pub bag: Shelf<'a, P>,
+    pub shops: ShopAccess,
+}
+
+/// The buyer's storage and physical carriers; the stash is always at the base shop.
+pub struct PurchaseContext<'a, P> {
+    pub hero: Option<PurchaseCarrier<'a, P>>,
+    pub courier: Option<PurchaseCarrier<'a, P>>,
+    pub stash: Shelf<'a, P>,
+    pub universal_shop: bool,
 }
 
 impl HeldItem for bota_proto::ItemView {
@@ -192,33 +214,82 @@ pub fn place_purchase<P: HeldItem>(
     let mut berths: Vec<Berth> = Vec::with_capacity(parts.len());
     for part in parts {
         let def = sold(*part)?;
-        let berth = if def.stack_limit > 0 {
+        if def.stack_limit > 0 {
             debug_assert_eq!(parts.len(), 1, "a part that merges is bought alone");
-            let bought = Bought {
-                id: *part,
-                charges: def.charges,
-                owner: buyer,
-                mode: def.mode,
-            };
-            bag.and_then(|bag| bag.receiving_slot(&bought))
-                .map(Berth::Bag)
-                .or_else(|| stash.receiving_slot(&bought).map(Berth::Stash))?
-        } else {
-            let empty = |shelf: &Shelf<'_, P>, berth: fn(usize) -> Berth| {
-                shelf
-                    .slots
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, held)| held.is_none())
-                    .map(|(at, _)| berth(at))
-                    .find(|berth| !berths.contains(berth))
-            };
-            bag.and_then(|bag| empty(bag, Berth::Bag))
-                .or_else(|| empty(stash, Berth::Stash))?
-        };
+        }
+        let berth = bag
+            .and_then(|bag| purchase_slot(buyer, def, bag, Berth::Bag, &berths))
+            .or_else(|| purchase_slot(buyer, def, stash, Berth::Stash, &berths))?;
         berths.push(berth);
     }
     Some(berths)
+}
+
+/// Resolve every missing part before charging gold or moving any item. Base-shop
+/// purchases may wait in the stash; secret-shop purchases need a physical carrier.
+pub fn place_shop_purchase<P: HeldItem>(
+    buyer: SlotId,
+    parts: &[ItemId],
+    context: &PurchaseContext<'_, P>,
+) -> Result<Vec<Berth>, RejectReason> {
+    let mut berths = Vec::with_capacity(parts.len());
+    for part in parts {
+        let item = sold(*part).ok_or(RejectReason::UnknownItem)?;
+        if item.stack_limit > 0 {
+            debug_assert_eq!(parts.len(), 1, "a part that merges is bought alone");
+        }
+        let berth = if item.secret_shop && !context.universal_shop {
+            let hero = context.hero.as_ref().filter(|carrier| carrier.shops.secret);
+            let courier = context
+                .courier
+                .as_ref()
+                .filter(|carrier| carrier.shops.secret);
+            if hero.is_none() && courier.is_none() {
+                return Err(RejectReason::NotAtShop);
+            }
+            hero.and_then(|carrier| purchase_slot(buyer, item, &carrier.bag, Berth::Bag, &berths))
+                .or_else(|| {
+                    courier.and_then(|carrier| {
+                        purchase_slot(buyer, item, &carrier.bag, Berth::Courier, &berths)
+                    })
+                })
+        } else {
+            context
+                .hero
+                .as_ref()
+                .filter(|carrier| carrier.shops.base)
+                .and_then(|carrier| purchase_slot(buyer, item, &carrier.bag, Berth::Bag, &berths))
+                .or_else(|| purchase_slot(buyer, item, &context.stash, Berth::Stash, &berths))
+        }
+        .ok_or(RejectReason::InventoryFull)?;
+        berths.push(berth);
+    }
+    Ok(berths)
+}
+
+fn purchase_slot<P: HeldItem>(
+    buyer: SlotId,
+    def: &crate::ItemDef,
+    shelf: &Shelf<'_, P>,
+    berth: fn(usize) -> Berth,
+    reserved: &[Berth],
+) -> Option<Berth> {
+    if def.stack_limit > 0 {
+        let bought = Bought {
+            id: def.id,
+            charges: def.charges,
+            owner: buyer,
+            mode: def.mode,
+        };
+        return shelf.receiving_slot(&bought).map(berth);
+    }
+    shelf
+        .slots
+        .iter()
+        .enumerate()
+        .filter(|(_, held)| held.is_none())
+        .map(|(at, _)| berth(at))
+        .find(|at| !reserved.contains(at))
 }
 
 /// A stack's counts: what the rules of stacking move between two stacks. A Ward Dispenser's

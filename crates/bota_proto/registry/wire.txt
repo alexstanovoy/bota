@@ -663,3 +663,8 @@ field WorldView 17 pools: Vec<PoolView>
 variant ServerMsg 17 Scenery {}
 field ServerMsg::Scenery 0 map: MapId
 field ServerMsg::Scenery 1 trees: Vec<Vec2>
+field ShopEntry 4 secret_shop: bool
+field ShopZoneView 0 pos: Vec2
+field ShopZoneView 1 corners: Vec<Vec2>
+field MatchInfo 17 secret_shops: Vec<ShopZoneView>
+field MatchInfo 18 universal_shop: bool

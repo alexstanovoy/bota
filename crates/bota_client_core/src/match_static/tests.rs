@@ -21,11 +21,49 @@ fn info(shop: Vec<ShopEntry>) -> MatchInfo {
         shop,
         fountains: [Vec2::ZERO; 2],
         shop_range: 0,
+        secret_shops: Vec::new(),
+        universal_shop: false,
         cheats: false,
         objectives: bota_proto::ObjectiveSet::NONE,
         runes: bota_proto::RuneSet::NONE,
         catalogue: bota_core::Catalogue::FULL.prefix(),
     }
+}
+
+#[test]
+fn a_secret_shop_rejects_a_crossing_footprint_even_when_each_corner_turns_left() {
+    let points = [(200, 64), (329, 158), (280, 310), (120, 310), (71, 158)];
+    let mut frame = info(Vec::new());
+    frame.secret_shops = vec![bota_proto::ShopZoneView {
+        pos: Vec2::from_ints(200, 200),
+        corners: [0, 2, 4, 1, 3]
+            .map(|index| Vec2::from_ints(points[index].0, points[index].1))
+            .to_vec(),
+    }];
+    assert_eq!(
+        MatchStatic::new(&frame),
+        Err(SessionError::Stream(
+            "shop zone must be a convex counter-clockwise polygon"
+        ))
+    );
+}
+
+#[test]
+fn a_secret_shop_rejects_an_out_of_map_shopkeeper() {
+    let mut frame = info(Vec::new());
+    frame.secret_shops = vec![bota_proto::ShopZoneView {
+        pos: Vec2::from_ints(9000, 128),
+        corners: vec![
+            Vec2::from_ints(64, 64),
+            Vec2::from_ints(256, 64),
+            Vec2::from_ints(256, 256),
+            Vec2::from_ints(64, 256),
+        ],
+    }];
+    let Err(SessionError::PositionOutOfMap { field, .. }) = MatchStatic::new(&frame) else {
+        panic!("out-of-map shopkeeper rejected")
+    };
+    assert_eq!(field, "ShopZoneView.pos");
 }
 
 /// Each item of a chain made of sixteen of the next: laid out whole, the
@@ -44,6 +82,7 @@ fn a_shop_whose_recipes_multiply_out_is_refused() {
                 Vec::new()
             },
             alternatives: Vec::new(),
+            secret_shop: false,
         })
         .collect();
     assert_eq!(

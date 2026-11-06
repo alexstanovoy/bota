@@ -179,6 +179,12 @@ impl MatchConfig {
             objectives: self.objectives,
             runes: self.runes,
             catalogue: self.catalogue.prefix(),
+            secret_shops: map
+                .secret_shops
+                .iter()
+                .map(bota_core::ShopZone::view)
+                .collect(),
+            universal_shop: map.universal_shop,
         }
     }
 }

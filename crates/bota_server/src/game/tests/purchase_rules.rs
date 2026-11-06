@@ -1,5 +1,5 @@
-//! One shop: the client asks the rules the server buys by, so what it lists is what the server
-//! sells and what it says fits is what the server accepts.
+//! One catalogue across both shops: the client lists what is sold, while physical access and
+//! storage decide which purchases the server accepts.
 
 use std::collections::BTreeSet;
 
@@ -149,10 +149,20 @@ fn what_the_client_says_fits_is_what_the_server_accepts_for_every_item_in_every_
 
 #[test]
 fn the_items_a_client_lists_are_exactly_the_items_the_server_sells() {
-    let (local, session) = arranged(&STATES[0]);
+    let (mut local, session) = arranged(&STATES[0]);
     let listed: BTreeSet<u16> = sold_items(bota_core::Catalogue::FULL)
         .map(|item| item.0)
         .collect();
+    assert!(listed.contains(&ItemId::DEMON_EDGE.0));
+    assert!(
+        !server_accepts(local.world(), ItemId::DEMON_EDGE),
+        "the catalogue includes secret components unavailable at the base shop"
+    );
+    // Leave the hero at base and put the personal courier in a secret-shop trigger:
+    // every listed part is now physically reachable, including mixed-shop recipes.
+    let world = local.world_mut();
+    let courier = world.seats[0].courier.expect("personal courier");
+    world.transform.get_mut(courier).expect("placed").pos = world.map.secret_shops[0].pos;
     let accepted: BTreeSet<u16> = (0..ITEMS.len() as u16)
         .filter(|id| server_accepts(local.world(), ItemId(*id)))
         .collect();

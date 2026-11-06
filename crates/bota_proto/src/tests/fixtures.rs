@@ -359,6 +359,8 @@ pub fn match_info() -> MatchInfo {
         mode: TickMode::Lockstep,
         fountains: [Vec2::from_ints(1760, 2278), Vec2::from_ints(16624, 16064)],
         shop_range: 1000,
+        secret_shops: Vec::new(),
+        universal_shop: true,
         cheats: false,
         objectives: ObjectiveSet::of(ObjectiveKind::Outposts).with(ObjectiveKind::Shrines),
         runes: RuneSet::of(RuneKind::Bounty).with(RuneKind::Illusion),
@@ -372,6 +374,7 @@ pub fn match_info() -> MatchInfo {
                 cost: 500,
                 components: Vec::new(),
                 alternatives: Vec::new(),
+                secret_shop: false,
             },
             ShopEntry {
                 id: ItemId(29),
@@ -381,6 +384,7 @@ pub fn match_info() -> MatchInfo {
                     vec![ItemId(0), ItemId(19), ItemId(15)],
                     vec![ItemId(0), ItemId(19), ItemId(14)],
                 ],
+                secret_shop: false,
             },
         ],
         picks: vec![

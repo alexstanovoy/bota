@@ -144,4 +144,55 @@ mod tests {
             "the committed table is stale: run import_items"
         );
     }
+
+    /// The install has more secret-shop components than this catalogue registers. Pin its
+    /// intersection with our live ids, then compare both the importer and committed rows.
+    #[test]
+    #[ignore = "needs a Dota 2 install"]
+    fn registered_secret_items_match_the_installs_secret_shop_keys() {
+        use heatel::keyvalues::Kv;
+        use std::collections::BTreeSet;
+        let source = crate::install::read(None).expect("an install");
+        let registry = std::fs::read_to_string(crate::registry_path()).expect("registry");
+        let entries = crate::registry::items(&registry).expect("registered ids");
+        let expected = BTreeSet::from([
+            "item_demon_edge",
+            "item_eagle",
+            "item_energy_booster",
+            "item_talisman_of_evasion",
+            "item_vitality_booster",
+        ]);
+        let installed: BTreeSet<_> = entries
+            .iter()
+            .filter(|entry| !entry.retired)
+            .filter(|entry| {
+                matches!(source.items().get(&entry.key).and_then(|item| item.get("SecretShop")),
+                Some(Kv::Text(value)) if value == "1")
+            })
+            .map(|entry| entry.key.as_str())
+            .collect();
+        assert_eq!(
+            installed, expected,
+            "7.41f secret set among our live catalogue ids"
+        );
+        let emitted = crate::emit::table(&source, &entries).expect("importable data");
+        let committed = std::fs::read_to_string(crate::table_path()).expect("committed data");
+        for table in [&emitted, &committed] {
+            let flagged: BTreeSet<_> = table
+                .split("ItemData = ItemData {")
+                .skip(1)
+                .filter(|row| row.lines().any(|line| line.trim() == "secret_shop: true,"))
+                .map(|row| {
+                    row.lines()
+                        .find_map(|line| line.trim().strip_prefix("key: \""))
+                        .and_then(|key| key.strip_suffix("\","))
+                        .expect("row key")
+                })
+                .collect();
+            assert_eq!(
+                flagged, installed,
+                "secret flags agree with the install's keys"
+            );
+        }
+    }
 }

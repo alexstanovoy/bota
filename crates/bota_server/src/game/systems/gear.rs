@@ -2,8 +2,9 @@
 
 use bota_core::{
     AllyUse, Berth, Carried, CarriedItem, DisassembleRule, ITEMS, ItemDef, MAX_COMPONENTS, Mend,
-    ModifierKind, Pool, Spends, clamp_to_map, effect_def, fountain_pos, hero_def, item_def,
-    learn_group, move_towards, place_purchase, purchase_pool, rules,
+    ModifierKind, Pool, PurchaseCarrier, PurchaseContext, Spends, clamp_to_map, effect_def,
+    fountain_pos, hero_def, item_def, learn_group, move_towards, place_shop_purchase,
+    purchase_pool, rules, shop_access,
 };
 use bota_proto::{
     AbilityId, Aim, Attribute, EventKind, Fixed, HeroId, Inflictor, ItemId, RejectReason, SlotId,
@@ -15,12 +16,11 @@ use crate::game::{
     Modifier, Tree, World, in_backpack, in_inventory, in_stash, in_town_portal, wire_id,
 };
 
-/// Missing purchase parts, their total price, and where each goes: no berths when they do not
-/// all fit.
+/// Missing parts, their total price and an atomic placement or refusal.
 pub(crate) struct PurchasePlan {
     parts: Vec<ItemId>,
     pub(crate) cost: i32,
-    pub(crate) berths: Option<Vec<Berth>>,
+    pub(crate) berths: Result<Vec<Berth>, RejectReason>,
 }
 
 /// The slots held that cover a list of parts, one slot to each part.
@@ -434,11 +434,11 @@ impl World {
     /// Buys an item for a seat that can afford it.
     ///
     /// Mergeable charges fill a compatible stack before taking an empty slot.
-    /// At its own shop it goes to the hero's bag, and
+    /// A base-shop purchase goes to the hero's bag at its own shop, and
     /// to the stash when that bag is full. Anywhere else, and while the hero
-    /// lies dead, it goes to the stash and waits there (Dota: what is bought
-    /// away from the fountain goes to the stash). Where each part goes is
-    /// [`bota_core::place_purchase`]'s to say, the rule a client asks too.
+    /// lies dead, it goes to the stash and waits there. Secret-shop parts
+    /// instead need a living hero or courier in that shop's trigger zone.
+    /// [`bota_core::place_shop_purchase`] is the same rule a client asks.
     pub fn buy(&mut self, slot: SlotId, item: ItemId, events: &mut Vec<Event>) -> bool {
         let Some(index) = self.seats.iter().position(|s| s.slot == slot) else {
             return false;
@@ -450,7 +450,7 @@ impl World {
         let Some(plan) = self.purchase_plan(slot, item) else {
             return false;
         };
-        let Some(berths) = plan.berths else {
+        let Ok(berths) = plan.berths else {
             return false;
         };
         if self.seats[index].gold < plan.cost {
@@ -472,14 +472,22 @@ impl World {
                     .expect("a bag berth is a bag")
                     .put_in(at, bought),
                 Berth::Stash(at) => self.seats[index].stash.put_in(at, bought),
+                Berth::Courier(at) => self
+                    .inventory
+                    .get_mut(
+                        self.seats[index]
+                            .courier
+                            .expect("a courier berth has a courier"),
+                    )
+                    .expect("a courier berth has a bag")
+                    .put_in(at, bought),
             }
         }
         self.finish_purchase(index, item, plan.cost, events);
         true
     }
 
-    /// Plans a known item's purchase into the seat hero's bag or stash: the
-    /// stash alone while the hero lies dead or away from its shop.
+    /// Resolves each part's shop access and storage before changing the world.
     pub(crate) fn purchase_plan(&self, slot: SlotId, item: ItemId) -> Option<PurchasePlan> {
         let seat = self.seats.iter().position(|seat| seat.slot == slot)?;
         let unit = self.seats[seat].unit;
@@ -489,15 +497,31 @@ impl World {
             .iter()
             .map(|part| item_def(*part).map(|def| def.cost))
             .sum::<Option<i32>>()?;
-        let bag = unit
-            .filter(|unit| self.at_home(Some(*unit)))
-            .and_then(|unit| self.inventory.get(unit))
-            .map(Inventory::shelf);
-        let berths = place_purchase(slot, &parts, bag.as_ref(), &self.seats[seat].stash.shelf());
+        let context = PurchaseContext {
+            hero: self.purchase_carrier(unit),
+            courier: self.purchase_carrier(self.seats[seat].courier),
+            stash: self.seats[seat].stash.shelf(),
+            universal_shop: self.map.universal_shop,
+        };
+        let berths = place_shop_purchase(slot, &parts, &context);
         Some(PurchasePlan {
             parts,
             cost,
             berths,
+        })
+    }
+
+    fn purchase_carrier(&self, unit: Option<Entity>) -> Option<PurchaseCarrier<'_, ItemStack>> {
+        let unit = unit?;
+        if !self.alive(unit) {
+            return None;
+        }
+        let pos = self.pos(unit)?;
+        let team = *self.team.get(unit)?;
+        let bound = self.hull.get(unit)?.bound;
+        Some(PurchaseCarrier {
+            bag: self.inventory.get(unit)?.shelf(),
+            shops: shop_access(self.map, team, pos, bound),
         })
     }
 
@@ -1194,10 +1218,10 @@ impl World {
         if held.owner != slot || held.free_charges > 0 || held.rune.is_some() {
             return false;
         }
-        if in_town_portal(at) && !self.at_shop(unit) {
+        if in_town_portal(at) && !self.at_any_shop(unit) {
             return false;
         }
-        if !in_stash(at) && !self.at_shop(unit) {
+        if !in_stash(at) && !self.at_any_shop(unit) {
             if let Some(stack) = self.slot_mut(unit, seat, at) {
                 stack.for_sale = !stack.for_sale;
                 return true;

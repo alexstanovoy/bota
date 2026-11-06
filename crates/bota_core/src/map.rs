@@ -29,6 +29,10 @@ pub struct MapDef {
     pub id: MapId,
     /// Fountain centres, Radiant first.
     pub fountains: [Vec2; 2],
+    /// Neutral secret shops, usable by either side.
+    pub secret_shops: &'static [crate::ShopZone],
+    /// Dota's SetUseUniversalShopMode: each shop sells every item.
+    pub universal_shop: bool,
     /// Ancient positions, Radiant first. Absent for a side that has none.
     pub ancients: [Option<Vec2>; 2],
     /// Radiant towers as lane, tier and position.
@@ -126,6 +130,8 @@ pub const MAPS: [MapDef; 3] = [DOTA, DEMO, SKIRMISH];
 const DOTA: MapDef = MapDef {
     id: MapId(0),
     fountains: [rules::RADIANT_FOUNTAIN_POS, rules::DIRE_FOUNTAIN_POS],
+    secret_shops: &crate::DOTA_SECRET_SHOPS,
+    universal_shop: false,
     ancients: [
         Some(rules::RADIANT_ANCIENT_POS),
         Some(rules::DIRE_ANCIENT_POS),
@@ -160,6 +166,9 @@ const DOTA: MapDef = MapDef {
 /// comes from the game's own `hero_demo_main`, shifted like the big map.
 const DEMO: MapDef = MapDef {
     id: MapId(1),
+    secret_shops: &[],
+    // hero_demo/scripts/vscripts/addon_game_mode.lua: SetUseUniversalShopMode(true).
+    universal_shop: true,
     fountains: [
         rules::DEMO_RADIANT_FOUNTAIN_POS,
         rules::DEMO_DIRE_FOUNTAIN_POS,

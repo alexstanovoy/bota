@@ -15,6 +15,15 @@ impl World {
         at_home_shop(self.map, side, at)
     }
 
+    /// Selling is possible at either shop; the stash still requires the home shop.
+    pub fn at_any_shop(&self, entity: Entity) -> bool {
+        self.at_shop(entity)
+            || self
+                .pos(entity)
+                .zip(self.hull.get(entity))
+                .is_some_and(|(pos, hull)| bota_core::at_secret_shop(self.map, pos, hull.bound))
+    }
+
     /// Casts one of an entity's abilities to the moment it has gone off:
     /// the checks, the ability's own work, and the cost.
     ///

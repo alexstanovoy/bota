@@ -91,6 +91,7 @@ fn shop_entry_of_empty_recipes(claimed: usize) -> Vec<u8> {
     let mut payload = vec![1, 0, 0]; // item 1, cost 0, no components
     payload.extend(varint(claimed));
     payload.resize(payload.len() + claimed, 0);
+    payload.push(0); // base-shop availability
     payload
 }
 

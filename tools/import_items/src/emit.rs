@@ -141,7 +141,7 @@ fn write_row(out: &mut String, entry: &Registered, row: &Item, builds: &[Vec<u16
          retired: {retired},\n    cost: {cost},\n    behavior: {behavior},\n    cast_range: {range},\n    \
          cast_point: {point},\n    channel: {channel},\n    cooldown: {cooldown},\n    mana: {mana},\n    \
          health: {health},\n    charges: {charges},\n    stack: {stack},\n    stock: {stock},\n    \
-         purchasable: {purchasable},\n",
+         purchasable: {purchasable},\n    secret_shop: {secret_shop},\n",
         name = row.key.to_uppercase(),
         id = entry.id,
         key = row.key,
@@ -153,6 +153,7 @@ fn write_row(out: &mut String, entry: &Registered, row: &Item, builds: &[Vec<u16
         cooldown = secs(row.cooldown),
         mana = row.mana,
         health = row.health,
+        secret_shop = row.secret_shop,
         charges = row.charges,
         stack = match (row.stackable, row.stack_max) {
             (false, _) => "0".to_owned(),

@@ -24,6 +24,8 @@ fn info(trees: Vec<Vec2>) -> MatchInfo {
         shop: Vec::new(),
         fountains: [Vec2::ZERO; 2],
         shop_range: 0,
+        secret_shops: Vec::new(),
+        universal_shop: false,
         cheats: false,
         objectives: ObjectiveSet::NONE,
         runes: RuneSet::NONE,

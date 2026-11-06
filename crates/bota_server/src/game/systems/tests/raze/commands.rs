@@ -1,6 +1,6 @@
 use bota_core::{fountain_pos, rules};
 
-use crate::game::{Action, ActionState, Entity, Event, World, wire_id};
+use crate::game::{Action, ActionState, Entity, Event, Hull, World, wire_id};
 use bota_proto::{
     AbilitySlot, EventKind, Fixed, Inflictor, ItemId, ItemSlot, Order, SlotId, Target, Team,
 };
@@ -39,6 +39,14 @@ fn raze_from(world: &mut World, caster: Entity, slot: u8) -> Vec<Event> {
 fn mango_mana_enables_a_validated_raze_without_changing_any_strategy() {
     let (mut world, caster, target) = fixture();
     seat(&mut world, SlotId(0), Team::Radiant, caster, 65);
+    // The isolated raze fixture strips the hull. Restore the hero's physical body for shopping.
+    world.hull.insert(
+        caster,
+        Hull {
+            collision: rules::units(rules::HERO_COLLISION),
+            bound: rules::units(rules::HERO_BOUND),
+        },
+    );
     world.transform.get_mut(caster).unwrap().pos = fountain_pos(world.map, Team::Radiant);
     advance_validated(
         &mut world,
@@ -47,6 +55,8 @@ fn mango_mana_enables_a_validated_raze_without_changing_any_strategy() {
             item: ItemId::MANGO,
         },
     );
+    let bag = &world.inventory.get(caster).unwrap().slots;
+    assert_eq!(bag[0].as_ref().map(|held| held.id), Some(ItemId::MANGO));
     world.transform.get_mut(caster).unwrap().pos = ORIGIN;
     world.mana.get_mut(caster).unwrap().mana = Fixed::ZERO;
     let use_mango = Order::Use {

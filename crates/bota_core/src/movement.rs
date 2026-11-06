@@ -206,23 +206,28 @@ fn turn_ticks(facing: Angle, wanted: Angle, rate: u16, tolerance: u16) -> u32 {
 }
 
 /// Squared distance from a point to a segment, in the raw units of
-/// [`Vec2::distance_squared`].
+/// [`Vec2::distance_squared`], saturated at `i64::MAX` for out-of-map inputs.
 #[inline]
 pub fn segment_distance_squared(p: Vec2, a: Vec2, b: Vec2) -> i64 {
-    let apx = i64::from(p.x.raw) - i64::from(a.x.raw);
-    let apy = i64::from(p.y.raw) - i64::from(a.y.raw);
-    let abx = i64::from(b.x.raw) - i64::from(a.x.raw);
-    let aby = i64::from(b.y.raw) - i64::from(a.y.raw);
+    let apx = i128::from(p.x.raw) - i128::from(a.x.raw);
+    let apy = i128::from(p.y.raw) - i128::from(a.y.raw);
+    let abx = i128::from(b.x.raw) - i128::from(a.x.raw);
+    let aby = i128::from(b.y.raw) - i128::from(a.y.raw);
     let dot = apx * abx + apy * aby;
-    if dot <= 0 {
-        return p.distance_squared(a);
-    }
     let len2 = abx * abx + aby * aby;
-    if dot >= len2 {
-        return p.distance_squared(b);
-    }
-    let cross = apx * aby - apy * abx;
-    (i128::from(cross) * i128::from(cross) / i128::from(len2)) as i64
+    let distance = if dot <= 0 {
+        (apx * apx + apy * apy) as u128
+    } else if dot >= len2 {
+        let bpx = apx - abx;
+        let bpy = apy - aby;
+        (bpx * bpx + bpy * bpy) as u128
+    } else {
+        // Three i32 points span at most a (2^32 - 1)^2 area. Its square
+        // fits u128, including when a wire position lies outside the map.
+        let cross = (apx * aby - apy * abx).unsigned_abs();
+        cross * cross / len2 as u128
+    };
+    distance.min(i64::MAX as u128) as i64
 }
 
 /// Squared distance from a point to an axis-aligned box given by its low

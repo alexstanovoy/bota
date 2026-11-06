@@ -593,9 +593,7 @@ impl World {
         if seat.gold < plan.cost {
             return Err(RejectReason::NotEnoughGold);
         }
-        if plan.berths.is_none() {
-            return Err(RejectReason::InventoryFull);
-        }
+        plan.berths.map(|_| ())?;
         if !self.in_stock(seat.team, item) {
             return Err(RejectReason::OutOfStock);
         }
@@ -722,7 +720,7 @@ impl World {
         }
         // Nothing is ever carried out of the town portal slot, so it sells
         // only at the shop and is never marked.
-        if in_town_portal(at) && !self.at_shop(unit) {
+        if in_town_portal(at) && !self.at_any_shop(unit) {
             return Err(RejectReason::NotAtShop);
         }
         Ok(())

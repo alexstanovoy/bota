@@ -12,6 +12,52 @@ fn hero_primary(hero: bota_proto::HeroId) -> Option<bota_proto::Attribute> {
 }
 
 impl App {
+    /// Physical access by one's hero or personal courier to either neutral secret shop.
+    pub fn at_secret_shop(&self) -> bool {
+        let Some(session) = self.session() else {
+            return false;
+        };
+        let Some(view) = self.view() else {
+            return false;
+        };
+        let Some(slot) = self.my_slot else {
+            return false;
+        };
+        let hero = view.player(slot).and_then(|player| player.unit);
+        view.units
+            .iter()
+            .filter(|unit| {
+                Some(unit.id) == hero
+                    || (unit.owner == Some(slot) && unit.kind == bota_proto::UnitKind::Courier)
+            })
+            .filter(|unit| unit.hp > 0)
+            .any(|unit| {
+                session
+                    .statics()
+                    .secret_shops()
+                    .iter()
+                    .any(|shop| bota_core::shop_zone_touches(&shop.corners, unit.pos, unit.bound))
+            })
+    }
+
+    pub fn unit_at_secret_shop(&self, id: bota_proto::EntityId) -> bool {
+        self.view()
+            .and_then(|view| view.unit(id))
+            .filter(|unit| unit.hp > 0)
+            .zip(self.statics())
+            .is_some_and(|(unit, statics)| {
+                statics
+                    .secret_shops()
+                    .iter()
+                    .any(|shop| bota_core::shop_zone_touches(&shop.corners, unit.pos, unit.bound))
+            })
+    }
+
+    pub fn secret_shop_accessible(&self) -> bool {
+        self.session()
+            .is_some_and(|session| session.statics().metadata().universal_shop)
+            || self.at_secret_shop()
+    }
     /// What this seat holds towards a build, and its hero's primary
     /// attribute. In the tactical phase it holds what it has queued.
     fn buyer(&self) -> (Vec<ItemId>, Option<bota_proto::Attribute>) {
