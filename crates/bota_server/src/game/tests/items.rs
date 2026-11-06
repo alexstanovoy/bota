@@ -557,7 +557,7 @@ fn switching_treads_mid_swing_breaks_nothing_off() {
         if swinging(&world, hero).is_some() {
             break;
         }
-        world.advance(&[]);
+        world.advance_trusted(&[]);
     }
     assert_eq!(swinging(&world, hero), Some(theirs), "mid-swing");
     seat_order(

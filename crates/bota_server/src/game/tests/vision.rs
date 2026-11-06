@@ -692,7 +692,7 @@ fn item_use_events(world: &mut World, seat: u8, item: ItemId, target: Target) ->
     };
     let slot = bota_proto::SlotId(seat);
     assert_eq!(world.validate_order(slot, None, &order), Ok(()));
-    let mut events = world.advance(&[crate::game::Command {
+    let mut events = world.advance_trusted(&[crate::game::Command {
         slot,
         unit: None,
         queue: false,
@@ -832,7 +832,7 @@ fn a_hero_that_blinks_out_of_sight_is_not_shown_where_it_landed() {
         slot: bota_proto::ItemSlot(0),
         target: Target::Pos(landing),
     };
-    world.advance(&[crate::game::Command {
+    world.advance_trusted(&[crate::game::Command {
         slot: bota_proto::SlotId(1),
         unit: None,
         order,
@@ -1271,7 +1271,7 @@ fn a_hero_that_blinks_into_sight_is_shown_and_may_be_named_on_that_view() {
         slot: bota_proto::ItemSlot(0),
         target: Target::Pos(landing),
     };
-    world.advance(&[crate::game::Command {
+    world.advance_trusted(&[crate::game::Command {
         slot: bota_proto::SlotId(1),
         unit: None,
         order,

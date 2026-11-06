@@ -540,6 +540,7 @@ tests = [{ crate = "bota_server", target = "lib", filters = [
     "game::tests::match_flow::",
     "game::tests::client::",
     "game::tests::local::",
+    "local::tests::",
     "game::tests::map2::",
     "game::tests::bounty::",
     "game::tests::kill_credit::",

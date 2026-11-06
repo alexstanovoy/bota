@@ -250,7 +250,7 @@ fn kill_credit_damage_from_a_previous_life_cannot_claim_the_next_death() {
     world.step();
     assert!(world.alive(victim));
     world.transform.get_mut(victim).unwrap().pos = FALL;
-    world.advance(&[crate::game::Command {
+    world.advance_trusted(&[crate::game::Command {
         slot: bota_proto::SlotId(1),
         unit: None,
         order: bota_proto::Order::Move {

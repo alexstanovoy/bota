@@ -79,9 +79,10 @@ world_tables! {
         pub trees: Forest = Forest::default();
         /// Blows dealt and not yet felt. Filled and emptied inside one tick.
         pub hits: VecDeque<Hit> = VecDeque::new();
-        /// The orders refused in the last [`World::advance`]: a queued order
-        /// with no room left in its unit's queue, or one that no longer held
-        /// when its unit took it up. Emptied as the next one begins.
+        /// Orders refused during the latest advance, including player requests
+        /// rechecked before application and queued orders that no longer hold.
+        /// Cleared when advancement starts; [`super::DelayLine::advance`]
+        /// transfers these to its refusal output.
         pub refused: Vec<crate::game::RefusedOrder> = Vec::new();
         /// Which entities exist.
         pub entities: EntityAllocator = EntityAllocator::new();

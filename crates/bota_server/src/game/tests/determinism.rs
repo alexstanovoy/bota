@@ -275,7 +275,7 @@ fn replay_with(pinned: &Pinned, horizon: u32, eyes: Eyes) -> (Vec<(u32, u64, u64
         } else {
             Vec::new()
         };
-        let events = world.advance(&commands);
+        let events = world.advance_trusted(&commands);
         for team in [Team::Radiant, Team::Dire] {
             fold(
                 &mut digest,
@@ -397,7 +397,7 @@ fn the_published_match_id_gives_away_neither_the_seed_nor_the_key() {
         cfg.match_id = secrets.match_id;
         let mut world = World::for_match(&cfg, cfg.rng());
         while world.tick < CHECKPOINT_TICKS {
-            world.advance(&[]);
+            world.advance_trusted(&[]);
         }
         world.hash()
     };
@@ -430,13 +430,13 @@ fn a_cloned_world_plays_on_as_the_original() {
         } else {
             Vec::new()
         };
-        let events = world.advance(&commands);
+        let events = world.advance_trusted(&commands);
         if let Some(fork) = &mut fork {
             let kinds = |events: &[crate::game::Event]| {
                 events.iter().map(|event| event.kind()).collect::<Vec<_>>()
             };
             assert_eq!(
-                kinds(&fork.advance(&commands)),
+                kinds(&fork.advance_trusted(&commands)),
                 kinds(&events),
                 "tick {}",
                 world.tick
@@ -495,7 +495,7 @@ fn whatever_a_view_shows_an_order_on_it_may_name() {
             } else {
                 Vec::new()
             };
-            world.advance(&commands);
+            world.advance_trusted(&commands);
         }
     }
 }

@@ -274,18 +274,18 @@ fn map2_first_hero_death_allows_respawn_and_second_death_loses() {
         let first = world.seats[seat].unit.expect("first life");
         lethal_hit(&mut world, first);
 
-        world.advance(&[]);
+        world.advance_trusted(&[]);
 
         assert_eq!(world.seats[seat].deaths, 1);
         assert_eq!(world.victor(), None);
         assert!(world.seats[seat].dead());
         world.seats[seat].respawn_left = 1;
-        world.advance(&[]);
+        world.advance_trusted(&[]);
         let second = world.seats[seat].unit.expect("second life respawned");
         assert_eq!(second, first, "the same hero, as Dota's");
         // Risen at its fountain it is untouchable until its player gives it
         // a command, as Dota's.
-        world.advance(&[crate::game::Command {
+        world.advance_trusted(&[crate::game::Command {
             slot: world.seats[seat].slot,
             unit: None,
             order: bota_proto::Order::Move {
@@ -295,7 +295,7 @@ fn map2_first_hero_death_allows_respawn_and_second_death_loses() {
             seq: 0,
         }]);
         lethal_hit(&mut world, second);
-        world.advance(&[]);
+        world.advance_trusted(&[]);
         assert_eq!(world.seats[seat].deaths, 2);
         assert_eq!(world.victor(), Some(winner));
     }
@@ -323,7 +323,7 @@ fn map2_hero_lives_are_counted_per_side_across_seats() {
     let victim = world.seats[0].unit.expect("Radiant hero");
     lethal_hit(&mut world, victim);
 
-    world.advance(&[]);
+    world.advance_trusted(&[]);
 
     assert_eq!(world.seats[0].deaths, 1);
     assert_eq!(world.seats[2].deaths, 1);
@@ -337,7 +337,7 @@ fn map2_first_mid_tower_loss_ends_with_public_structure_reason() {
         let victim = tower(&world, loser, rules::LANE_MID);
         lethal_hit(&mut world, victim);
 
-        let events = world.advance(&[]);
+        let events = world.advance_trusted(&[]);
 
         assert_eq!(world.victor(), Some(winner));
         assert_destroyed(&events, victim, loser);
@@ -355,7 +355,7 @@ fn map2_side_tier_ones_stand_invulnerable_as_in_dotas_solo_mid() {
             let hp = world.health.get(victim).expect("standing").hp;
             for _ in 0..3 {
                 world.push_hit(None, victim, 30_000, DamageKind::Pure, None);
-                world.advance(&[]);
+                world.advance_trusted(&[]);
             }
             assert!(world.alive(victim), "{team:?} lane {lane} stands");
             assert_eq!(
@@ -367,7 +367,7 @@ fn map2_side_tier_ones_stand_invulnerable_as_in_dotas_solo_mid() {
             let mut full = match_world(MapId(0));
             let same = tower(&full, team, lane);
             lethal_hit(&mut full, same);
-            full.advance(&[]);
+            full.advance_trusted(&[]);
             assert!(!full.alive(same), "the full map's falls to the same blow");
         }
     }
@@ -382,7 +382,7 @@ fn map2_immortal_structures_survive_sustained_attack_and_the_match_goes_on() {
     let mut felt = 0;
     for _ in 0..30 {
         world.push_hit(None, victim, 30_000, DamageKind::Pure, None);
-        let events = world.advance(&[]);
+        let events = world.advance_trusted(&[]);
         felt += events
             .iter()
             .filter(|event| matches!(&event.kind(), EventKind::Damaged { target, amount, .. } if *target == wire_id(victim) && *amount > 0))
@@ -404,7 +404,7 @@ fn map2_immortal_heroes_survive_lethal_blows_and_no_death_ends_the_match() {
             let hero = world.seats[seat].unit.expect("hero");
             lethal_hit(&mut world, hero);
         }
-        world.advance(&[]);
+        world.advance_trusted(&[]);
         for seat in 0..2 {
             let hero = world.seats[seat].unit.expect("hero");
             assert!(world.alive(hero));
@@ -425,7 +425,7 @@ fn map2_courier_death_does_not_spend_a_hero_life_or_end_the_match() {
     let courier = world.seats[0].courier.expect("Radiant courier");
     world.bury(vec![(courier, None)], &mut Vec::new());
 
-    world.advance(&[]);
+    world.advance_trusted(&[]);
 
     assert!(!world.alive(courier));
     assert_eq!(world.seats[0].deaths, 0);
@@ -455,7 +455,7 @@ fn map2_both_sides_losing_on_one_tick_draw_in_either_hit_order() {
                 lethal_hit(&mut world, victim);
             }
 
-            let events = world.advance(&[]);
+            let events = world.advance_trusted(&[]);
 
             assert_eq!(world.victor(), Some(Team::Neutral), "{case}");
             let felled = events
@@ -479,7 +479,7 @@ fn map2_simultaneous_first_hero_deaths_do_not_end_the_match() {
         lethal_hit(&mut world, victim);
     }
 
-    world.advance(&[]);
+    world.advance_trusted(&[]);
 
     assert_eq!(world.victor(), None);
     assert_eq!(world.seats[0].deaths, 1);
@@ -491,11 +491,11 @@ fn map2_cap_draws_at_twenty_game_minutes_plus_unchanged_pregame() {
     let mut world = match_world(MID_MAP);
     world.tick = TICK_CAP - 2;
 
-    world.advance(&[]);
+    world.advance_trusted(&[]);
 
     assert_eq!(world.tick, TICK_CAP - 1);
     assert_eq!(world.victor(), None);
-    world.advance(&[]);
+    world.advance_trusted(&[]);
     assert_eq!(
         world.tick,
         SCHEDULE.horn + 20 * 60 * rules::TICKS_PER_SECOND
@@ -509,8 +509,8 @@ fn map2_plays_on_past_the_ten_minute_mark() {
     let mut world = match_world(MID_MAP);
     world.tick = 18_899;
 
-    world.advance(&[]);
-    world.advance(&[]);
+    world.advance_trusted(&[]);
+    world.advance_trusted(&[]);
 
     assert_eq!(world.tick, 18_901);
     assert_eq!(world.victor(), None);
@@ -575,7 +575,7 @@ fn map2_already_at_cap_draws_without_running_a_late_step_or_command() {
         let before = world.view_full();
 
         let events = if with_command {
-            world.advance(&[late_buy()])
+            world.advance_trusted(&[late_buy()])
         } else {
             world.step()
         };
@@ -595,7 +595,7 @@ fn map2_tower_loss_one_tick_before_cap_wins_but_on_cap_draws() {
         world.tick = tick;
         let victim = topple(&mut world, Team::Radiant);
 
-        let events = world.advance(&[]);
+        let events = world.advance_trusted(&[]);
 
         assert_eq!(world.victor(), Some(expected));
         assert_eq!(world.match_stats().duration, tick + 1);
@@ -611,7 +611,7 @@ fn map2_second_hero_death_on_cap_is_a_draw_after_death_accounting() {
     let victim = world.seats[0].unit.expect("second life");
     lethal_hit(&mut world, victim);
 
-    world.advance(&[]);
+    world.advance_trusted(&[]);
 
     assert_eq!(world.seats[0].deaths, 2);
     assert_eq!(world.victor(), Some(Team::Neutral));
@@ -626,13 +626,13 @@ fn map2_terminal_step_and_advance_freeze_world_and_ignore_shop_orders() {
         } else {
             topple(&mut world, Team::Dire);
         }
-        world.advance(&[]);
+        world.advance_trusted(&[]);
         assert!(world.victor().is_some());
         let before = world.hash();
         let view = world.view_full();
         let stats = world.match_stats();
 
-        let events = world.advance(&[late_buy()]);
+        let events = world.advance_trusted(&[late_buy()]);
         let stepped = world.step();
 
         assert!(events.is_empty());
@@ -651,7 +651,7 @@ fn map2_cap_is_independent_of_mode() {
         let mut world = World::for_match(&config, config.rng());
         world.tick = TICK_CAP - 1;
 
-        world.advance(&[]);
+        world.advance_trusted(&[]);
 
         assert_eq!(world.victor(), Some(Team::Neutral));
         assert_eq!(world.match_stats().duration, TICK_CAP);
@@ -684,8 +684,8 @@ fn map0_and_map1_do_not_gain_the_map2_cap() {
         let mut world = match_world(map);
         world.tick = TICK_CAP - 1;
 
-        world.advance(&[]);
-        world.advance(&[]);
+        world.advance_trusted(&[]);
+        world.advance_trusted(&[]);
 
         assert_eq!(world.victor(), None);
         assert_eq!(world.tick, TICK_CAP + 1);
@@ -705,7 +705,7 @@ fn map0_and_map1_end_on_neither_a_tower_nor_a_second_hero_death() {
             };
             lethal_hit(&mut world, victim);
 
-            world.advance(&[]);
+            world.advance_trusted(&[]);
 
             assert_eq!(world.victor(), None);
         }
@@ -726,7 +726,7 @@ fn map2_step_and_match_advance_share_completion_events_stats_and_hash() {
         }
 
         let direct_events = direct.step();
-        let adapter_events = adapter.advance(&[]);
+        let adapter_events = adapter.advance_trusted(&[]);
 
         assert!(direct.victor().is_some());
         assert_eq!(direct.victor(), adapter.victor());
@@ -755,7 +755,7 @@ fn map2_native_frames_and_replay_preserve_world_result_and_final_statistics() {
             };
             topple(&mut world, loser);
         }
-        let events = world.advance(&[]);
+        let events = world.advance_trusted(&[]);
         assert_eq!(world.victor(), Some(winner));
         let messages = [
             ServerMsg::MatchStart {

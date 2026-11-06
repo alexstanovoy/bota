@@ -185,7 +185,7 @@ fn an_order_to_the_body_in_the_cast_point_breaks_the_raze_off_with_nothing_spent
 
 /// Seat 0 gives its hero an order, queued or not, and the world advances one tick.
 fn give(world: &mut World, order: Order, queue: bool) -> Vec<crate::game::Event> {
-    world.advance(&[Command {
+    world.advance_trusted(&[Command {
         slot: SlotId(0),
         unit: None,
         order,

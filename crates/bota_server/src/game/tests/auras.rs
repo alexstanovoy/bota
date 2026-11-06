@@ -367,7 +367,7 @@ fn the_fountain_melts_whoever_steps_into_its_reach_and_spares_who_stays_out() {
             if let Some(t) = world.transform.get_mut(hero) {
                 t.pos = at;
             }
-            world.advance(&[]);
+            world.advance_trusted(&[]);
         }
     };
     let full = world.health.get(hero).expect("standing").hp;

@@ -151,7 +151,9 @@ impl DelayLine {
 
     /// Validates an order a seat gives while `world` stands on its tick and,
     /// when it is valid, sends it on its way. An unqueued order to a body
-    /// replaces the body's orders due on the same tick.
+    /// replaces the body's orders due on the same tick. After Map2 completes,
+    /// MatchOver cancels admitted orders without application or a separate
+    /// refusal; advancing a completed world releases no commands.
     pub fn give(
         &mut self,
         world: &World,
@@ -194,13 +196,19 @@ impl DelayLine {
     /// Releases the next tick's player requests and advances the world,
     /// validating each immediately before application. The returned commands
     /// include admitted attempts refused at application, for the order tape;
-    /// every refusal is appended to `refused`.
+    /// every refusal is appended to `refused`. A completed Map2 releases no
+    /// commands and advances no tick; callers must not record a tick then.
+    #[must_use]
     pub fn advance(
         &mut self,
         world: &mut World,
         refused: &mut Vec<RefusedOrder>,
     ) -> (Vec<Command>, Vec<Event>) {
-        let commands = self.release(world, refused);
+        let commands = if world.map2_finished() {
+            Vec::new()
+        } else {
+            self.release(world, refused)
+        };
         let events = world.advance_checked(&commands);
         refused.append(&mut world.refused);
         (commands, events)
@@ -208,8 +216,9 @@ impl DelayLine {
 
     /// The orders that take effect on the tick after the one `world` stands
     /// on, seat by seat in slot order and each seat's in the order given,
-    /// validated again; inventory-dependent orders are checked in ordered
-    /// application. Those no longer valid are appended to `refused`.
+    /// checked as at admission. Final validation of every request happens
+    /// in [`World::advance_checked`], in application order. Refusals found
+    /// here are appended to `refused`.
     fn release(&mut self, world: &World, refused: &mut Vec<RefusedOrder>) -> Vec<Command> {
         let next = world.tick + 1;
         let mut commands = Vec::with_capacity(self.seats.len());

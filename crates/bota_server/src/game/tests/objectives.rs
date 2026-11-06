@@ -84,7 +84,7 @@ fn give(world: &mut World, orders: &[(usize, Order)]) -> Vec<Event> {
             }
         })
         .collect();
-    world.advance(&commands)
+    world.advance_trusted(&commands)
 }
 
 /// An attack order at a unit.

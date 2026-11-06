@@ -109,7 +109,7 @@ fn an_order_that_no_longer_holds_on_its_tick_is_refused_then() {
             let given = line.give(&world, hero_order(seq, boots), Some(world.tick));
             assert_eq!(given, Ok(()), "the gold for one pair is there when given");
         }
-        line.advance(&mut world, &mut refused);
+        let _ = line.advance(&mut world, &mut refused);
     }
     assert_eq!(
         refused,

@@ -136,7 +136,7 @@ impl Dummy {
                 });
             }
         }
-        self.world.advance(&cmds);
+        self.world.advance_trusted(&cmds);
         if self.project {
             self.views = Some((
                 self.world.view_full(),

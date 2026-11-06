@@ -11,7 +11,7 @@ use super::support::*;
 /// out, and each still standing with its spawner's spot and its own.
 fn the_first_waves_half_a_minute_on(world: &mut World) -> (usize, Vec<(Entity, Vec2, Vec2)>) {
     for _ in 0..=world.schedule().first_wave() {
-        world.advance(&[]);
+        world.advance_trusted(&[]);
     }
     let first: Vec<(Entity, Vec2)> = world
         .entities
@@ -24,7 +24,7 @@ fn the_first_waves_half_a_minute_on(world: &mut World) -> (usize, Vec<(Entity, V
         })
         .collect();
     for _ in 0..(30 * rules::TICKS_PER_SECOND) {
-        world.advance(&[]);
+        world.advance_trusted(&[]);
     }
     let standing = first
         .iter()
@@ -153,11 +153,11 @@ fn a_wave_walks_over_where_its_tower_stood_once_it_has_fallen() {
         "fallen, the route runs over its ground"
     );
     for _ in 0..=world.schedule().first_wave() {
-        world.advance(&[]);
+        world.advance_trusted(&[]);
     }
     let mut nearest = i64::MAX;
     for _ in 0..(20 * rules::TICKS_PER_SECOND) {
-        world.advance(&[]);
+        world.advance_trusted(&[]);
         for creep in radiant_marchers(&world) {
             if world.lane.get(creep) == Some(&Lane(rules::LANE_MID)) {
                 let at = world.transform.get(creep).expect("standing").pos;

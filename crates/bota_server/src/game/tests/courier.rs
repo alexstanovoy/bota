@@ -113,7 +113,7 @@ fn an_order_goes_to_the_unit_it_names_and_only_to_ones_this_seat_drives() {
         Ok(()),
         "a seat drives its own courier"
     );
-    world.advance(&[Command {
+    world.advance_trusted(&[Command {
         slot: SlotId(0),
         unit: named,
         order: walk,
@@ -151,7 +151,7 @@ fn a_courier_told_to_go_at_a_unit_follows_it() {
     // Something of its own side standing a way off, that then walks further.
     let mark = world.spawn_unit(&MELEE_CREEP, Team::Radiant, home + Vec2::from_ints(700, 0));
     world.settle();
-    world.advance(&[Command {
+    world.advance_trusted(&[Command {
         slot: SlotId(0),
         unit: Some(wire_id(courier)),
         order: Order::Attack {
@@ -240,7 +240,7 @@ fn courier_auxiliary_casts_keep_delivery_tracking_a_moving_owner() {
             world.validate_order(SlotId(0), Some(wire_id(courier)), &order),
             Err(RejectReason::OnCooldown)
         );
-        world.advance(&[]);
+        world.advance_trusted(&[]);
         let stats = world.stats.get(courier).expect("settled");
         if ability == AbilityId::BURST {
             // Still in its fountain's Rejuvenation, which sets its pace
@@ -253,13 +253,13 @@ fn courier_auxiliary_casts_keep_delivery_tracking_a_moving_owner() {
         let moved = rules::DEMO_LANE_CORNERS[1];
         assert_ne!(world.transform.get(hero).expect("standing").pos, moved);
         world.transform.get_mut(hero).expect("standing").pos = moved;
-        world.advance(&[]);
+        world.advance_trusted(&[]);
         assert_eq!(
             world.orders.get(courier).expect("orders").current,
             UnitOrder::Move { pos: moved }
         );
         for _ in 0..400 {
-            world.advance(&[]);
+            world.advance_trusted(&[]);
             if slot_of(&world, hero, 0).is_some() {
                 break;
             }
@@ -332,7 +332,7 @@ fn courier_return_move_and_stop_replace_delivery() {
             })
         );
         for _ in 0..30 {
-            world.advance(&[]);
+            world.advance_trusted(&[]);
         }
         assert_eq!(world.inventory.get(hero).expect("bag").held().count(), 0);
         if returning {
@@ -766,7 +766,7 @@ fn burst_opens_at_owner_level_ten_and_shield_at_twenty_and_no_point_buys_them() 
             "and no point opens it"
         );
     }
-    world.advance(&[Command {
+    world.advance_trusted(&[Command {
         slot: SlotId(0),
         unit: Some(wire_id(courier)),
         order: learn,
@@ -848,7 +848,7 @@ fn a_burst_adds_half_the_pace_and_no_slow_takes_from_it_while_it_holds() {
             target: Target::None,
         },
     );
-    world.advance(&[]);
+    world.advance_trusted(&[]);
     assert_eq!(
         pace(&world),
         Some(570),

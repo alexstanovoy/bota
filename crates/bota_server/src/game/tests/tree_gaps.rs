@@ -166,7 +166,7 @@ fn forest(gap: &Gap) -> (World, Entity, Entity) {
 }
 
 fn order(world: &mut World, slot: u8, order: Order) {
-    world.advance(&[Command {
+    world.advance_trusted(&[Command {
         slot: SlotId(slot),
         unit: None,
         order,

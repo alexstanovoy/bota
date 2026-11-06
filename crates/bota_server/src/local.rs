@@ -93,7 +93,8 @@ impl LocalMatch {
         let line = DelayLine::new(cfg, delays).map_err(|e| refused(&e))?;
         let mut world = World::for_match(cfg, cfg.rng());
         let handles = Handles::new(cfg, &world);
-        let events = world.advance(&[]);
+        let before = world.tick;
+        let events = world.advance_trusted(&[]);
         let mut local = Self {
             world,
             seats: cfg.picks.iter().map(|pick| pick.slot).collect(),
@@ -103,7 +104,7 @@ impl LocalMatch {
             handles,
             tape: recorded.then(Vec::new),
         };
-        local.record_tick(&[], &events);
+        local.record_tick(before, &[], &events);
         let start = ServerMsg::MatchStart { info: cfg.info() };
         let mut streams = vec![vec![start]; local.seats.len()];
         local.publish(&mut streams, &events);
@@ -150,8 +151,9 @@ impl LocalMatch {
                 }
             }
         }
+        let before = self.world.tick;
         let (commands, events) = self.line.advance(&mut self.world, &mut self.refused);
-        self.record_tick(&commands, &events);
+        self.record_tick(before, &commands, &events);
         for refusal in self.refused.drain(..) {
             let seat = self
                 .seats
@@ -163,7 +165,11 @@ impl LocalMatch {
                 reason: refusal.reason,
             });
         }
-        self.publish(&mut streams, &events);
+        if self.world.tick != before {
+            self.publish(&mut streams, &events);
+        } else {
+            self.publish_over(&mut streams);
+        }
         Ok(streams)
     }
 
@@ -232,23 +238,27 @@ impl LocalMatch {
     }
 
     /// Keeps the finished tick for the replay, as the server's loop records it.
-    fn record_tick(&mut self, commands: &[Command], events: &[Event]) {
+    fn record_tick(&mut self, before: u32, commands: &[Command], events: &[Event]) {
         let Some(tape) = self.tape.as_mut() else {
             return;
         };
         let tick = self.world.tick;
-        tape.push(ReplayRecord::Orders {
-            tick,
-            orders: commands.iter().map(Command::told).collect(),
-        });
-        let mut full = self.world.view_full();
-        full.order_delays = self.line.views(None);
-        tape.push(ReplayRecord::Msg(ServerMsg::Snapshot { view: full }));
-        if !events.is_empty() {
-            tape.push(ReplayRecord::Msg(ServerMsg::Events {
+        if tick != before || !commands.is_empty() {
+            tape.push(ReplayRecord::Orders {
                 tick,
-                events: events.iter().map(|event| event.kind()).collect(),
-            }));
+                orders: commands.iter().map(Command::told).collect(),
+            });
+        }
+        if tick != before {
+            let mut full = self.world.view_full();
+            full.order_delays = self.line.views(None);
+            tape.push(ReplayRecord::Msg(ServerMsg::Snapshot { view: full }));
+            if !events.is_empty() {
+                tape.push(ReplayRecord::Msg(ServerMsg::Events {
+                    tick,
+                    events: events.iter().map(|event| event.kind()).collect(),
+                }));
+            }
         }
         if let Some(winner) = self.world.victor() {
             tape.push(ReplayRecord::Msg(ServerMsg::MatchOver {
@@ -292,6 +302,10 @@ impl LocalMatch {
                 events: side_told,
             });
         }
+        self.publish_over(streams);
+    }
+
+    fn publish_over(&self, streams: &mut [Vec<ServerMsg>]) {
         if let Some(winner) = self.world.victor() {
             let over = ServerMsg::MatchOver {
                 winner,
@@ -301,5 +315,58 @@ impl LocalMatch {
                 stream.push(over.clone());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bota_proto::{ItemId, Order};
+
+    #[test]
+    fn an_applied_batch_is_recorded_even_without_another_tick_at_the_time_cap() {
+        let map = bota_core::map_of(bota_core::MAP2_ID);
+        let cfg = MatchConfig {
+            map: map.id,
+            objectives: map.default_objectives,
+            runes: map.default_runes,
+            ..crate::game::tests::support::config()
+        };
+        let (mut game, _) = LocalMatch::new_recorded(&cfg, &[]).expect("recorded match");
+        game.take_records();
+        let purchase = Command {
+            slot: SlotId(0),
+            unit: None,
+            order: Order::Buy {
+                item: ItemId::CIRCLET,
+            },
+            queue: false,
+            seq: 42,
+        };
+        let gold = game.world.seats[0].gold;
+        let seen = game.tick();
+        game.line
+            .give(&game.world, purchase, Some(seen))
+            .expect("admitted purchase");
+        let (commands, events) = game.line.advance(&mut game.world, &mut game.refused);
+        assert!(game.refused.is_empty());
+        assert!(game.world.seats[0].gold < gold, "the purchase was applied");
+        assert_eq!(commands.len(), 1);
+        // Current cheats cannot jump past the cap. Pin the recorder's contract
+        // for an applied batch whose recording phase advances no further tick.
+        let tick = game.tick();
+        game.world.clock_shift.game = bota_core::MAP2_TICK_CAP - tick;
+        assert!(game.world.step().is_empty());
+        assert_eq!(game.tick(), tick);
+        game.record_tick(tick, &commands, &events);
+        let records = game.take_records();
+        assert!(
+            matches!(
+                records.as_slice(),
+                [ReplayRecord::Orders { tick: at, orders }, ReplayRecord::Msg(ServerMsg::MatchOver { .. })]
+                    if *at == tick && orders == &vec![purchase.told()]
+            ),
+            "an applied batch keeps its authoritative tick, without repeating a snapshot: {records:?}"
+        );
     }
 }

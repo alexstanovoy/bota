@@ -432,7 +432,7 @@ fn a_heros_blows_on_enemy_heroes_and_structures_are_counted_in_the_final_stats()
             },
         );
         for _ in 0..ticks {
-            for event in world.advance(&[]) {
+            for event in world.advance_trusted(&[]) {
                 if let EventKind::Damaged {
                     source: Some(source),
                     target,
@@ -582,7 +582,7 @@ fn a_risen_hero_is_untouchable_at_its_fountain_until_it_is_given_a_command() {
         ),
     ] {
         let (mut world, back) = risen();
-        world.advance(&[crate::game::Command {
+        world.advance_trusted(&[crate::game::Command {
             slot: SlotId(0),
             unit: None,
             order,

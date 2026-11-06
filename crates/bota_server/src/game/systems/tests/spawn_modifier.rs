@@ -106,7 +106,7 @@ fn doubled(world: &World, kind: UnitKind, case: &str) -> Vec<Entity> {
 fn kill_and_respawn(world: &mut World, hero: Entity) -> Entity {
     // A hero risen at its fountain is untouchable until its player gives it
     // a command: give it one first.
-    world.advance(&[crate::game::Command {
+    world.advance_trusted(&[crate::game::Command {
         slot: bota_proto::SlotId(0),
         unit: None,
         order: bota_proto::Order::Move {
@@ -566,7 +566,7 @@ fn a_cheat_does_not_take_trusted_setup_off_a_unit() {
         queue: false,
         seq: 0,
     };
-    world.advance(&[cheat(Cheat::ApplyModifier {
+    world.advance_trusted(&[cheat(Cheat::ApplyModifier {
         target: Target::None,
         spec: spec(|s| s.status_resist = 2_000),
         ticks: 50,
@@ -583,7 +583,7 @@ fn a_cheat_does_not_take_trusted_setup_off_a_unit() {
             .iter()
             .any(|held| held.origin == AppliedOrigin::Cheat)
     );
-    world.advance(&[cheat(Cheat::ClearModifiers {
+    world.advance_trusted(&[cheat(Cheat::ClearModifiers {
         target: Target::None,
     })]);
     let applied = world.applied.get(hero).expect("setup stays");

@@ -197,7 +197,7 @@ fn a_hero_told_to_walk_into_a_tower_walks_up_to_it_and_stands() {
     world.set_order(hero, UnitOrder::Move { pos: tower });
     let mut seen = Vec::new();
     for _ in 0..(10 * rules::TICKS_PER_SECOND) {
-        world.advance(&[]);
+        world.advance_trusted(&[]);
         seen.push(world.transform.get(hero).expect("standing").pos);
     }
     let footprint = plan_radius(rules::units(rules::TOWER_COLLISION));

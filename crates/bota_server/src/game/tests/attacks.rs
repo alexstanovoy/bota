@@ -171,7 +171,7 @@ fn a_swing_costs_the_swinger_the_ground_it_stands_on() {
     world.despawn(ours);
     world.transform.get_mut(hero).expect("hero").pos = Vec2::from_ints(5280, 5000);
     attack_click(&mut world, theirs);
-    world.advance(&[]);
+    world.advance_trusted(&[]);
     assert_eq!(
         world.target_of(theirs),
         Some(hero),
@@ -203,7 +203,7 @@ fn an_order_to_break_off_gives_up_a_swing_that_has_not_landed() {
         if swinging(&world, hero).is_some() {
             break;
         }
-        world.advance(&[]);
+        world.advance_trusted(&[]);
     }
     assert!(
         swinging(&world, hero).is_some(),
@@ -223,7 +223,7 @@ fn an_order_after_a_swing_lands_does_not_hurry_the_next_one() {
         if recovering(&world, hero) {
             break;
         }
-        world.advance(&[]);
+        world.advance_trusted(&[]);
     }
     let before = world
         .action

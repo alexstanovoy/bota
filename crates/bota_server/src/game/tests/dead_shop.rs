@@ -197,7 +197,7 @@ fn a_dead_hero_swaps_what_it_carries_between_its_slots_and_reaches_no_stash() {
     };
     let named = world.seats[0].unit.map(crate::game::wire_id);
     assert_eq!(world.validate_order(SlotId(0), named, &back), Ok(()));
-    world.advance(&[crate::game::Command {
+    world.advance_trusted(&[crate::game::Command {
         slot: SlotId(0),
         unit: named,
         order: back,

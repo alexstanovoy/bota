@@ -170,7 +170,7 @@ pub(crate) fn advance_validated(
         Ok(())
     );
     let tick = world.tick;
-    let events = world.advance(&[command]);
+    let events = world.advance_trusted(&[command]);
     assert_eq!(world.tick, tick + 1);
     events
 }
@@ -415,7 +415,7 @@ pub(crate) fn thinking_creep_of(world: &mut World, team: Team, at: Vec2) -> Enti
 
 /// Seat 0 gives its hero an order, and the world advances one tick.
 pub(crate) fn seat_order(world: &mut World, order: Order) -> Vec<Event> {
-    world.advance(&[Command {
+    world.advance_trusted(&[Command {
         slot: SlotId(0),
         unit: None,
         order,
@@ -722,7 +722,7 @@ pub(crate) fn courier_on_delivery() -> (World, Entity, Entity) {
             target: Target::None,
         },
     );
-    world.advance(&[]);
+    world.advance_trusted(&[]);
     assert_eq!(world.errand.get(courier), Some(&Errand::ToOwner));
     assert!(slot_of(&world, courier, 0).is_some());
     (world, hero, courier)
@@ -925,7 +925,7 @@ pub(crate) fn fell_at(world: &mut World, pos: Vec2) {
 pub(crate) fn next_mid_wave(world: &mut World, team: Team) -> Vec<Entity> {
     let before: Vec<Entity> = world.entities.iter().collect();
     loop {
-        world.advance(&[]);
+        world.advance_trusted(&[]);
         let fresh: Vec<Entity> = world
             .entities
             .iter()

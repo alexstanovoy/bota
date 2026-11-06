@@ -518,7 +518,7 @@ fn walking_at_an_ally_stops_where_the_bodies_meet() {
     attack_click(&mut world, ally);
     let mut seen: Vec<Vec2> = Vec::new();
     for _ in 0..240 {
-        world.advance(&[]);
+        world.advance_trusted(&[]);
         seen.push(world.transform.get(hero).expect("standing").pos);
     }
     let theirs = world.transform.get(ally).expect("standing").pos;
@@ -565,7 +565,7 @@ fn an_attack_order_at_another_breaks_the_windup_off_and_one_at_the_same_lets_it_
     let first_full = world.health.get(first).expect("standing").hp;
     let second_full = world.health.get(second).expect("standing").hp;
     while swinging(&world, hero) == Some(second) {
-        world.advance(&[]);
+        world.advance_trusted(&[]);
     }
     assert_eq!(
         world.health.get(first).expect("standing").hp,
@@ -573,7 +573,7 @@ fn an_attack_order_at_another_breaks_the_windup_off_and_one_at_the_same_lets_it_
         "nothing struck the first"
     );
     for _ in 0..60 {
-        world.advance(&[]);
+        world.advance_trusted(&[]);
     }
     assert!(
         world.health.get(second).expect("standing").hp < second_full,

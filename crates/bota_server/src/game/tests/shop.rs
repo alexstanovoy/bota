@@ -658,9 +658,9 @@ fn order_through_validation(world: &mut World, unit: Option<Entity>, order: Orde
         seq: 0,
     };
     if world.validate_order(command.slot, command.unit, &command.order) == Ok(()) {
-        world.advance(&[command]);
+        world.advance_trusted(&[command]);
     } else {
-        world.advance(&[]);
+        world.advance_trusted(&[]);
     }
 }
 
@@ -675,7 +675,7 @@ fn no_order_of_any_catalog_item_panics_the_server() {
         let own = Target::Unit(wire_id(hero));
         order_through_validation(&mut world, None, Order::Buy { item });
         for _ in 0..40 {
-            world.advance(&[]);
+            world.advance_trusted(&[]);
         }
         for slot in (0..rules::TOWN_PORTAL_SLOT + 1).map(|slot| ItemSlot(slot as u8)) {
             for target in [Target::None, own] {
@@ -689,7 +689,7 @@ fn no_order_of_any_catalog_item_panics_the_server() {
             order_through_validation(&mut world, None, Order::Use { slot, target });
         }
         for _ in 0..40 {
-            world.advance(&[]);
+            world.advance_trusted(&[]);
         }
     }
 }

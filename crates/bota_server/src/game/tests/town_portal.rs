@@ -192,7 +192,7 @@ fn a_move_breaks_the_channel_and_a_queued_one_waits_for_the_landing() {
     assert!(world.owes_wait(hero, ItemId::TOWN_PORTAL_SCROLL));
     let (mut world, hero) = a_hero_with_a_scroll();
     read_at(&mut world, Target::Pos(to));
-    world.advance(&[crate::game::Command {
+    world.advance_trusted(&[crate::game::Command {
         slot: SlotId(0),
         unit: None,
         order: walk,
@@ -607,17 +607,17 @@ fn break_channel(world: &mut World, hero: Entity, how: Break) -> Vec<Event> {
         ),
         Break::Stun => {
             put_on(world, hero, ModifierKind::Stunned, 5);
-            world.advance(&[])
+            world.advance_trusted(&[])
         }
         Break::Building => {
             let tower = building(world, UnitKind::Tower, Team::Radiant);
             let standing = structure_at(world, pos(world, tower));
             world.bury(vec![(standing, None)], &mut Vec::new());
-            world.advance(&[])
+            world.advance_trusted(&[])
         }
         Break::Death => {
             world.push_hit(None, hero, 100_000, DamageKind::Pure, None);
-            world.advance(&[])
+            world.advance_trusted(&[])
         }
     }
 }
@@ -629,12 +629,12 @@ fn a_channel_that_runs_out_is_told_to_both_sides_as_landed_on_the_tick_it_lands(
     read_at(&mut world, Target::Pos(to));
     for _ in 1..CHANNEL {
         assert_eq!(
-            ends_told(&world.advance(&[])),
+            ends_told(&world.advance_trusted(&[])),
             [vec![], vec![]],
             "still under way"
         );
     }
-    let events = world.advance(&[]);
+    let events = world.advance_trusted(&[]);
     assert_eq!(
         ends_told(&events),
         [vec![(SlotId(0), true)], vec![(SlotId(0), true)]]
@@ -662,7 +662,7 @@ fn a_channel_broken_off_is_told_to_both_sides_as_not_landed_once_on_the_tick_it_
         assert!(world.view(Team::Dire).teleports.is_empty(), "{how:?}");
         for _ in 0..CHANNEL {
             assert_eq!(
-                ends_told(&world.advance(&[])),
+                ends_told(&world.advance_trusted(&[])),
                 [vec![], vec![]],
                 "{how:?}: not told again"
             );
@@ -679,9 +679,9 @@ fn a_channel_with_no_open_ground_to_land_on_is_told_as_not_landed_and_keeps_its_
     run(&mut world, 5);
     stand_a_wall(&mut world, to, rules::units(1000));
     for _ in 0..CHANNEL - 6 {
-        assert_eq!(ends_told(&world.advance(&[])), [vec![], vec![]]);
+        assert_eq!(ends_told(&world.advance_trusted(&[])), [vec![], vec![]]);
     }
-    let events = world.advance(&[]);
+    let events = world.advance_trusted(&[]);
     assert_eq!(
         ends_told(&events),
         [vec![(SlotId(0), false)], vec![(SlotId(0), false)]]

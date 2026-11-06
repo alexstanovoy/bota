@@ -76,7 +76,7 @@ impl Skirmish {
                 }
             }
         }
-        let events = self.world.advance(&commands);
+        let events = self.world.advance_trusted(&commands);
         for team in [Team::Radiant, Team::Dire] {
             let view = self.world.view(team);
             let told: Vec<EventKind> = events

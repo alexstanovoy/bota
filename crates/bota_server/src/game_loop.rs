@@ -1476,22 +1476,27 @@ impl Server {
                 eprintln!("bota_server: every seat is empty; the match is abandoned");
                 break MatchEnd::Abandoned;
             }
+            let before = world.tick;
             let (commands, events) = inbox.line.advance(&mut world, &mut refused);
             self.world_tick.store(world.tick, Ordering::Relaxed);
             self.refuse(&mut refused);
             let taken: Vec<SlotOrder> = commands.iter().map(Command::told).collect();
-            replay.record(&ReplayRecord::Orders {
-                tick: world.tick,
-                orders: taken.clone(),
-            });
-            let told = Told {
-                line: &inbox.line,
-                handles: &mut inbox.handles,
-                events: &events,
-                taken: &taken,
-            };
-            if let Some(held) = self.publish_tick(&world, told, &mut replay) {
-                self.feed_late(held);
+            if world.tick != before || !commands.is_empty() {
+                replay.record(&ReplayRecord::Orders {
+                    tick: world.tick,
+                    orders: taken.clone(),
+                });
+            }
+            if world.tick != before {
+                let told = Told {
+                    line: &inbox.line,
+                    handles: &mut inbox.handles,
+                    events: &events,
+                    taken: &taken,
+                };
+                if let Some(held) = self.publish_tick(&world, told, &mut replay) {
+                    self.feed_late(held);
+                }
             }
             let decided = world
                 .victor()

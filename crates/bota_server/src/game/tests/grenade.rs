@@ -163,7 +163,7 @@ fn a_thrown_grenade_flies_bursts_slows_and_burns_five_times_then_lifts() {
                 "the debuff shows on the enemy"
             );
         }
-        events.extend(world.advance(&[]));
+        events.extend(world.advance_trusted(&[]));
     }
     assert!(
         (13..=15).contains(&flew),
@@ -232,7 +232,7 @@ fn a_grenade_names_its_item_in_flight_where_it_lands_in_its_blows_and_on_its_deb
         {
             side_missile = Some(shot.id);
         }
-        events.extend(world.advance(&[]));
+        events.extend(world.advance_trusted(&[]));
     }
     assert!(flew, "the other side sees the item fly, and who threw it");
     let landed: Vec<&Event> = events
@@ -324,7 +324,7 @@ fn a_grenade_never_takes_its_throwers_last_point_and_misses_what_stands_outside(
         },
     );
     while slot_of(&world, hero, 0).map(|stack| stack.charges) == Some(2) {
-        events.extend(world.advance(&[]));
+        events.extend(world.advance_trusted(&[]));
     }
     let left = world.health.get(hero).expect("standing").hp;
     assert!(
@@ -336,7 +336,7 @@ fn a_grenade_never_takes_its_throwers_last_point_and_misses_what_stands_outside(
         "one of the two charges is spent, and the other waits"
     );
     for _ in 0..60 {
-        events.extend(world.advance(&[]));
+        events.extend(world.advance_trusted(&[]));
     }
     assert_eq!(
         magic_blows(&events, hero, enemy),
@@ -391,7 +391,7 @@ fn a_side_buys_two_grenades_then_one_more_every_three_minutes() {
         "and is not emptied by this side"
     );
     for _ in 0..wait {
-        world.advance(&[]);
+        world.advance_trusted(&[]);
     }
     assert_eq!(shelf(&world, Team::Radiant).map(|(left, ..)| left), Some(1));
     advance_validated(&mut world, None, Order::Buy { item: grenade });

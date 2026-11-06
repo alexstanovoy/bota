@@ -77,12 +77,12 @@ impl World {
     /// requests: use [`super::DelayLine`] for untrusted orders. A completed
     /// Map2 ignores commands and advances no further. What it refused is
     /// left in [`World::refused`].
-    pub fn advance(&mut self, cmds: &[Command]) -> Vec<Event> {
+    pub fn advance_trusted(&mut self, cmds: &[Command]) -> Vec<Event> {
         self.advance_commands(cmds, false)
     }
 
-    /// Player requests validate in application order, after earlier commands
-    /// have changed the inventory, stats and pools they may read.
+    /// Rechecks every player request in application order, including cooldowns
+    /// and queue capacity, against the state left by earlier commands.
     pub(super) fn advance_checked(&mut self, cmds: &[Command]) -> Vec<Event> {
         self.advance_commands(cmds, true)
     }
@@ -497,8 +497,9 @@ impl World {
     }
 
     /// Admission cannot read an inventory that preceding transactions have
-    /// yet to change. Check authority here; `advance` checks each dependent
-    /// order against the state left by its predecessors, before applying it.
+    /// yet to change. Check authority for dependent requests here;
+    /// [`Self::advance_checked`] rechecks every player request, including
+    /// cooldowns and queue capacity, against the state left by its predecessors.
     pub(crate) fn check_incoming_order(
         &self,
         slot: SlotId,

@@ -10,9 +10,9 @@ use bota_server::{
     local::LocalMatch,
 };
 
-fn game() -> LocalMatch {
+fn configuration() -> MatchConfig {
     let map = map_of(MapId(2));
-    let cfg = MatchConfig {
+    MatchConfig {
         match_id: 1,
         master_key: [3; 32],
         stream: 1,
@@ -33,10 +33,192 @@ fn game() -> LocalMatch {
         runes: map.default_runes,
         catalogue: bota_core::Catalogue::FULL,
         economy_events: Vec::new(),
-    };
+    }
+}
+
+fn game() -> LocalMatch {
+    let cfg = configuration();
     LocalMatch::new(&cfg, &[OrderDelay::NONE])
         .expect("a real match")
         .0
+}
+
+#[test]
+fn a_second_glyph_in_one_tick_is_refused_against_the_first_glyphs_cooldown() {
+    // Glyph has one shared cooldown; another request cannot cast it again:
+    // https://liquipedia.net/dota2/Buildings#Glyph_of_Fortification
+    let mut game = game();
+    let tick = game.tick();
+    game.world_mut().glyphs[0].ready_at = tick;
+    let messages = step(&mut game, &[Order::Glyph, Order::Glyph]);
+    let refused: Vec<_> = messages
+        .iter()
+        .filter_map(|message| match message {
+            ServerMsg::OrderRejected { seq, reason } => Some((*seq, *reason)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        refused,
+        vec![(tick * 32 + 1, bota_proto::RejectReason::OnCooldown)]
+    );
+    assert!(game.world().glyphs[0].ready_at > tick);
+}
+
+fn queue_moves(game: &mut LocalMatch, count: usize) -> Vec<ServerMsg> {
+    let tick = game.tick();
+    let orders: Vec<_> = (0..count)
+        .map(|index| OutgoingOrder {
+            seq: tick * 128 + index as u32,
+            unit: None,
+            order: Order::Move {
+                target: bota_proto::Target::Pos(bota_proto::Vec2::from_ints(8000, 8000)),
+            },
+            seen: tick,
+            queue: true,
+        })
+        .collect();
+    game.step(&[&orders]).expect("one server tick").remove(0)
+}
+
+#[test]
+fn same_tick_queued_orders_fill_the_remaining_space_then_report_queue_full() {
+    // Valve explicitly added full-queue and invalid-at-execution errors:
+    // https://liquipedia.net/dota2/2011-10-27_Patch
+    let mut game = game();
+    step(
+        &mut game,
+        &[Order::Attack {
+            target: bota_proto::Target::None,
+        }],
+    );
+    let mut remaining = bota_core::rules::MAX_QUEUED_ORDERS - 1;
+    while remaining > 0 {
+        let count = remaining.min(bota_core::rules::MAX_ORDERS_PER_TICK);
+        let messages = queue_moves(&mut game, count);
+        assert!(
+            !messages
+                .iter()
+                .any(|m| matches!(m, ServerMsg::OrderRejected { .. }))
+        );
+        remaining -= count;
+    }
+    let tick = game.tick();
+    let messages = queue_moves(&mut game, 2);
+    let refused: Vec<_> = messages
+        .iter()
+        .filter_map(|message| match message {
+            ServerMsg::OrderRejected { seq, reason } => Some((*seq, *reason)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        refused,
+        vec![(tick * 128 + 1, bota_proto::RejectReason::QueueFull)]
+    );
+    let hero = game.hero_of(0).expect("hero");
+    assert_eq!(
+        game.world()
+            .queue
+            .get(hero)
+            .expect("queued moves")
+            .iter()
+            .count(),
+        bota_core::rules::MAX_QUEUED_ORDERS
+    );
+}
+
+#[test]
+fn a_match_at_its_time_cap_cancels_new_orders_without_repeating_its_last_tick() {
+    let (mut game, mut opening) =
+        LocalMatch::new_recorded(&configuration(), &[OrderDelay::NONE]).expect("recorded match");
+    let mut first = opening.remove(0).into_iter();
+    let Some(ServerMsg::MatchStart { info }) = first.next() else {
+        panic!("match starts")
+    };
+    let mut client = bota_client_core::ClientSession::seat(
+        bota_client_core::MatchStatic::new(&info).expect("match description"),
+        SlotId(0),
+        Some(HeroId::SHADOW_FIEND),
+        bota_client_core::SessionOptions::default(),
+    )
+    .expect("strict player stream");
+    for message in first {
+        client.ingest(message, &mut ()).expect("opening stream");
+    }
+    game.take_records();
+    let tick = game.tick();
+    let gold = game.world().seats[0].gold;
+    let hero = game.hero_of(0).expect("hero");
+    game.world_mut().clock_shift.game = bota_core::MAP2_TICK_CAP - tick;
+    let messages = step(
+        &mut game,
+        &[Order::Buy {
+            item: ItemId::CIRCLET,
+        }],
+    );
+    assert_eq!(game.tick(), tick, "a finished simulation advances no tick");
+    assert_eq!(
+        game.world().seats[0].gold,
+        gold,
+        "the cancelled purchase spends nothing"
+    );
+    assert!(
+        game.world()
+            .inventory
+            .get(hero)
+            .expect("hero inventory")
+            .slots
+            .iter()
+            .flatten()
+            .all(|item| item.id != ItemId::CIRCLET),
+        "the cancelled purchase gives no item"
+    );
+    assert!(
+        !messages
+            .iter()
+            .any(|m| matches!(m, ServerMsg::OrderRejected { .. })),
+        "MatchOver cancels post-completion orders without a separate refusal"
+    );
+    assert!(messages.iter().any(|m| matches!(
+        m,
+        ServerMsg::MatchOver {
+            winner: Team::Neutral,
+            ..
+        }
+    )));
+    for message in messages.iter().cloned() {
+        client
+            .ingest(message, &mut ())
+            .expect("terminal stream remains valid for the real client");
+    }
+    assert!(
+        !messages
+            .iter()
+            .any(|m| matches!(m, ServerMsg::Snapshot { .. } | ServerMsg::Events { .. })),
+        "a completed world publishes no repeated tick"
+    );
+    let records = game.take_records();
+    assert!(
+        !records
+            .iter()
+            .any(|r| matches!(r, bota_proto::ReplayRecord::Orders { .. })),
+        "no commands applied on a new tick"
+    );
+    assert!(
+        !records
+            .iter()
+            .any(|r| matches!(r, bota_proto::ReplayRecord::Msg(ServerMsg::Snapshot { .. }))),
+        "no repeated snapshot tick"
+    );
+    assert_eq!(records.len(), 1, "only the final result is recorded");
+    assert!(matches!(
+        &records[0],
+        bota_proto::ReplayRecord::Msg(ServerMsg::MatchOver {
+            winner: Team::Neutral,
+            ..
+        })
+    ));
 }
 
 fn step(game: &mut LocalMatch, orders: &[Order]) -> Vec<ServerMsg> {
