@@ -548,6 +548,46 @@ fn switching_rot_charges_no_enemy_stick_and_a_cast_does() {
     assert_eq!(charges(&world), 1, "a meat shield is a charge");
 }
 
+/// A Flesh Heap stack mends the health its strength adds the moment it lands (Valve 7.36a:
+/// "Fixed Pudge not gaining health from Flesh Heap stacks immediately").
+#[test]
+fn a_flesh_heap_stack_lands_with_its_health() {
+    let (mut world, pudge) = a_lone_pudge();
+    world.fill_pools(pudge);
+    let max = world.stats.get(pudge).expect("settled").max_hp;
+    world
+        .modifiers
+        .get_mut(pudge)
+        .expect("a hero wears modifiers")
+        .set_count(ModifierKind::flesh_heap, 1, (pudge, AbilityId::FLESH_HEAP));
+    world.step();
+    let now = world.stats.get(pudge).expect("settled").max_hp;
+    assert!(now > max, "the stack raises his most health");
+    assert_eq!(
+        world.health.get(pudge).expect("standing").hp,
+        now,
+        "and his health with it, in the same tick"
+    );
+}
+
+/// Switching Rot on breaks an Invisibility Rune's cloak, as any cast does (Valve 2011-06-24:
+/// "Fixed toggling Rot On / Off not breaking invisibility").
+#[test]
+fn switching_rot_on_breaks_invisibility() {
+    let (mut world, pudge, _mark) = pudge_and_a_mark(1500);
+    set_level(&mut world, pudge, 1, 1);
+    world.put_modifier(
+        pudge,
+        Modifier::new(ModifierKind::RuneInvisibility, Some(pudge), None, Some(900)),
+    );
+    run(&mut world, 30);
+    cast(&mut world, 1, Target::None);
+    assert!(
+        !carries(&world, pudge, ModifierKind::RuneInvisibility),
+        "the cloak is gone"
+    );
+}
+
 /// Switched on and straight off, Rot still burns its owner once (Valve 2012-06-28: "Fixed a
 /// bug that allowed Rot not to deal damage to self by quickly toggling On / Off").
 #[test]
