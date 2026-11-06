@@ -579,6 +579,28 @@ fn a_lobby_past_its_bounds_breaks_the_stream_and_is_not_kept() {
     }
 }
 
+/// The heroes a lobby offers are a pool of the heroes there are: a server that names more is
+/// refused before the lobby screen keeps (and walks, every frame) a list of its making.
+#[test]
+fn a_lobby_offering_more_heroes_than_there_are_breaks_the_stream() {
+    let state = |heroes| bota_proto::ServerMsg::LobbyState {
+        slots: Vec::new(),
+        same_heroes: true,
+        pick: bota_proto::PickPhase::Waiting,
+        heroes,
+        catalogue: bota_core::Catalogue::FULL.prefix(),
+    };
+    let every: Vec<HeroId> = (0..bota_core::HEROES.len() as u16).map(HeroId).collect();
+    let mut app = a_silent_app();
+    app.handle(state(every.clone()));
+    assert!(!app.lost, "every hero there is is a pool");
+    assert_eq!(app.lobby.heroes, every);
+    let mut app = a_silent_app();
+    app.handle(state(vec![HeroId::PUDGE; bota_core::HEROES.len() + 1]));
+    assert!(app.lost, "the client stops listening");
+    assert!(app.lobby.heroes.is_empty());
+}
+
 fn snapshot_of(tick: u32, units: Vec<UnitView>, players: Vec<PlayerView>) -> bota_proto::ServerMsg {
     bota_proto::ServerMsg::Snapshot {
         view: a_tick(tick, units, players),

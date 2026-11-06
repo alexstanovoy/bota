@@ -160,9 +160,10 @@ fn withheld(view: &WorldView) -> Result<(), SessionError> {
 }
 
 /// A lobby as a server tells it: a row per seat at most, each name within
-/// what a server shows.
-pub(crate) fn lobby(slots: &[LobbySlot]) -> Result<(), SessionError> {
+/// what a server shows, and a pool of heroes no longer than the heroes there are.
+pub(crate) fn lobby(slots: &[LobbySlot], heroes: &[HeroId]) -> Result<(), SessionError> {
     check_limit("LobbyState.slots", slots.len(), MAX_SEATS)?;
+    check_limit("LobbyState.heroes", heroes.len(), bota_core::HEROES.len())?;
     for slot in slots {
         check_limit(
             "LobbySlot.name",

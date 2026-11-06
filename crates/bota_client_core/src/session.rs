@@ -240,8 +240,12 @@ impl ClientSession {
             }
             .into()),
             ServerMsg::Refused { reason } => Err(SessionError::Refused(reason).into()),
-            ServerMsg::LobbyState { ref slots, .. } => {
-                validate::lobby(slots)?;
+            ServerMsg::LobbyState {
+                ref slots,
+                ref heroes,
+                ..
+            } => {
+                validate::lobby(slots, heroes)?;
                 Ok(Ingested::Passed(Box::new(msg)))
             }
             other @ (ServerMsg::Welcome { .. }

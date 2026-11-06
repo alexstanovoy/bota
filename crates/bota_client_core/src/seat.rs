@@ -121,8 +121,12 @@ impl Seat {
                 self.scenery = Some((map, trees.clone()));
                 return Ok(Ingested::Passed(Box::new(msg)));
             }
-            ServerMsg::LobbyState { ref slots, .. } => {
-                crate::session::validate_lobby(slots)?;
+            ServerMsg::LobbyState {
+                ref slots,
+                ref heroes,
+                ..
+            } => {
+                crate::session::validate_lobby(slots, heroes)?;
                 self.lobby_seats = slots.iter().map(|seat| (seat.slot, seat.team)).collect();
                 return Ok(Ingested::Passed(Box::new(msg)));
             }
