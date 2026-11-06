@@ -1913,10 +1913,9 @@ mod tests {
     use super::{draw_secrets, snapshot_frame};
     use crate::game::tests::support::match_hero;
 
-    /// A view within every bound of the protocol that still does not fit a frame: the server
-    /// leaves its snapshot out of the tick rather than stopping.
+    /// Per-field bounds do not guarantee that the aggregate snapshot fits a frame.
     #[test]
-    fn a_view_too_large_to_encode_is_not_sent_and_the_server_goes_on() {
+    fn an_oversized_snapshot_produces_no_frame_without_panicking() {
         let (world, _) = match_hero();
         let mut view = world.view_full();
         let mut unit = view.units[0].clone();
@@ -1947,7 +1946,7 @@ mod tests {
             unreachable!("a snapshot was built");
         };
         let sent = std::panic::catch_unwind(move || snapshot_frame(view));
-        assert!(sent.is_ok(), "a view too large to encode stops the server");
+        assert!(sent.is_ok(), "snapshot_frame panicked on an oversized view");
         assert_eq!(sent.ok().flatten(), None, "a frame past the bound is sent");
     }
 

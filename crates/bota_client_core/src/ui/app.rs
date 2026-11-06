@@ -39,8 +39,7 @@ pub trait LiveLink {
     fn ping(&self) -> Option<std::time::Duration> {
         None
     }
-    /// Orders sent that the server has not yet said it received (Dota brightens the cursor
-    /// meanwhile).
+    /// Orders sent that the server has not yet said it received.
     fn pending_orders(&self) -> usize {
         0
     }
