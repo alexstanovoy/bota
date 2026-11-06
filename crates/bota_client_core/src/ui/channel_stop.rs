@@ -32,12 +32,13 @@ impl App {
         if hero.statuses.bits & StatusFlags::CHANNELLING == 0 {
             return false;
         }
-        // A scroll's channel, or one of what Dota classes as a teleport (a
-        // Twin Gate's warp).
+        // A scroll's channel, or an ability's that Dota classes as a
+        // teleport (a Twin Gate's warp).
         let teleporting = view.teleports.iter().any(|teleport| teleport.slot == slot)
-            || self.last_cast.is_some_and(|(caster, ability)| {
-                caster == hero.id && bota_core::ability_def(ability).is_some_and(|def| def.teleport)
-            });
+            || hero
+                .channel
+                .and_then(|channel| bota_core::ability_def(channel.ability))
+                .is_some_and(|def| def.teleport);
         if teleporting {
             self.channel_stops.teleport
         } else {
@@ -46,8 +47,8 @@ impl App {
     }
 
     /// Whether an order of the hero is kept back until the channel ends: one
-    /// given unqueued to the body that is neither a stop or a hold nor a cast
-    /// or use that leaves a channel be.
+    /// given unqueued to the body that is neither a stop or a hold, nor a cast
+    /// or use that leaves a channel be, nor one the channel goes on through.
     pub(crate) fn held_by_channel(&self, issued: &IssuedOrder) -> bool {
         if issued.queue || issued.unit.is_some() || !bota_core::order_queues(issued.order) {
             return false;
@@ -62,7 +63,51 @@ impl App {
         ) {
             return false;
         }
-        self.channel_holds_orders() && !self.leaves_channel_be(issued.order)
+        self.channel_holds_orders()
+            && !self.leaves_channel_be(issued.order)
+            && !self.kept_through_channel(issued)
+    }
+
+    /// Whether the hero's channel goes on through an order untouched, as the
+    /// server has it: an unqueued cast, while the hero channels, of what Dota
+    /// marks `DONT_CANCEL_CHANNEL` (a second click on the Twin Gate being
+    /// warped through). Such an order is neither kept back nor forgets one
+    /// kept back.
+    pub(crate) fn kept_through_channel(&self, issued: &IssuedOrder) -> bool {
+        if issued.queue || issued.unit.is_some() {
+            return false;
+        }
+        let Some(view) = self.view() else {
+            return false;
+        };
+        let Some(hero) = self.my_hero().and_then(|id| view.unit(id)) else {
+            return false;
+        };
+        if hero.statuses.bits & StatusFlags::CHANNELLING == 0 {
+            return false;
+        }
+        let ability = match issued.order {
+            Order::Cast { slot, .. } => hero.abilities.get(usize::from(slot.0)).map(|held| held.id),
+            // A click on a unit casts the hidden ability its kind names, as
+            // `interaction_at` has it on the server.
+            Order::Move {
+                target: Target::Unit(at),
+            }
+            | Order::Attack {
+                target: Target::Unit(at),
+            } => view.unit(at).and_then(|mark| {
+                let id = bota_core::kind_def(mark.kind).interact?;
+                let own = mark.team == hero.team;
+                bota_core::ability_def(id)?
+                    .targets
+                    .takes(mark.kind, own)
+                    .then_some(id)
+            }),
+            _ => None,
+        };
+        ability
+            .and_then(bota_core::ability_def)
+            .is_some_and(|def| def.dont_cancel_channel)
     }
 
     /// Whether a cast or a use leaves a channel be: only one that ignores

@@ -930,3 +930,33 @@ fn a_click_taken_before_a_stun_waits_for_it_to_lift() {
     );
     until_warped(&mut world, 2 * WARP_CHANNEL_TICKS).expect("it lands once walked in");
 }
+
+/// The warp a unit channels is told with the unit, as Dota plays its channel for whoever sees it:
+/// a client knows the channel for a teleport from the view alone, after a reconnect as well.
+#[test]
+fn the_warp_channelled_is_told_with_the_unit() {
+    let mut world = gates_match(&[Team::Radiant, Team::Dire]);
+    let caster = hero(&world, 0);
+    before_gate(&mut world, caster, 1);
+    let channel = |world: &World, side| {
+        shown(world, side, caster)
+            .channel
+            .map(|channel| channel.ability)
+    };
+    assert_eq!(channel(&world, Some(Team::Radiant)), None);
+    let at = gate(&world, 1);
+    order(&mut world, 0, None, click(at), false);
+    until_channelling(&mut world, caster);
+    world.step();
+    assert_eq!(
+        channel(&world, Some(Team::Radiant)),
+        Some(AbilityId::TWIN_GATE_WARP)
+    );
+    assert_eq!(channel(&world, None), Some(AbilityId::TWIN_GATE_WARP));
+    until_warped(&mut world, 2 * WARP_CHANNEL_TICKS).expect("it lands");
+    assert_eq!(
+        channel(&world, Some(Team::Radiant)),
+        None,
+        "the channel is over"
+    );
+}

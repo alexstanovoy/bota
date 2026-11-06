@@ -12,8 +12,8 @@ use std::time::Duration;
 use bota_client_core::{Ingested, IssuedOrder, Link, Seat, SessionOptions, Transport};
 use bota_core::{DOTA_TWIN_GATES, WARP_CHANNEL_TICKS};
 use bota_proto::{
-    Cheat, EffectId, EventKind, HeroId, MapId, Order, StatusFlags, Target, TickMode, UnitKind,
-    UnitView, Vec2, WorldView,
+    AbilityId, Cheat, EffectId, EventKind, HeroId, MapId, Order, StatusFlags, Target, TickMode,
+    UnitKind, UnitView, Vec2, WorldView,
 };
 use bota_server::game_loop::{DEFAULT_SPECTATORS_PER_SEAT, ServerOpts, run};
 use bota_server::net::DEFAULT_MESSAGES_PER_SEC;
@@ -80,6 +80,8 @@ struct Seen {
     landing: Option<Vec2>,
     /// Whether it saw each gate glow while its hero channelled.
     glowed: [bool; 2],
+    /// What its view said its hero channelled, at every tick it was seen channelling.
+    channels: Vec<Option<AbilityId>>,
     /// Whether any gate ever glowed in its view, or any warp was told to it.
     any_glow: bool,
     told: Vec<EventKind>,
@@ -143,6 +145,8 @@ fn play(
                 let channelling = hero.statuses.bits & StatusFlags::CHANNELLING != 0;
                 if channelling {
                     seen.began.get_or_insert(view.tick);
+                    seen.channels
+                        .push(hero.channel.map(|channel| channel.ability));
                     for (index, gate) in &gates {
                         seen.glowed[*index] |= glows(gate);
                     }
@@ -204,6 +208,13 @@ fn a_hero_warps_from_the_south_east_gate_to_the_north_west_exit_in_four_seconds(
         "its own gate glows; the far one it does not see"
     );
     assert_eq!(seen.told.len(), 1, "told of its warp: {:?}", seen.told);
+    assert!(
+        seen.channels
+            .iter()
+            .all(|channel| *channel == Some(AbilityId::TWIN_GATE_WARP)),
+        "its view tells the warp it channels, tick by tick: {:?}",
+        seen.channels
+    );
 }
 
 #[test]

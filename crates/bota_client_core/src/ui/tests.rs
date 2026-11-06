@@ -940,31 +940,42 @@ fn a_teleport_holds_orders_back_by_its_own_option_alone() {
     }
 }
 
+/// One's hero channelling a Twin Gate's warp, as the view tells it at `tick`, beside the gate it
+/// warps through; a Phase Boots in its first slot.
+fn warping_beside_a_gate(tick: u32, channelling: bool) -> bota_proto::ServerMsg {
+    let mut hero = owned(1, UnitKind::Hero, Some(SlotId(0)));
+    if channelling {
+        hero.statuses.bits |= StatusFlags::CHANNELLING;
+        hero.channel = Some(bota_proto::ChannelView {
+            ability: bota_proto::AbilityId::TWIN_GATE_WARP,
+            elapsed: 0,
+        });
+    }
+    hero.items[0] = Some(ItemView {
+        id: ItemId::PHASE_BOOTS,
+        ..an_item(None, 0, 0, Some(bota_proto::Aim::Own))
+    });
+    let mut gate = owned(2, UnitKind::TwinGate, None);
+    gate.team = Team::Neutral;
+    let id = hero.id;
+    snapshot_of(tick, vec![hero, gate], vec![a_seat(SlotId(0), Some(id))])
+}
+
+fn a_gate() -> EntityId {
+    EntityId {
+        idx: 2,
+        generation: 1,
+    }
+}
+
 /// Dota files the Twin Gates under its teleports (7.37's Teleport Classification; Liquipedia's
 /// Game Settings, "Teleports Require Hold/Stop to Cancel": Teleport Scrolls, Boots of Travel,
 /// Twin Gates, Fiend's Gate): one's hero channelling a warp keeps orders back by the teleport
-/// option alone.
+/// option alone. The view tells the channel, so a client that joined mid-warp and never saw it
+/// cast knows it as well.
 #[test]
-fn a_twin_gate_warp_holds_orders_back_by_the_teleport_option_alone() {
+fn a_warp_the_client_never_saw_cast_holds_orders_back_by_the_teleport_option_alone() {
     use crate::ui::intent::Intent;
-    let warping = |app: &mut App| {
-        let mut hero = owned(1, UnitKind::Hero, Some(SlotId(0)));
-        hero.statuses.bits |= StatusFlags::CHANNELLING;
-        let id = hero.id;
-        app.handle(snapshot_of(
-            10,
-            vec![hero],
-            vec![a_seat(SlotId(0), Some(id))],
-        ));
-        app.handle(bota_proto::ServerMsg::Events {
-            tick: 10,
-            events: vec![EventKind::AbilityCast {
-                caster: id,
-                ability: bota_proto::AbilityId::TWIN_GATE_WARP,
-            }],
-        });
-        assert!(!app.lost, "the stream holds");
-    };
     let walk = Order::Move {
         target: Target::Pos(Vec2::from_ints(100, 0)),
     };
@@ -976,7 +987,8 @@ fn a_twin_gate_warp_holds_orders_back_by_the_teleport_option_alone() {
     ] {
         let mut app = a_started_app();
         app.channel_stops = ChannelStops { teleport, channels };
-        warping(&mut app);
+        app.handle(warping_beside_a_gate(10, true));
+        assert!(!app.lost, "the stream holds");
         app.act(Intent::MoveTo((100.0, 0.0)));
         assert_eq!(
             app.shown_orders.last().map(|shown| shown.order),
@@ -984,6 +996,90 @@ fn a_twin_gate_warp_holds_orders_back_by_the_teleport_option_alone() {
             "teleport option {teleport}, channels option {channels}"
         );
     }
+}
+
+/// A cast or a use that leaves the channel be, made mid-warp, does not turn the warp into another
+/// kind of channel: a walk given after it is still kept back by the teleport option.
+#[test]
+fn a_channel_safe_cast_or_use_mid_warp_leaves_orders_held_by_the_teleport_option() {
+    use crate::ui::intent::Intent;
+    let hero = owned(1, UnitKind::Hero, Some(SlotId(0))).id;
+    for event in [
+        EventKind::ItemUsed {
+            caster: Some(hero),
+            item: ItemId::PHASE_BOOTS,
+            at: None,
+            target: None,
+        },
+        EventKind::AbilityCast {
+            caster: hero,
+            ability: bota_proto::AbilityId::ROT,
+        },
+    ] {
+        let mut app = a_started_app();
+        app.channel_stops = ChannelStops {
+            teleport: true,
+            channels: false,
+        };
+        app.handle(warping_beside_a_gate(10, true));
+        app.handle(bota_proto::ServerMsg::Events {
+            tick: 10,
+            events: vec![
+                EventKind::AbilityCast {
+                    caster: hero,
+                    ability: bota_proto::AbilityId::TWIN_GATE_WARP,
+                },
+                event.clone(),
+            ],
+        });
+        assert!(!app.lost, "the stream holds");
+        app.act(Intent::MoveTo((100.0, 0.0)));
+        assert_eq!(app.shown_orders.last(), None, "after {event:?}");
+    }
+}
+
+/// A second click on the gate mid-warp is what the warp goes on through untouched (Dota's
+/// DOTA_ABILITY_BEHAVIOR_DONT_CANCEL_CHANNEL): it is sent, not kept back, and leaves the walk kept
+/// back before it the one carried out once the hero has arrived.
+#[test]
+fn a_second_click_on_the_gate_mid_warp_is_sent_through_and_never_replayed() {
+    use crate::ui::intent::Intent;
+    let mut app = a_started_app();
+    app.channel_stops = ChannelStops {
+        teleport: true,
+        channels: false,
+    };
+    app.handle(warping_beside_a_gate(10, true));
+    app.handle(bota_proto::ServerMsg::Events {
+        tick: 10,
+        events: vec![EventKind::AbilityCast {
+            caster: owned(1, UnitKind::Hero, Some(SlotId(0))).id,
+            ability: bota_proto::AbilityId::TWIN_GATE_WARP,
+        }],
+    });
+    app.act(Intent::MoveTo((100.0, 0.0)));
+    assert_eq!(app.shown_orders.last(), None, "the walk waits");
+    let click = Order::Attack {
+        target: Target::Unit(a_gate()),
+    };
+    app.act(Intent::Smart {
+        at: (0.0, 0.0),
+        unit: Some(a_gate()),
+    });
+    assert_eq!(
+        app.shown_orders.last().map(|shown| shown.order),
+        Some(click),
+        "the click goes to the server, which leaves the warp be"
+    );
+    app.handle(warping_beside_a_gate(11, false));
+    assert!(!app.lost, "the stream holds");
+    assert_eq!(
+        app.shown_orders.last().map(|shown| shown.order),
+        Some(Order::Move {
+            target: Target::Pos(Vec2::from_ints(100, 0)),
+        }),
+        "the walk is carried out on arrival, the click is not replayed"
+    );
 }
 
 /// An immediate use breaks a channel it does not ignore, as the server has it: "Require Stop" keeps
