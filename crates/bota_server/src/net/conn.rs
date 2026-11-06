@@ -275,10 +275,29 @@ pub const ACCEPT_RETRY: Duration = Duration::from_millis(10);
 
 /// The accept thread body: hands every incoming stream to the server thread.
 pub fn accept_loop(listener: std::net::TcpListener, events: Sender<NetEvent>) {
+    accept_pending(
+        listener,
+        events,
+        super::pending::PendingAdmissions::default(),
+    );
+}
+
+pub(super) fn accept_pending(
+    listener: std::net::TcpListener,
+    events: Sender<NetEvent>,
+    pending: super::pending::PendingAdmissions,
+) {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                if events.send(NetEvent::Connected(Box::new(stream))).is_err() {
+                let Some(admission) = pending.take(stream.peer_addr().ok().map(|peer| peer.ip()))
+                else {
+                    continue;
+                };
+                if events
+                    .send(NetEvent::Connected(admission.stream(Box::new(stream))))
+                    .is_err()
+                {
                     return;
                 }
             }

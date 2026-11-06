@@ -4,7 +4,7 @@ use std::net::TcpListener;
 use std::sync::mpsc::Sender;
 use std::thread;
 
-use crate::net::{NetEvent, accept_loop};
+use crate::net::{NetEvent, conn::accept_pending, pending::PendingAdmissions};
 
 /// The listeners of one server: TCP always, and with the `websocket` feature
 /// a WebSocket listener on a port of its own beside it.
@@ -34,12 +34,13 @@ impl Listeners {
     /// Starts accepting on every listener; each connection is handed to the
     /// server thread through `events`.
     pub fn start(self, events: &Sender<NetEvent>) -> std::io::Result<()> {
+        let pending = PendingAdmissions::default();
         #[cfg(feature = "websocket")]
         if let Some(ws) = self.ws {
-            ws.start(events.clone())?;
+            ws.start(events.clone(), pending.clone())?;
         }
         let events = events.clone();
-        thread::Builder::new().spawn(move || accept_loop(self.tcp, events))?;
+        thread::Builder::new().spawn(move || accept_pending(self.tcp, events, pending))?;
         Ok(())
     }
 }

@@ -27,7 +27,7 @@ use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::runtime::Handle;
-use tokio::sync::{Semaphore, mpsc};
+use tokio::sync::mpsc;
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::WebSocketStream;
 use tokio_tungstenite::tungstenite::error::CapacityError;
@@ -35,14 +35,12 @@ use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tokio_tungstenite::tungstenite::{Bytes, Error as WsError, Message};
 
 use crate::net::{
-    ACCEPT_RETRY, Breach, FrameSink, FrameSource, FrameStream, NetEvent, Places, ReadEnd,
+    ACCEPT_RETRY, Breach, FrameSink, FrameSource, FrameStream, NetEvent, ReadEnd,
     SEND_BUFFER_BYTES, Split,
 };
 
 /// How long a peer has for its TLS handshake and WebSocket upgrade together.
 const HANDSHAKE_DEADLINE: Duration = Duration::from_secs(10);
-/// Handshakes under way at once; a peer past it is let go at once.
-const MAX_HANDSHAKES: usize = 64;
 
 /// Frames read ahead of a connection's reader thread.
 const INBOUND_FRAMES: usize = 16;
@@ -107,7 +105,11 @@ impl WsListener {
     /// Starts accepting on a thread of its own, whose runtime then carries
     /// every WebSocket connection's bytes; it ends once the server thread is
     /// gone and another peer connects, as the TCP accept thread does.
-    pub(crate) fn start(self, events: std_mpsc::Sender<NetEvent>) -> io::Result<()> {
+    pub(super) fn start(
+        self,
+        events: std_mpsc::Sender<NetEvent>,
+        pending: super::pending::PendingAdmissions,
+    ) -> io::Result<()> {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_io()
             .enable_time()
@@ -119,22 +121,22 @@ impl WsListener {
         };
         let tls = self.tls.map(|tls| TlsAcceptor::from(tls.0));
         thread::Builder::new()
-            .spawn(move || runtime.block_on(accept_all(listener, tls, events)))?;
+            .spawn(move || runtime.block_on(accept_all(listener, tls, events, pending)))?;
         Ok(())
     }
 }
 
 /// Accepts every peer as it comes, so that the kernel's backlog never fills, and hands each whose
 /// handshake completes in time to the server thread. A peer is let go at once when
-/// [`MAX_HANDSHAKES`] are under way, or as many of its source's as the bounds per source allow
+/// [`MAX_PENDING_CONNECTIONS`](super::MAX_PENDING_CONNECTIONS) await adoption across all listeners,
+/// or as many of its source's as the bounds per source allow
 /// ([`groups`](crate::net::groups)).
 async fn accept_all(
     listener: TcpListener,
     tls: Option<TlsAcceptor>,
     events: std_mpsc::Sender<NetEvent>,
+    pending: super::pending::PendingAdmissions,
 ) {
-    let handshakes = Arc::new(Semaphore::new(MAX_HANDSHAKES));
-    let per_source = Places::default();
     let server_gone = Arc::new(AtomicBool::new(false));
     while !server_gone.load(Ordering::Relaxed) {
         let (tcp, peer) = match listener.accept().await {
@@ -144,18 +146,16 @@ async fn accept_all(
                 continue;
             }
         };
-        let Some(place) = per_source.take(peer.ip()) else {
-            continue;
-        };
-        let Ok(permit) = Arc::clone(&handshakes).try_acquire_owned() else {
+        let Some(admission) = pending.take(Some(peer.ip())) else {
             continue;
         };
         let (tls, events, server_gone) = (tls.clone(), events.clone(), Arc::clone(&server_gone));
         tokio::spawn(async move {
             let opened = tokio::time::timeout(HANDSHAKE_DEADLINE, open(tcp, tls)).await;
-            drop((permit, place));
             if let Ok(Ok(stream)) = opened
-                && events.send(NetEvent::Connected(stream)).is_err()
+                && events
+                    .send(NetEvent::Connected(admission.stream(stream)))
+                    .is_err()
             {
                 server_gone.store(true, Ordering::Relaxed);
             }

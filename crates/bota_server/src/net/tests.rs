@@ -1,5 +1,8 @@
 //! The server speaks the protocol end to end over a real socket.
 
+#[cfg(feature = "websocket")]
+mod pending;
+
 #[macro_use]
 #[path = "../../tests/wire/mod.rs"]
 mod wire;
