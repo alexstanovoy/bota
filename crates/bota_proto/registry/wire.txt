@@ -668,3 +668,4 @@ field ShopZoneView 0 pos: Vec2
 field ShopZoneView 1 corners: Vec<Vec2>
 field MatchInfo 17 secret_shops: Vec<ShopZoneView>
 field MatchInfo 18 universal_shop: bool
+field RuneView 5 expires_at: Option<u32>

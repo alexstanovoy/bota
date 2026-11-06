@@ -398,11 +398,80 @@ fn water_comes_at_two_and_four_minutes_to_both_river_spots_and_goes_with_the_nex
 }
 
 #[test]
+fn the_first_water_spawn_replaces_opening_river_bounties_and_keeps_jungle_bounties() {
+    let mut world = rune_match(&radiant_and_dire());
+    step_at_minute(&mut world, 0, 0);
+    let opening = lying(&world);
+    assert_eq!(opening.len(), 4);
+    step_at_minute(&mut world, 2, -1);
+    assert_eq!(
+        lying(&world),
+        opening,
+        "opening runes remain until the turnover"
+    );
+    step_at_minute(&mut world, 2, 0);
+    let next = lying(&world);
+    for rune in opening {
+        let river = [spots()[RIVER_TOP], spots()[RIVER_BOT]].contains(&rune.pos);
+        assert_eq!(
+            next.iter().any(|r| r.id == rune.id),
+            !river,
+            "river spawners replace their opening bounties; jungle spawners retain them"
+        );
+    }
+    assert_eq!(next.iter().filter(|r| r.kind == RuneKind::Water).count(), 2);
+    assert_eq!(
+        next.iter().filter(|r| r.kind == RuneKind::Bounty).count(),
+        2
+    );
+}
+
+#[test]
+fn each_river_runes_advertised_expiry_is_its_first_absent_tick() {
+    let mut world = rune_match(&[Team::Radiant]);
+    world.creeps_halted = true;
+    step_at_minute(&mut world, 0, 0);
+    for (minute, count) in [(2, 2), (4, 2), (6, 2), (8, 1), (10, 1)] {
+        let runes: Vec<_> = lying(&world)
+            .into_iter()
+            .filter(|r| r.expires_at.is_some())
+            .collect();
+        assert_eq!(
+            runes.len(),
+            count,
+            "all river runes advertise expiry before {minute}:00"
+        );
+        let expected = world.schedule().at_minute(minute);
+        let mut first_absent = std::collections::BTreeMap::new();
+        for rune in &runes {
+            assert_eq!(rune.expires_at, Some(expected));
+        }
+        while world.clock() < expected {
+            world.step();
+            let present = lying(&world);
+            for rune in &runes {
+                if !present.iter().any(|r| r.id == rune.id) {
+                    first_absent.entry(rune.id).or_insert(world.clock());
+                }
+            }
+        }
+        for rune in runes {
+            assert_eq!(
+                first_absent.get(&rune.id).copied(),
+                rune.expires_at,
+                "the advertised deadline equals the first absence, not a later observation"
+            );
+        }
+    }
+}
+
+#[test]
 fn bounty_runes_come_to_the_jungles_every_four_minutes_worth_six_more_each_time_and_never_go() {
     let mut world = rune_match(&radiant_and_dire());
     step_at_minute(&mut world, 0, 0);
     let jungle = [spots()[DIRE_JUNGLE], spots()[RADIANT_JUNGLE]];
     for (minute, gold) in [(4, 46), (8, 52), (12, 58)] {
+        let before: std::collections::BTreeSet<_> = lying(&world).iter().map(|r| r.id).collect();
         let events = step_at_minute(&mut world, minute, 0);
         let mut got: Vec<Vec2> = spawned(&events)
             .into_iter()
@@ -415,10 +484,14 @@ fn bounty_runes_come_to_the_jungles_every_four_minutes_worth_six_more_each_time_
         assert_eq!(got, want, "a Bounty Rune in each jungle at {minute}:00");
         let worth: Vec<i32> = lying(&world)
             .iter()
-            .filter(|rune| rune.pos == jungle[0])
+            .filter(|rune| rune.pos == jungle[0] && !before.contains(&rune.id))
             .filter_map(|rune| rune.gold)
             .collect();
-        assert_eq!(worth.last(), Some(&gold), "worth {gold} gold, fixed now");
+        assert_eq!(
+            worth,
+            [gold],
+            "the new rune is worth {gold} gold, fixed now"
+        );
     }
     let at_jungle = lying(&world)
         .iter()
@@ -432,7 +505,7 @@ fn bounty_runes_come_to_the_jungles_every_four_minutes_worth_six_more_each_time_
         .iter()
         .filter(|rune| rune.pos == spots()[RIVER_TOP] && rune.kind == RuneKind::Bounty)
         .count();
-    assert_eq!(at_river, 1, "the opening pair stays at the river too");
+    assert_eq!(at_river, 0, "the river replaces its opening pair");
 }
 
 #[test]

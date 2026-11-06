@@ -197,8 +197,13 @@ pub struct RuneView {
     /// rune but a Bounty Rune: its worth is fixed when it appears.
     pub gold: Option<i32>,
     /// Which sides see it. Told only in a view of the whole map; absent in a
-    /// side's view. Last on the wire.
+    /// side's view.
     pub seen_by: Option<SeenBy>,
+    /// The absolute game-clock tick at which this rune's spawner replaces
+    /// it. None for a persistent spawner. A client may retain this fact
+    /// after losing sight, without learning whether a replacement appeared.
+    /// Appended after the legacy fields on the wire.
+    pub expires_at: Option<u32>,
 }
 
 /// The two counts a Ward Dispenser keeps in its one slot, and which of the

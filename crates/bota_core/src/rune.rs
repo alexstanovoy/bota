@@ -97,6 +97,30 @@ impl Cadence {
         }
         Some((clock - first) / self.period)
     }
+
+    /// The next firing strictly after `clock`: its zero-based index and
+    /// game-clock tick, if both are representable.
+    const fn next_after(self, clock: u32, schedule: Schedule) -> Option<(u32, u32)> {
+        assert!(self.period > 0, "a cadence needs a positive period");
+        let Some(first) = schedule.horn.checked_add(self.first) else {
+            return None;
+        };
+        let index = if clock < first {
+            0
+        } else {
+            let Some(index) = ((clock - first) / self.period).checked_add(1) else {
+                return None;
+            };
+            index
+        };
+        let Some(offset) = index.checked_mul(self.period) else {
+            return None;
+        };
+        let Some(tick) = first.checked_add(offset) else {
+            return None;
+        };
+        Some((index, tick))
+    }
 }
 
 /// The first set of Bounty Runes appears with the horn, at all four spots, the
@@ -125,6 +149,28 @@ pub const WATER_RUNES: Cadence = Cadence {
 /// How many times the Water Runes appear.
 pub const WATER_RUNE_SPAWNS: u32 = 2;
 
+/// The next scheduled expiry of a rune from this spawner, as an absolute
+/// game-clock tick. River spawners replace their opening bounty, water and
+/// power runes; jungle spawners retain untaken runes.
+pub const fn rune_expires_at(spot: RuneSpotKind, clock: u32, schedule: Schedule) -> Option<u32> {
+    if !matches!(spot, RuneSpotKind::River) {
+        return None;
+    }
+    let water = match WATER_RUNES.next_after(clock, schedule) {
+        Some((index, tick)) if index < WATER_RUNE_SPAWNS => Some(tick),
+        _ => None,
+    };
+    let power = match POWER_RUNES_CADENCE.next_after(clock, schedule) {
+        Some((_, tick)) => Some(tick),
+        None => None,
+    };
+    match (water, power) {
+        (Some(water), Some(power)) => Some(if water < power { water } else { power }),
+        (water, None) => water,
+        (None, power) => power,
+    }
+}
+
 /// Power Runes: `dota_powerup_rune_spawn_time_initial` 360 and
 /// `dota_powerup_rune_spawn_time` 120 [BIN]; [LIQ Runes] "1st Spawn Interval:
 /// 360, Subsequent Spawn Interval: 120".
@@ -147,8 +193,8 @@ pub struct RunesDue {
 }
 
 impl RunesDue {
-    /// Whether the river's runes change this tick: untaken water and power
-    /// runes go at the next river spawn [LIQ Runes: "If the rune is not
+    /// Whether the river's runes change this tick: its opening bounties,
+    /// water and power runes go at the next river spawn [LIQ Runes: "If the rune is not
     /// activated before the next spawn time, they disappear"].
     pub const fn river_turns(self) -> bool {
         self.water || self.power

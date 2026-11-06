@@ -461,7 +461,7 @@ impl World {
 
     /// One rune on the ground, or nothing when the entity is not one.
     fn project_rune(&self, viewer: Option<Team>, entity: Entity) -> Option<bota_proto::RuneView> {
-        let crate::game::Rune { kind, gold, .. } = *self.rune.get(entity)?;
+        let crate::game::Rune { kind, gold, spot } = *self.rune.get(entity)?;
         let at = self.transform.get(entity)?;
         Some(bota_proto::RuneView {
             id: wire_id(entity),
@@ -469,6 +469,11 @@ impl World {
             kind,
             gold: (kind == bota_proto::RuneKind::Bounty).then_some(gold),
             seen_by: self.seen_by_sides(viewer, entity, false),
+            expires_at: bota_core::rune_expires_at(
+                self.map.rune_spots[usize::from(spot)].kind,
+                self.clock(),
+                self.schedule(),
+            ),
         })
     }
 

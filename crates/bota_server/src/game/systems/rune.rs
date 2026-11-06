@@ -63,16 +63,19 @@ impl World {
             .map(|(at, _)| at)
     }
 
-    /// Takes away every water and power rune still lying anywhere: the next
-    /// river spawn has come. Bounty runes stay until they are taken.
+    /// River spawners replace every rune they produced, including their
+    /// opening bounties. Jungle spawners retain untaken runes.
     fn clear_river_runes(&mut self) {
         let gone: Vec<Entity> = self
             .entities
             .iter()
             .filter(|&entity| {
-                self.rune
-                    .get(entity)
-                    .is_some_and(|rune| rune.kind != RuneKind::Bounty)
+                self.rune.get(entity).is_some_and(|rune| {
+                    matches!(
+                        self.map.rune_spots[usize::from(rune.spot)].kind,
+                        RuneSpotKind::River
+                    )
+                })
             })
             .collect();
         for entity in gone {

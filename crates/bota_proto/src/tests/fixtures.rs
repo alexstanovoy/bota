@@ -62,6 +62,7 @@ pub fn rune_view() -> RuneView {
             radiant: true,
             dire: true,
         }),
+        expires_at: Some(7200),
     }
 }
 

@@ -117,7 +117,7 @@ limits! {
     MAX_TERRAIN_RUNS: usize = 262_144;
     /// Most opaque cells of a map.
     MAX_OPAQUE_CELLS: usize = 262_144;
-    /// Most runes one view lists: a Bounty Rune lies until somebody takes
+    /// Most runes one view lists: a jungle Bounty Rune lies until somebody takes
     /// it, and a spot holds [`MAX_RUNES_AT_SPOT`] at most.
     MAX_SNAPSHOT_RUNES: usize = 1_024;
     /// Most runes that lie at one rune spot together; a spawn that would pass
