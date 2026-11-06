@@ -703,3 +703,143 @@ fn restoring_no_mana_is_refused_not_a_panic() {
         assert!(!world.replenish_mana(hero, Target::None, mana, (with, 0)));
     }
 }
+
+/// Open full-map mid ground, shared by the real-client item-handling scenes.
+fn an_item_carrier_on_open_ground() -> (World, Entity) {
+    let config = crate::game::MatchConfig {
+        map: bota_proto::MapId(0),
+        ..config()
+    };
+    let mut world = World::for_match(&config, config.rng());
+    let hero = world.seats[0].unit.expect("the hero");
+    // A straight open corridor keeps these range boundaries independent of trees and cliffs.
+    let room = crate::game::plan_radius(world.hull.get(hero).expect("the hero hull").collision);
+    let from = (9000..10000)
+        .step_by(64)
+        .flat_map(|y| (7500..9000).step_by(64).map(move |x| Vec2::from_ints(x, y)))
+        .find(|at| {
+            world
+                .clearance
+                .capsule_clear(*at, *at + Vec2::from_ints(600, 0), room)
+        })
+        .expect("full-map mid has an open 600-unit corridor");
+    world.transform.get_mut(hero).expect("standing").pos = from;
+    world.step();
+    (world, hero)
+}
+
+/// LIQ Items: ground drop 100, pickup 150, transfer to another unit 300.
+/// https://liquipedia.net/dota2/Portal:Items
+#[test]
+fn a_ground_drop_order_obeys_dota_reach_of_100() {
+    for distance in [100, 101, 300, 600] {
+        let (mut world, hero) = an_item_carrier_on_open_ground();
+        let from = world.pos(hero).expect("standing");
+        hand_item(&mut world, hero, ItemId::BOOTS, 0);
+        let goal = from + Vec2::from_ints(distance, 0);
+        assert!(
+            world.clearance.stands_clear(goal),
+            "the test drop point {distance} must be open"
+        );
+        seat_order(
+            &mut world,
+            Order::Put {
+                slot: ItemSlot(0),
+                target: Target::Pos(goal),
+            },
+        );
+        assert_eq!(
+            slot_of(&world, hero, 0).is_none(),
+            distance <= 100,
+            "a drop at {distance} must wait until the carrier comes within 100"
+        );
+        for _ in 0..120 {
+            if slot_of(&world, hero, 0).is_none() {
+                break;
+            }
+            world.step();
+        }
+        let loot = on_the_ground(&world);
+        assert_eq!(
+            loot.len(),
+            1,
+            "the drop at {distance} completes: from {from:?}, now {:?}, goal {goal:?}, errand {:?}",
+            world.pos(hero),
+            world.handling.get(hero)
+        );
+        assert_eq!(world.pos(loot[0]), Some(goal), "at the chosen point");
+        assert!(
+            world.pos(hero).unwrap().within(goal, Fixed::from_int(100)),
+            "the carrier walks in before dropping"
+        );
+    }
+}
+
+#[test]
+fn an_item_transfer_order_obeys_dota_reach_of_300() {
+    for distance in [300, 301, 350, 600] {
+        let (mut world, hero) = an_item_carrier_on_open_ground();
+        let from = world.pos(hero).expect("standing");
+        let courier = the_courier(&world);
+        let goal = from + Vec2::from_ints(distance, 0);
+        world.transform.get_mut(courier).expect("standing").pos = goal;
+        hand_item(&mut world, hero, ItemId::BOOTS, 0);
+        seat_order(
+            &mut world,
+            Order::Put {
+                slot: ItemSlot(0),
+                target: Target::Unit(wire_id(courier)),
+            },
+        );
+        assert_eq!(
+            slot_of(&world, hero, 0).is_none(),
+            distance <= 300,
+            "a transfer at {distance} must wait until the carrier comes within 300"
+        );
+        for _ in 0..120 {
+            if slot_of(&world, hero, 0).is_none() {
+                break;
+            }
+            world.step();
+        }
+        assert_eq!(
+            slot_of(&world, courier, 0).map(|item| item.id),
+            Some(ItemId::BOOTS)
+        );
+        assert!(
+            world
+                .pos(hero)
+                .unwrap()
+                .within(world.pos(courier).unwrap(), Fixed::from_int(300))
+        );
+    }
+}
+
+#[test]
+fn an_item_pickup_order_obeys_dota_reach_of_150() {
+    for distance in [150, 151, 300] {
+        let (mut world, hero) = an_item_carrier_on_open_ground();
+        let from = world.pos(hero).expect("standing");
+        let goal = from + Vec2::from_ints(distance, 0);
+        let loot = world.lay_loot(a_stack_of(ItemId::BOOTS, 0), goal);
+        world.step(); // The real order path requires the newly laid item to be seen.
+        seat_order(
+            &mut world,
+            Order::Take {
+                target: Target::Unit(wire_id(loot)),
+            },
+        );
+        assert_eq!(slot_of(&world, hero, 0).is_some(), distance <= 150);
+        for _ in 0..120 {
+            if slot_of(&world, hero, 0).is_some() {
+                break;
+            }
+            world.step();
+        }
+        assert_eq!(
+            slot_of(&world, hero, 0).map(|item| item.id),
+            Some(ItemId::BOOTS)
+        );
+        assert!(world.pos(hero).unwrap().within(goal, Fixed::from_int(150)));
+    }
+}

@@ -142,7 +142,7 @@ impl World {
         let (Some(_), Some(at)) = (self.pos(unit), self.pos(to)) else {
             return true;
         };
-        if !self.walk_into_reach(unit, at, rules::PUT_ITEM_RANGE) {
+        if !self.walk_into_reach(unit, at, rules::GIVE_ITEM_RANGE) {
             return false;
         }
         let Some(stack) = self.take_from_bag(unit, slot) else {

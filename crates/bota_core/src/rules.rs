@@ -1177,9 +1177,10 @@ pub const SELL_REFUND_TICKS: u32 = 300;
 /// Ticks after being combined in which an item whose rule is the default may be
 /// taken apart again: the ten seconds Dota's items can be disassembled in.
 pub const DISASSEMBLY_WINDOW_TICKS: u32 = 300;
-/// How far an item may be laid on the ground or handed to another bag, in
-/// world units.
-pub const PUT_ITEM_RANGE: i32 = 400;
+/// How far an item may be laid on the ground, in world units [LIQ Items].
+pub const PUT_ITEM_RANGE: i32 = 100;
+/// How far an item may be handed to another bag on a manual order [LIQ Items].
+pub const GIVE_ITEM_RANGE: i32 = 300;
 /// How close a unit must be to take an item off the ground, in world units.
 pub const TAKE_ITEM_RANGE: i32 = 150;
 /// How far back along its line a blink steps looking for open ground.
