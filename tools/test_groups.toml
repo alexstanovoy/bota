@@ -400,6 +400,7 @@ paths = [
     "crates/bota_server/src/game/tests/courier.rs",
     "crates/bota_server/src/game/tests/grenade.rs",
     "crates/bota_server/src/game/tests/town_portal.rs",
+    "crates/bota_server/src/game/tests/item_visibility.rs",
     "crates/bota_server/src/game/components/tests/use_and_regen.rs",
     "crates/bota_server/src/game/components/tests/buying.rs",
     "crates/bota_server/src/game/components/tests/sale.rs",
@@ -419,6 +420,7 @@ tests = [{ crate = "bota_server", target = "lib", filters = [
     "game::tests::courier::",
     "game::tests::grenade::",
     "game::tests::town_portal::",
+    "game::tests::item_visibility::",
     "game::components::tests::use_and_regen::",
     "game::components::tests::buying::",
     "game::components::tests::sale::",
@@ -437,12 +439,14 @@ paths = [
     "crates/bota_server/src/game/tests/wards.rs",
     "crates/bota_server/src/game/tests/ward_stacks.rs",
     "crates/bota_server/src/game/tests/view_bounds.rs",
+    "crates/bota_server/src/game/tests/event_envelope.rs",
 ]
 tests = [{ crate = "bota_server", target = "lib", filters = [
     "game::tests::vision::",
     "game::tests::wards::",
     "game::tests::ward_stacks::",
     "game::tests::view_bounds::",
+    "game::tests::event_envelope::",
 ] }]
 
 [[group]]
