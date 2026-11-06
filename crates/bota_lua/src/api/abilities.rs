@@ -130,14 +130,14 @@ fn lookup_ability(state: &State, id: EntityId, key: &[u8]) -> Option<Identity> {
 }
 
 fn install_immediate(lua: &mut Lua, units: TableId, state: Shared) -> Result<(), BindingError> {
-    for name in ["ActionImmediate_LevelAbility", "ActionImmediate_PurchaseItem"] {
+    for name in ["ActionImmediate_LevelAbility", "ActionImmediate_PurchaseItem", "Action_LevelAbility", "Action_PurchaseItem"] {
         let capture = state.clone();
         method(lua, units, name, Rc::new(move |vm, args| {
             let mut state = capture.borrow_mut();
             let id = super::identity(vm, &state, args)?;
             if Some(id) != state.own_id() { return Err(vm.error("action requires the active bot")); }
             let key = string(vm, args, 1)?;
-            if name == "ActionImmediate_LevelAbility" {
+            if matches!(name, "ActionImmediate_LevelAbility" | "Action_LevelAbility") {
                 let slot = state.unit(id).and_then(|unit| unit.abilities.iter().position(|ability| bota_core::ability_def(ability.id).is_some_and(|def| def.key.as_bytes() == key)));
                 if let Some(slot) = slot { state.order(vm, bota_client_core::IssuedOrder::hero(Order::Learn { slot: AbilitySlot(slot as u8) }))?; }
                 Ok(0)

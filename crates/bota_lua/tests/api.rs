@@ -169,3 +169,26 @@ fn valve_lane_and_tower_ids_select_the_corresponding_core_locations() {
 
 #[allow(clippy::float_arithmetic, reason = "convert fixed-point engine locations into API test coordinates")]
 fn dota_coordinate(value: bota_proto::Fixed) -> f64 { f64::from(value.raw) / 65536.0 - 9216.0 }
+
+#[test]
+fn legacy_immediate_action_names_issue_the_same_purchase_and_learning_orders() {
+    let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let mut lua = LuaTeam::new(Team::Radiant, &[BotSeat { slot: SlotId(0), hero: HeroId::SHADOW_FIEND }], Limits::DEFAULT, Keys { hash: [17, 19], random: 23 }).expect("team");
+    lua.add_script(SlotId(0), ScriptKind::Takeover, "legacy_actions", br#"
+        function Think()
+            local bot=GetBot()
+            bot:Action_LevelAbility('nevermore_shadowraze1')
+            bot:Action_PurchaseItem('item_branches')
+        end
+    "#).expect("script");
+    let turn = lua.think(&sessions[0]).expect("think");
+    assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+    assert!(turn.bots[0].orders.iter().any(|issued| matches!(issued.order, Order::Learn { .. })));
+    assert!(turn.bots[0].orders.iter().any(|issued| matches!(issued.order, Order::Buy { .. })));
+    let orders: Vec<_> = turn.bots[0].orders.iter().map(|&issued| sessions[0].issue(issued).expect("ordinary order")).collect();
+    let streams = local.step(&[&orders, &[]]).expect("step");
+    for (session, stream) in sessions.iter_mut().zip(streams) { support::fold(session, stream); }
+    let hero = sessions[0].own_hero().expect("hero");
+    assert!(hero.abilities.iter().any(|ability| ability.level > 0));
+    assert!(hero.items.iter().any(Option::is_some));
+}
