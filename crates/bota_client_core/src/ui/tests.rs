@@ -2132,13 +2132,12 @@ fn dead_carriers_grant_neither_secret_shop_access_nor_purchase_space() {
         app.handle(snapshot_of(1, vec![body.clone()], vec![player.clone()]));
         assert!(!app.at_secret_shop());
         assert!(!app.unit_at_secret_shop(body.id));
-        // The pure prediction must likewise ignore a dead physical carrier on Dota's map.
-        let mut view = a_tick(1, vec![body], vec![player.clone()]);
-        view.units[0].pos = bota_core::DOTA_SECRET_SHOPS[0].pos;
+        // Prediction reads the same transmitted shop as the access indicator.
+        let view = a_tick(1, vec![body], vec![player.clone()]);
         assert!(!crate::shop::purchase_fits(
             &view,
             &player,
-            bota_core::map_of(bota_proto::MapId(2)),
+            app.statics().expect("match statics"),
             ItemId::DEMON_EDGE
         ));
     }
@@ -2321,6 +2320,119 @@ fn scenery_reconnect_keeps_the_original_scenery_for_players_and_spectators() {
         );
         assert!(
             matches!(app.feed.last().map(|line| &line.kind), Some(FeedKind::ProtocolBroken { why }) if why == "server told another scenery")
+        );
+    }
+}
+
+#[test]
+fn shop_context_uses_transmitted_geometry_for_hero_courier_and_universal_purchase() {
+    let custom = Vec2::from_ints(200, 200);
+    let away = Vec2::from_ints(5000, 5000);
+    let compiled = bota_core::DOTA_SECRET_SHOPS[0].pos;
+    for (name, hero_at, hero_hp, courier_at, courier_hp, universal, physical, fits) in [
+        ("hero", custom, 600, away, 600, false, true, true),
+        ("courier", away, 600, custom, 600, false, true, true),
+        ("dead hero", custom, 0, away, 600, false, false, false),
+        ("dead courier", away, 600, custom, 0, false, false, false),
+        (
+            "compiled zone is not this match's",
+            compiled,
+            600,
+            away,
+            600,
+            false,
+            false,
+            false,
+        ),
+        ("universal", away, 600, away, 600, true, false, true),
+    ] {
+        let mut hero = a_unit();
+        hero.pos = hero_at;
+        hero.hp = hero_hp;
+        let mut courier = owned(4, UnitKind::Courier, Some(SlotId(0)));
+        courier.hero = None;
+        courier.items.truncate(6);
+        courier.pos = courier_at;
+        courier.hp = courier_hp;
+        let mut player = a_player();
+        player.unit = Some(hero.id);
+        let mut start = a_match_start();
+        if let bota_proto::ServerMsg::MatchStart { info } = &mut start {
+            info.terrain_cells = bota_core::rules::GRID_CELLS as u32;
+            let cells = info.terrain_cells * info.terrain_cells;
+            info.terrain_rle = vec![
+                (u16::MAX, 0x80),
+                ((cells - u32::from(u16::MAX)) as u16, 0x80),
+            ];
+            info.universal_shop = universal;
+            info.secret_shops = vec![bota_proto::ShopZoneView {
+                pos: custom,
+                corners: [(100, 100), (300, 100), (300, 300), (100, 300)]
+                    .map(|(x, y)| Vec2::from_ints(x, y))
+                    .to_vec(),
+            }];
+        }
+        let mut app = a_silent_app();
+        app.my_slot = Some(SlotId(0));
+        app.handle(start);
+        app.handle(snapshot_of(1, vec![hero, courier], vec![player]));
+        assert!(!app.lost, "{name}: the stream is valid");
+        assert_eq!(app.at_secret_shop(), physical, "{name}: physical access");
+        assert_eq!(
+            app.secret_shop_accessible(),
+            physical || universal,
+            "{name}: universal access"
+        );
+        let view = app.view().expect("a snapshot");
+        assert_eq!(
+            crate::purchase_fits(
+                view,
+                &view.players[0],
+                app.statics().unwrap(),
+                ItemId::DEMON_EDGE
+            ),
+            fits,
+            "{name}: purchase prediction uses the same carrier/shop facts"
+        );
+    }
+}
+
+#[test]
+fn shop_context_home_access_and_placement_use_the_transmitted_fountain_and_radius() {
+    for (position, in_shop) in [
+        (Vec2::from_ints(200, 200), true),
+        (Vec2::from_ints(300, 200), false),
+    ] {
+        let mut start = a_match_start();
+        if let bota_proto::ServerMsg::MatchStart { info } = &mut start {
+            info.fountains[0] = Vec2::from_ints(200, 200);
+            info.shop_range = 64;
+        }
+        let mut hero = a_unit();
+        hero.pos = position;
+        let mut player = a_player();
+        player.unit = Some(hero.id);
+        player.stash = Some(vec![Some(an_item(None, 0, 0, None)); 6]);
+        let mut app = a_silent_app();
+        app.my_slot = Some(SlotId(0));
+        app.handle(start);
+        app.handle(snapshot_of(1, vec![hero], vec![player]));
+        assert!(!app.lost, "the stream is valid");
+        assert_eq!(
+            app.at_home_shop(),
+            in_shop,
+            "home shop access follows the match"
+        );
+        let view = app.view().unwrap();
+        assert_eq!(
+            crate::purchase_fits(
+                view,
+                &view.players[0],
+                app.statics().unwrap(),
+                ItemId::IRON_BRANCH
+            ),
+            in_shop,
+            "a full stash permits a purchase only into an eligible hero bag"
         );
     }
 }

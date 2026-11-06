@@ -134,7 +134,7 @@ fn what_the_client_says_fits_is_what_the_server_accepts_for_every_item_in_every_
         let mut differ = Vec::new();
         for id in 0..ITEMS.len() as u16 {
             let item = ItemId(id);
-            let fits = purchase_fits(view, player, session.map(), item);
+            let fits = purchase_fits(view, player, session.statics(), item);
             if fits != server_accepts(local.world(), item) {
                 differ.push((id, fits));
             }
@@ -188,7 +188,7 @@ fn a_full_bag_and_stash_refuse_a_purchase_but_a_scroll_a_salve_and_a_ward_find_r
     let (local, session) = arranged(&STATES[2]);
     let view = session.current().expect("a view");
     let player = view.player(BUYER).expect("the buyer");
-    let fits = |item| purchase_fits(view, player, session.map(), item);
+    let fits = |item| purchase_fits(view, player, session.statics(), item);
     assert!(!fits(ItemId::BOOTS));
     assert!(
         fits(ItemId::TOWN_PORTAL_SCROLL),
@@ -203,8 +203,13 @@ fn a_full_bag_and_stash_refuse_a_purchase_but_a_scroll_a_salve_and_a_ward_find_r
     assert!(purchase_fits(
         view,
         player,
-        session.map(),
+        session.statics(),
         ItemId::HEALING_SALVE
     ));
-    assert!(!purchase_fits(view, player, session.map(), ItemId::CLARITY));
+    assert!(!purchase_fits(
+        view,
+        player,
+        session.statics(),
+        ItemId::CLARITY
+    ));
 }

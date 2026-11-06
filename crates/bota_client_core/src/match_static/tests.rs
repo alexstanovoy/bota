@@ -31,6 +31,20 @@ fn info(shop: Vec<ShopEntry>) -> MatchInfo {
 }
 
 #[test]
+fn shop_context_rejects_home_ranges_that_cannot_be_predicted_without_overflow() {
+    for range in [i32::MIN, -1, 32768, i32::MAX] {
+        let mut frame = info(Vec::new());
+        frame.shop_range = range;
+        assert_eq!(
+            MatchStatic::new(&frame).err(),
+            Some(SessionError::Stream(
+                "home shop range does not fit nonnegative fixed-point coordinates"
+            ))
+        );
+    }
+}
+
+#[test]
 fn a_secret_shop_rejects_a_crossing_footprint_even_when_each_corner_turns_left() {
     let points = [(200, 64), (329, 158), (280, 310), (120, 310), (71, 158)];
     let mut frame = info(Vec::new());

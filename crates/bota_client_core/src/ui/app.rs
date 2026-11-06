@@ -862,16 +862,9 @@ impl App {
 
     /// Whether our hero stands in its home shop.
     pub fn at_home_shop(&self) -> bool {
-        let at = || {
-            let p = self.player(self.my_slot?)?;
-            let unit = self.view()?.unit(p.unit?)?;
-            Some(bota_core::at_home_shop(
-                self.session()?.map(),
-                p.team,
-                unit.pos,
-            ))
-        };
-        at().unwrap_or(false)
+        self.shop_context()
+            .and_then(|context| context.hero)
+            .is_some_and(|hero| hero.shops.base)
     }
 
     /// The seat the bottom panel falls back to: our own, else the first one.

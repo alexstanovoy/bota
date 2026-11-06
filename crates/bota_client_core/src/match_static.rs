@@ -388,6 +388,11 @@ fn validate_static_inputs(info: &MatchInfo) -> Result<Catalogue, SessionError> {
 }
 
 fn validate_shop_zones(info: &MatchInfo) -> Result<(), SessionError> {
+    if !(0..=Fixed::MAX.to_int()).contains(&info.shop_range) {
+        return Err(SessionError::Stream(
+            "home shop range does not fit nonnegative fixed-point coordinates",
+        ));
+    }
     check_limit(
         "MatchInfo.secret_shops",
         info.secret_shops.len(),

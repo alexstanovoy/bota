@@ -3,10 +3,12 @@
 //! server buys by.
 
 use bota_core::{
-    MapDef, PurchaseCarrier, PurchaseContext, Shelf, hero_def, missing_parts, place_shop_purchase,
-    purchase_pool, shop_access, sold,
+    PurchaseCarrier, PurchaseContext, Shelf, ShopAccess, hero_def, missing_parts,
+    place_shop_purchase, purchase_pool, sold,
 };
-use bota_proto::{Attribute, ItemId, PlayerView, UnitKind, WorldView};
+use bota_proto::{Attribute, Fixed, ItemId, PlayerView, Team, UnitKind, UnitView, WorldView};
+
+use crate::MatchStatic;
 
 /// Every item the shop of a match on `catalogue` sells, in id order: neither retired nor
 /// unbuyable, and in the catalogue ([`MatchStatic::catalogue`](crate::MatchStatic::catalogue)).
@@ -18,16 +20,12 @@ pub fn sold_items(catalogue: bota_core::Catalogue) -> impl Iterator<Item = ItemI
 /// not marked for sale, in its hero's bag (the kit it carried while it lies dead), its stash and
 /// its courier, as the server buys. As in Dota, a purchase counts everything the player owns.
 pub fn held_items(view: &WorldView, p: &PlayerView) -> Vec<ItemId> {
-    let bag = p
-        .unit
-        .and_then(|id| view.unit(id))
+    let [hero, courier] = carriers(view, p);
+    let bag = hero
         .map(|u| u.items.as_slice())
         .or_else(|| p.kit.as_ref().map(|kit| kit.items.as_slice()))
         .unwrap_or_default();
-    let courier = view
-        .units
-        .iter()
-        .find(|unit| unit.kind == UnitKind::Courier && unit.owner == Some(p.slot))
+    let courier = courier
         .map(|unit| unit.items.as_slice())
         .unwrap_or_default();
     purchase_pool(
@@ -70,44 +68,74 @@ pub fn price_for(item: ItemId, held: &[ItemId], primary: Option<Attribute>) -> i
 /// base-shop parts go to the hero at home or the stash; secret-shop parts require a physical
 /// carrier there. Mergeable charges fill a stack first. A seat whose stash is not told
 /// (the other side's) has none to ask about.
-pub fn purchase_fits(view: &WorldView, p: &PlayerView, map: &MapDef, item: ItemId) -> bool {
-    let Some(stash) = p.stash.as_deref() else {
+pub fn purchase_fits(
+    view: &WorldView,
+    p: &PlayerView,
+    statics: &MatchStatic,
+    item: ItemId,
+) -> bool {
+    if p.stash.is_none() {
         return false;
-    };
-    let hero = p.unit.and_then(|id| view.unit(id));
-    let courier = view
-        .units
-        .iter()
-        .find(|unit| unit.kind == UnitKind::Courier && unit.owner == Some(p.slot));
+    }
     let parts = missing_for(item, &held_items(view, p), primary_of(p));
-    let stash = Shelf {
-        slots: stash,
-        town_portal: None,
-        combines: false,
-    };
-    let context = PurchaseContext {
-        hero: hero
-            .filter(|unit| unit.hp > 0)
-            .map(|unit| purchase_carrier(unit, map)),
-        courier: courier
-            .filter(|unit| unit.hp > 0)
-            .map(|unit| purchase_carrier(unit, map)),
-        stash,
-        universal_shop: map.universal_shop,
-    };
+    let context = purchase_context(view, p, statics);
     place_shop_purchase(p.slot, &parts, &context).is_ok()
 }
 
-fn purchase_carrier<'a>(
-    unit: &'a bota_proto::UnitView,
-    map: &MapDef,
-) -> PurchaseCarrier<'a, bota_proto::ItemView> {
-    PurchaseCarrier {
+/// The buyer's living carriers and storage, with access to the shops this match announced.
+/// An untold stash has no known space, but physical access remains available to indicators.
+pub fn purchase_context<'a>(
+    view: &'a WorldView,
+    player: &'a PlayerView,
+    statics: &MatchStatic,
+) -> PurchaseContext<'a, bota_proto::ItemView> {
+    let [hero, courier] = carriers(view, player);
+    PurchaseContext {
+        hero: hero.and_then(|unit| purchase_carrier(unit, statics)),
+        courier: courier.and_then(|unit| purchase_carrier(unit, statics)),
+        stash: Shelf {
+            slots: player.stash.as_deref().unwrap_or_default(),
+            town_portal: None,
+            combines: false,
+        },
+        universal_shop: statics.metadata().universal_shop,
+    }
+}
+
+fn carriers<'a>(view: &'a WorldView, player: &PlayerView) -> [Option<&'a UnitView>; 2] {
+    [
+        player.unit.and_then(|id| view.unit(id)),
+        view.units
+            .iter()
+            .find(|unit| unit.kind == UnitKind::Courier && unit.owner == Some(player.slot)),
+    ]
+}
+
+pub(crate) fn purchase_carrier<'a>(
+    unit: &'a UnitView,
+    statics: &MatchStatic,
+) -> Option<PurchaseCarrier<'a, bota_proto::ItemView>> {
+    if unit.hp <= 0 {
+        return None;
+    }
+    let home = match unit.team {
+        Team::Radiant => Some(statics.fountains()[0]),
+        Team::Dire => Some(statics.fountains()[1]),
+        Team::Neutral => None,
+    };
+    let shops = ShopAccess {
+        base: home.is_some_and(|at| unit.pos.within(at, Fixed::from_int(statics.shop_range()))),
+        secret: statics
+            .secret_shops()
+            .iter()
+            .any(|shop| bota_core::shop_zone_touches(&shop.corners, unit.pos, unit.bound)),
+    };
+    Some(PurchaseCarrier {
         bag: Shelf {
             slots: unit.items.as_slice(),
             town_portal: (unit.kind == UnitKind::Hero).then_some(&unit.town_portal),
             combines: true,
         },
-        shops: shop_access(map, unit.team, unit.pos, unit.bound),
-    }
+        shops,
+    })
 }
