@@ -1056,6 +1056,29 @@ fn a_hook_thrower_swings_at_nothing_during_its_followthrough() {
     assert_eq!(swinging(&world, pudge), Some(foe), "until it ends");
 }
 
+/// The followthrough is a stun on its thrower (Valve 7.34: "Cast stun on Pudge is now removed
+/// if the hook finds a target"): a missed hook leaves him no Rot to switch on until it ends.
+#[test]
+fn a_hook_thrower_switches_no_rot_on_during_its_followthrough() {
+    let (mut world, pudge) = a_hook_into_nothing();
+    set_level(&mut world, pudge, 1, 1);
+    let rot = Order::Cast {
+        slot: AbilitySlot(1),
+        target: Target::None,
+    };
+    assert_eq!(
+        world.validate_order(SlotId(0), None, &rot),
+        Err(RejectReason::Disabled),
+        "the rot is refused"
+    );
+    run(&mut world, FOLLOWTHROUGH_SURE_TICKS + 3);
+    assert_eq!(
+        world.validate_order(SlotId(0), None, &rot),
+        Ok(()),
+        "until it ends"
+    );
+}
+
 /// The followthrough mutes: no item is used until it ends.
 #[test]
 fn a_hook_thrower_uses_no_item_during_its_followthrough() {
