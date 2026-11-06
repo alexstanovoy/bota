@@ -1,0 +1,28 @@
+[package]
+name = "bota_lua"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Sandboxed Lua bot API and team scheduling over filtered client sessions."
+
+[dependencies]
+bota_client_core.workspace = true
+bota_core.workspace = true
+bota_proto.workspace = true
+luagee.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix = { workspace = true, features = ["fs", "std"], optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+getrandom = { workspace = true, optional = true }
+
+[dev-dependencies]
+bota_server.workspace = true
+
+[features]
+default = []
+native = ["dep:rustix", "dep:getrandom"]
+
+[lints]
+workspace = true

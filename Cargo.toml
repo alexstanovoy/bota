@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/bota_client_core",
+    "crates/bota_lua",
     "crates/bota_core",
     "crates/bota_proto",
     "crates/bota_radovid",
@@ -10,6 +11,7 @@ members = [
 ]
 # bota_radovid is a helper for client writers and stays out of a plain cargo build and test.
 default-members = [
+    "crates/bota_lua",
     "crates/bota_client_core",
     "crates/bota_core",
     "crates/bota_proto",
@@ -31,6 +33,10 @@ proc-macro2 = { version = "=1.0.107", default-features = false }
 quote = { version = "1.0.47", default-features = false }
 prettyplease = { version = "=0.2.37", default-features = false }
 sha2 = { version = "0.11.1", default-features = false }
+rustix = { version = "=1.1.6", default-features = false }
+getrandom = { version = "=0.4.3", default-features = false }
+luagee = { path = "../luagee/crates/luagee", default-features = false }
+bota_lua = { path = "crates/bota_lua", default-features = false }
 bota_client_core = { path = "crates/bota_client_core" }
 bota_core = { path = "crates/bota_core" }
 bota_proto = { path = "crates/bota_proto" }

@@ -1,0 +1,43 @@
+//! Lua bot bindings over filtered client sessions. The interpreter is provided by luagee.
+
+#![forbid(unsafe_code)]
+
+mod api;
+mod modules;
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+pub mod native;
+mod state;
+mod team;
+mod vector;
+
+pub use luagee::{GcStress, Keys, Limits, Loader, ModuleName};
+pub use team::*;
+pub use modules::ModuleBank;
+
+/// A setup or session contract error; script failures are reported per bot in `TeamTurn`.
+#[derive(Debug)]
+pub enum BindingError {
+    Configuration(&'static str),
+    Lua(luagee::Error),
+    Callback(luagee::LuaError),
+}
+
+impl From<luagee::Error> for BindingError {
+    fn from(error: luagee::Error) -> Self { Self::Lua(error) }
+}
+
+impl From<luagee::LuaError> for BindingError {
+    fn from(error: luagee::LuaError) -> Self { Self::Callback(error) }
+}
+
+impl std::fmt::Display for BindingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Configuration(message) => f.write_str(message),
+            Self::Lua(error) => error.fmt(f),
+            Self::Callback(error) => write!(f, "callback setup failed: {error:?}"),
+        }
+    }
+}
+
+impl std::error::Error for BindingError {}
