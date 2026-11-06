@@ -746,15 +746,158 @@ fn an_ally_that_hurt_a_hero_long_before_it_fell_is_no_assist() {
     assert_eq!(world.seats[1].assists, 0);
 }
 
-/// A kill by a tower or creeps credits the heroes that hurt the fallen.
+/// Liquipedia credits a creep finish after one hero damager to that hero.
+/// No self-assist follows from that credit; it is not a separate quoted rule.
+/// https://liquipedia.net/dota2/Gold#Hero_kills
 #[test]
-fn a_hero_a_creep_finishes_is_assisted_by_those_who_hurt_it() {
+fn a_hero_a_creep_finishes_credits_its_sole_damager_without_a_self_assist() {
+    let (mut world, _, damager, prey) = a_hero_the_second_seat_has_hurt();
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(1_000, 1_000));
+    world.settle();
+    let mut events = Vec::new();
+    world.bury(vec![(prey, Some(creep))], &mut events);
+    assert_eq!(the_assists(&events), Some(0));
+    assert_eq!(world.seats[1].kills, 1);
+    assert_eq!(world.seats[1].assists, 0);
+    for viewer in [None, Some(Team::Radiant), Some(Team::Dire)] {
+        let projected = crate::game_loop::visible_events(&events, viewer);
+        let (physical, credited, assists) = projected
+            .iter()
+            .find_map(|event| match event {
+                EventKind::Died {
+                    killer,
+                    credited_hero,
+                    assists,
+                    ..
+                } => Some((*killer, credited_hero.as_deref().copied(), *assists)),
+                _ => None,
+            })
+            .expect("public hero death");
+        assert_eq!(
+            physical,
+            if viewer == Some(Team::Dire) {
+                None
+            } else {
+                Some(wire_id(creep))
+            }
+        );
+        assert_eq!(
+            credited,
+            Some(wire_id(damager)),
+            "the kill feed announces the credited hero even with a hidden physical finisher"
+        );
+        assert_eq!(assists, 0, "the credited killer never assists its own kill");
+    }
+}
+
+/// The page's no-recent-damage branch states a 20 s window. The credit code
+/// applies that same window to sole-damager attribution.
+/// https://liquipedia.net/dota2/Gold#Hero_kills
+#[test]
+fn a_creep_finish_after_the_sole_damagers_window_has_no_credited_hero() {
     let (mut world, _, _, prey) = a_hero_the_second_seat_has_hurt();
+    world.tick += crate::game::KILL_CREDIT_WINDOW_TICKS + 1;
     let creep = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(5_100, 5_000));
     world.settle();
     let mut events = Vec::new();
     world.bury(vec![(prey, Some(creep))], &mut events);
-    assert_eq!(the_assists(&events), Some(0b10));
+    let (physical, credited, assists) = events
+        .iter()
+        .find_map(|event| match event.kind() {
+            EventKind::Died {
+                killer,
+                credited_hero,
+                assists,
+                ..
+            } => Some((killer, credited_hero, assists)),
+            _ => None,
+        })
+        .expect("the expired-damager creep finish emits a death");
+    assert_eq!(
+        physical,
+        Some(wire_id(creep)),
+        "the physical finisher remains the creep"
+    );
+    assert_eq!(
+        credited, None,
+        "expired damage cannot credit the former sole damager"
+    );
+    assert_eq!(
+        assists, 0,
+        "expired damage does not count as an assist either"
+    );
+    for seat in &world.seats[..2] {
+        assert_eq!(seat.kills, 0);
+        assert_eq!(seat.assists, 0);
+    }
+}
+
+/// Both heroes struck the victim: a creep finish leaves no credited hero,
+/// so both remain assistants [Liquipedia Gold, Hero kills].
+fn a_hero_both_radiant_seats_have_hurt() -> (World, Entity, Entity, Entity) {
+    let (mut world, first, second, prey) = a_hero_the_second_seat_has_hurt();
+    world.set_target(first, prey);
+    for _ in 0..90 {
+        world.step();
+        if world.seats[2]
+            .hurt_by
+            .iter()
+            .any(|entry| entry.by == 0 && entry.damage_at.is_some())
+        {
+            break;
+        }
+    }
+    assert!(
+        world.seats[2]
+            .hurt_by
+            .iter()
+            .any(|entry| entry.by == 0 && entry.damage_at.is_some()),
+        "the first hero actually damaged the victim too"
+    );
+    assert!(world.alive(prey));
+    world.set_order(first, UnitOrder::Stand);
+    world.set_order(second, UnitOrder::Stand);
+    (world, first, second, prey)
+}
+
+/// https://liquipedia.net/dota2/Gold#Hero_kills distinguishes one hero
+/// damager (a credited kill) from several (a shared creep kill with assists).
+#[test]
+fn a_hero_a_creep_finishes_is_assisted_by_those_who_hurt_it() {
+    let (mut world, _, _, prey) = a_hero_both_radiant_seats_have_hurt();
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(5_100, 5_000));
+    world.settle();
+    let mut events = Vec::new();
+    world.bury(vec![(prey, Some(creep))], &mut events);
+    assert_eq!(
+        the_assists(&events),
+        Some(0b11),
+        "both genuine damagers assist the shared kill"
+    );
+    for seat in &world.seats[..2] {
+        assert_eq!(seat.kills, 0);
+        assert_eq!(seat.assists, 1);
+    }
+    let (physical, credited) = events
+        .iter()
+        .find_map(|event| match event.kind() {
+            EventKind::Died {
+                killer,
+                credited_hero,
+                ..
+            } => Some((killer, credited_hero)),
+            _ => None,
+        })
+        .expect("the shared creep finish emits a death");
+    assert_eq!(
+        physical,
+        Some(wire_id(creep)),
+        "the creep dealt the killing blow"
+    );
+    assert_eq!(
+        credited, None,
+        "two hero damagers leave no sole credited hero"
+    );
 }
 
 #[test]
@@ -797,11 +940,12 @@ fn a_fallen_tower_tells_its_kind_lane_and_tier() {
     );
 }
 
-/// A side that is not told who struck the blow is not told who helped: the helpers would name
-/// the unseen killer's side's heroes.
+/// A side not told who struck the blow is not told who helped: the helpers would
+/// name the unseen killer's side's heroes. This shared creep kill has genuine
+/// assistants; the sole-damager case above checks public credited-hero disclosure.
 #[test]
 fn a_side_that_cannot_see_the_killer_is_told_no_assists() {
-    let (mut world, _, _, prey) = a_hero_the_second_seat_has_hurt();
+    let (mut world, _, _, prey) = a_hero_both_radiant_seats_have_hurt();
     // A Radiant creep out of every Dire eye finishes the hero.
     let creep = world.spawn_unit(&MELEE_CREEP, Team::Radiant, Vec2::from_ints(1_000, 1_000));
     world.settle();
@@ -819,7 +963,7 @@ fn a_side_that_cannot_see_the_killer_is_told_no_assists() {
     };
     assert_eq!(
         told(Team::Radiant),
-        Some((true, 0b10)),
+        Some((true, 0b11)),
         "its own side knows both"
     );
     assert_eq!(
