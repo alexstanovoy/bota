@@ -57,6 +57,39 @@ pub fn shared_wait(item: ItemId) -> Option<u32> {
 pub struct LocalWaits {
     journals: [TimerJournal<u32>; 2],
     swaps: [TimerJournal<SwapItem>; SWAP_SLOTS],
+    revision: u64,
+}
+
+/// Current wait facts and their mutation identity, without rollback history.
+/// Suitable for stored observations and provenance; it cannot issue or reject orders.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LocalWaitsSnapshot {
+    shared_given: [Option<u32>; 2],
+    muted_until: [u32; rules::INVENTORY_SLOTS],
+    revision: u64,
+}
+
+const _: () = assert!(std::mem::size_of::<LocalWaitsSnapshot>() <= 64);
+
+impl LocalWaitsSnapshot {
+    pub fn mute_left(&self, body: ControlledUnit, slot: ItemSlot, now: u32) -> Option<u32> {
+        if body != ControlledUnit::Hero {
+            return None;
+        }
+        self.muted_until
+            .get(usize::from(slot.0))
+            .map(|ready| ready.saturating_sub(now))
+    }
+
+    pub fn wait_left(
+        &self,
+        body: ControlledUnit,
+        item: ItemId,
+        now: u32,
+        latency: OrderLatency,
+    ) -> Option<u32> {
+        shared_left(self.shared_given[body.index()], item, now, latency)
+    }
 }
 
 fn shared_left(given: Option<u32>, item: ItemId, now: u32, latency: OrderLatency) -> Option<u32> {
@@ -181,10 +214,31 @@ impl SwapItem {
 }
 
 impl LocalWaits {
+    /// Capture only facts consumed by readiness and feature provenance.
+    pub fn snapshot(&self) -> LocalWaitsSnapshot {
+        LocalWaitsSnapshot {
+            shared_given: std::array::from_fn(|body| self.journals[body].current()),
+            muted_until: std::array::from_fn(|slot| {
+                self.swaps[slot]
+                    .current()
+                    .map_or(0, |item| item.muted_until)
+            }),
+            revision: self.revision,
+        }
+    }
+
+    fn changed(&mut self) {
+        self.revision = self
+            .revision
+            .checked_add(1)
+            .expect("validated u32 ticks and issued sequences bound wait revisions below u64");
+    }
+
     /// Starts the wait the order with `sequence`, given on the snapshot of
     /// `given_tick`, put on `body`.
     pub(crate) fn start(&mut self, body: ControlledUnit, sequence: u32, given_tick: u32) {
         self.journals[body.index()].push(sequence, given_tick);
+        self.changed();
     }
 
     /// Starts the mutes the swap `issued` with `sequence` puts on the hero's
@@ -229,11 +283,13 @@ impl LocalWaits {
         for (slot, item) in landed {
             self.swaps[slot].push(sequence, item);
         }
+        self.changed();
     }
 
     pub(crate) fn clear_swap_predictions(&mut self) {
         if self.swaps.iter().any(|journal| journal.current().is_some()) {
             self.swaps = Default::default();
+            self.changed();
         }
     }
 
@@ -257,6 +313,7 @@ impl LocalWaits {
             *journal = TimerJournal::new();
             journal.push(0, context.slots[slot]);
         }
+        self.changed();
     }
 
     /// Removes every wait the rejected order started.
@@ -267,6 +324,9 @@ impl LocalWaits {
         }
         for journal in &mut self.swaps {
             removed |= journal.reject(sequence);
+        }
+        if removed {
+            self.changed();
         }
         removed
     }
