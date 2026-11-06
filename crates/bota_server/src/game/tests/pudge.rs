@@ -235,6 +235,29 @@ fn a_hook_saves_an_allied_creep_without_damage_or_execution() {
     ));
 }
 
+/// A hooked ally is dragged, not stunned: whatever it channels goes on (Valve 2011-11-17:
+/// "Fixed Meat Hook interrupting allied channel abilities"; Liquipedia: the hook "neither
+/// stuns nor damages the affected allied unit").
+#[test]
+fn a_hook_drags_an_ally_without_stunning_it() {
+    let (mut world, pudge, ally) = pudge_and_a_hero_mark(600);
+    world.set_team(ally, Team::Radiant);
+    world.settle();
+    let home = world.pos(pudge).expect("Pudge stands");
+    cast(&mut world, 0, Target::Pos(home + Vec2::from_ints(600, 0)));
+    until_the_hook_flies(&mut world);
+    let mut dragged = false;
+    for _ in 0..rules::TICKS_PER_SECOND * 2 {
+        world.step();
+        dragged |= hook_holds(&world);
+        assert!(
+            !carries(&world, ally, ModifierKind::Stunned),
+            "the ally is never stunned"
+        );
+    }
+    assert!(dragged, "and was dragged");
+}
+
 #[test]
 fn a_hook_passes_invulnerable_and_fortified_creeps_of_either_side() {
     for protection in [ModifierKind::Shielded, ModifierKind::Fortified] {

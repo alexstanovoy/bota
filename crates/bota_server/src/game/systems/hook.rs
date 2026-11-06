@@ -96,7 +96,7 @@ impl World {
                 self.put_at(entity, next, home);
                 self.lay_chain(&hook, home, next);
                 if let Some(caught) = hook.caught {
-                    self.drag(entity, caught, next);
+                    self.drag(entity, hook.owner, caught, next);
                 }
                 if next == home {
                     self.let_go(entity);
@@ -231,19 +231,23 @@ impl World {
         }
     }
 
-    /// Drags what a hook caught to where the hook now is, and holds it there.
+    /// Drags what a hook caught to where the hook now is. An enemy is held
+    /// there, stunned; an ally only moved, so what it channels goes on (Dota
+    /// stopped the hook interrupting allied channels in 2011).
     ///
     /// The hold is handed out afresh every tick, so it lifts on its own once
     /// the hook lets go.
-    fn drag(&mut self, hook: Entity, caught: Entity, to: Vec2) {
+    fn drag(&mut self, hook: Entity, owner: Entity, caught: Entity, to: Vec2) {
         if let Some(at) = self.transform.get_mut(caught) {
             at.pos = to;
         }
-        let with = Some(Inflictor::Ability(AbilityId::MEAT_HOOK));
-        self.put_modifier(
-            caught,
-            Modifier::new(ModifierKind::Stunned, Some(hook), with, Some(2)),
-        );
+        if self.team.get(caught) != self.team.get(owner) {
+            let with = Some(Inflictor::Ability(AbilityId::MEAT_HOOK));
+            self.put_modifier(
+                caught,
+                Modifier::new(ModifierKind::Stunned, Some(hook), with, Some(2)),
+            );
+        }
         self.forget_walk(caught);
     }
 
