@@ -17,6 +17,81 @@ fn facing_of(world: &World, hero: Entity) -> u16 {
     world.transform.get(hero).expect("alive").facing.brads
 }
 
+#[test]
+fn measured_quarter_and_half_turns_match_dotas_formula_before_attacking() {
+    // Valve's MovementTurnRate and https://liquipedia.net/dota2/Turn_Rate:
+    // time = 0.03 * angle / rate, rounded up to whole simulation ticks.
+    for (hero_id, dota_rate) in [(HeroId::SHADOW_FIEND, 0.9_f64), (HeroId::PUDGE, 0.7)] {
+        for (degrees, offset) in [
+            (90, Vec2::from_ints(0, 120)),
+            (180, Vec2::from_ints(-120, 0)),
+        ] {
+            let mut world = World::new();
+            let hero = seated_hero(&mut world, Vec2::from_ints(6000, 6000), hero_id);
+            let enemy = seat_hero(
+                &mut world,
+                1,
+                Team::Dire,
+                Vec2::from_ints(6000, 6000) + offset,
+            );
+            world.settle();
+            let target = bota_core::facing_towards(
+                world.pos(hero).expect("hero"),
+                world.pos(enemy).expect("enemy"),
+            );
+            let seconds = 0.03 * f64::from(degrees).to_radians() / dota_rate;
+            let expected = (seconds * 30.0).ceil() as u32;
+            let mut trace = Vec::new();
+            let mut previous = world.transform.get(hero).expect("hero").facing;
+            let mut began = None;
+            let mut first_permitted = None;
+            let mut completed = None;
+            for tick in 1..=12 {
+                if tick == 1 {
+                    attack_click(&mut world, enemy);
+                } else {
+                    world.step();
+                }
+                let now = world.transform.get(hero).expect("hero").facing;
+                let step = bota_core::angle_delta(previous, now).abs();
+                assert!(
+                    step <= rate_of(&world, hero),
+                    "one tick respects the hero's rate"
+                );
+                trace.push(now.brads);
+                if facing_gap(now, target) <= rules::ATTACK_ANGLE_BRADS {
+                    first_permitted.get_or_insert(tick);
+                }
+                if swinging(&world, hero).is_some() {
+                    assert!(
+                        facing_gap(now, target) <= rules::ATTACK_ANGLE_BRADS,
+                        "windup waits for the allowed angle"
+                    );
+                    began.get_or_insert(tick);
+                }
+                if facing_gap(now, target) == 0 {
+                    completed = Some(tick);
+                    break;
+                }
+                previous = now;
+            }
+            eprintln!(
+                "TURN {hero_id:?} {degrees}deg formula={seconds:.6}s expected={expected}ticks measured={completed:?} windup={began:?} facing_brads={trace:?}"
+            );
+            assert_eq!(
+                completed,
+                Some(expected),
+                "full turn matches the formula at 30 Hz"
+            );
+            assert!(began.is_some(), "windup starts once facing permits");
+            assert_eq!(
+                began, first_permitted,
+                "{hero_id:?} {degrees} degrees: windup begins on the first permitted tick"
+            );
+        }
+    }
+}
+
 fn spot_beside(world: &World, hero: Entity, dx: i32, dy: i32) -> Target {
     let at = world.transform.get(hero).expect("alive").pos;
     Target::Pos(at + Vec2::from_ints(dx, dy))
