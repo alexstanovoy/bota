@@ -56,7 +56,6 @@ pub(crate) fn stats() -> Stats {
         vision_grant: None,
         evasion: Odds::NEVER,
         lifesteal_pct: 0,
-        creep_cut_lifesteal_pct: 0,
         spell_lifesteal_pct: 0,
         magic_taken_pct: 0,
         damage_taken_bp: rules::NOMINAL_BP,

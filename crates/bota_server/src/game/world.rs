@@ -371,6 +371,33 @@ impl World {
             kind,
             damage_amp_bp,
             attack: false,
+            spell: true,
+            striker: None,
+            pierces: false,
+            uphill: false,
+            effect: crate::game::HitEffect::None,
+        });
+    }
+
+    /// Lays a blow splashed off an attack on the queue: no spell's.
+    pub(crate) fn push_splash_hit(
+        &mut self,
+        source: Option<Entity>,
+        target: Entity,
+        amount: i32,
+        inflictor: Option<Inflictor>,
+    ) {
+        let kind = bota_proto::DamageKind::Physical;
+        let damage_amp_bp = self.outgoing_damage_amp_bp(source, kind);
+        self.hits.push_back(Hit {
+            source,
+            inflictor,
+            target,
+            amount,
+            kind,
+            damage_amp_bp,
+            attack: false,
+            spell: false,
             striker: None,
             pierces: false,
             uphill: false,
@@ -398,6 +425,7 @@ impl World {
             kind,
             damage_amp_bp,
             attack: false,
+            spell: true,
             striker: None,
             pierces: false,
             uphill: false,

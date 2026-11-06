@@ -374,7 +374,7 @@ fn add_carried(now: &mut Stats, sums: &mut Sums, carried: &Carried, illusion: bo
     now.armor += kept(illusion, carried.armor);
     now.move_speed += Fixed::from_int(carried.move_speed + carried.lace_speed);
     now.evasion = carried.evasion;
-    now.creep_cut_lifesteal_pct += carried.lifesteal_pct;
+    now.lifesteal_pct += carried.lifesteal_pct;
     now.spell_lifesteal_pct += carried.spell_lifesteal_pct;
     if now.projectile_speed.is_none() {
         now.attack_range += Fixed::from_int(carried.melee_range);
@@ -692,7 +692,6 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32, night: bool) -> Stats {
         mana_cost_rate_bp: rules::NOMINAL_BP,
         evasion: Odds::NEVER,
         lifesteal_pct: 0,
-        creep_cut_lifesteal_pct: 0,
         spell_lifesteal_pct: 0,
         magic_taken_pct: 0,
         damage_taken_bp: rules::NOMINAL_BP,

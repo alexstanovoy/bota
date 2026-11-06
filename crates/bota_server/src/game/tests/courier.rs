@@ -880,6 +880,7 @@ fn a_courier_in_its_fountains_rejuvenation_takes_nothing_and_is_hit_again_once_i
             kind: DamageKind::Physical,
             damage_amp_bp: rules::NOMINAL_BP,
             attack: true,
+            spell: false,
             striker: Some(bota_core::Striker::Other),
             pierces: true,
             uphill: false,

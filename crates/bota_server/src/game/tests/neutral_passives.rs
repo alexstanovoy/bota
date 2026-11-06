@@ -806,10 +806,41 @@ fn a_prowler_aura_mends_its_bearer_by_a_share_of_what_it_deals() {
         let blow = blows(&mut world, 1, acolyte, hero);
         if let Some((_, amount, _)) = blow.first() {
             let regen = world.stats.get(acolyte).expect("derived").hp_regen;
-            assert_eq!(
-                hp(&world, acolyte),
-                before + regen + Fixed::from_int(*amount) * Fixed::from_ratio(9, 100),
-                "nine percent of {amount} came back, its fraction too"
+            let healed = hp(&world, acolyte) - before - regen;
+            let share = Fixed::from_int(*amount) * Fixed::from_ratio(9, 100);
+            assert!(
+                (healed - share).raw.abs() <= Fixed::from_ratio(1, 100).raw,
+                "nine percent of {amount} came back, its fraction too: {healed}"
+            );
+            return;
+        }
+    }
+    panic!("the acolyte never struck");
+}
+
+/// Since 7.38 every lifesteal, an ability's too, heals 40% less off what is no hero (Dota 7.38:
+/// "Lifesteal mechanics are now consistent across every ability ... reduced by 40% when
+/// damaging non-heroes"): the Prowler Aura mends 9% of a blow on a hero and 5.4% off a creep.
+#[test]
+fn a_prowler_aura_mends_its_bearer_six_tenths_as_much_off_a_creep() {
+    let mut world = day();
+    let creep = world.spawn_unit(&bota_core::MELEE_CREEP, Team::Radiant, at(0));
+    world.set_order(creep, UnitOrder::Stand);
+    let acolyte = awake(&mut world, NeutralKind::ProwlerAcolyte, at(100));
+    world.settle();
+    let max = world.stats.get(acolyte).expect("derived").max_hp;
+    world.health.get_mut(acolyte).expect("alive").hp = max * Fixed::from_ratio(50, 100);
+    world.set_target(acolyte, creep);
+    for _ in 0..200 {
+        let before = hp(&world, acolyte);
+        let blow = blows(&mut world, 1, acolyte, creep);
+        if let Some((_, amount, _)) = blow.first() {
+            let regen = world.stats.get(acolyte).expect("derived").hp_regen;
+            let healed = hp(&world, acolyte) - before - regen;
+            let share = Fixed::from_int(*amount) * Fixed::from_ratio(540, 10_000);
+            assert!(
+                (healed - share).raw.abs() <= Fixed::from_ratio(1, 100).raw,
+                "5.4% of {amount}: {healed}"
             );
             return;
         }

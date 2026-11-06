@@ -137,9 +137,9 @@ impl World {
             if !self.foes(by, on) {
                 continue;
             }
-            if blow.kind == DamageKind::Physical {
-                self.lifesteal(by, on, blow.amount);
-            }
+            // An attack's own blow is physical; the magic riding with it is
+            // a blow of its own, which lifesteal leaves alone.
+            self.lifesteal(by, on, blow.stolen);
             if self.wears_fountain_passive(by) {
                 let splash = (rules::FOUNTAIN_SPLASH_RADIUS, rules::FOUNTAIN_SPLASH_PCT);
                 self.splash(by, None, blow, splash);
@@ -177,9 +177,11 @@ impl World {
     }
 
     /// Mends an attacker by its lifesteal share of the physical damage it
-    /// dealt `on` a foe. Lifesteal heals nothing off a courier (Dota 7.38:
-    /// "Attack damage against wards, buildings, or couriers" gives none),
-    /// and an item's heals less off what is no hero.
+    /// dealt `on` a foe (see [`Landed::stolen`]). Every lifesteal heals
+    /// [`rules::LIFESTEAL_CREEP_PCT`] of itself off what is no hero (an
+    /// illusion counts as one) and nothing off a courier (Dota 7.38:
+    /// "Lifesteal mechanics are now consistent across every ability", and
+    /// "Attack damage against wards, buildings, or couriers" gives none).
     fn lifesteal(&mut self, by: Entity, on: Entity, dealt: i32) {
         let Some(stats) = self.stats.get(by) else {
             return;
@@ -193,24 +195,23 @@ impl World {
         } else {
             rules::LIFESTEAL_CREEP_PCT
         };
-        let hundredths = stats.lifesteal_pct * 100 + stats.creep_cut_lifesteal_pct * creep_pct;
-        if hundredths > 0 {
-            // Dota heals the fraction too.
-            let share = Fixed::from_ratio(hundredths, 10_000);
-            self.mend_part(by, Fixed::from_int(dealt) * share);
-        }
+        self.mend_part(by, share_of(dealt, stats.lifesteal_pct, creep_pct));
     }
 
     /// Mends the dealers of the blows felt by their spell lifesteal share of
-    /// what each took (Dota 7.38): physical and magical damage of spells and
-    /// the magic riding with an attack, never pure damage nor an attack's
-    /// own blow, and nothing off an ally, an illusion, a building, a ward or
-    /// a courier.
+    /// what each took (Dota 7.38): physical and magical damage of spells
+    /// ([`Landed::spell`]) and the magic riding with an attack, never pure
+    /// damage, an attack's own blow or what splashes off one, and nothing off
+    /// an ally, an illusion, a building or a ward (nor a courier, whose
+    /// health counted in hits no spell takes). Unlike an
+    /// attack's lifesteal it heals off the health the blow took, the overkill
+    /// left out (Liquipedia, *Spell Lifesteal*: "it does not heal for
+    /// overkill damage dealt to a unit").
     pub fn steal_spell_life(&mut self, felt: &[Landed]) {
         for blow in felt {
             let spell = match blow.kind {
                 DamageKind::Pure => false,
-                DamageKind::Physical => !blow.attack,
+                DamageKind::Physical => blow.spell,
                 DamageKind::Magical => true,
             };
             let Some(by) = blow.source.filter(|by| self.entities.contains(*by)) else {
@@ -226,7 +227,6 @@ impl World {
                 || pct <= 0
                 || blow.amount <= 0
                 || !self.foes(by, on)
-                || target == Some(UnitKind::Courier)
                 || self.wears(on, ModifierKind::Illusion)
                 || !self.living_unit(by)
             {
@@ -237,8 +237,7 @@ impl World {
             } else {
                 rules::SPELL_LIFESTEAL_CREEP_PCT
             };
-            let share = Fixed::from_ratio(pct * creep_pct, 10_000);
-            self.mend_part(by, Fixed::from_int(blow.amount) * share);
+            self.mend_part(by, share_of(blow.amount, pct, creep_pct));
         }
     }
 
@@ -412,13 +411,7 @@ impl World {
                 && self.alive(other)
                 && self.pos(other).is_some_and(|at| at.within(blow.at, reach))
             {
-                self.push_hit(
-                    Some(by),
-                    other,
-                    blow.dealt * pct / 100,
-                    DamageKind::Physical,
-                    inflictor,
-                );
+                self.push_splash_hit(Some(by), other, blow.dealt * pct / 100, inflictor);
             }
         }
     }
@@ -486,5 +479,19 @@ impl World {
             }
             _ => {}
         }
+    }
+}
+
+/// `pct` percent of `amount`, and `creep_pct` percent of that, a fraction of a point included
+/// (Dota heals the fraction too). Worked out in 64 bits and held to the most health a point can
+/// say, so no sum of carried percentages overflows it.
+fn share_of(amount: i32, pct: i32, creep_pct: i32) -> Fixed {
+    let raw = i64::from(amount)
+        * i64::from(pct)
+        * i64::from(creep_pct)
+        * i64::from(Fixed::from_int(1).raw)
+        / 10_000;
+    Fixed {
+        raw: raw.clamp(0, i64::from(i32::MAX)) as i32,
     }
 }

@@ -24,6 +24,10 @@ pub struct Hit {
     /// Whether it is a swing of the attacker's weapon. Only such a blow can
     /// be evaded.
     pub attack: bool,
+    /// Whether a spell dealt it: an ability or an item used, or what one
+    /// laid. False for an attack's own blow and for what rides with or
+    /// splashes off one, so Dota's spell lifesteal knows it apart.
+    pub spell: bool,
     /// Who swung it, for health counted in hits: set on a swing's own blow,
     /// absent for whatever no swing dealt.
     pub striker: Option<bota_core::Striker>,
@@ -94,6 +98,7 @@ state_hash!(Hit {
     kind,
     damage_amp_bp,
     attack,
+    spell,
     striker,
     pierces,
     uphill,

@@ -34,6 +34,7 @@ fn pure_blow(world: &mut World, from: Entity, on: Entity) -> i32 {
         kind: DamageKind::Pure,
         damage_amp_bp: rules::NOMINAL_BP,
         attack: false,
+        spell: false,
         striker: None,
         pierces: false,
         uphill: false,

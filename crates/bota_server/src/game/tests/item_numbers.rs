@@ -397,7 +397,7 @@ fn every_stat_item_bought_adds_what_its_script_says_and_nothing_else() {
                 "bonus_mana" => expected.max_mana += points(*value),
                 "bonus_health_regen" | "bonus_regen" => expected.hp_regen += per_tick(*value),
                 "bonus_mana_regen" => expected.mana_regen += per_tick(*value),
-                "lifesteal_percent" => expected.creep_cut_lifesteal_pct += value.int(),
+                "lifesteal_percent" => expected.lifesteal_pct += value.int(),
                 "spell_lifesteal" => expected.spell_lifesteal_pct += value.int(),
                 "bonus_magical_armor" => {
                     // Of what the hero's own resistance lets through, the item keeps out its
@@ -483,34 +483,64 @@ fn within_a_hundredth(a: Fixed, b: Fixed) -> bool {
     (a - b).raw.abs() <= Fixed::from_ratio(1, 100).raw
 }
 
-/// What one attack of a hero that bought a Morbid Mask deals `on`, and what it heals back of it,
-/// regeneration aside.
-fn morbid_mask_attack(on: impl FnOnce(&mut World, Vec2) -> Entity) -> (i32, Fixed) {
-    let (mut world, hero) = out_of_fountain_after_buying(&[ItemId::MORBID_MASK]);
+/// The first landing of an attack by a hero that bought `items` on what `on` puts at a spot in
+/// its reach: what the swing dealt, the magic that rode with it, and what the hero healed in that
+/// tick, regeneration aside. With `rider`, the first landing that magic rode with.
+struct Landing {
+    physical: i32,
+    magical: i32,
+    healed: Fixed,
+}
+
+fn attack_landing(
+    items: &[ItemId],
+    on: impl FnOnce(&mut World, Vec2) -> Entity,
+    rider: bool,
+) -> Landing {
+    let (mut world, hero) = out_of_fountain_after_buying(items);
     let at = world.transform.get(hero).expect("standing").pos;
     let mark = on(&mut world, at + Vec2::from_ints(120, 0));
-    world.health.get_mut(hero).expect("alive").hp = Fixed::from_int(200);
+    // A tick for the side to see what was put there, then the attack order.
+    world.step();
     attack_click(&mut world, mark);
-    for _ in 0..120 {
-        let before = world.health.get(hero).expect("alive").hp;
+    for _ in 0..600 {
+        world.health.get_mut(hero).expect("alive").hp = Fixed::from_int(200);
         let regen = world.stats.get(hero).expect("derived").hp_regen;
         let events = world.step();
-        let dealt = events.iter().find_map(|event| match event.kind() {
-            EventKind::Damaged {
+        let mut landing = Landing {
+            physical: 0,
+            magical: 0,
+            healed: world.health.get(hero).expect("alive").hp - Fixed::from_int(200) - regen,
+        };
+        for event in &events {
+            if let EventKind::Damaged {
                 source: Some(source),
                 target,
                 amount,
-                inflictor: None,
+                kind,
                 ..
-            } if source == wire_id(hero) && target == wire_id(mark) => Some(amount),
-            _ => None,
-        });
-        if let Some(dealt) = dealt {
-            let healed = world.health.get(hero).expect("alive").hp - before - regen;
-            return (dealt, healed);
+            } = event.kind()
+                && source == wire_id(hero)
+                && target == wire_id(mark)
+            {
+                match kind {
+                    bota_proto::DamageKind::Physical => landing.physical += amount,
+                    _ => landing.magical += amount,
+                }
+            }
+        }
+        if landing.physical > 0 && (!rider || landing.magical > 0) {
+            return landing;
         }
     }
-    panic!("the attack never landed")
+    panic!("no such attack landed")
+}
+
+/// What one attack of a hero that bought a Morbid Mask deals `on`, and what it heals back of it,
+/// regeneration aside.
+fn morbid_mask_attack(on: impl FnOnce(&mut World, Vec2) -> Entity) -> (i32, Fixed) {
+    let landing = attack_landing(&[ItemId::MORBID_MASK], on, false);
+    (landing.physical, landing.healed)
 }
 
 /// A Morbid Mask bought through the shop heals its carrier for 18% of the physical damage its
@@ -640,4 +670,252 @@ fn a_faerie_fire_adds_two_damage_and_eaten_mends_eighty_five_at_once() {
         bare.damage,
         "with its damage"
     );
+}
+
+/// An enemy hero at a spot.
+fn foe_hero(world: &mut World, at: Vec2) -> Entity {
+    world.spawn_hero(Team::Dire, at, SlotId(1), HeroId::SHADOW_FIEND)
+}
+
+/// An illusion of an enemy hero at a spot: its hero stands far off.
+fn foe_illusion(world: &mut World, at: Vec2) -> Entity {
+    let hero = foe_hero(world, at + Vec2::from_ints(3000, 0));
+    world.settle();
+    world.make_rune_illusions(hero);
+    let illusion = world
+        .entities
+        .iter()
+        .find(|&unit| world.illusion.get(unit).is_some_and(|made| made.of == hero))
+        .expect("an illusion");
+    world.transform.get_mut(illusion).expect("standing").pos = at;
+    world.set_order(illusion, crate::game::UnitOrder::Stand);
+    illusion
+}
+
+/// What a hero that bought a Morbid Mask heals, regeneration aside, when a swing of `amount`
+/// physical damage it threw lands on what `on` puts at a spot, and what the blow took.
+fn morbid_swing_heal(amount: i32, on: impl FnOnce(&mut World, Vec2) -> Entity) -> (i32, Fixed) {
+    let (mut world, hero) = out_of_fountain_after_buying(&[ItemId::MORBID_MASK]);
+    let at = world.transform.get(hero).expect("standing").pos;
+    let mark = on(&mut world, at + Vec2::from_ints(300, 0));
+    world.step();
+    world.health.get_mut(hero).expect("alive").hp = Fixed::from_int(200);
+    let regen = world.stats.get(hero).expect("derived").hp_regen;
+    world.hits.push_back(crate::game::Hit {
+        source: Some(hero),
+        inflictor: None,
+        target: mark,
+        amount,
+        kind: bota_proto::DamageKind::Physical,
+        damage_amp_bp: rules::NOMINAL_BP,
+        attack: true,
+        spell: false,
+        striker: Some(bota_core::Striker::RangedHero),
+        pierces: true,
+        uphill: false,
+        effect: crate::game::HitEffect::None,
+    });
+    let events = world.step();
+    let taken = events
+        .iter()
+        .find_map(|event| match event.kind() {
+            EventKind::Damaged { target, amount, .. } if target == wire_id(mark) => Some(amount),
+            _ => None,
+        })
+        .expect("the swing lands");
+    (
+        taken,
+        world.health.get(hero).expect("alive").hp - Fixed::from_int(200) - regen,
+    )
+}
+
+/// Lifesteal heals off what the attack dealt, not off the more an illusion takes (Dota 7.41:
+/// lifesteal counts damage amplification but increased damage against illusions): as much off an
+/// illusion as off its hero, which it counts as.
+#[test]
+fn a_morbid_mask_heals_as_much_off_an_illusion_as_off_a_hero() {
+    let (taken, healed) = morbid_swing_heal(100, foe_hero);
+    let (taken_by_illusion, healed_off_illusion) = morbid_swing_heal(100, foe_illusion);
+    assert!(taken_by_illusion > taken, "the illusion takes more");
+    assert!(
+        within_a_hundredth(healed_off_illusion, healed),
+        "{healed_off_illusion} off the illusion, {healed} off a hero"
+    );
+}
+
+/// A killing blow heals off all the damage the attack dealt, not only the health that was left
+/// (Liquipedia, *Lifesteal*: the heal is "based on the attack damage value the dying target
+/// would have received").
+#[test]
+fn a_morbid_mask_heals_a_killing_blow_whole() {
+    let creep = |world: &mut World, at| world.spawn_unit(&bota_core::MELEE_CREEP, Team::Dire, at);
+    let (dealt, healed) = morbid_mask_attack(creep);
+    let (dealt_killing, healed_killing) = morbid_mask_attack(|world, at| {
+        let mark = creep(world, at);
+        world.settle();
+        world.health.get_mut(mark).expect("alive").hp = Fixed::from_int(3);
+        mark
+    });
+    assert!(
+        dealt_killing < dealt,
+        "the killing blow takes what was left"
+    );
+    assert!(
+        within_a_hundredth(healed_killing, healed),
+        "{healed_killing} off the killing blow, {healed} off a whole one"
+    );
+}
+
+/// Lifesteal heals off an attack's physical blow alone: the magic riding with it heals nothing
+/// (Liquipedia, *Morbid Mask*: "Only works with physical attack damage").
+#[test]
+fn a_morbid_mask_heals_nothing_off_the_magic_riding_with_an_attack() {
+    let landing = attack_landing(
+        &[ItemId::MORBID_MASK, ItemId::MONKEY_KING_BAR],
+        |world, at| world.spawn_unit(&bota_core::MELEE_CREEP, Team::Dire, at),
+        true,
+    );
+    let share = Fixed::from_int(landing.physical) * Fixed::from_ratio(1080, 10_000);
+    assert!(
+        within_a_hundredth(landing.healed, share),
+        "{} healed off {} physical and {} magical",
+        landing.healed,
+        landing.physical,
+        landing.magical
+    );
+}
+
+/// Lifesteal heals nothing off a courier (Dota 7.38: "Attack damage against wards, buildings, or
+/// couriers" gives none).
+#[test]
+fn a_morbid_mask_heals_nothing_off_a_courier() {
+    let (taken, healed) = morbid_swing_heal(100, |world, at| {
+        world.spawn_unit(&bota_core::COURIER, Team::Dire, at)
+    });
+    assert!(taken > 0, "the courier is struck");
+    assert!(within_a_hundredth(healed, Fixed::ZERO), "{healed}");
+}
+
+/// What a hero that bought a Voodoo Mask heals when a magical blow of 200 it deals lands on what
+/// `on` puts at a spot, regeneration aside.
+fn voodoo_heal_off(
+    kind: bota_proto::DamageKind,
+    on: impl FnOnce(&mut World, Vec2) -> Entity,
+) -> Fixed {
+    let (mut world, hero) = out_of_fountain_after_buying(&[ItemId::VOODOO_MASK]);
+    let at = world.transform.get(hero).expect("standing").pos;
+    let mark = on(&mut world, at + Vec2::from_ints(300, 0));
+    world.settle();
+    world.health.get_mut(hero).expect("alive").hp = Fixed::from_int(200);
+    let regen = world.stats.get(hero).expect("derived").hp_regen;
+    world.push_hit(
+        Some(hero),
+        mark,
+        200,
+        kind,
+        Some(bota_proto::Inflictor::Ability(
+            bota_proto::AbilityId::RAZE_NEAR,
+        )),
+    );
+    world.step();
+    world.health.get(hero).expect("alive").hp - Fixed::from_int(200) - regen
+}
+
+/// Spell lifesteal heals off a spell's magic on an enemy hero, and nothing off pure damage, an
+/// ally, a building, a ward or a courier (Liquipedia, *Voodoo Mask*).
+#[test]
+fn a_voodoo_mask_heals_nothing_off_pure_damage_allies_buildings_wards_or_couriers() {
+    use bota_proto::DamageKind::{Magical, Pure};
+    assert!(
+        voodoo_heal_off(Magical, foe_hero) > Fixed::ZERO,
+        "a spell's magic heals"
+    );
+    let none: [(&str, Fixed); 5] = [
+        ("pure", voodoo_heal_off(Pure, foe_hero)),
+        (
+            "an ally",
+            voodoo_heal_off(Magical, |world, at| {
+                world.spawn_hero(Team::Radiant, at, SlotId(1), HeroId::SHADOW_FIEND)
+            }),
+        ),
+        (
+            "a tower",
+            voodoo_heal_off(Magical, |world, at| {
+                world.spawn_unit(bota_core::tower_def(1), Team::Dire, at)
+            }),
+        ),
+        (
+            "a ward",
+            voodoo_heal_off(Magical, |world, at| {
+                world.spawn_unit(&bota_core::OBSERVER_WARD, Team::Dire, at)
+            }),
+        ),
+        (
+            "a courier",
+            voodoo_heal_off(Magical, |world, at| {
+                world.spawn_unit(&bota_core::COURIER, Team::Dire, at)
+            }),
+        ),
+    ];
+    for (case, healed) in none {
+        assert!(within_a_hundredth(healed, Fixed::ZERO), "{case}: {healed}");
+    }
+}
+
+/// Spell lifesteal heals off the magic riding with an attack (Dota 7.38: "magical damage from
+/// spells or attacks"), and nothing off the attack's own physical blow.
+#[test]
+fn a_voodoo_mask_heals_off_the_magic_riding_with_an_attack_alone() {
+    let landing = attack_landing(
+        &[ItemId::VOODOO_MASK, ItemId::MONKEY_KING_BAR],
+        |world, at| world.spawn_unit(&bota_core::MELEE_CREEP, Team::Dire, at),
+        true,
+    );
+    let share = Fixed::from_int(landing.magical) * Fixed::from_ratio(300, 10_000);
+    assert!(
+        within_a_hundredth(landing.healed, share),
+        "{} healed off {} physical and {} magical",
+        landing.healed,
+        landing.physical,
+        landing.magical
+    );
+}
+
+/// What splashes off an attack is no spell: spell lifesteal heals nothing off it (Dota 7.38:
+/// spell lifesteal takes physical damage from spells only).
+#[test]
+fn a_voodoo_mask_heals_nothing_off_what_splashes_off_an_attack() {
+    let landing = attack_landing(
+        &[ItemId::VOODOO_MASK],
+        |world, at| {
+            let mark = world.spawn_unit(&bota_core::MELEE_CREEP, Team::Dire, at);
+            world.spawn_unit(
+                &bota_core::MELEE_CREEP,
+                Team::Dire,
+                at + Vec2::from_ints(60, 60),
+            );
+            let hero = world.seats[0].unit.expect("seated");
+            put_on(world, hero, ModifierKind::FountainPassive, 3000);
+            mark
+        },
+        false,
+    );
+    assert!(
+        within_a_hundredth(landing.healed, Fixed::ZERO),
+        "{} healed",
+        landing.healed
+    );
+}
+
+/// An illusion takes no magic resistance from what it carries (Liquipedia, *Illusions*): a
+/// Cloak keeps out nothing for one.
+#[test]
+fn a_cloak_keeps_out_nothing_for_an_illusion() {
+    let resist = |items: &[ItemId]| {
+        let (mut world, hero) = out_of_fountain_after_buying(items);
+        put_on(&mut world, hero, ModifierKind::Illusion, 300);
+        world.step();
+        world.stats.get(hero).expect("derived").magic_resist_bp
+    };
+    assert_eq!(resist(&[ItemId::CLOAK]), resist(&[]));
 }

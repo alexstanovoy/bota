@@ -715,6 +715,8 @@ pub fn carried_pierces(
 /// Two magic resistances in basis points as one: what the first lets
 /// through, the second lets its share of through.
 pub const fn resist_both(first_bp: i32, second_bp: i32) -> i32 {
+    assert!(first_bp >= rules::MIN_MAGIC_RESIST_BP && first_bp <= rules::NOMINAL_BP);
+    assert!(second_bp >= rules::MIN_MAGIC_RESIST_BP && second_bp <= rules::NOMINAL_BP);
     let nominal = rules::NOMINAL_BP as i64;
     let through = (nominal - first_bp as i64) * (nominal - second_bp as i64) / nominal;
     (nominal - through) as i32

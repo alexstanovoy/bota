@@ -42,6 +42,15 @@ pub struct Landed {
     /// Whether it was a swing of the source's weapon, rather than a spell,
     /// a burn or the magic riding with a swing.
     pub attack: bool,
+    /// Whether a spell dealt it, see [`Hit::spell`].
+    pub spell: bool,
+    /// What lifesteal heals a share of: the blow after armor and resistance,
+    /// before what the target alone takes off or adds (a block, a barrier,
+    /// the more an illusion takes) and not cut to the health it had left
+    /// (Liquipedia, *Lifesteal*: the heal is "based on the attack damage
+    /// value the dying target would have received"; Dota 7.41: increased
+    /// damage against illusions is not counted).
+    pub stolen: i32,
     /// The blow as it was dealt, before amplification, armor and
     /// resistance: what a splash takes its share of.
     pub dealt: i32,
@@ -151,18 +160,17 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         // Health counted in hits loses its striker's share, a fraction of a
         // hit as readily as a whole one; the blow tells the health it took,
         // a part of one as one.
-        let (lost, applied) = match stat.hit_count {
+        let (lost, applied, stolen) = match stat.hit_count {
             Some(count) => {
                 let lost = bite_share(hp, count.taken(blow.striker, stat.max_hp), spared);
-                (
-                    lost,
-                    (lost.raw + Fixed::from_int(1).raw - 1) >> Fixed::FRAC_BITS,
-                )
+                let applied = (lost.raw + Fixed::from_int(1).raw - 1) >> Fixed::FRAC_BITS;
+                (lost, applied, applied)
             }
             None => {
-                let taken = damage_taken::<AMPLIFIED>(blow, &stat, modifiers.get_mut(blow.target));
+                let (taken, stolen) =
+                    damage_taken::<AMPLIFIED>(blow, &stat, modifiers.get_mut(blow.target));
                 let applied = bite(hp, taken, spared);
-                (Fixed::from_int(applied), applied)
+                (Fixed::from_int(applied), applied, stolen)
             }
         };
         let Some(pool) = health.get_mut(blow.target) else {
@@ -186,6 +194,8 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
             side,
             fatal,
             attack: blow.attack,
+            spell: blow.spell,
+            stolen,
             dealt,
         });
     }
@@ -195,11 +205,13 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
 /// amplified, then armor or resistance, the Glyph or backdoor protection,
 /// the extra magic it takes and what soaks magic, and what blocks a share of
 /// every blow.
+/// Also what lifesteal takes its share of: the same before what the target
+/// alone takes off or adds.
 fn damage_taken<const AMPLIFIED: bool>(
     blow: Hit,
     stat: &Stats,
     mut on_it: Option<&mut Modifiers>,
-) -> i32 {
+) -> (i32, i32) {
     let amount = dealt::<AMPLIFIED>(blow, on_it.as_deref());
     let protected = on_it.as_deref().is_some_and(|on_it| {
         on_it
@@ -218,15 +230,17 @@ fn damage_taken<const AMPLIFIED: bool>(
             taken = soak(on_it, taken);
         }
     }
+    let stolen = taken;
     let taken = blocked(taken, on_it.as_deref());
     // What the target takes more or less of than lands on others, as an
     // illusion takes more.
     let taken = (i64::from(taken) * i64::from(stat.damage_taken_bp) / i64::from(rules::NOMINAL_BP))
         .clamp(0, i64::from(i32::MAX)) as i32;
-    match on_it {
+    let taken = match on_it {
         Some(on_it) => barrier(on_it, taken),
         None => taken,
-    }
+    };
+    (taken, stolen)
 }
 
 /// What is left of a blow's damage once the barriers on the target have

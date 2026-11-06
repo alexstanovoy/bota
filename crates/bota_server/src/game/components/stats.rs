@@ -75,16 +75,12 @@ pub struct Stats {
     /// Chance an attack at it misses: every source of it stacked as Dota
     /// stacks evasion.
     pub evasion: Odds,
-    /// Percent of the physical damage its attacks deal healed back, off
-    /// anything: Dota's few sources without a creep penalty (the Prowler
-    /// Aura).
-    pub lifesteal_pct: i32,
     /// Percent of the physical damage its attacks deal healed back off a
     /// hero, and [`rules::LIFESTEAL_CREEP_PCT`] of it off anything else:
-    /// Dota's lifesteal of items.
+    /// every lifesteal, an item's or an ability's.
     ///
     /// [`rules::LIFESTEAL_CREEP_PCT`]: bota_core::rules::LIFESTEAL_CREEP_PCT
-    pub creep_cut_lifesteal_pct: i32,
+    pub lifesteal_pct: i32,
     /// Percent of the damage its spells deal healed back, and of the
     /// magical damage riding with its attacks, pure damage aside;
     /// [`rules::SPELL_LIFESTEAL_CREEP_PCT`] of it off anything but a hero.
