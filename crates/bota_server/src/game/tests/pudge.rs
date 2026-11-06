@@ -709,6 +709,21 @@ fn a_flesh_heap_keeps_an_enemy_hero_its_bearer_kills_however_far_off() {
     assert_eq!(heap(&world, pudge), 1, "his own kill feeds it");
 }
 
+/// A fallen Pudge keeps no stack, not even of a hero whose death is credited to him after his
+/// own, a blow he left landing late (Liquipedia, *Pudge*: stacks come "as long as Pudge is
+/// alive").
+#[test]
+fn a_dead_flesh_heap_keeps_nothing_even_of_its_bearers_late_kill() {
+    let (mut world, pudge, hero) = pudge_and_a_hero_mark(200);
+    world.health.insert(pudge, health(0));
+    let mut events = Vec::new();
+    world.bury(vec![(pudge, Some(hero))], &mut events);
+    world.health.insert(hero, health(0));
+    world.bury(vec![(hero, Some(pudge))], &mut events);
+    world.step();
+    assert_eq!(heap(&world, pudge), 0, "the dead keep nothing");
+}
+
 /// An enemy illusion falling beside Pudge is no hero to the heap (Liquipedia, *Pudge*: Flesh
 /// Heap "considers ... enemy illusions ... as creeps").
 #[test]
