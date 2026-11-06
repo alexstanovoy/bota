@@ -7,7 +7,18 @@ use crate::{BindingError, vector};
 pub(super) fn install(lua: &mut Lua, context: &ApiContext) -> Result<(), BindingError> {
     register_global(lua, context, "GetBot", get_bot)?;
     register_unit(lua, context, "GetHealth", get_health)?;
+    register_unit(lua, context, "GetLocation", get_location)?;
     register_unit(lua, context, "Action_MoveToLocation", move_to_location)
+}
+
+fn get_location(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaError> {
+    let id = context.receiver(vm, args)?;
+    let position = context.state.borrow().unit(id).map(|unit| unit.pos);
+    let value = match position {
+        Some(position) => context.vectors.location(vm, position)?,
+        None => context.vectors.value(vm, [0.0; 3])?,
+    };
+    vm.results(&[value])
 }
 
 fn get_bot(context: &ApiContext, vm: &mut Vm, _args: Args) -> Result<usize, LuaError> {

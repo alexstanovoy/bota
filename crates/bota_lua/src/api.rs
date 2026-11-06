@@ -48,7 +48,7 @@ pub(crate) fn install(lua: &mut Lua, state: Shared, vectors: Vectors) -> Result<
     globals::install(lua, state.clone(), vectors)?;
     queries::install(lua, methods, state.clone(), vectors)?;
     abilities::install(lua, methods, state.clone())?;
-    install_unit_reads(lua, methods, state.clone(), vectors)?;
+    install_unit_reads(lua, methods, state.clone())?;
     install_bot_state(lua, methods, state.clone())?;
     install_actions(lua, methods, state, vectors)?;
     Ok(())
@@ -56,8 +56,8 @@ pub(crate) fn install(lua: &mut Lua, state: Shared, vectors: Vectors) -> Result<
 
 fn team_number(team: Team) -> f64 { match team { Team::Radiant => 2.0, Team::Dire => 3.0, Team::Neutral => 4.0 } }
 
-fn install_unit_reads(lua: &mut Lua, methods: TableId, state: Shared, vectors: Vectors) -> Result<(), BindingError> {
-    for name in ["IsNull", "IsAlive", "GetMaxHealth", "GetLocation", "GetUnitName", "GetTeam", "CanBeSeen", "GetLevel", "IsInvulnerable", "IsMagicImmune", "IsChanneling", "IsUsingAbility", "HasScepter"] {
+fn install_unit_reads(lua: &mut Lua, methods: TableId, state: Shared) -> Result<(), BindingError> {
+    for name in ["IsNull", "IsAlive", "GetMaxHealth", "GetUnitName", "GetTeam", "CanBeSeen", "GetLevel", "IsInvulnerable", "IsMagicImmune", "IsChanneling", "IsUsingAbility", "HasScepter"] {
         let capture = state.clone();
         method(lua, methods, name, Rc::new(move |vm, args| {
             let state = capture.borrow();
@@ -77,7 +77,6 @@ fn install_unit_reads(lua: &mut Lua, methods: TableId, state: Shared, vectors: V
                 "GetLevel" => Value::Number(unit.map_or(0.0, |unit| f64::from(unit.level))),
                 "GetTeam" => Value::Number(unit.map_or(4.0, |unit| team_number(unit.team))),
                 "CanBeSeen" => Value::Boolean(snapshot.is_some_and(|snapshot| snapshot.units.iter().any(|known| known.unit.id == id && known.visible))),
-                "GetLocation" => match unit { Some(unit) => vectors.location(vm, unit.pos)?, None => vectors.value(vm, [0.0; 3])? },
                 "GetUnitName" => {
                     let key = unit.and_then(|unit| unit.hero).and_then(bota_core::hero_def).map_or("", |hero| hero.key);
                     vm.new_string(key.as_bytes())?

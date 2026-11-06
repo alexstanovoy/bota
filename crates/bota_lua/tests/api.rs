@@ -29,6 +29,8 @@ fn vectors_are_typed_immutable_and_round_trip_through_an_order() {
     lua.add_script(SlotId(0), ScriptKind::Takeover, "vector_contract", br#"
         function Think()
             local v = Vector(3,4,0)
+            assert(v[1] == v.x and v[2] == v.y and v[3] == v.z, 'numeric vector components')
+            assert(v[0] == nil and v[4] == nil and v[1.5] == nil)
             assert(v:Length() == 5 and v:Length2D() == 5)
             assert(v:Dot(Vector(1,2,3)) == 11)
             assert(v:Cross(Vector(0,0,1)) == Vector(4,-3,0))

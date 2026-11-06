@@ -70,9 +70,14 @@ pub(crate) fn install(lua: &mut Lua) -> Result<Vectors, BindingError> {
     field(lua, metatable, "__index", Rc::new(move |vm, args| {
         let [x, y, z] = read(vm, vm.arg(args, 0))?;
         let key = vm.arg(args, 1);
-        let value = match vm.bytes(key) {
-            Some(b"x") => Value::Number(x), Some(b"y") => Value::Number(y), Some(b"z") => Value::Number(z),
-            _ => vm.raw_get(methods, key)?,
+        let value = match key {
+            Value::Number(1.0) => Value::Number(x),
+            Value::Number(2.0) => Value::Number(y),
+            Value::Number(3.0) => Value::Number(z),
+            _ => match vm.bytes(key) {
+                Some(b"x") => Value::Number(x), Some(b"y") => Value::Number(y), Some(b"z") => Value::Number(z),
+                _ => vm.raw_get(methods, key)?,
+            }
         };
         vm.results(&[value])
     }))?;
