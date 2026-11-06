@@ -144,7 +144,8 @@ impl World {
         }
         // A rune comes home with it, and its thrower has the hook's mana
         // back, what it was paid (Dota's hero data; Valve 2018-08-13).
-        if self.rune.get(caught).is_some() {
+        if let Some(rune) = self.rune.get_mut(caught) {
+            rune.away = true;
             if let (Some(pool), Some(stats)) =
                 (self.mana.get_mut(hook.owner), self.stats.get(hook.owner))
             {

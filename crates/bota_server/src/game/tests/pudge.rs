@@ -1279,6 +1279,117 @@ fn a_hook_drags_a_rune_home_and_gives_back_its_mana() {
     );
 }
 
+/// A hooked rune leaves its spot: nobody takes it while the hook drags it, not a hero it
+/// passes within reach of; it lies where the hook brings it, an ordinary rune the first hero
+/// there takes, the enemy's as well; and it keeps its own end, cleared when its river turns
+/// over (owner, 2026-11-06).
+#[test]
+fn a_hooked_rune_is_nobodys_in_the_drag_and_anybodys_where_it_lands() {
+    let mut cfg = super::runes::rune_config(&[Team::Radiant, Team::Dire]);
+    cfg.picks[0].hero = HeroId::PUDGE;
+    let mut world = World::for_match(&cfg, cfg.rng());
+    let (pudge, foe) = (super::runes::hero(&world, 0), super::runes::hero(&world, 1));
+    let spot = bota_core::map_of(cfg.map).rune_spots[0].at;
+    world.put_rune(bota_proto::RuneKind::Haste, 0);
+    let home = spot - Vec2::from_ints(1100, 0);
+    super::runes::place(&mut world, pudge, home);
+    // Beside the drag's line, within a hero's reach of a rune but beyond the hook's.
+    super::runes::place(&mut world, foe, spot - Vec2::from_ints(550, 140));
+    set_level(&mut world, pudge, 0, 1);
+    world.fill_pools(pudge);
+    world.step();
+    let rune = super::runes::lying(&world)[0];
+    let mut events = cast(&mut world, 0, Target::Pos(spot));
+    let mut walked = false;
+    for _ in 0..3 * rules::TICKS_PER_SECOND {
+        events.extend(world.step());
+        if hook_holds(&world) && !walked {
+            // Freed by the latch, Pudge walks off: the rune comes home without him.
+            seat_order(
+                &mut world,
+                Order::Move {
+                    target: Target::Pos(home + Vec2::from_ints(0, 700)),
+                },
+            );
+            walked = true;
+        }
+        if walked && !hook_flying(&world) {
+            break;
+        }
+    }
+    assert!(walked, "the hook latched onto the rune");
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event.kind(), bota_proto::EventKind::RuneActivated { .. })),
+        "nobody took it while it was dragged"
+    );
+    let lies = super::runes::lying(&world);
+    assert_eq!(lies.len(), 1, "it lies on the ground");
+    assert!(
+        lies[0].pos.within(home, Fixed::from_int(5)),
+        "where the hook was thrown from, not at its spot: {:?}",
+        lies[0].pos
+    );
+    assert_eq!(lies[0].expires_at, rune.expires_at, "keeping its own end");
+    super::runes::place(&mut world, foe, home + Vec2::from_ints(60, 0));
+    let taken = world.step();
+    assert!(
+        taken.iter().any(|event| matches!(
+            event.kind(),
+            bota_proto::EventKind::RuneActivated { unit, .. } if unit == wire_id(foe)
+        )),
+        "and the enemy hero who reaches it takes it"
+    );
+}
+
+/// A hooked rune nobody takes is cleared when its river turns over, wherever it lies.
+#[test]
+fn a_hooked_rune_left_lying_is_cleared_at_its_own_end() {
+    let mut cfg = super::runes::rune_config(&[Team::Radiant]);
+    cfg.picks[0].hero = HeroId::PUDGE;
+    let mut world = World::for_match(&cfg, cfg.rng());
+    let pudge = super::runes::hero(&world, 0);
+    let spot = bota_core::map_of(cfg.map).rune_spots[0].at;
+    world.put_rune(bota_proto::RuneKind::Haste, 0);
+    let home = spot - Vec2::from_ints(1100, 0);
+    super::runes::place(&mut world, pudge, home);
+    set_level(&mut world, pudge, 0, 1);
+    world.fill_pools(pudge);
+    world.step();
+    let rune = super::runes::lying(&world)[0];
+    let ends = rune.expires_at.expect("a river rune ends");
+    cast(&mut world, 0, Target::Pos(spot));
+    let mut walked = false;
+    for _ in 0..3 * rules::TICKS_PER_SECOND {
+        world.step();
+        if hook_holds(&world) && !walked {
+            seat_order(
+                &mut world,
+                Order::Move {
+                    target: Target::Pos(home + Vec2::from_ints(0, 700)),
+                },
+            );
+            walked = true;
+        }
+        if walked && !hook_flying(&world) {
+            break;
+        }
+    }
+    assert_eq!(
+        super::runes::lying(&world).len(),
+        1,
+        "it lies away from its spot"
+    );
+    super::runes::step_at(&mut world, ends);
+    assert!(
+        super::runes::lying(&world)
+            .iter()
+            .all(|other| other.id != rune.id),
+        "and is cleared at its end, whatever its river brings next"
+    );
+}
+
 /// Whether a flying hook holds something.
 fn hook_holds(world: &World) -> bool {
     world

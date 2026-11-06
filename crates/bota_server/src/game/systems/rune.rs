@@ -119,7 +119,7 @@ impl World {
             .filter(|&entity| {
                 self.rune
                     .get(entity)
-                    .is_some_and(|rune| usize::from(rune.spot) == spot)
+                    .is_some_and(|rune| usize::from(rune.spot) == spot && !rune.away)
             })
             .count();
         if lying >= bota_proto::MAX_RUNES_AT_SPOT {
@@ -154,6 +154,7 @@ impl World {
                 kind,
                 spot: spot as u8,
                 gold,
+                away: false,
             },
         );
         self.events.push(Event::Fact {
@@ -231,7 +232,7 @@ impl World {
     }
 
     /// Hands every rune within reach of a hero to the hero, the first hero of
-    /// the tick's order to stand within reach of it. A courier, a creep or
+    /// the tick's order to stand within reach of it, but a rune a hook drags. A courier, a creep or
     /// an illusion takes none. A hero with a Bottle in hand that holds no
     /// rune keeps it there; any other takes effect at once.
     pub(crate) fn take_runes(&mut self) {
@@ -250,10 +251,18 @@ impl World {
             .filter_map(|hero| Some((hero, self.pos(hero)?)))
             .collect();
         let reach = bota_core::rules::units(RUNE_PICKUP_RANGE);
+        // What a hook drags is nobody's until it lies again.
+        let dragged: Vec<Entity> = entities
+            .iter()
+            .filter_map(|&hook| self.hook.get(hook).and_then(|hook| hook.caught))
+            .collect();
         for rune in entities.iter().copied() {
             let (Some(held), Some(at)) = (self.rune.get(rune).copied(), self.pos(rune)) else {
                 continue;
             };
+            if dragged.contains(&rune) {
+                continue;
+            }
             let Some(&(taker, _)) = heroes.iter().find(|(_, pos)| pos.within(at, reach)) else {
                 continue;
             };

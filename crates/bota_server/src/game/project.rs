@@ -505,7 +505,9 @@ impl World {
 
     /// One rune on the ground, or nothing when the entity is not one.
     fn project_rune(&self, viewer: Option<Team>, entity: Entity) -> Option<bota_proto::RuneView> {
-        let crate::game::Rune { kind, gold, spot } = *self.rune.get(entity)?;
+        let crate::game::Rune {
+            kind, gold, spot, ..
+        } = *self.rune.get(entity)?;
         let at = self.transform.get(entity)?;
         Some(bota_proto::RuneView {
             id: wire_id(entity),

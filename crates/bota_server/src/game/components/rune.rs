@@ -16,6 +16,9 @@ pub struct Rune {
     /// The gold a Bounty Rune pays every hero of the side that takes it,
     /// fixed when it appeared. Zero for any other.
     pub gold: i32,
+    /// Whether it no longer lies at its spot, a hook having moved it: the
+    /// spot holds it no more, though its spot's end is still its own.
+    pub away: bool,
 }
 
 /// The rune a Bottle keeps (Dota's Store Rune).
@@ -34,7 +37,12 @@ pub struct HeldRune {
 }
 
 state_hash!(RuneKind as u8: RuneKind::Water, RuneKind::Bounty);
-state_hash!(Rune { kind, spot, gold });
+state_hash!(Rune {
+    kind,
+    spot,
+    gold,
+    away
+});
 state_hash!(HeldRune {
     kind,
     ticks_left,
