@@ -108,7 +108,7 @@ fn install_actions(lua: &mut Lua, methods: TableId, state: Shared, _vectors: Vec
                         "Action_UseAbilityOnLocation" => Target::Pos(vector::position(vm, vm.arg(args, 2))?),
                         _ => Target::None,
                     };
-                    ability.order(target)
+                    ability.order(target).ok_or_else(|| vm.error("ability has no cast slot"))?
                 }
                 "Action_AttackMove" => Order::Attack { target: Target::Pos(vector::position(vm, vm.arg(args, 1))?) },
                 "Action_AttackUnit" => {

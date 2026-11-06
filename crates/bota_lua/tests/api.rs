@@ -101,3 +101,37 @@ fn estimated_attack_damage_uses_visible_mitigation_and_rejects_nonfinite_time() 
     let turn=lua.think(&sessions[0]).expect("think");
     assert!(turn.failures.is_empty(),"{:?}",turn.failures);
 }
+
+#[test]
+fn innate_ability_lookup_is_stable_and_never_creates_a_cast_or_learning_slot() {
+    let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let mut lua = LuaTeam::new(Team::Radiant, &[BotSeat { slot: SlotId(0), hero: HeroId::SHADOW_FIEND }], Limits::DEFAULT, Keys { hash: [17, 19], random: 23 }).expect("team");
+    lua.add_script(SlotId(0), ScriptKind::Takeover, "innate_lookup", br#"
+        local innate
+        function Think()
+            local bot = GetBot()
+            local ability = bot:GetAbilityByName('nevermore_necromastery')
+            assert(ability ~= nil, 'innate ability must resolve')
+            assert(not ability:IsNull())
+            assert(ability:GetName() == 'nevermore_necromastery')
+            assert(ability:GetLevel() == 1)
+            assert(not ability:CanAbilityBeUpgraded())
+            assert(not ability:IsFullyCastable())
+            assert(innate == nil or innate == ability)
+            innate = ability
+            assert(bot:GetAbilityByName('missing_ability') == nil)
+            bot:ActionImmediate_LevelAbility(ability:GetName())
+            local ok, message = pcall(bot.Action_UseAbility, bot, ability)
+            assert(not ok and string.find(message, 'ability has no cast slot', 1, true))
+            bot:Action_MoveToLocation(GetLocationAlongLane(LANE_MID, 0.5))
+        end
+    "#).expect("script");
+    for _ in 0..30 {
+        let turn = lua.think(&sessions[0]).expect("think");
+        assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+        assert!(turn.bots[0].orders.iter().all(|issued| matches!(issued.order, Order::Move { .. })));
+        let orders: Vec<_> = turn.bots[0].orders.iter().map(|&issued| sessions[0].issue(issued).expect("ordinary order")).collect();
+        let streams = local.step(&[&orders, &[]]).expect("step");
+        for (session, stream) in sessions.iter_mut().zip(streams) { support::fold(session, stream); }
+    }
+}

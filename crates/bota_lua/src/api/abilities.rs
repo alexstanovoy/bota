@@ -6,15 +6,16 @@ use super::globals::{integer, string};
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Identity {
     Ability { unit: EntityId, slot: AbilitySlot, id: AbilityId },
+    Innate { unit: EntityId, id: AbilityId },
     Item { unit: EntityId, slot: ItemSlot, id: ItemId },
 }
 
 impl Identity {
-    pub(super) fn order(self, target: Target) -> Order {
-        match self { Self::Ability { slot, .. } => Order::Cast { slot, target }, Self::Item { slot, .. } => Order::Use { slot, target } }
+    pub(super) fn order(self, target: Target) -> Option<Order> {
+        match self { Self::Ability { slot, .. } => Some(Order::Cast { slot, target }), Self::Item { slot, .. } => Some(Order::Use { slot, target }), Self::Innate { .. } => None }
     }
 
-    pub(super) fn owner(self) -> EntityId { match self { Self::Ability { unit, .. } | Self::Item { unit, .. } => unit } }
+    pub(super) fn owner(self) -> EntityId { match self { Self::Ability { unit, .. } | Self::Innate { unit, .. } | Self::Item { unit, .. } => unit } }
 }
 
 struct View { key: &'static str, level: u8, range: i32, castable: bool, learnable: bool }
@@ -23,6 +24,12 @@ fn view(state: &State, identity: Identity) -> Option<View> {
     let unit = state.unit(identity.owner())?;
     let able = unit.hp > 0 && unit.statuses.bits & (StatusFlags::STUNNED | StatusFlags::FEARED) == 0;
     match identity {
+        Identity::Innate { id, .. } => {
+            let innate = unit.hero.and_then(bota_core::hero_def)?.innate?;
+            if innate != id { return None; }
+            let definition = bota_core::ability_def(id)?;
+            Some(View { key: definition.key, level: 1, range: definition.range, castable: false, learnable: false })
+        }
         Identity::Ability { slot, id, .. } => {
             let ability = unit.abilities.get(usize::from(slot.0)).filter(|ability| ability.id == id)?;
             Some(View { key: bota_core::ability_def(id)?.key, level: ability.level, range: ability.range,
@@ -100,8 +107,7 @@ fn install_lookup(lua: &mut Lua, units: TableId, state: Shared) -> Result<(), Bi
             let id = super::identity(vm, &state, args)?;
             let identity = if name == "GetAbilityByName" {
                 let key = string(vm, args, 1)?;
-                state.unit(id).and_then(|unit| unit.abilities.iter().enumerate().find(|(_, ability)| bota_core::ability_def(ability.id).is_some_and(|def| def.key.as_bytes() == key)))
-                    .and_then(|(slot, ability)| u8::try_from(slot).ok().map(|slot| Identity::Ability { unit: id, slot: AbilitySlot(slot), id: ability.id }))
+                lookup_ability(&state, id, key)
             } else {
                 let index = integer(vm, args, 1)?;
                 usize::try_from(index).ok().and_then(|index| state.unit(id)?.items.get(index)?.as_ref().map(|item| Identity::Item { unit: id, slot: ItemSlot(index as u8), id: item.id }))
@@ -111,6 +117,16 @@ fn install_lookup(lua: &mut Lua, units: TableId, state: Shared) -> Result<(), Bi
         }))?;
     }
     Ok(())
+}
+
+fn lookup_ability(state: &State, id: EntityId, key: &[u8]) -> Option<Identity> {
+    let unit = state.unit(id)?;
+    let matches = |id| bota_core::ability_def(id).is_some_and(|definition| definition.key.as_bytes() == key);
+    if let Some((slot, ability)) = unit.abilities.iter().enumerate().find(|(_, ability)| matches(ability.id)) {
+        return Some(Identity::Ability { unit: id, slot: AbilitySlot(u8::try_from(slot).ok()?), id: ability.id });
+    }
+    let innate = unit.hero.and_then(bota_core::hero_def)?.innate?;
+    matches(innate).then_some(Identity::Innate { unit: id, id: innate })
 }
 
 fn install_immediate(lua: &mut Lua, units: TableId, state: Shared) -> Result<(), BindingError> {
@@ -142,7 +158,7 @@ fn special(identity: Identity, level: u8, key: &[u8]) -> i32 {
     use bota_core::{heroes::shadow_fiend::SHADOW_FIEND_RAZES, rules};
     match identity {
         Identity::Item { id, .. } => std::str::from_utf8(key).ok().and_then(|key| bota_core::item_def(id)?.value(key)).and_then(|values| values.first()).map_or(0, |value| value.0 / 1000),
-        Identity::Ability { id, .. } => {
+        Identity::Ability { id, .. } | Identity::Innate { id, .. } => {
             if let Some(index) = SHADOW_FIEND_RAZES.iter().position(|known| *known == id) {
                 return match key {
                     b"shadowraze_radius" => rules::RAZE_RADIUS,
