@@ -526,6 +526,28 @@ fn the_rot_slows_half_a_second_past_leaving_it_and_burns_no_more() {
     assert!(!rotting(&world, mark), "and freed half a second on");
 }
 
+/// Switching Rot on or off charges no enemy Magic Stick; casting the meat shield does
+/// (Liquipedia, *Magic Stick*: no charge from "toggle-able abilities"; Valve 2011-07-01:
+/// "Toggling On / Off Rot no longer proc and grant charges to Magic Stick-based items").
+#[test]
+fn switching_rot_charges_no_enemy_stick_and_a_cast_does() {
+    let (mut world, pudge, foe) = pudge_and_a_hero_mark(400);
+    set_level(&mut world, pudge, 1, 1);
+    set_level(&mut world, pudge, 2, 1);
+    world.fill_pools(pudge);
+    hand_item(&mut world, foe, ItemId::MAGIC_STICK, 0);
+    let charges = |world: &World| {
+        world.inventory.get(foe).expect("a bag").slots[0]
+            .map(|stack| stack.charges)
+            .expect("the stick")
+    };
+    cast(&mut world, 1, Target::None);
+    cast(&mut world, 1, Target::None);
+    assert_eq!(charges(&world), 0, "on and off, no charge");
+    cast(&mut world, 2, Target::None);
+    assert_eq!(charges(&world), 1, "a meat shield is a charge");
+}
+
 /// Switched on and straight off, Rot still burns its owner once (Valve 2012-06-28: "Fixed a
 /// bug that allowed Rot not to deal damage to self by quickly toggling On / Off").
 #[test]

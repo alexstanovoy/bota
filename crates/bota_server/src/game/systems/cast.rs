@@ -105,7 +105,8 @@ impl World {
         target: Target,
     ) {
         self.expose_caster(entity, target);
-        if ability_def(ability).is_some_and(|def| def.procs_magic_stick) {
+        // A toggle charges no Magic Stick (Liquipedia, *Magic Stick*).
+        if ability_def(ability).is_some_and(|def| def.procs_magic_stick && !def.toggle) {
             self.charge_nearby_items(entity);
         }
         if let Some(mana) = self.mana.get_mut(entity) {
