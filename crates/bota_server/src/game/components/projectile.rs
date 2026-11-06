@@ -41,6 +41,8 @@ pub struct Projectile {
     /// Who threw it, for health counted in hits: set on an attack's missile,
     /// absent for a spell's.
     pub striker: Option<bota_core::Striker>,
+    /// The items whose passive its blow lays on the struck: an attack's.
+    pub laid: crate::game::Laid,
 }
 
 state_hash!(Projectile {
@@ -58,5 +60,6 @@ state_hash!(Projectile {
     pierced,
     pierce_amp_bp,
     effect,
-    striker
+    striker,
+    laid
 });

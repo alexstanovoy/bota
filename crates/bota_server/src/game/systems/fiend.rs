@@ -59,6 +59,7 @@ impl World {
                 pierces: false,
                 uphill: false,
                 effect: HitEffect::Shadowraze { stack_damage },
+                laid: crate::game::Laid::NONE,
             });
             if swings {
                 self.raze_strikes((caster, which), mark);
@@ -95,6 +96,7 @@ impl World {
             pierces: false,
             uphill: false,
             effect: HitEffect::None,
+            laid: crate::game::Laid::NONE,
         });
     }
 
@@ -238,6 +240,7 @@ impl World {
             } else {
                 HitEffect::None
             },
+            laid: crate::game::Laid::NONE,
         });
     }
 

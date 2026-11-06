@@ -144,6 +144,14 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
             });
             continue;
         }
+        // What the attack lays is on before its own damage lands (Dota: "The attacks first apply
+        // the debuff, then their own attack damage"): armor it takes off that the target's stats
+        // do not hold yet counts against this blow.
+        let fresh_cut = lay(blow, &stat, modifiers.get_mut(blow.target));
+        let stat = Stats {
+            armor: stat.armor - fresh_cut,
+            ..stat
+        };
         if let HitEffect::FountainDamage { .. } = blow.effect
             && let Some(on_it) = modifiers.get_mut(blow.target)
         {
@@ -241,6 +249,36 @@ fn damage_taken<const AMPLIFIED: bool>(
         None => taken,
     };
     (taken, stolen)
+}
+
+/// Puts on the struck what the blow lays ([`Hit::laid`]), each item's
+/// modifier freshened if it is on already; nothing that spell immunity keeps
+/// off, where the item's does not go through it. The armor taken off by what
+/// was not on before.
+fn lay(blow: Hit, stat: &Stats, on_it: Option<&mut Modifiers>) -> Fixed {
+    let Some(on_it) = on_it else {
+        return Fixed::ZERO;
+    };
+    let mut fresh_cut = Fixed::ZERO;
+    for item in blow.laid.items() {
+        let Some(laid) = bota_core::item_def(item).and_then(|def| def.on_attack) else {
+            continue;
+        };
+        if stat.spell_immune && !laid.pierces_immunity {
+            continue;
+        }
+        let kind = ModifierKind::Laid { item };
+        if !on_it.active().any(|held| held.kind == kind) {
+            fresh_cut += laid.armor;
+        }
+        on_it.put(Modifier::new(
+            kind,
+            blow.source,
+            Some(Inflictor::Item(item)),
+            Some(laid.ticks),
+        ));
+    }
+    fresh_cut
 }
 
 /// What is left of a blow's damage once the barriers on the target have

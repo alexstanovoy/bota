@@ -4,7 +4,7 @@ use bota_core::{
     AMPLIFY_DAMAGE_PCT, AMPLIFY_SPELL_AMP_BP, ARCANE_COOLDOWN_CUT_BP, ARCANE_MANA_CUT_BP, Buff,
     Carried, Growth, HASTE_RUNE_SPEED, INVISIBILITY_FADE_TICKS, ModifierKind, NeutralAbility, Odds,
     Regen, Stat, Talent, UnitDef, agility_armor, agility_attack_speed, cut_rate,
-    intelligence_magic_resist_bp, primary_damage, regen, rules, soul_damage, spell_buff,
+    intelligence_magic_resist_bp, item_def, primary_damage, regen, rules, soul_damage, spell_buff,
 };
 use bota_proto::{Attributes, Fixed, ModifierSpec};
 
@@ -427,6 +427,11 @@ fn add_modifiers<'a>(
             }
             ModifierKind::ArmorBroken { armor } => {
                 now.armor -= armor;
+            }
+            ModifierKind::Laid { item } => {
+                if let Some(laid) = item_def(item).and_then(|def| def.on_attack) {
+                    now.armor -= laid.armor;
+                }
             }
             ModifierKind::MagicBroken { pct } => {
                 let let_through =

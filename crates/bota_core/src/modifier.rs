@@ -1,6 +1,6 @@
 //! What a modifier does to whatever wears it, and how much of it there is.
 
-use bota_proto::{DamageKind, EffectId, Fixed, StatusFlags, Team};
+use bota_proto::{DamageKind, EffectId, Fixed, ItemId, StatusFlags, Team};
 
 use crate::{Act, Buff, NeutralAbility, Spell, Strike, Then, Throe, WATER_BUBBLE_EFFECT, rules};
 
@@ -272,6 +272,13 @@ pub enum ModifierKind {
         /// Hundredths of a point of mana a tick.
         mana_per_tick: i32,
     },
+    /// What an item's passive laid on whatever its carrier's attack struck:
+    /// its [`OnAttack`](crate::OnAttack), every number of which the item's
+    /// row holds.
+    Laid {
+        /// The item that laid it.
+        item: ItemId,
+    },
     /// What a neutral's spell left, at the level it was cast at. `amount`
     /// is the spell's own count: the blows a Steal Weapon has counted, the
     /// magical damage a bubble has left to soak.
@@ -336,6 +343,10 @@ impl ModifierKind {
             ModifierKind::RuneInvisibility => EffectId::RUNE_INVISIBILITY,
             ModifierKind::RuneShield { .. } => EffectId::RUNE_SHIELD,
             ModifierKind::BottleRegeneration { .. } => EffectId::BOTTLE_REGENERATION,
+            ModifierKind::Laid { item } => match crate::ITEMS[item.0 as usize].on_attack {
+                Some(laid) => laid.effect,
+                None => panic!("an item that lays nothing laid a modifier"),
+            },
         }
     }
 

@@ -313,7 +313,7 @@ fn a_healing_salve_mends_thirty_a_second_for_thirteen_seconds() {
 
 /// A hero walked out of the fountain past its lingering mending, after its seat bought `items`
 /// through the shop, one a tick, into its first slots.
-fn out_of_fountain_after_buying(items: &[ItemId]) -> (World, Entity) {
+pub(super) fn out_of_fountain_after_buying(items: &[ItemId]) -> (World, Entity) {
     let (mut world, hero) = a_hero_with_gold(30_000);
     for (slot, &item) in items.iter().enumerate() {
         let events = seat_order(&mut world, Order::Buy { item });
@@ -369,6 +369,7 @@ fn every_stat_item_bought_adds_what_its_script_says_and_nothing_else() {
             && !def.unbuyable
             && def.components.is_empty()
             && def.aim.is_none()
+            && def.on_attack.is_none()
             && !def.values.is_empty();
         if !stat_stick || STAT_ITEMS_TESTED_APART.contains(&item) {
             continue;
@@ -479,7 +480,7 @@ fn shawl_and_cloak_keep_out_their_share_of_the_magic_the_rest_let_through() {
 
 /// Whether two amounts of health agree to a hundredth of a point: a share of a blow taken as a
 /// fixed-point product.
-fn within_a_hundredth(a: Fixed, b: Fixed) -> bool {
+pub(super) fn within_a_hundredth(a: Fixed, b: Fixed) -> bool {
     (a - b).raw.abs() <= Fixed::from_ratio(1, 100).raw
 }
 
@@ -673,7 +674,7 @@ fn a_faerie_fire_adds_two_damage_and_eaten_mends_eighty_five_at_once() {
 }
 
 /// An enemy hero at a spot.
-fn foe_hero(world: &mut World, at: Vec2) -> Entity {
+pub(super) fn foe_hero(world: &mut World, at: Vec2) -> Entity {
     world.spawn_hero(Team::Dire, at, SlotId(1), HeroId::SHADOW_FIEND)
 }
 
@@ -714,6 +715,7 @@ fn morbid_swing_heal(amount: i32, on: impl FnOnce(&mut World, Vec2) -> Entity) -
         pierces: true,
         uphill: false,
         effect: crate::game::HitEffect::None,
+        laid: crate::game::Laid::NONE,
     });
     let events = world.step();
     let taken = events

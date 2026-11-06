@@ -9,7 +9,7 @@
 
 use bota_core::{
     BEATS_PER_TICK, Behavior, ModifierKind, Striker, Talent, ability_def, attack_gain, beats,
-    carried_pierces, cast_point_ms, cross, facing_gap, facing_towards, kind_def, rules,
+    carried_pierces, cast_point_ms, cross, facing_gap, facing_towards, item_def, kind_def, rules,
 };
 use bota_proto::{
     Aim, DamageKind, Fixed, Inflictor, ItemId, ItemSlot, ProjectileModel, Team, Vec2,
@@ -18,7 +18,7 @@ use bota_proto::{
 use super::hitting::entity_slot;
 
 use crate::game::{
-    Action, ActionPhase, ActionState, Entity, Event, Hit, HitEffect, PendingCast, Projectile,
+    Action, ActionPhase, ActionState, Entity, Event, Hit, HitEffect, Laid, PendingCast, Projectile,
     PseudoRandom, Purpose, RefusedOrder, Rolls, Stats, Target, World, ability_hooks, wire_id,
 };
 
@@ -40,6 +40,8 @@ struct Swing {
     magical_amp_bp: i32,
     /// What its blow does besides its damage.
     effect: HitEffect,
+    /// The items whose passive its blow lays on the struck.
+    laid: Laid,
 }
 
 /// How long an ability or an item holds the body: `point` and `backswing` in
@@ -790,6 +792,7 @@ impl World {
             physical_amp_bp: stats.damage_amp_bp(DamageKind::Physical),
             magical_amp_bp: stats.damage_amp_bp(DamageKind::Magical),
             effect: self.attack_effect(attacker),
+            laid: self.laid_by(attacker),
         };
         match stats.projectile_speed {
             None => self.strike_home(attacker, on, swing),
@@ -805,6 +808,34 @@ impl World {
                 }
             }
         }
+    }
+
+    /// The items whose passive an attacker's swing lays on what it strikes:
+    /// every item of the inventory proper, none muted, that lays something,
+    /// each once however many are carried. An illusion's swing lays nothing
+    /// (Liquipedia, *Orb of Blight*, *Orb of Venom*, *Orb of Frost*: "This
+    /// ability is not bestowed by Illusions").
+    fn laid_by(&self, attacker: Entity) -> Laid {
+        let mut laid = Laid::NONE;
+        let Some(bag) = self
+            .inventory
+            .get(attacker)
+            .filter(|_| !self.wears_illusion(attacker))
+        else {
+            return laid;
+        };
+        for stack in bag
+            .slots
+            .iter()
+            .take(rules::INVENTORY_SLOTS)
+            .flatten()
+            .filter(|stack| stack.mute == 0)
+        {
+            if item_def(stack.id).is_some_and(|def| def.on_attack.is_some()) {
+                laid.add(stack.id);
+            }
+        }
+        laid
     }
 
     /// What an attacker's swing does besides its damage: a shot of the
@@ -844,6 +875,7 @@ impl World {
             pierces: !swing.pierced.is_empty() || swing.accurate,
             uphill: false,
             effect: swing.effect,
+            laid: swing.laid,
         });
         for (bonus, item) in swing.pierced {
             self.hits.push_back(Hit {
@@ -859,6 +891,7 @@ impl World {
                 pierces: false,
                 uphill: false,
                 effect: HitEffect::None,
+                laid: crate::game::Laid::NONE,
             });
         }
     }
@@ -892,6 +925,7 @@ impl World {
                 pierce_amp_bp: swing.magical_amp_bp,
                 effect: swing.effect,
                 striker: Some(swing.striker),
+                laid: swing.laid,
             },
         );
     }

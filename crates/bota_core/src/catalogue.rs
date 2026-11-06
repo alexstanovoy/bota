@@ -388,6 +388,7 @@ pub(crate) const fn item_digest(def: &ItemDef) -> u64 {
         ally,
         lifetime,
         disassemble,
+        on_attack,
     } = *def;
     let fnv = Fnv::NEW
         .u64(id.0 as u64)
@@ -447,6 +448,15 @@ pub(crate) const fn item_digest(def: &ItemDef) -> u64 {
     let fnv = match wait_key {
         None => fnv,
         Some(key) => fnv.u64(0xA1).u64(key.0 as u64),
+    };
+    let fnv = match on_attack {
+        None => fnv,
+        Some(laid) => fnv
+            .u64(0xA2)
+            .u64(laid.effect.0 as u64)
+            .u64(laid.ticks as u64)
+            .fixed(laid.armor)
+            .flag(laid.pierces_immunity),
     };
     let fnv = if take_range == 0 {
         fnv

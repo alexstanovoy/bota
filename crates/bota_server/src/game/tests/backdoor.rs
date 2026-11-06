@@ -35,6 +35,7 @@ fn blow(world: &mut World, hero: crate::game::Entity, rax: crate::game::Entity) 
         pierces: false,
         uphill: false,
         effect: HitEffect::None,
+        laid: crate::game::Laid::NONE,
     });
     let before = world.health.get(rax).expect("standing").hp;
     world.step();

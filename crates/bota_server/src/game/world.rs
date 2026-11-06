@@ -376,6 +376,7 @@ impl World {
             pierces: false,
             uphill: false,
             effect: crate::game::HitEffect::None,
+            laid: crate::game::Laid::NONE,
         });
     }
 
@@ -402,6 +403,7 @@ impl World {
             pierces: false,
             uphill: false,
             effect: crate::game::HitEffect::None,
+            laid: crate::game::Laid::NONE,
         });
     }
 
@@ -430,6 +432,7 @@ impl World {
             pierces: false,
             uphill: false,
             effect,
+            laid: crate::game::Laid::NONE,
         });
     }
 

@@ -42,6 +42,7 @@ mod movement;
 mod neutral_casts;
 mod neutral_passives;
 mod objectives;
+mod on_attack;
 mod orders;
 mod pudge;
 mod purchase_rules;

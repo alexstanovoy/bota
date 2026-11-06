@@ -198,6 +198,7 @@ pub(crate) fn world_with_projectile_uphill_state(launch_tier: u8, can_miss_uphil
             pierce_amp_bp: rules::NOMINAL_BP,
             effect: HitEffect::None,
             striker: None,
+            laid: crate::game::Laid::NONE,
         },
     );
     world
@@ -1149,6 +1150,7 @@ pub(crate) fn manual_projectile_damage(
                 pierce_amp_bp: rules::NOMINAL_BP,
                 effect: HitEffect::None,
                 striker: Some(bota_core::Striker::Other),
+                laid: crate::game::Laid::NONE,
             },
         );
     }

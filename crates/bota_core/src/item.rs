@@ -428,6 +428,26 @@ pub struct ItemDef {
     /// When a build of it may be taken apart again: Dota's
     /// `ItemDisassembleRule`.
     pub disassemble: DisassembleRule,
+    /// What its passive lays on whatever its carrier's attacks strike, as a
+    /// modifier ([`ModifierKind::Laid`](crate::ModifierKind::Laid)). Absent
+    /// for an item whose passive lays nothing.
+    pub on_attack: Option<OnAttack>,
+}
+
+/// What an item's passive lays on whatever its carrier's attack strikes: Dota's attack
+/// modifiers. The struck wears it before the attack's own damage lands (Dota: "The attacks first
+/// apply the debuff, then their own attack damage"); another attack of the same item freshens it,
+/// and several of one item carried lay it once.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OnAttack {
+    /// The effect the struck wears.
+    pub effect: bota_proto::EffectId,
+    /// How long it holds, in ticks.
+    pub ticks: u32,
+    /// Armor it takes off: Dota's Corruption.
+    pub armor: Fixed,
+    /// Whether it goes through spell immunity: the item's `SpellImmunityType`.
+    pub pierces_immunity: bool,
 }
 
 /// What a use of an item aimed at an allied unit does, where Dota lets it: the cast on a hero
@@ -627,6 +647,7 @@ pub(crate) const PLAIN: ItemDef = ItemDef {
     ally: None,
     lifetime: 0,
     disassemble: DisassembleRule::Window,
+    on_attack: None,
 };
 
 /// What one item is, or nothing if no such item exists or it is retired.

@@ -391,6 +391,7 @@ paths = [
     "crates/bota_server/src/game/config/item.rs",
     "crates/bota_server/src/game/tests/items.rs",
     "crates/bota_server/src/game/tests/item_numbers.rs",
+    "crates/bota_server/src/game/tests/on_attack.rs",
     "crates/bota_server/src/game/tests/combining.rs",
     "crates/bota_server/src/game/tests/disassembly.rs",
     "crates/bota_server/src/game/tests/bottle.rs",
@@ -411,6 +412,7 @@ paths = [
 tests = [{ crate = "bota_server", target = "lib", filters = [
     "game::tests::items::",
     "game::tests::item_numbers::",
+    "game::tests::on_attack::",
     "game::tests::combining::",
     "game::tests::disassembly::",
     "game::tests::bottle::",

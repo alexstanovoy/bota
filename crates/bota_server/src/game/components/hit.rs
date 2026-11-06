@@ -1,6 +1,7 @@
 //! A blow on its way to being felt.
 
-use bota_proto::{DamageKind, Inflictor};
+use bota_core::rules;
+use bota_proto::{DamageKind, Inflictor, ItemId};
 
 use crate::engine::{Fnv, StateHash, state_hash};
 use crate::game::Entity;
@@ -38,6 +39,44 @@ pub struct Hit {
     pub uphill: bool,
     /// What else the blow does.
     pub effect: HitEffect,
+    /// The items whose passive the blow lays on the struck before its damage
+    /// lands: an attack's, its own blow only.
+    pub laid: Laid,
+}
+
+/// The items whose passive an attack's blow lays on the struck (Dota's
+/// attack modifiers), each item once.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Laid(pub [Option<ItemId>; rules::INVENTORY_SLOTS]);
+
+impl Laid {
+    /// Nothing laid.
+    pub const NONE: Laid = Laid([None; rules::INVENTORY_SLOTS]);
+
+    /// The items, in the order they were added.
+    pub fn items(&self) -> impl Iterator<Item = ItemId> + '_ {
+        self.0.iter().flatten().copied()
+    }
+
+    /// Adds `item` unless it is in already; past an inventory's worth, none.
+    pub fn add(&mut self, item: ItemId) {
+        if self.0.contains(&Some(item)) {
+            return;
+        }
+        if let Some(free) = self.0.iter_mut().find(|slot| slot.is_none()) {
+            *free = Some(item);
+        }
+    }
+}
+
+/// Only the items laid: a blow that lays nothing hashes as one before the
+/// field was.
+impl StateHash for Laid {
+    fn state_hash(&self, fnv: &mut Fnv) {
+        for item in self.items() {
+            item.0.state_hash(fnv);
+        }
+    }
 }
 
 /// What a blow does besides its damage.
@@ -102,7 +141,8 @@ state_hash!(Hit {
     striker,
     pierces,
     uphill,
-    effect
+    effect,
+    laid
 });
 state_hash!(Fear { line, most });
 
@@ -133,6 +173,19 @@ impl StateHash for HitEffect {
                 stack_damage.state_hash(fnv);
             }
         }
+    }
+}
+
+#[cfg(test)]
+impl crate::engine::Specimen for Laid {
+    fn low() -> Self {
+        Laid::NONE
+    }
+
+    fn high() -> Self {
+        let mut laid = Laid::NONE;
+        laid.add(ItemId(1));
+        laid
     }
 }
 

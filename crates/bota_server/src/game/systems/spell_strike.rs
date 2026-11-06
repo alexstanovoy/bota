@@ -61,6 +61,7 @@ impl World {
                     HitEffect::Stun { ticks }
                 },
                 striker: None,
+                laid: crate::game::Laid::NONE,
             },
         );
         true

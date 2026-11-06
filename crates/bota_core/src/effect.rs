@@ -74,6 +74,14 @@ const fn hidden(id: u16, key: &'static str, name: &'static str) -> EffectDef {
     }
 }
 
+/// A debuff a basic dispel takes off.
+const fn dispellable_debuff(id: u16, key: &'static str, name: &'static str) -> EffectDef {
+    EffectDef {
+        dispellable: true,
+        ..debuff(id, key, name)
+    }
+}
+
 /// A buff a basic dispel takes off.
 const fn fleeting(id: u16, key: &'static str, name: &'static str) -> EffectDef {
     EffectDef {
@@ -239,6 +247,7 @@ const EFFECT_ROWS: &[EffectDef] = &[
     buff(75, "modifier_rune_invis", "RuneInvisibility"),
     buff(76, "modifier_rune_shield", "RuneShield"),
     fleeting(77, "modifier_bottle_regeneration", "BottleRegeneration"),
+    dispellable_debuff(78, "modifier_blight_stone_buff", "Corruption"),
 ];
 
 /// How many effect ids the protocol has ever handed out, retired ones

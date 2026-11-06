@@ -74,7 +74,7 @@ fn header(build: &str) -> String {
         }
     }
     out.push_str(
-        "\nuse bota_proto::ItemId;\n\nuse crate::{Behavior as B, Dec, ItemData, Ms, StockData};\n",
+        "\nuse bota_proto::ItemId;\n\nuse crate::{Behavior as B, Dec, Dispel, Immunity, ItemData, Ms, StockData};\n",
     );
     out
 }
@@ -141,7 +141,8 @@ fn write_row(out: &mut String, entry: &Registered, row: &Item, builds: &[Vec<u16
          retired: {retired},\n    cost: {cost},\n    behavior: {behavior},\n    cast_range: {range},\n    \
          cast_point: {point},\n    channel: {channel},\n    cooldown: {cooldown},\n    mana: {mana},\n    \
          health: {health},\n    charges: {charges},\n    stack: {stack},\n    stock: {stock},\n    \
-         purchasable: {purchasable},\n    secret_shop: {secret_shop},\n",
+         purchasable: {purchasable},\n    secret_shop: {secret_shop},\n    dispel: {dispel},\n    \
+         immunity: {immunity},\n",
         name = row.key.to_uppercase(),
         id = entry.id,
         key = row.key,
@@ -154,6 +155,17 @@ fn write_row(out: &mut String, entry: &Registered, row: &Item, builds: &[Vec<u16
         mana = row.mana,
         health = row.health,
         secret_shop = row.secret_shop,
+        dispel = match row.dispel {
+            None => "Dispel::Unstated",
+            Some("NO") => "Dispel::No",
+            Some("YES") => "Dispel::Basic",
+            Some(_) => "Dispel::Strong",
+        },
+        immunity = match row.immunity {
+            None => "Immunity::Unstated",
+            Some("ENEMIES_NO") => "Immunity::Blocks",
+            Some(_) => "Immunity::Pierced",
+        },
         charges = row.charges,
         stack = match (row.stackable, row.stack_max) {
             (false, _) => "0".to_owned(),

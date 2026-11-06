@@ -221,6 +221,9 @@ impl ItemId {
     pub const VOODOO_MASK: ItemId = ItemId(83);
     /// Dota's `item_faerie_fire`: eaten at once for health; damage while carried.
     pub const FAERIE_FIRE: ItemId = ItemId(84);
+    /// Dota's `item_blight_stone` (public name Orb of Blight): its carrier's
+    /// attacks corrupt armor.
+    pub const BLIGHT_STONE: ItemId = ItemId(85);
 }
 
 /// What did something: the ability or the item a unit used, as Dota's combat
@@ -395,6 +398,9 @@ impl EffectId {
     /// A drink from a Bottle (`modifier_bottle_regeneration`): health and
     /// mana mended over time, put out by an enemy hero's blow.
     pub const BOTTLE_REGENERATION: EffectId = EffectId(77);
+    /// An Orb of Blight's Lesser Corruption (`modifier_blight_stone_buff`):
+    /// armor taken off by the attacks of whoever carries one.
+    pub const CORRUPTION: EffectId = EffectId(78);
 }
 
 /// An index into a unit's ability slots, as listed in

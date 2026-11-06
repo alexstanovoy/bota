@@ -167,11 +167,40 @@ pub struct ItemData {
     pub purchasable: bool,
     /// `SecretShop`: sold only through a secret-shop zone.
     pub secret_shop: bool,
+    /// `SpellDispellableType`: what dispel takes off what the item puts on.
+    pub dispel: Dispel,
+    /// `SpellImmunityType`: whether what the item does to enemies goes through spell immunity.
+    pub immunity: Immunity,
     /// The ways it is built, each the parts a recipe asks for and the recipe scroll where that
     /// costs gold. Empty for one bought whole.
     pub builds: &'static [&'static [ItemId]],
     /// `AbilityValues`: each a number a level, by Dota's key.
     pub values: &'static [(&'static str, &'static [Dec])],
+}
+
+/// Dota's `SpellDispellableType` of an item: which dispel takes off what it puts on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Dispel {
+    /// The script names none.
+    Unstated,
+    /// `SPELL_DISPELLABLE_NO`: no dispel.
+    No,
+    /// `SPELL_DISPELLABLE_YES`: a basic dispel.
+    Basic,
+    /// `SPELL_DISPELLABLE_YES_STRONG`: a strong dispel only.
+    Strong,
+}
+
+/// Dota's `SpellImmunityType` of an item: whether what it does to an enemy goes through spell
+/// immunity.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Immunity {
+    /// The script names none.
+    Unstated,
+    /// `SPELL_IMMUNITY_ENEMIES_NO`: spell immunity keeps it off.
+    Blocks,
+    /// `SPELL_IMMUNITY_ENEMIES_YES`: it goes through spell immunity.
+    Pierced,
 }
 
 impl ItemData {

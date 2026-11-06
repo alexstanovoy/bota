@@ -3,13 +3,13 @@
 //! what it does, and which of its values stand for which of bota's stats. Every number comes
 //! from the script by its Dota key; a number written here is bota's own, and says why.
 
-use bota_proto::{Aim, Attribute, Attributes, Fixed, ItemId};
+use bota_proto::{Aim, Attribute, Attributes, EffectId, Fixed, ItemId};
 
 use super::items::*;
 use crate::{
-    AllyUse, Carried, Dec, DisassembleRule, Drink, Grenade, ItemData, ItemDef, LOTUS_TAKE_RANGE,
-    Mend, NOTHING, OBSERVER_WARD, Odds, PLAIN, Pool, Recipe, SENTRY_WARD, Scroll, Spends, Stock,
-    UseSpec, hundredths_per_second, points, points_with, rules,
+    AllyUse, Carried, Dec, DisassembleRule, Dispel, Drink, Grenade, Immunity, ItemData, ItemDef,
+    LOTUS_TAKE_RANGE, Mend, NOTHING, OBSERVER_WARD, Odds, OnAttack, PLAIN, Pool, Recipe,
+    SENTRY_WARD, Scroll, Spends, Stock, UseSpec, hundredths_per_second, points, points_with, rules,
 };
 
 /// The row of an item as its script gives it; a row of the catalog adds what bota does with it.
@@ -91,6 +91,18 @@ const fn magic_resist(d: &ItemData, key: &str) -> i32 {
         "a magic resistance past all of it"
     );
     value * rules::NOMINAL_BP / 100
+}
+
+/// A value's first level, armor written as a reduction (`-2`), as the armor it takes off.
+const fn armor_taken(d: &ItemData, key: &str) -> Fixed {
+    let value: Dec = d.first(key);
+    assert!(value.0 < 0, "an armor reduction is written below zero");
+    Fixed::from_ratio(-value.0, 1000)
+}
+
+/// Whether what the item does to enemies goes through spell immunity: its `SpellImmunityType`.
+const fn pierces_immunity(d: &ItemData) -> bool {
+    matches!(d.immunity, Immunity::Pierced)
 }
 
 /// A value's first level as armor.
@@ -938,6 +950,18 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
         },
         ..from(&ITEM_FAERIE_FIRE)
     },
+    // Orb of Blight (`item_blight_stone`): Lesser Corruption, the armor its carrier's attacks take
+    // off.
+    ItemDef {
+        name: "Orb of Blight",
+        on_attack: Some(OnAttack {
+            effect: EffectId::CORRUPTION,
+            ticks: ticks(&ITEM_BLIGHT_STONE, "corruption_duration"),
+            armor: armor_taken(&ITEM_BLIGHT_STONE, "corruption_armor"),
+            pierces_immunity: pierces_immunity(&ITEM_BLIGHT_STONE),
+        }),
+        ..from(&ITEM_BLIGHT_STONE)
+    },
 ];
 
 /// One kind of lotus, as its script gives it.
@@ -974,6 +998,14 @@ const _: () = {
     assert!(near < far);
     assert!(rules::SCROLL_LANDING_RINGS * rules::SCROLL_LANDING_STEP < far);
     assert!(ITEM_TPSCROLL.channel.ticks() < ITEM_TPSCROLL.cooldown.ticks());
+};
+
+// What an attack lays is taken off as the item's `SpellDispellableType` says: the effect's row
+// agrees with the script.
+const _: () = {
+    assert!(matches!(ITEM_BLIGHT_STONE.dispel, Dispel::Basic));
+    assert!(crate::EFFECTS[EffectId::CORRUPTION.0 as usize].dispellable);
+    assert!(ITEM_BLIGHT_STONE.first("corruption_armor").0 < 0);
 };
 
 // A Bottle is bought full: the charges it is bought with are all it holds, and the server fills

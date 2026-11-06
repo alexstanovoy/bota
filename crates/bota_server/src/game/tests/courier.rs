@@ -885,6 +885,7 @@ fn a_courier_in_its_fountains_rejuvenation_takes_nothing_and_is_hit_again_once_i
             pierces: true,
             uphill: false,
             effect: crate::game::HitEffect::None,
+            laid: crate::game::Laid::NONE,
         });
         world.step();
     };

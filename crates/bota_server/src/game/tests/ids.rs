@@ -81,6 +81,9 @@ fn every_modifier() -> Vec<ModifierKind> {
             hp_per_tick: 1,
             mana_per_tick: 1,
         },
+        ModifierKind::Laid {
+            item: bota_proto::ItemId::BLIGHT_STONE,
+        },
     ];
     for kind in &every {
         match kind {
@@ -130,6 +133,7 @@ fn every_modifier() -> Vec<ModifierKind> {
             | ModifierKind::RuneInvisibility
             | ModifierKind::RuneShield { .. }
             | ModifierKind::BottleRegeneration { .. }
+            | ModifierKind::Laid { .. }
             | ModifierKind::Spell { .. } => {}
             ModifierKind::Dismembered { .. } | ModifierKind::MeatShield { .. } => {}
         }
@@ -154,6 +158,14 @@ fn every_effect_is_shown_under_its_registered_id() {
         .map(|kind| match kind {
             ModifierKind::Rotting { .. } => (kind.effect_id().0, "Rot".to_string()),
             ModifierKind::Haste { .. } => (kind.effect_id().0, "Hastened".to_string()),
+            // What an item lays shows under the effect its row names.
+            ModifierKind::Laid { .. } => (
+                kind.effect_id().0,
+                effect_def(kind.effect_id())
+                    .expect("a laid effect is live")
+                    .name
+                    .to_string(),
+            ),
             _ => (kind.effect_id().0, variant_name(kind)),
         })
         .collect();

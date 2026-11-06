@@ -28,6 +28,12 @@ pub struct Item {
     pub stock: Option<(i64, i64, Milli)>,
     pub purchasable: bool,
     pub secret_shop: bool,
+    /// `SpellDispellableType` without its `SPELL_DISPELLABLE_` prefix: `NO`, `YES` or
+    /// `YES_STRONG`; none where the item names none.
+    pub dispel: Option<&'static str>,
+    /// `SpellImmunityType` without its `SPELL_IMMUNITY_` prefix: `ENEMIES_NO` or `ENEMIES_YES`;
+    /// none where the item names none.
+    pub immunity: Option<&'static str>,
     /// A recipe's `ItemResult` and its `ItemRequirements`, each a list of item keys.
     pub recipe: Option<(String, Vec<Vec<String>>)>,
     /// `AbilityValues` by key, one number a level.
@@ -56,7 +62,7 @@ pub const BEHAVIORS: [&str; 17] = [
 ];
 
 /// Keys read into [`Item`].
-const READ: [&str; 19] = [
+const READ: [&str; 21] = [
     "AbilityBehavior",
     "AbilityCastPoint",
     "AbilityCastRange",
@@ -76,11 +82,13 @@ const READ: [&str; 19] = [
     "ItemStockMax",
     "ItemStockTime",
     "SecretShop",
+    "SpellDispellableType",
+    "SpellImmunityType",
 ];
 
 /// Keys known and left out: presentation, the shop's suggestions, and rules bota models
 /// elsewhere or not yet (targets, sharing, dispels, the shared cooldown's name).
-const LEFT_OUT: [&str; 35] = [
+const LEFT_OUT: [&str; 34] = [
     "AbilitySharedCooldown",
     "AbilityUnitTargetFlags",
     "AbilityUnitTargetTeam",
@@ -109,7 +117,6 @@ const LEFT_OUT: [&str; 35] = [
     "ShouldNotSuggestMainGame",
     "ShowGiveIndicatorOnTargetCast",
     "SpeciallyBannedFromNeutralSlot",
-    "SpellDispellableType",
     "SuggestEarlygame",
     "SuggestLategame",
     "SuggestPregame",
@@ -162,6 +169,28 @@ pub fn read(key: &str, block: &Kv) -> Result<Item, String> {
         1 => true,
         _ => return Err(fail("SecretShop must be 0 or 1".to_owned())),
     };
+    let one_of = |name: &str, prefix: &str, known: &[&'static str]| -> Result<_, String> {
+        text(name)?
+            .map(|value| {
+                let bare = value.strip_prefix(prefix).unwrap_or(value);
+                known
+                    .iter()
+                    .find(|k| **k == bare)
+                    .copied()
+                    .ok_or_else(|| fail(format!("unknown {name} {value:?}")))
+            })
+            .transpose()
+    };
+    let dispel = one_of(
+        "SpellDispellableType",
+        "SPELL_DISPELLABLE_",
+        &["NO", "YES", "YES_STRONG"],
+    )?;
+    let immunity = one_of(
+        "SpellImmunityType",
+        "SPELL_IMMUNITY_",
+        &["ENEMIES_NO", "ENEMIES_YES"],
+    )?;
     Ok(Item {
         key: key.to_owned(),
         cost: whole("ItemCost", 0)?,
@@ -181,6 +210,8 @@ pub fn read(key: &str, block: &Kv) -> Result<Item, String> {
         stock,
         purchasable: whole("ItemPurchasable", 1)? == 1,
         secret_shop,
+        dispel,
+        immunity,
         recipe,
         values: values(block).map_err(fail)?,
     })
