@@ -69,6 +69,7 @@ impl LuaTeam {
         let storage = lua.vm().userdata(state.clone(), None, crate::state::HOST_STORAGE_BYTES)?;
         lua.pin(storage)?;
         let vectors = vector::install(&mut lua)?;
+        for (index,name) in BOT_MODES.iter().enumerate() { lua.set_global(&format!("BOT_MODE_{}",name.to_ascii_uppercase()),Value::Number((index+1) as f64))?; }
         api::install(&mut lua, state.clone(), vectors)?;
         let set_environment = lua.global("setfenv")?;
         let get_environment = lua.global("getfenv")?;
@@ -212,6 +213,12 @@ impl LuaTeam {
             let hero = bota_core::hero_def(seat.hero).expect("registered hero").key.strip_prefix("npc_dota_hero_").expect("hero key prefix");
             for (prefix, kind) in [("bot", ScriptKind::Takeover), ("ability_item_usage", ScriptKind::AbilityItemUsage), ("item_purchase", ScriptKind::ItemPurchase)] {
                 if !self.add_pack_file(seat.slot, kind, &format!("{prefix}_{hero}"))? { self.add_pack_file(seat.slot, kind, &format!("{prefix}_generic"))?; }
+            }
+            if !self.scripts.iter().any(|script| script.slot == seat.slot && script.kind == ScriptKind::Takeover) {
+                for (index, mode) in BOT_MODES.iter().enumerate() {
+                    let kind = ScriptKind::Mode((index + 1) as u8);
+                    if !self.add_pack_file(seat.slot, kind, &format!("mode_{mode}_{hero}"))? { self.add_pack_file(seat.slot, kind, &format!("mode_{mode}_generic"))?; }
+                }
             }
         }
         Ok(())
@@ -372,3 +379,5 @@ fn callback_error(error: luagee::LuaError) -> Error {
         other => runtime_error(&format!("host operation failed: {other:?}")),
     }
 }
+
+pub(crate) const BOT_MODES: &[&str] = &["laning","attack","roam","retreat","secret_shop","side_shop","push_tower_top","push_tower_mid","push_tower_bot","defend_tower_top","defend_tower_mid","defend_tower_bot","assemble","team_roam","farm","defend_ally","evasive_maneuvers","roshan","item","ward","rune","outpost"];

@@ -51,3 +51,14 @@ fn an_immediate_deadline_retires_the_worker_without_committing_orders() {
     assert!(lua.retired());
     assert!(matches!(lua.think(&sessions[0]), Err(NativeError::Retired)));
 }
+
+#[test]
+fn a_pack_without_a_takeover_loads_its_generic_mode_override() {
+    let mut modules=ModuleBank::new(Limits::DEFAULT);
+    modules.insert("bots/mode_farm_generic",b"function GetDesire() return 0.5 end function Think() assert(GetBot():GetActiveMode()==BOT_MODE_FARM) GetBot():Action_MoveToLocation(Vector(0,0,0)) end").expect("mode");
+    let mut lua=NativeTeam::new(config(),modules).expect("worker");
+    let (_,sessions)=support::local(&[Team::Radiant,Team::Dire]);
+    let turn=lua.think(&sessions[0]).expect("think");
+    assert!(turn.failures.is_empty(),"{:?}",turn.failures);
+    assert_eq!(turn.bots[0].orders.len(),1);
+}
