@@ -25,6 +25,7 @@ use crate::{GoldRange, HomeDef, LairDef, NeutralKind, UnitDef, rules};
 /// from inside a pit [LIQ Roshan], and he is ancient [U:12100].
 pub const ROSHAN: UnitDef = UnitDef {
     kind: UnitKind::Roshan,
+    base_level: U.first("Level").int() as u8,
     max_hp: U.first("StatusHealth").int(),
     hp_regen: Fixed::from_ratio(
         U.first("StatusHealthRegen").int(),
@@ -35,7 +36,7 @@ pub const ROSHAN: UnitDef = UnitDef {
     attack_range: U.first("AttackRange").int(),
     acquisition: U.first("AttackAcquisitionRange").int(),
     attack_time: U.first("AttackRate").0 as u32,
-    attack_speed: rules::BASE_ATTACK_SPEED,
+    attack_speed: 200, // Engine intrinsic; current Roshan mechanics, not exposed in npc_units.txt.
     attack_point: U.first("AttackAnimationPoint").0 as u32,
     attack_backswing: 300,
     projectile_speed: None,
@@ -55,6 +56,30 @@ pub const ROSHAN: UnitDef = UnitDef {
     bounty_team: 135,
     bounty_xp: U.first("BountyXP").int(),
     pit_attacked: true,
+    per_upgrade: crate::Growth {
+        hp: 130,
+        damage: 7,
+        xp: 20,
+        ..crate::unit::NO_GROWTH
+    },
+    auras: &[crate::Aura {
+        whom: crate::Whom::Allies,
+        reaches: crate::Reach::Living,
+        radius: crate::data::ROSHAN_DEVOTION.first("radius").int(),
+        linger: rules::TICKS_PER_SECOND / 2,
+        breakable: false,
+        invulnerable: false,
+        water: false,
+        growth_clock: Some(crate::GrowthClock {
+            first_after_horn: 0,
+            period: 60 * rules::TICKS_PER_SECOND,
+            cap: u32::MAX,
+        }),
+        modifier: crate::AuraModifier::ArmorGrowth {
+            hundredths_per_step: 40,
+            effect: bota_proto::EffectId(79),
+        },
+    }],
     ..BARE_UNIT
 };
 

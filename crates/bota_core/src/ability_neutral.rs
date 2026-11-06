@@ -86,6 +86,7 @@ pub enum NeutralAbility {
     WaterBubbleLarge,
     Rally,
     Tempest,
+    StrengthOfTheImmortal,
 }
 
 impl NeutralAbility {
@@ -488,6 +489,7 @@ impl Spell {
             _ => return None,
         };
         Some(Aura {
+            growth_clock: None,
             whom,
             reaches: Reach::Living,
             radius,
@@ -1714,6 +1716,17 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
             effect: EffectId(53),
             breakable: false,
         },
+    ),
+    entry(
+        AbilityId(80),
+        "roshan_inherent_buffs",
+        NeutralAbility::StrengthOfTheImmortal,
+        AbilityDef {
+            max_level: 1,
+            hidden: true,
+            ..passive("StrengthOfTheImmortal")
+        },
+        Spell::Upgrade,
     ),
 ];
 

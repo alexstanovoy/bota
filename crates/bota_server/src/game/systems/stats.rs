@@ -445,6 +445,7 @@ fn add_modifiers<'a>(
             ModifierKind::Hastened { pct } | ModifierKind::Haste { pct } => {
                 sums.pace.change(pct.max(0));
             }
+            ModifierKind::BonusArmor { armor, .. } => now.armor += kept(wearer.illusion, armor),
             ModifierKind::ArmorBroken { armor } => {
                 now.armor -= armor;
             }

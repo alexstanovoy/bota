@@ -7,6 +7,10 @@ use bota_proto::{DamageKind, EffectId, Fixed, IdSpace, RegisteredId, registered}
 /// the match below until it is listed here as well.
 fn every_modifier() -> Vec<ModifierKind> {
     let mut every = vec![
+        ModifierKind::BonusArmor {
+            armor: Fixed::ONE,
+            effect: EffectId(79),
+        },
         ModifierKind::Recovery {
             health_pct: 20,
             mana_pct: 20,
@@ -147,7 +151,9 @@ fn every_modifier() -> Vec<ModifierKind> {
             | ModifierKind::BottleRegeneration { .. }
             | ModifierKind::Laid { .. }
             | ModifierKind::Spell { .. } => {}
-            ModifierKind::Dismembered { .. } | ModifierKind::MeatShield { .. } => {}
+            ModifierKind::BonusArmor { .. }
+            | ModifierKind::Dismembered { .. }
+            | ModifierKind::MeatShield { .. } => {}
         }
     }
     every
@@ -168,6 +174,10 @@ fn every_effect_is_shown_under_its_registered_id() {
     let mut shown: Vec<(u16, String)> = every_modifier()
         .iter()
         .map(|kind| match kind {
+            ModifierKind::BonusArmor { effect, .. } => (
+                effect.0,
+                effect_def(*effect).expect("registered").name.to_owned(),
+            ),
             ModifierKind::Rotting { .. } => (kind.effect_id().0, "Rot".to_string()),
             ModifierKind::Haste { .. } => (kind.effect_id().0, "Hastened".to_string()),
             // What an item lays shows under the effect its row names.

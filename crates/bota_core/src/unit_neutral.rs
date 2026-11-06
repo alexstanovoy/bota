@@ -167,10 +167,9 @@ pub struct NeutralDef {
     pub unit: &'static str,
     /// What it can do, in slot order.
     pub abilities: &'static [NeutralAbility],
-    /// What it carries in no slot: Dota's `neutral_upgrade`, an ability of
-    /// the attribute kind its HUD never shows, whose hidden modifier raises
-    /// the neutral with the clock. Absent for what does not grow.
-    pub innate: Option<NeutralAbility>,
+    /// Its permanent self growth: the source ability and the clock that raises
+    /// stats and bounty. Absent for a neutral that does not grow.
+    pub growth: Option<crate::NeutralGrowth>,
     /// The plain form it spawns with.
     pub def: UnitDef,
     /// Its wake and leash policy.
@@ -266,7 +265,14 @@ const fn neutral(
         name,
         unit,
         abilities,
-        innate: Some(NeutralAbility::NeutralUpgrade),
+        growth: Some(crate::NeutralGrowth {
+            ability: NeutralAbility::NeutralUpgrade,
+            clock: crate::GrowthClock {
+                first_after_horn: rules::NEUTRAL_UPGRADE_PERIOD_TICKS,
+                period: rules::NEUTRAL_UPGRADE_PERIOD_TICKS,
+                cap: rules::NEUTRAL_UPGRADE_CAP as u32,
+            },
+        }),
         home: &JUNGLE_HOME,
         def,
     }
@@ -1759,7 +1765,7 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
         },
     ),
     NeutralDef {
-        innate: None,
+        growth: None,
         ..neutral(
             NeutralKind::WildkinTornado,
             "Tornado",
@@ -1790,7 +1796,14 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
         name: "Roshan",
         unit: "npc_dota_roshan",
         abilities: &[],
-        innate: None,
+        growth: Some(crate::NeutralGrowth {
+            ability: NeutralAbility::StrengthOfTheImmortal,
+            clock: crate::GrowthClock {
+                first_after_horn: 60 * rules::TICKS_PER_SECOND,
+                period: 60 * rules::TICKS_PER_SECOND,
+                cap: u32::MAX,
+            },
+        }),
         home: &crate::ROSHAN_HOME,
         def: crate::ROSHAN,
     },
@@ -1800,5 +1813,5 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
 pub const NEUTRAL_COUNT: usize = NEUTRAL_ROWS.len();
 
 /// Every kind, indexed by [`NeutralKind`]: its [`NeutralId`].
-pub const NEUTRALS: [NeutralDef; NEUTRAL_COUNT] =
+pub static NEUTRALS: [NeutralDef; NEUTRAL_COUNT] =
     placed_by_id!(NEUTRAL_ROWS, NEUTRAL_COUNT, |row| row.kind as usize);

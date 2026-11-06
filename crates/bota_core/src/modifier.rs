@@ -292,12 +292,15 @@ pub enum ModifierKind {
     },
     /// Percentage-of-maximum recovery, recalculated as the pools change.
     Recovery { health_pct: i32, mana_pct: i32 },
+    /// An aura's fractional armor bonus and its registered effect.
+    BonusArmor { armor: Fixed, effect: EffectId },
 }
 
 impl ModifierKind {
     /// The number the wire names this kind of modifier with.
     pub const fn effect_id(self) -> EffectId {
         match self {
+            ModifierKind::BonusArmor { effect, .. } => effect,
             ModifierKind::Recovery { .. } => EffectId::AEGIS_REGENERATION,
             ModifierKind::Mending { .. } => EffectId::MENDING,
             ModifierKind::Clarity { .. } => EffectId::CLARITY,
@@ -445,6 +448,13 @@ impl ModifierKind {
     /// equal ones neither is the stronger.
     pub fn outranks(self, other: ModifierKind) -> bool {
         match (self, other) {
+            (
+                ModifierKind::BonusArmor { armor, effect },
+                ModifierKind::BonusArmor {
+                    armor: their,
+                    effect: their_effect,
+                },
+            ) => effect == their_effect && armor > their,
             (ModifierKind::ArmorBroken { armor }, ModifierKind::ArmorBroken { armor: theirs }) => {
                 armor > theirs
             }

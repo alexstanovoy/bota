@@ -160,6 +160,7 @@ pub const PRESENCE: AbilityDef = AbilityDef {
     range: PRESENCE_RADIUS,
     pierces: Pierces::Yes,
     aura: Some(Aura {
+        growth_clock: None,
         whom: Whom::Enemies,
         reaches: Reach::Living,
         radius: PRESENCE_RADIUS,

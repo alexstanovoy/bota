@@ -249,6 +249,11 @@ impl StateHash for ModifierKind {
             }
             ModifierKind::RuneInvisibility => fnv.u8(47),
             ModifierKind::RuneShield { left } => hash_tagged(fnv, 48, &[left]),
+            ModifierKind::BonusArmor { armor, effect } => {
+                fnv.u8(51);
+                armor.state_hash(fnv);
+                effect.0.state_hash(fnv);
+            }
             ModifierKind::Recovery {
                 health_pct,
                 mana_pct,

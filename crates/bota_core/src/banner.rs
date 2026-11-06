@@ -12,6 +12,7 @@ const fn banner(level: usize) -> crate::UnitDef {
     let hits = ITEM_ROSHANS_BANNER.value("health_tooltip")[level].int();
     crate::UnitDef {
         kind: bota_proto::UnitKind::Banner,
+        base_level: U.first("Level").int() as u8,
         max_hp: hp,
         hit_count: Some(HitCount {
             melee_hero: hits as u8,
@@ -36,6 +37,7 @@ const fn banner(level: usize) -> crate::UnitDef {
 }
 const fn banner_aura(level: usize) -> crate::Aura {
     crate::Aura {
+        growth_clock: None,
         whom: crate::Whom::Allies,
         reaches: crate::Reach::LaneCreeps,
         radius: ITEM_ROSHANS_BANNER.value("radius")[level].int(),

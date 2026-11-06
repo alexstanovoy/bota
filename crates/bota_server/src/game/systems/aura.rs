@@ -129,6 +129,9 @@ impl World {
             .upgrades
             .get(carrier)
             .map_or(0, |Upgrades(steps)| *steps);
+        let steps = aura
+            .growth_clock
+            .map_or(steps, |clock| clock.count(self.clock(), self.schedule()));
         let kind = aura
             .modifier
             .modifier(level, |talent| self.has_talent(carrier, talent), steps);

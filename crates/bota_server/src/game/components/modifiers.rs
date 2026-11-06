@@ -68,6 +68,11 @@ pub fn disabled_in(modifiers: &Table<Modifiers>, held: &Modifier) -> bool {
 /// stacking aura or a strike.
 fn replaces(fresh: &Modifier, held: &Modifier) -> bool {
     match (held.kind, fresh.kind) {
+        (ModifierKind::BonusArmor { effect: had, .. }, ModifierKind::BonusArmor { effect, .. }) => {
+            had == effect
+                && (!bota_core::effect_def(effect).is_some_and(|e| e.per_source)
+                    || held.source == fresh.source)
+        }
         (ModifierKind::Shadowraze { .. }, ModifierKind::Shadowraze { .. }) => {
             held.ticks_left == Some(0) || held.source == fresh.source
         }

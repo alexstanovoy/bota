@@ -58,3 +58,7 @@ pub const BANNER_UNIT: ScriptData = ScriptData {
         ("VisionNighttimeRange", &[Dec(1200000)]),
     ],
 };
+pub const ROSHAN_DEVOTION: ScriptData = ScriptData {
+    key: "roshan_devotion",
+    values: &[("radius", &[Dec(5000)]), ("slow_resistance", &[Dec(25000)])],
+};

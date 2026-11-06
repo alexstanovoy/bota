@@ -322,3 +322,6 @@ neutral 46 live npc_dota_enraged_wildkin_tornado
 neutral 47 live npc_dota_roshan
 
 effect 81 live modifier_aegis_regen
+
+ability 80 live roshan_inherent_buffs
+effect 82 live modifier_roshan_devotion

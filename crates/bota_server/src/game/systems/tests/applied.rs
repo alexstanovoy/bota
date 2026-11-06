@@ -759,6 +759,7 @@ fn a_tower_spawned_with_a_modifier_is_raised_with_it() {
 /// A creep handing out a slow to its own side standing near it.
 static SLOWING_CREEP: UnitDef = UnitDef {
     auras: &[Aura {
+        growth_clock: None,
         whom: Whom::Allies,
         reaches: Reach::All,
         radius: 400,

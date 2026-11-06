@@ -1,8 +1,8 @@
 //! Putting an entity into the world with everything its kind needs.
 
 use bota_core::{
-    COURIER, COURIER_ABILITIES, HERO, ModifierKind, NeutralAbility, NeutralKind, UnitDef,
-    effect_def, hero_def, neutral_ability_level,
+    COURIER, COURIER_ABILITIES, HERO, ModifierKind, NeutralKind, UnitDef, effect_def, hero_def,
+    neutral_ability_level,
 };
 use bota_proto::{AbilityId, Angle, Fixed, HeroId, Inflictor, SlotId, Team, Vec2};
 
@@ -33,6 +33,9 @@ impl World {
         let entity = self.spawn();
         self.def.insert(entity, Def(def));
         self.kind.insert(entity, def.kind);
+        if def.base_level > 1 {
+            self.level.insert(entity, Level(def.base_level));
+        }
         self.set_team(entity, team);
         self.transform.insert(
             entity,
@@ -348,7 +351,10 @@ impl World {
         }
         self.give_orders(entity);
         self.neutral.insert(entity, kind);
-        self.set_neutral_upgrades(entity, upgrades);
+        let clock_steps = kind.neutral().growth.map_or(0, |growth| {
+            growth.clock.count(self.clock(), self.schedule())
+        });
+        self.set_neutral_upgrades(entity, upgrades.max(clock_steps));
         let level = neutral_ability_level(self.clock(), self.schedule());
         self.abilities.insert(
             entity,
@@ -396,14 +402,14 @@ impl World {
         let Some(kind) = self.neutral.get(entity).copied() else {
             return;
         };
-        if kind.neutral().innate != Some(NeutralAbility::NeutralUpgrade) {
+        let Some(growth) = kind.neutral().growth else {
             return;
-        }
+        };
         if let Some(on_it) = self.modifiers.get_mut(entity) {
             on_it.set_count(
                 ModifierKind::neutral_upgrade,
                 count,
-                (entity, NeutralAbility::NeutralUpgrade.id()),
+                (entity, growth.ability.id()),
             );
         }
         self.raise_bounty(entity, kind.def(), count);

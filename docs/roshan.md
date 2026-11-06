@@ -65,3 +65,19 @@ Glyph, so neither lifetime erases the other. Only allied lane creeps receive it.
 physics hulls, preserving their union. They exclude both pits, fountains and their ramps,
 and one additional map brush. Ward and Banner placement checks the volumes again when
 the use completes; a failed placement spends nothing.
+
+## Strength and growth
+
+Valve [7.39](https://www.dota2.com/patches/7.39) establishes 7 attack damage and 0.4 armor per
+minute. [Strength of the Immortal](https://liquipedia.net/dota2/Roshan) supplies the separate
+first increments: armor at the horn, health (+130), damage and experience (+20) from 1:00.
+The count is derived from the authoritative game clock on updates and respawns. The armor
+is a separate aura: radius 5 from the installed `roshan_devotion` row, 0.5-second linger,
+allied living units only, excluding invulnerable units. Only armor spreads.
+
+The NPC script supplies level 30; current Roshan mechanics document 200 attack speed with
+2-second BAT. That attack speed is an engine intrinsic, absent from the installed text row;
+it has not been independently confirmed from engine source. The existing simulator rule
+that maximum-health changes preserve the filled fraction is retained; no first-party
+Roshan-specific exception was found. The shared Q16.16 health representation saturates near
+32,768 HP (around 206 minutes of this growth); no extra growth cap is added.

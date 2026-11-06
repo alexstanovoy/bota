@@ -54,6 +54,8 @@ pub enum BackdoorWatch {
 pub struct UnitDef {
     /// What kind of thing it is.
     pub kind: UnitKind,
+    /// The NPC level at creation, before player experience.
+    pub base_level: u8,
     /// Attributes it spawns with. All zero for whatever has none.
     pub attributes: Attributes,
     /// Which attribute pays its attack damage. Absent for whatever has none.
@@ -174,6 +176,7 @@ pub(crate) const NO_GROWTH: Growth = Growth {
 /// Nothing at all, so a definition names only the fields that differ.
 pub(crate) const BARE_UNIT: UnitDef = UnitDef {
     kind: UnitKind::Ward,
+    base_level: 1,
     attributes: Attributes::ZERO,
     primary: None,
     max_hp: 0,
@@ -259,6 +262,7 @@ pub const MELEE_CREEP: UnitDef = UnitDef {
 /// resistance it grows into with the upgrade intervals it spawned after:
 /// Dota's `flagbearer_creep_aura_effect`, a passive a Break silences.
 const FLAGBEARER_AURAS: [Aura; 1] = [Aura {
+    growth_clock: None,
     whom: Whom::Allies,
     reaches: Reach::Units,
     radius: rules::FLAGBEARER_AURA_RADIUS,
@@ -507,6 +511,7 @@ pub fn ancient_of(team: Team) -> &'static UnitDef {
 /// `modifier_fountain_aura`, a building's. It mends heroes, creeps and
 /// couriers, the invulnerable among them, but no building and no ward.
 const FOUNTAIN_AURAS: [Aura; 1] = [Aura {
+    growth_clock: None,
     whom: Whom::Allies,
     reaches: Reach::Living,
     radius: rules::FOUNTAIN_HEAL_RADIUS,
@@ -612,6 +617,7 @@ const TOWER_AURAS: [[Aura; 1]; 4] = [tower_aura(0), tower_aura(1), tower_aura(2)
 /// One tier's protection: Dota's `modifier_tower_aura`, a building's.
 const fn tower_aura(index: usize) -> [Aura; 1] {
     [Aura {
+        growth_clock: None,
         whom: Whom::Allies,
         reaches: Reach::Heroes,
         radius: rules::TOWER_AURA_RADIUS,

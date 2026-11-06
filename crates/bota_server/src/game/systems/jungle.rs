@@ -144,13 +144,23 @@ impl World {
     /// Raises every neutral standing to the upgrades the clock has reached:
     /// Dota's upgrades reach the living, not only those spawned after.
     fn raise_neutrals(&mut self) {
-        let now = jungle_upgrades(self.clock(), self.schedule());
-        if self.tick == 0 || now == jungle_upgrades(self.tick - 1, self.schedule()) {
-            return;
-        }
         let entities = self.take_entity_snapshot();
         for entity in entities.iter().copied() {
-            self.set_neutral_upgrades(entity, now);
+            let Some(growth) = self
+                .neutral
+                .get(entity)
+                .and_then(|kind| kind.neutral().growth)
+            else {
+                continue;
+            };
+            let now = growth.clock.count(self.clock(), self.schedule());
+            let had = self
+                .modifiers
+                .get(entity)
+                .map_or(0, |m| m.count_of(bota_core::ModifierKind::neutral_upgrade));
+            if now > had {
+                self.set_neutral_upgrades(entity, now);
+            }
         }
         self.recycle_entity_snapshot(entities);
     }

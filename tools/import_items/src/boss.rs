@@ -35,6 +35,12 @@ pub fn table(dota: Option<&Path>) -> Result<String, String> {
         "npc_dota_unit_roshans_banner",
         banner,
     )?;
+    let abilities = read("scripts/npc/npc_abilities.txt")?;
+    let devotion = abilities
+        .get("DOTAAbilities")
+        .and_then(|a| a.get("roshan_devotion"))
+        .ok_or("no devotion")?;
+    row(&mut out, "ROSHAN_DEVOTION", "roshan_devotion", devotion)?;
     Ok(out)
 }
 

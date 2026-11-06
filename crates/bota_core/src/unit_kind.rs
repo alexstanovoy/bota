@@ -263,6 +263,7 @@ pub const UNIT_KINDS: [KindDef; 19] = [
     KindDef {
         kind: UnitKind::Roshan,
         name: "Roshan",
+        attack_class: AttackClass::Hero,
         neutral: true,
         creep: true,
         death_announced: true,

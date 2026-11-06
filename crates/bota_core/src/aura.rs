@@ -33,6 +33,11 @@ pub enum Reach {
 /// What an aura puts on whoever it reaches, as its carrier holds it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AuraModifier {
+    /// A fractional armor bonus, calculated once from its source's clock count.
+    ArmorGrowth {
+        hundredths_per_step: i32,
+        effect: bota_proto::EffectId,
+    },
     /// This modifier, grown by the upgrade intervals its carrier spawned
     /// after ([`ModifierKind::grown`]).
     Kind(ModifierKind),
@@ -55,6 +60,17 @@ impl AuraModifier {
         steps: u32,
     ) -> ModifierKind {
         match self {
+            AuraModifier::ArmorGrowth {
+                hundredths_per_step,
+                effect,
+            } => ModifierKind::BonusArmor {
+                armor: bota_proto::Fixed::from_ratio(
+                    (i64::from(hundredths_per_step) * i64::from(steps))
+                        .clamp(i32::MIN.into(), i32::MAX.into()) as i32,
+                    100,
+                ),
+                effect,
+            },
             AuraModifier::Kind(kind) => kind.grown(steps),
             AuraModifier::ArmorBroken => ModifierKind::ArmorBroken {
                 armor: presence_armor(level, talented(Talent::PresenceArmor)),
@@ -75,6 +91,8 @@ impl AuraModifier {
 /// stops reaching it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Aura {
+    /// An aura may grow on its own schedule, independently of its carrier's self growth.
+    pub growth_clock: Option<crate::GrowthClock>,
     /// Which side it reaches.
     pub whom: Whom,
     /// Which units of that side it reaches.
