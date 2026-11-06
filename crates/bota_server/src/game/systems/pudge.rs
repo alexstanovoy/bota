@@ -211,8 +211,9 @@ impl World {
         let (Some(at), Some(theirs)) = (self.pos(fallen), self.team.get(fallen).copied()) else {
             return;
         };
-        let reach = rules::units(rules::FLESH_HEAP_RANGE);
         for hero in self.entities.iter() {
+            // The heap gathers within its own hero's range, which its AoE bonus widens.
+            let reach = self.widened_of(hero, rules::FLESH_HEAP_RANGE);
             // The fallen is dead by now, so it is its side that is looked at,
             // not whether it could still be fought.
             let enemy = self.team.get(hero).is_some_and(|mine| *mine != theirs);

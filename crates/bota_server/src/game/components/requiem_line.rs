@@ -33,6 +33,8 @@ pub struct RequiemLine {
     pub fear: Fear,
     /// What it has crossed already, never crossed twice.
     pub struck: Vec<Entity>,
+    /// The caster's AoE bonus as the line set out, widening how wide it catches.
+    pub aoe_bonus: i32,
 }
 
 state_hash!(RequiemLine {
@@ -46,5 +48,6 @@ state_hash!(RequiemLine {
     level,
     frightens,
     fear,
-    struck
+    struck,
+    aoe_bonus
 });

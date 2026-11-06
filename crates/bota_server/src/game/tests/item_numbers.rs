@@ -401,6 +401,7 @@ fn every_stat_item_bought_adds_what_its_script_says_and_nothing_else() {
                 "bonus_mana_regen" => expected.mana_regen += per_tick(*value),
                 "lifesteal_percent" => expected.lifesteal_pct += value.int(),
                 "spell_lifesteal" => expected.spell_lifesteal_pct += value.int(),
+                "aoe_bonus" => expected.aoe_bonus += value.int(),
                 "bonus_magical_armor" => {
                     // Of what the hero's own resistance lets through, the item keeps out its
                     // percent.
@@ -426,7 +427,7 @@ fn every_stat_item_bought_adds_what_its_script_says_and_nothing_else() {
         expected.mana_regen = got.mana_regen;
         assert_eq!(got, expected, "{}", def.key);
     }
-    assert_eq!(checked, 45, "the shop's stat items");
+    assert_eq!(checked, 46, "the shop's stat items");
 }
 
 /// `stats` with `more` attributes and what they are worth: health, mana and their regeneration,

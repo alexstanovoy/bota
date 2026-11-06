@@ -124,6 +124,9 @@ pub struct Stats {
     pub invulnerable: bool,
     /// Whether an enemy's spell passes it by unless the spell pierces it.
     pub spell_immune: bool,
+    /// World units added to every radius of its that an AoE bonus widens: what it carries
+    /// ([`Carried::aoe_bonus`](bota_core::Carried::aoe_bonus)).
+    pub aoe_bonus: i32,
     /// Whether it is ethereal ([`ModifierKind::Ethereal`](bota_core::ModifierKind::Ethereal)):
     /// no attack lands on it or leaves it, and physical damage passes it by.
     pub ethereal: bool,

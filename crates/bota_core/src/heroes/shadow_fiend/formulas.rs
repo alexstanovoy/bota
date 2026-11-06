@@ -108,9 +108,11 @@ pub fn requiem_fear_ticks(talented: bool) -> (u32, u32) {
 
 /// How wide a line of the requiem catches once it has flown so far of its
 /// distance: from [`rules::REQUIEM_LINE_WIDTH_START`] out to
-/// [`rules::REQUIEM_LINE_WIDTH_END`], evenly along the way.
-pub fn requiem_width(travelled: Fixed, distance: Fixed) -> Fixed {
-    let start = Fixed::from_int(rules::REQUIEM_LINE_WIDTH_START);
+/// [`rules::REQUIEM_LINE_WIDTH_END`], evenly along the way, both widened by
+/// the caster's AoE bonus (`requiem_line_width_start`,
+/// `requiem_line_width_end`: `affected_by_aoe_increase`).
+pub fn requiem_width(travelled: Fixed, distance: Fixed, aoe_bonus: i32) -> Fixed {
+    let start = Fixed::from_int(crate::widened(rules::REQUIEM_LINE_WIDTH_START, aoe_bonus));
     let growth = i64::from(rules::REQUIEM_LINE_WIDTH_END - rules::REQUIEM_LINE_WIDTH_START);
     if distance.raw <= 0 {
         return start;

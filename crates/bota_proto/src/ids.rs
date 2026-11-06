@@ -242,6 +242,8 @@ impl ItemId {
     /// Dota's `item_ghost`, the Ghost Scepter: its use turns the user
     /// ethereal.
     pub const GHOST_SCEPTER: ItemId = ItemId(92);
+    /// Dota's `item_chasm_stone`: its carrier's radii grow by its AoE bonus.
+    pub const CHASM_STONE: ItemId = ItemId(93);
 }
 
 /// What did something: the ability or the item a unit used, as Dota's combat

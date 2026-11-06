@@ -44,6 +44,8 @@ pub struct Item {
     pub recipe: Option<(String, Vec<Vec<String>>)>,
     /// `AbilityValues` by key, one number a level.
     pub values: Vec<(String, Vec<Milli>)>,
+    /// The keys of the values `affected_by_aoe_increase` marks, in their order.
+    pub aoe: Vec<String>,
 }
 
 /// The `AbilityBehavior` flags an item may carry.
@@ -140,6 +142,24 @@ const LEFT_OUT: &[&str] = &[
 /// Keys of a value's own block beside its `value`: how other things scale it.
 const VALUE_MODIFIERS: [&str; 1] = ["affected_by_aoe_increase"];
 
+/// The keys of the values an AoE bonus widens: those whose block says
+/// `affected_by_aoe_increase` 1.
+fn aoe(block: &Kv) -> Result<Vec<String>, String> {
+    let Some(values) = block.get("AbilityValues").and_then(Kv::block) else {
+        return Ok(Vec::new());
+    };
+    let mut keys = Vec::new();
+    for (name, value) in values {
+        match value.get("affected_by_aoe_increase") {
+            None => {}
+            Some(Kv::Text(flag)) if flag.trim() == "1" => keys.push(name.clone()),
+            Some(Kv::Text(flag)) if flag.trim() == "0" => {}
+            Some(_) => return Err(format!("{name}: affected_by_aoe_increase must be 0 or 1")),
+        }
+    }
+    Ok(keys)
+}
+
 /// Reads the block of the item `key`.
 pub fn read(key: &str, block: &Kv) -> Result<Item, String> {
     let fail = |why: String| format!("{key}: {why}");
@@ -232,6 +252,7 @@ pub fn read(key: &str, block: &Kv) -> Result<Item, String> {
         cooldown_in_inventory: whole("CooldownPausedOutOfInventory", 0)? == 1,
         recipe,
         values: values(block).map_err(fail)?,
+        aoe: aoe(block).map_err(fail)?,
     })
 }
 

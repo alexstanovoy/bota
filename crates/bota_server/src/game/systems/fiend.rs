@@ -30,7 +30,7 @@ impl World {
             return false;
         };
         let at = raze_landing(from.pos, from.facing, reach);
-        let radius = rules::units(rules::RAZE_RADIUS);
+        let radius = self.widened_of(caster, rules::RAZE_RADIUS);
         let struck: Vec<Entity> = self
             .entities
             .iter()
@@ -146,15 +146,14 @@ impl World {
         let damage_amp_bp = self.outgoing_damage_amp_bp(Some(caster), DamageKind::Magical);
         let (line, most) = requiem_fear_ticks(self.has_talent(caster, Talent::RequiemFear));
         let fear = Fear { line, most };
+        // How far the lines fly and how wide they catch both take the caster's AoE bonus.
+        let aoe_bonus = self.aoe_bonus_of(caster);
+        let distance = self.widened_of(caster, rules::REQUIEM_LINE_DISTANCE);
         for nth in 0..lines {
             let facing = Angle {
                 brads: (nth * 65536 / lines) as u16,
             };
-            let aim = point_ahead(
-                from.pos,
-                facing,
-                Fixed::from_int(rules::REQUIEM_LINE_DISTANCE),
-            );
+            let aim = point_ahead(from.pos, facing, distance);
             let line = self.spawn_placed(from.pos, facing, side);
             self.requiem_line.insert(
                 line,
@@ -163,7 +162,8 @@ impl World {
                     aim,
                     speed: Fixed::from_int(rules::REQUIEM_LINE_SPEED),
                     travelled: Fixed::ZERO,
-                    distance: Fixed::from_int(rules::REQUIEM_LINE_DISTANCE),
+                    distance,
+                    aoe_bonus,
                     damage: requiem_line_damage(level),
                     damage_amp_bp,
                     level: level as u8,
@@ -198,7 +198,7 @@ impl World {
             if let Some(transform) = self.transform.get_mut(entity) {
                 transform.pos = next;
             }
-            let width = requiem_width(line.travelled, line.distance);
+            let width = requiem_width(line.travelled, line.distance, line.aoe_bonus);
             let crossed: Vec<Entity> = self
                 .entities
                 .iter()

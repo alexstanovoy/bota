@@ -1086,6 +1086,16 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         },
         ..from(&ITEM_GHOST)
     },
+    // Chasm Stone: its AoE bonus, the best of several carried counting.
+    ItemDef {
+        name: "Chasm Stone",
+        carried: Carried {
+            aoe_bonus: int(&ITEM_CHASM_STONE, "aoe_bonus"),
+            hp: int(&ITEM_CHASM_STONE, "bonus_health"),
+            ..NOTHING
+        },
+        ..from(&ITEM_CHASM_STONE)
+    },
 ];
 
 /// One kind of lotus, as its script gives it.
@@ -1149,6 +1159,14 @@ const _: () = {
             % rules::TICKS_PER_SECOND as i32
             == 0
     );
+};
+
+// The radii of the catalogue an AoE bonus widens are the ones the script marks: a value that
+// ever stops being marked fails the build here (`affected_by_aoe_increase`).
+const _: () = {
+    assert!(ITEM_MAGIC_STICK.widened("charge_radius"));
+    assert!(ITEM_MAGIC_WAND.widened("charge_radius"));
+    assert!(ITEM_BLOOD_GRENADE.widened("radius"));
 };
 
 // Ghost Form is taken off by a basic dispel, as `SpellDispellableType` says.

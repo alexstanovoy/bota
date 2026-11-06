@@ -193,15 +193,26 @@ impl App {
 
     /// The radius of the area one slot's use at a point takes in, in world units; zero for
     /// one that takes in none (a ward's is what it gives, a view of the item's data, no rule of
-    /// the match). No ability aimed at a point takes in an area yet: an ability's area joins its
-    /// data when one does.
+    /// the match). An item's own radius is widened by the user's AoE bonus, as the server
+    /// widens it (a Blood Grenade's `radius` is `affected_by_aoe_increase`). No ability aimed at
+    /// a point takes in an area yet: an ability's area joins its data when one does.
     pub fn area_of(&self, slot: Slot) -> i32 {
         match slot {
             Slot::Ability(_) => 0,
             Slot::Item(at) => self
                 .item_in(at)
                 .and_then(|item| {
-                    bota_core::item_def(item.id).and_then(|def| def.radius_at(item.level))
+                    let def = bota_core::item_def(item.id)?;
+                    match def.effect {
+                        // A ward's circle is what the planted ward gives, no radius of its user's.
+                        bota_core::UseSpec::Ward { .. } => def.radius_at(item.level),
+                        _ => def.radius().map(|radius| {
+                            let bonus = self
+                                .slot_unit()
+                                .map_or(0, |unit| crate::lasthit::carried_of(unit).aoe_bonus);
+                            bota_core::widened(radius, bonus)
+                        }),
+                    }
                 })
                 .unwrap_or(0),
         }

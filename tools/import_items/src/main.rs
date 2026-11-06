@@ -149,6 +149,56 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
+    /// The values of bota's heroes' abilities an AoE bonus widens, as `bota_core`'s
+    /// `AOE_ABILITY_VALUES` lists them: each `("ability", "value"),` line of `aoe.rs`'s table.
+    fn bota_aoe_values() -> std::collections::BTreeSet<(String, String)> {
+        let source = std::fs::read_to_string(crate::repo().join("crates/bota_core/src/aoe.rs"))
+            .expect("bota_core's aoe.rs");
+        let table = source
+            .split("AOE_ABILITY_VALUES")
+            .nth(1)
+            .and_then(|rest| rest.split("];").next())
+            .expect("the table");
+        table
+            .lines()
+            .filter_map(|line| {
+                let mut quoted = line.split('"').skip(1).step_by(2);
+                Some((quoted.next()?.to_owned(), quoted.next()?.to_owned()))
+            })
+            .collect()
+    }
+
+    /// The hero values bota widens by an AoE bonus are those the install's scripts of its heroes
+    /// mark `affected_by_aoe_increase`, no more and no fewer: a new client build that marks or
+    /// unmarks one fails here until bota reads it through `widened` (or stops).
+    #[test]
+    #[ignore = "needs a Dota 2 install"]
+    fn the_hero_values_an_aoe_bonus_widens_are_the_installs() {
+        use heatel::keyvalues::Kv;
+        let mut marked = std::collections::BTreeSet::new();
+        for hero in ["nevermore", "pudge"] {
+            let root = crate::install::hero_script(None, hero).expect("the hero's script");
+            let abilities = root
+                .get("DOTAHeroes")
+                .and_then(|heroes| heroes.get(&format!("npc_dota_hero_{hero}")))
+                .and_then(|block| block.get("AbilityDefinitions"))
+                .and_then(Kv::block)
+                .expect("its abilities");
+            for (ability, def) in abilities {
+                let Some(values) = def.get("AbilityValues").and_then(Kv::block) else {
+                    continue;
+                };
+                for (key, value) in values {
+                    if matches!(value.get("affected_by_aoe_increase"), Some(Kv::Text(flag)) if flag.trim() == "1")
+                    {
+                        marked.insert((ability.clone(), key.clone()));
+                    }
+                }
+            }
+        }
+        assert_eq!(marked, bota_aoe_values());
+    }
+
     /// The committed table is what the install on this machine gives, the build it names aside:
     /// a new client build that changes an item fails here until the table is regenerated, or
     /// the 7.41f number is kept by an override.

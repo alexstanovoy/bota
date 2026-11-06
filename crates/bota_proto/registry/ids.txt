@@ -190,6 +190,7 @@ item 89 live item_refresher_shard
 item 90 live item_roshans_banner
 item 91 live item_infused_raindrop
 item 92 live item_ghost
+item 93 live item_chasm_stone
 
 effect 0 retired bota_haste
 effect 1 live modifier_flask_healing

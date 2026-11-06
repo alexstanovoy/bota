@@ -165,7 +165,8 @@ impl World {
         let Some(spec) = item_def(shot.item).and_then(ItemDef::grenade) else {
             return;
         };
-        let reach = rules::units(spec.radius);
+        // The burst's radius is its thrower's, widened by the thrower's AoE bonus.
+        let reach = self.widened_of(shot.owner, spec.radius);
         let struck: Vec<Entity> = self
             .entities
             .iter()

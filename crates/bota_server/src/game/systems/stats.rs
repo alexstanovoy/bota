@@ -429,6 +429,7 @@ fn kept<T: Ord + Default>(illusion: bool, bonus: T) -> T {
 /// an illusion keeps none of it nor of the armor.
 fn add_carried(now: &mut Stats, sums: &mut Sums, carried: &Carried, illusion: bool) {
     now.attributes += carried.attributes;
+    now.aoe_bonus = carried.aoe_bonus;
     now.max_hp += Fixed::from_int(carried.hp);
     now.max_mana += Fixed::from_int(carried.mana);
     sums.bonus_damage += kept(illusion, carried.damage);
@@ -805,6 +806,7 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32, night: bool) -> Stats {
         phased: false,
         invulnerable: kind.invulnerable,
         spell_immune: kind.spell_immune,
+        aoe_bonus: 0,
         ethereal: false,
         hit_count: kind.hit_count,
         glyph: false,

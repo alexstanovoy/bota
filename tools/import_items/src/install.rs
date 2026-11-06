@@ -48,6 +48,20 @@ pub fn read(dota: Option<&Path>) -> Result<Source, String> {
     Source::new(build, text(&bytes).map_err(|e| format!("items.txt: {e}"))?)
 }
 
+/// The script of one hero's abilities in the install under `dota` (else the first Steam
+/// library's): `scripts/npc/heroes/npc_dota_hero_<hero>.txt`, parsed.
+#[cfg(test)]
+pub fn hero_script(dota: Option<&Path>, hero: &str) -> Result<Kv, String> {
+    let game = find_game_dir(dota).ok_or("no Dota 2 install found; pass --dota")?;
+    let source = DirSource::new(&game);
+    let vpk = Vpk::open(&source, "pak01_dir.vpk").map_err(|e| format!("pak01_dir.vpk: {e}"))?;
+    let path = format!("scripts/npc/heroes/npc_dota_hero_{hero}.txt");
+    let bytes = vpk
+        .read_file(&source, &path)
+        .map_err(|e| format!("{path}: {e}"))?;
+    parse_kv(text(&bytes).map_err(|e| format!("{path}: {e}"))?).map_err(|e| format!("{path}: {e}"))
+}
+
 /// `ClientVersion <n> (<VersionDate>)` of a `steam.inf`.
 pub(crate) fn build(path: &Path) -> Result<String, String> {
     let size = std::fs::metadata(path)

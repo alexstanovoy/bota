@@ -181,6 +181,8 @@ pub struct ItemData {
     /// The ways it is built, each the parts a recipe asks for and the recipe scroll where that
     /// costs gold. Empty for one bought whole.
     pub builds: &'static [&'static [ItemId]],
+    /// The keys of the values an AoE bonus widens (`affected_by_aoe_increase`).
+    pub aoe: &'static [&'static str],
     /// `AbilityValues`: each a number a level, by Dota's key.
     pub values: &'static [(&'static str, &'static [Dec])],
 }
@@ -226,6 +228,18 @@ impl ItemData {
     /// The first level of the value of `key`.
     pub const fn first(&self, key: &str) -> Dec {
         self.value(key)[0]
+    }
+
+    /// Whether an AoE bonus widens the value of `key` (`affected_by_aoe_increase`).
+    pub const fn widened(&self, key: &str) -> bool {
+        let mut at = 0;
+        while at < self.aoe.len() {
+            if str_eq(self.aoe[at], key) {
+                return true;
+            }
+            at += 1;
+        }
+        false
     }
 }
 

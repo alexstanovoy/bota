@@ -3,7 +3,7 @@
 use bota_core::{
     ModifierKind, Stat, breaks_regen, dismember_bite_tick, item_def, rules, spell_buff,
 };
-use bota_proto::{AbilityId, DamageKind, Inflictor, ItemId, Team};
+use bota_proto::{AbilityId, DamageKind, Fixed, Inflictor, ItemId, Team};
 
 use crate::game::{Landed, Modifier, Stats, Table, World, cooldown_after, disabled_in};
 
@@ -106,6 +106,18 @@ impl World {
     pub fn disarmed(&self, entity: Entity) -> bool {
         self.controlled(entity, bota_core::Control::Disarm)
             || self.attack_immune(entity)
+    }
+
+    /// The world units an AoE bonus adds to an entity's radii that it widens: what it carries.
+    pub(crate) fn aoe_bonus_of(&self, entity: Entity) -> i32 {
+        self.stats.get(entity).map_or(0, |stats| stats.aoe_bonus)
+    }
+
+    /// One of an entity's radii, `radius` world units, as its AoE bonus widens it: a radius its
+    /// script marks `affected_by_aoe_increase` ([`bota_core::AOE_ABILITY_VALUES`], an item's
+    /// [`ItemData::aoe`](bota_core::ItemData::aoe)).
+    pub(crate) fn widened_of(&self, entity: Entity, radius: i32) -> Fixed {
+        rules::units(bota_core::widened(radius, self.aoe_bonus_of(entity)))
     }
 
     /// Whether no attack reaches an entity: an ethereal one (Dota's Ghost
@@ -335,7 +347,7 @@ impl World {
                 false,
             );
         }
-        let reach = rules::units(rules::ROT_RADIUS);
+        let reach = self.widened_of(owner, rules::ROT_RADIUS);
         for other in self.entities.iter().collect::<Vec<_>>() {
             if other == owner || !self.alive(other) || self.hull.get(other).is_none() {
                 continue;

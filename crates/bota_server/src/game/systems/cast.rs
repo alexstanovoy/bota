@@ -144,6 +144,7 @@ impl World {
             let Some(from) = self.pos(other) else {
                 continue;
             };
+            let bonus = self.aoe_bonus_of(other);
             let Some(bag) = self.inventory.get_mut(other) else {
                 continue;
             };
@@ -151,7 +152,8 @@ impl World {
                 let Some(def) = item_def(stack.id) else {
                     continue;
                 };
-                let reach = def.charge_radius().unwrap_or(0);
+                // The stick's radius is its carrier's, widened by the carrier's AoE bonus.
+                let reach = bota_core::widened(def.charge_radius().unwrap_or(0), bonus);
                 if def.cast_charges > 0 && from.within(at, rules::units(reach)) {
                     stack.charges = stack.charges.saturating_add(1).min(def.cast_charges);
                 }

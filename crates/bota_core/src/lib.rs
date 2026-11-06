@@ -11,6 +11,7 @@
 mod ability;
 mod ability_neutral;
 mod aggro;
+mod aoe;
 mod attack_class;
 mod aura;
 mod camp;
@@ -76,6 +77,7 @@ mod tests;
 pub use ability::*;
 pub use ability_neutral::*;
 pub use aggro::*;
+pub use aoe::*;
 pub use attack_class::*;
 pub use aura::*;
 pub use camp::*;

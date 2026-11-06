@@ -194,6 +194,8 @@ fn write_row(out: &mut String, entry: &Registered, row: &Item, builds: &[Vec<u16
         })
         .collect();
     let _ = writeln!(out, "    builds: &[{}],", ways.join(", "));
+    let aoe: Vec<String> = row.aoe.iter().map(|key| format!("\"{key}\"")).collect();
+    let _ = writeln!(out, "    aoe: &[{}],", aoe.join(", "));
     if row.values.is_empty() {
         out.push_str("    values: &[],\n};\n");
         return;

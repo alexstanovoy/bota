@@ -77,6 +77,10 @@ pub struct Carried {
     /// [`rules::SPELL_LIFESTEAL_CREEP_PCT`] of it off what is no hero.
     /// Several of one item count once, of different items add up.
     pub spell_lifesteal_pct: i32,
+    /// World units added to every radius of the carrier's that an AoE bonus widens
+    /// ([`widened`](crate::widened)): Dota's Chasm Stone. Of several carried, the best counts ("Area of Effect
+    /// bonuses from multiple Chasm Stones or its upgrades do not stack").
+    pub aoe_bonus: i32,
 }
 
 /// Nothing carried at all, so an entry names only what it adds.
@@ -102,6 +106,7 @@ pub(crate) const NOTHING: Carried = Carried {
     magic_resist_bp: 0,
     lifesteal_pct: 0,
     spell_lifesteal_pct: 0,
+    aoe_bonus: 0,
 };
 
 /// Whole points of one attribute and none of the others.
@@ -891,6 +896,7 @@ pub fn carried_bonus(items: impl Iterator<Item = CarriedItem>, ranged: bool) -> 
         total.melee_range += carried.melee_range;
         total.mana_pct += carried.mana_pct;
         total.magic_resist_bp = resist_both(total.magic_resist_bp, carried.magic_resist_bp);
+        total.aoe_bonus = total.aoe_bonus.max(carried.aoe_bonus);
         total.lifesteal_pct += carried.lifesteal_pct;
         if carried.spell_lifesteal_pct > 0
             && !spell_lifesteal_of.contains(&Some(stack.id))

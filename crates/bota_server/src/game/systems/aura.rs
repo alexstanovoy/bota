@@ -141,7 +141,9 @@ impl World {
         } else {
             aura.radius
         };
-        let reach = rules::units(radius);
+        // An AoE bonus widens every aura (Liquipedia, Area of Effect: "AoE Bonuses affect all
+        // Auras"; Presence of the Dark Lord's `presence_radius` is marked).
+        let reach = self.widened_of(carrier, radius);
         let steps = self
             .upgrades
             .get(carrier)

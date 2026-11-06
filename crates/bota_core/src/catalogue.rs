@@ -235,8 +235,10 @@ impl Fnv {
             magic_resist_bp,
             lifesteal_pct,
             spell_lifesteal_pct,
+            aoe_bonus,
         } = value;
-        self.attributes(attributes)
+        let fnv = self
+            .attributes(attributes)
             .int(move_speed as i64)
             .int(lace_speed as i64)
             .int(damage as i64)
@@ -256,7 +258,13 @@ impl Fnv {
             .int(mana_pct as i64)
             .int(magic_resist_bp as i64)
             .int(lifesteal_pct as i64)
-            .int(spell_lifesteal_pct as i64)
+            .int(spell_lifesteal_pct as i64);
+        // What carries no AoE bonus digests as it did before the bonus was.
+        if aoe_bonus == 0 {
+            fnv
+        } else {
+            fnv.u64(0xA5).int(aoe_bonus as i64)
+        }
     }
 
     const fn mend(self, value: Mend) -> Fnv {
