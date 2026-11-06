@@ -225,8 +225,9 @@ pub enum RejectReason {
     /// starts with or one a death handed out. No shop buys it back.
     Unsellable,
     /// A `Hello` admitted to nothing: no key where one is needed, a key no
-    /// seat or role is held for, no open seat, or an unreserved seat asked
-    /// for mid-match without the key that claimed it.
+    /// seat or role is held for, no open seat, an unreserved seat asked
+    /// for mid-match without the key that claimed it, or no room for one
+    /// more watcher without a key.
     NotAdmitted,
     /// A `Hello` with the right key for a seat a live connection holds. It
     /// may come back once that connection has ended or been found dead.

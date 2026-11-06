@@ -40,13 +40,21 @@ Keys never come from arguments, which every process listing shows, only from the
 the seats (`key_hex:team:name[:kind],...`) and `BOTA_REFEREE_KEY` admits a referee. The key is what admits a client;
 the WebSocket path and `Origin` are not checked.
 
-Connections that have not said Hello yet are bounded per source, so that one host cannot keep the players out: TLS and
-WebSocket handshakes under way and connections without a Hello, 16 each per IPv4 address, 16 per IPv6 /64 and 64 per
-IPv6 /48; and connections without a Hello take a quarter of `--max-connections` at most, a newcomer past it (or past
-`--max-connections`) taking the place of the oldest stranger of the source holding the most. A peer let go (refused
-at its Hello, say) is read on for a while and counts meanwhile as a stranger of its source, the first to be cut short
-for a newcomer. A connection that said Hello is never let go for room and has no bound per source: players behind one address all play. Behind a reverse
-proxy every peer counts as the proxy's address: `X-Forwarded-For`, which any peer could forge, is not read.
+Connections that have not said Hello yet are bounded per source, so that one host cannot keep the players out:
+
+- TLS and WebSocket handshakes under way share one pool of 64 for every peer; a peer that finds it full is let go at
+  once, so the kernel's backlog never fills. A source holds 16 of them at most per IPv4 address, 16 per IPv6 /64 and
+  64 per IPv6 /48.
+- Connections without a Hello have the same bounds per source, and take a quarter of `--max-connections` at most. A
+  newcomer past that (or past `--max-connections`) takes the place of the oldest stranger of the source holding the
+  most. A peer let go while a stranger (refused at its Hello, say) is read on for a while and counts meanwhile as a
+  stranger of its source, the first to be cut short for a newcomer.
+- Watchers without a seat's key are never let go for room, so they are bounded too: 4 per IPv4 address, IPv6 /64 and
+  IPv6 /48, and a quarter of `--max-connections` in all; one past either is refused as `NotAdmitted`.
+- Players that said Hello have no bound per source and are never let go for room: players behind one address all play.
+
+Behind a reverse proxy every peer counts as the proxy's address: `X-Forwarded-For`, which any peer could forge, is not
+read.
 
 ### Launcher contract
 

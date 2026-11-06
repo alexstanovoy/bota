@@ -298,3 +298,53 @@ fn players_from_one_address_that_break_off_together_all_join_again() {
     );
     drop(broken);
 }
+
+/// Says Hello as a keyless spectator; whether the server welcomed it, or why it refused.
+fn watch_from(addr: SocketAddr) -> (TestClient, Result<(), RejectReason>) {
+    let mut watcher = TestClient::connect(addr);
+    watcher.hello(Role::Spectator, None);
+    let told = watcher.recv_until(|msg| match msg {
+        ServerMsg::Welcome { .. } => Some(Ok(())),
+        ServerMsg::Refused { reason } => Some(Err(reason)),
+        _ => None,
+    });
+    (watcher, told)
+}
+
+/// Keyless watchers are bounded per source and in all, and a watcher past either is refused:
+/// a source of watchers, who are never let go for room, cannot take every place of a server.
+#[test]
+fn keyless_watchers_are_bounded_per_source_and_in_all() {
+    let mut opts = realtime(36);
+    opts.max_connections = Some(32);
+    opts.spectators = Spectators::Open;
+    let (tcp, _) = start_on_both_families(opts);
+    let near = SocketAddr::from(([127, 0, 0, 1], tcp));
+    let far: SocketAddr = format!("[::1]:{tcp}").parse().expect("an address");
+    let mut watchers = Vec::new();
+    for _ in 0..crate::net::MAX_WATCHERS_PER_GROUP {
+        let (watcher, told) = watch_from(near);
+        assert_eq!(told, Ok(()), "a watcher within its source's bound");
+        watchers.push(watcher);
+    }
+    let (_, told) = watch_from(near);
+    assert_eq!(
+        told,
+        Err(RejectReason::NotAdmitted),
+        "past its source's bound"
+    );
+    // A quarter of 32 in all: four more from the other source fill it.
+    for _ in 0..crate::net::MAX_WATCHERS_PER_GROUP {
+        let (watcher, told) = watch_from(far);
+        assert_eq!(told, Ok(()), "a watcher within the bound in all");
+        watchers.push(watcher);
+    }
+    let (_, told) = watch_from(far);
+    assert_eq!(
+        told,
+        Err(RejectReason::NotAdmitted),
+        "past the bound in all"
+    );
+    let (_seated, slot) = join_as_bot(far, "player");
+    assert_eq!(slot, Some(SlotId(0)), "a player still sits");
+}

@@ -984,6 +984,9 @@ impl Server {
             if watching >= self.opts.max_spectators_per_seat {
                 return Err(RejectReason::NotAdmitted);
             }
+        } else if let Some(reason) = self.no_room_to_watch(id) {
+            eprintln!("bota_server: player {} may not watch: {reason}", id.0);
+            return Err(RejectReason::NotAdmitted);
         }
         self.spectators.push(Watcher {
             id,
@@ -993,6 +996,29 @@ impl Server {
             name: bota_core::clean_name(name),
         });
         Ok(())
+    }
+
+    /// Why a keyless watcher would be one too many, if it would: watchers are
+    /// never let go for room, so their source holds [`MAX_WATCHERS_PER_GROUP`]
+    /// of them at most in each of its groups, and all of them take a share of
+    /// [`ServerOpts::max_connections`] at most ([`STRANGERS_SHARE_DIVISOR`]).
+    ///
+    /// [`MAX_WATCHERS_PER_GROUP`]: crate::net::MAX_WATCHERS_PER_GROUP
+    fn no_room_to_watch(&self, id: PlayerId) -> Option<&'static str> {
+        let keyless = || {
+            self.spectators
+                .iter()
+                .filter(|w| !w.locked)
+                .filter_map(|w| self.conn(w.id))
+        };
+        if let Some(most) = self.opts.max_connections
+            && keyless().count() >= (most / STRANGERS_SHARE_DIVISOR).max(1)
+        {
+            return Some("the watchers fill their share of the connections");
+        }
+        let peer = self.conn(id).and_then(|c| c.peer)?;
+        crate::net::over_watchers_bound(peer, keyless().filter_map(|c| c.peer))
+            .then_some("its address holds as many watchers as it may")
     }
 
     /// Seats a connection in a seat its key entitles it to, unless a live

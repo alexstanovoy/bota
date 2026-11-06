@@ -101,15 +101,33 @@ impl Drop for Place {
     }
 }
 
+/// Keyless watchers one group of addresses may hold, in every group alike: they are never let
+/// go for room, so a few per source are all one source may have.
+pub const MAX_WATCHERS_PER_GROUP: usize = 4;
+
 /// Whether a connection from `ip` would pass a bound of its groups, counting `peers`, the
 /// addresses of the connections already held.
 pub fn over_bound(ip: IpAddr, peers: impl Iterator<Item = IpAddr> + Clone) -> bool {
+    over(ip, peers, |most| most)
+}
+
+/// Whether a watcher from `ip` would pass [`MAX_WATCHERS_PER_GROUP`] in a group of its,
+/// counting `peers`, the addresses of the keyless watchers already held.
+pub fn over_watchers_bound(ip: IpAddr, peers: impl Iterator<Item = IpAddr> + Clone) -> bool {
+    over(ip, peers, |_| MAX_WATCHERS_PER_GROUP)
+}
+
+fn over(
+    ip: IpAddr,
+    peers: impl Iterator<Item = IpAddr> + Clone,
+    bound: impl Fn(usize) -> usize,
+) -> bool {
     groups(ip).into_iter().any(|(group, most)| {
         peers
             .clone()
             .filter(|peer| groups(*peer).iter().any(|(theirs, _)| *theirs == group))
             .count()
-            >= most
+            >= bound(most)
     })
 }
 
