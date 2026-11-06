@@ -44,6 +44,61 @@ fn scenery(map: u16, trees: Vec<Vec2>) -> ServerMsg {
     }
 }
 
+fn welcome() -> ServerMsg {
+    ServerMsg::Welcome {
+        player_id: bota_proto::PlayerId(1),
+        slot: None,
+        tick_rate: 30,
+        mode: TickMode::Realtime,
+    }
+}
+
+#[test]
+fn scenery_reconnect_keeps_the_same_trees_and_starts_the_match() {
+    let mut seat = Seat::watching(SessionOptions::default());
+    for _ in 0..2 {
+        seat.ingest(welcome(), &mut ())
+            .expect("a fresh connection welcomed");
+        seat.ingest(scenery(2, trees()), &mut ())
+            .expect("the same scenery on a fresh connection");
+    }
+    assert!(matches!(
+        seat.ingest(
+            ServerMsg::MatchStart {
+                info: info(trees())
+            },
+            &mut ()
+        ),
+        Ok(Ingested::Started { .. })
+    ));
+    assert_eq!(
+        refusal(&mut seat, scenery(2, trees())),
+        "server sent Scenery after MatchStart"
+    );
+}
+
+#[test]
+fn scenery_reconnect_refuses_changed_scenery_and_duplicate_on_one_connection() {
+    for changed in [scenery(1, trees()), scenery(2, Vec::new())] {
+        let mut seat = Seat::watching(SessionOptions::default());
+        seat.ingest(welcome(), &mut ()).expect("welcomed");
+        seat.ingest(scenery(2, trees()), &mut ())
+            .expect("the first scenery");
+        seat.ingest(welcome(), &mut ()).expect("welcomed again");
+        assert_eq!(refusal(&mut seat, changed), "server told another scenery");
+    }
+    let mut seat = Seat::watching(SessionOptions::default());
+    seat.ingest(scenery(2, trees()), &mut ())
+        .expect("the first scenery");
+    seat.ingest(welcome(), &mut ()).expect("welcomed again");
+    seat.ingest(scenery(2, trees()), &mut ())
+        .expect("the repeated scenery");
+    assert_eq!(
+        refusal(&mut seat, scenery(2, trees())),
+        "server sent Scenery twice"
+    );
+}
+
 /// What the seat refused a message with.
 fn refusal(seat: &mut Seat, msg: ServerMsg) -> &'static str {
     match seat.ingest(msg, &mut ()) {

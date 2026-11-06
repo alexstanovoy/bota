@@ -36,6 +36,7 @@ pub struct Seat {
     lobby_seats: Vec<(SlotId, Team)>,
     /// The map and trees the server told on joining, which the match start must state again.
     scenery: Option<(MapId, Vec<Vec2>)>,
+    scenery_on_connection: bool,
 }
 
 impl Seat {
@@ -49,6 +50,7 @@ impl Seat {
             resuming: false,
             lobby_seats: Vec::new(),
             scenery: None,
+            scenery_on_connection: false,
         }
     }
 
@@ -62,6 +64,7 @@ impl Seat {
             resuming: false,
             lobby_seats: Vec::new(),
             scenery: None,
+            scenery_on_connection: false,
         }
     }
 
@@ -106,6 +109,7 @@ impl Seat {
             ServerMsg::Welcome {
                 player_id, slot, ..
             } => {
+                self.scenery_on_connection = false;
                 // A welcome on a fresh connection before the start: the seat
                 // it names is the one the match will be checked against.
                 if let (Some(seated), Some(slot)) = (&mut self.seated, slot) {
@@ -115,10 +119,7 @@ impl Seat {
                 return Ok(Ingested::Passed(Box::new(msg)));
             }
             ServerMsg::Scenery { map, ref trees } => {
-                if self.scenery.is_some() {
-                    return Err(SessionError::Stream("server sent Scenery twice").into());
-                }
-                self.scenery = Some((map, trees.clone()));
+                self.remember_scenery(map, trees)?;
                 return Ok(Ingested::Passed(Box::new(msg)));
             }
             ServerMsg::LobbyState {
@@ -213,6 +214,21 @@ impl Seat {
         };
         self.session = Some(session);
         Ok(started)
+    }
+
+    fn remember_scenery(&mut self, map: MapId, trees: &[Vec2]) -> Result<(), SessionError> {
+        if self.scenery_on_connection {
+            return Err(SessionError::Stream("server sent Scenery twice"));
+        }
+        if let Some((known_map, known_trees)) = &self.scenery {
+            if *known_map != map || known_trees != trees {
+                return Err(SessionError::Stream("server told another scenery"));
+            }
+        } else {
+            self.scenery = Some((map, trees.to_vec()));
+        }
+        self.scenery_on_connection = true;
+        Ok(())
     }
 
     /// The seat the welcome assigned; none for a spectator or a replay.

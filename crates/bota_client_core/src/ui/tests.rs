@@ -2298,3 +2298,29 @@ fn a_credited_tower_kill_names_the_hero_but_tracks_the_physical_attacker() {
             .any(|cue| cue.kind == crate::ui::app::CueKind::HeroKill)
     );
 }
+
+#[test]
+fn scenery_reconnect_keeps_the_original_scenery_for_players_and_spectators() {
+    for slot in [Some(SlotId(0)), None] {
+        let mut app = App::new(crate::ui::app::Source::Live(Box::<HangingUp>::default()));
+        for trees in [vec![Vec2::from_ints(100, 100)], Vec::new()] {
+            app.handle(bota_proto::ServerMsg::Welcome {
+                player_id: bota_proto::PlayerId(1),
+                slot,
+                tick_rate: 30,
+                mode: bota_proto::TickMode::Realtime,
+            });
+            app.handle(bota_proto::ServerMsg::Scenery {
+                map: bota_proto::MapId(0),
+                trees,
+            });
+        }
+        assert!(
+            app.lost,
+            "a reconnect cannot replace previously used scenery"
+        );
+        assert!(
+            matches!(app.feed.last().map(|line| &line.kind), Some(FeedKind::ProtocolBroken { why }) if why == "server told another scenery")
+        );
+    }
+}

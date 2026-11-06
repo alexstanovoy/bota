@@ -982,7 +982,9 @@ impl App {
             ServerMsg::Welcome { slot, .. } => {
                 self.my_slot = slot.or(self.pov);
                 let live = matches!(self.source, Source::Live(_));
-                if let (true, Some(seated), None) = (live, self.lobby.seated(), self.seat.session())
+                if live
+                    && self.seat.seated().is_none()
+                    && let (Some(seated), None) = (self.lobby.seated(), self.seat.session())
                 {
                     self.seat = Seat::new(seated, SESSION_OPTIONS);
                 }

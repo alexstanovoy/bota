@@ -58,6 +58,72 @@ fn opts() -> ServerOpts {
     }
 }
 
+fn spectator_scenery(app: &mut bota_client_core::App) {
+    let until = std::time::Instant::now() + Duration::from_secs(60);
+    loop {
+        assert!(
+            std::time::Instant::now() < until,
+            "the spectator receives scenery"
+        );
+        for message in app.source.poll(0.0) {
+            let scenery = matches!(message, ServerMsg::Scenery { .. });
+            app.handle(message);
+            assert!(!app.lost, "valid reconnect messages are accepted");
+            if scenery {
+                return;
+            }
+        }
+        thread::yield_now();
+    }
+}
+
+#[test]
+fn a_spectator_reconnects_during_picks_and_plays_after_the_scenery_is_repeated() {
+    use bota_client_core::{App, Net, Redial, Source};
+    let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
+    let address = listener.local_addr().expect("bound").to_string();
+    let mut options = opts();
+    options.players = 1;
+    options.dummy_seat = false;
+    options.mode = TickMode::Realtime;
+    options.spectators = Spectators::Open;
+    let server = thread::spawn(move || run(listener, options));
+    let connection = || {
+        Source::Live(Box::new(
+            Net::connect_with(&address, Redial::OFF).expect("connected"),
+        ))
+    };
+    let mut app = App::new(connection());
+    let hello = ClientMsg::hello(
+        bota_proto::Role::Spectator,
+        "watching",
+        None,
+        bota_core::WIRE_FINGERPRINT,
+    );
+    app.source.send(&hello);
+    spectator_scenery(&mut app);
+    let trees = app.trees().to_vec();
+    assert!(!trees.is_empty(), "real scenery was received");
+    app.source = connection();
+    app.source.send(&hello);
+    spectator_scenery(&mut app);
+    assert_eq!(app.trees(), trees);
+    let (mut driver, _) =
+        Link::join(&address, "driver", HeroId::SHADOW_FIEND, None).expect("a seat");
+    let until = std::time::Instant::now() + Duration::from_secs(60);
+    while app.view().is_none() {
+        assert!(
+            std::time::Instant::now() < until,
+            "the match starts for the reconnected spectator"
+        );
+        app.pump(0.0);
+        assert!(!app.lost, "the match stream remains valid");
+        thread::yield_now();
+    }
+    driver.send(&ClientMsg::LeaveGame).expect("end the match");
+    server.join().expect("server thread").expect("match ended");
+}
+
 /// A participant joining before the match starts is told the map and its trees right after the
 /// welcome, ahead of the lobby and the match start, and the match start states the same list: a
 /// client builds the scenery before the hero is picked.
