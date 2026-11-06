@@ -255,3 +255,46 @@ fn a_source_redialling_with_refused_hellos_cannot_keep_a_fair_client_out() {
     stop.store(true, Ordering::Relaxed);
     assert!(welcomed, "the fair client was not seated");
 }
+
+/// Players behind one address that all break off together, and are read on a while after, are
+/// players still and no strangers of their address: they all join again at once.
+#[test]
+fn players_from_one_address_that_break_off_together_all_join_again() {
+    let mut opts = realtime(35);
+    opts.max_connections = Some(64);
+    opts.players = 10;
+    let (tcp, _) = start_on_both_families(opts);
+    let near = SocketAddr::from(([127, 0, 0, 1], tcp));
+    let join_all = |names: &str| -> Vec<(TestClient, Option<SlotId>)> {
+        let clients: Vec<TestClient> = (0..10).map(|_| TestClient::connect(near)).collect();
+        clients
+            .into_iter()
+            .enumerate()
+            .map(|(n, client)| hello_as_bot(client, &format!("{names}{n}")))
+            .collect()
+    };
+    let first = join_all("lan");
+    assert!(first.iter().all(|(_, slot)| slot.is_some()));
+    // Each breaks the protocol and stays on the line, read on by the server for a while.
+    let undecodable = [1, 0, 0, 0, 0xff];
+    let broken: Vec<TestClient> = first
+        .into_iter()
+        .map(|(mut client, _)| {
+            client.stream.write_all(&undecodable).expect("send");
+            client
+        })
+        .collect();
+    for mut client in broken
+        .iter()
+        .map(|c| c.stream.try_clone().expect("a clone"))
+    {
+        let mut buf = [0u8; 4096];
+        while let Ok(1..) = client.read(&mut buf) {}
+    }
+    let again = join_all("back");
+    assert!(
+        again.iter().all(|(_, slot)| slot.is_some()),
+        "a player of the address was kept out"
+    );
+    drop(broken);
+}

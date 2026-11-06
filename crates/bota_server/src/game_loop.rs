@@ -588,11 +588,24 @@ impl Server {
     }
 
     /// Ends a connection the server is done with: what is queued still goes
-    /// out before it hangs up.
+    /// out before it hangs up. One that never said Hello, or was refused at it,
+    /// is read on meanwhile as a stranger of its source (see [`Server::let_go`]).
     fn drop_conn(&mut self, id: PlayerId) {
+        let stranger = !self.greeted(id);
+        self.let_go(id, stranger);
+    }
+
+    /// Ends a connection as [`Server::drop_conn`] does, `stranger` saying
+    /// whether it is no one's: such a connection, read on for a while, counts
+    /// as a stranger of its source until its reader ends, and is the first a
+    /// newcomer cuts short. One that said Hello is read on outside the bounds:
+    /// players that drop together never lock their address out.
+    fn let_go(&mut self, id: PlayerId, stranger: bool) {
         if let Some(conn) = self.forget(id) {
             conn.close();
-            self.parting.push(conn);
+            if stranger {
+                self.parting.push(conn);
+            }
         }
     }
 
@@ -652,12 +665,13 @@ impl Server {
         // never said hello is nobody's business.
         if self.conn(id).is_some() {
             let slot = self.roster.seat_of(id).map(|s| s.slot);
+            let stranger = !self.greeted(id);
             let told = self.told.take(id);
             self.roster.release(id);
             if broken {
                 self.lose_conn(id);
             } else {
-                self.drop_conn(id);
+                self.let_go(id, stranger);
             }
             if let Some(told) = told {
                 self.tell_departure(told, slot, in_match);
