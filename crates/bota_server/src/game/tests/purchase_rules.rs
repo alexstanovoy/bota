@@ -213,3 +213,87 @@ fn a_full_bag_and_stash_refuse_a_purchase_but_a_scroll_a_salve_and_a_ward_find_r
         ItemId::CLARITY
     ));
 }
+
+#[test]
+fn announced_home_shop_geometry_matches_server_execution_for_every_map_and_carrier() {
+    use bota_proto::{MapId, Team};
+    for map_id in [MapId(0), MapId(1), MapId(2)] {
+        for team in [Team::Radiant, Team::Dire] {
+            let mut config = super::support::config();
+            config.map = map_id;
+            config.picks[0].team = team;
+            let map = bota_core::map_of(map_id);
+            config.objectives = map.default_objectives;
+            config.runes = map.default_runes;
+            let info = config.info();
+            assert_eq!(info.fountains, map.fountains);
+            assert_eq!(info.shop_range, bota_core::rules::SHOP_RANGE);
+            let statics = bota_client_core::MatchStatic::new(&info).expect("announced map");
+            let mut world = World::for_match(&config, config.rng());
+            let carriers = [
+                world.seats[0].unit.unwrap(),
+                world.seats[0].courier.unwrap(),
+            ];
+            let home = bota_core::fountain_pos(map, team);
+            for (index, entity) in carriers.into_iter().enumerate() {
+                for distance in [
+                    0,
+                    bota_core::rules::SHOP_RANGE,
+                    bota_core::rules::SHOP_RANGE + 1,
+                ] {
+                    let direction = if team == Team::Radiant { 1 } else { -1 };
+                    world.transform.get_mut(entity).unwrap().pos =
+                        home + Vec2::from_ints(direction * distance, 0);
+                    let view = world.view_full();
+                    let context =
+                        bota_client_core::purchase_context(&view, &view.players[0], &statics);
+                    let carrier = if index == 0 {
+                        context.hero
+                    } else {
+                        context.courier
+                    }
+                    .unwrap();
+                    assert_eq!(
+                        carrier.shops.base,
+                        world.at_shop(entity),
+                        "map={map_id:?}, team={team:?}, carrier={index}, distance={distance}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn a_dead_hero_at_home_still_buys_base_items_into_its_stash_through_orders() {
+    let (mut local, mut session) = arranged(&STATES[0]);
+    let world = local.world_mut();
+    let hero = world.seats[0].unit.unwrap();
+    world.kill_by_hp_removal(world.seats[1].unit.unwrap(), hero);
+    let dead = local.step(&[&[], &[]]).expect("death tick");
+    for message in dead.into_iter().next().unwrap() {
+        session.ingest(message, &mut ()).expect("dead snapshot");
+    }
+    assert!(local.world().seats[0].dead(), "the hero is actually dead");
+    let order = session
+        .issue(bota_client_core::IssuedOrder::hero(Order::Buy {
+            item: ItemId::IRON_BRANCH,
+        }))
+        .expect("a dead hero may issue a buy");
+    let bought = local.step(&[&[order], &[]]).expect("purchase tick");
+    for message in bought.into_iter().next().unwrap() {
+        session.ingest(message, &mut ()).expect("purchase snapshot");
+    }
+    assert!(
+        session
+            .own_player()
+            .unwrap()
+            .stash
+            .as_ref()
+            .unwrap()
+            .iter()
+            .flatten()
+            .any(|item| item.id == ItemId::IRON_BRANCH),
+        "death does not suppress purchases into the stash"
+    );
+}

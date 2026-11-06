@@ -34,11 +34,18 @@ impl App {
     }
 
     pub fn unit_at_secret_shop(&self, id: bota_proto::EntityId) -> bool {
+        self.unit_carrier(id)
+            .is_some_and(|carrier| carrier.shops.secret)
+    }
+
+    pub(crate) fn unit_carrier(
+        &self,
+        id: bota_proto::EntityId,
+    ) -> Option<bota_core::PurchaseCarrier<'_, bota_proto::ItemView>> {
         self.view()
             .and_then(|view| view.unit(id))
             .zip(self.statics())
             .and_then(|(unit, statics)| crate::shop::purchase_carrier(unit, statics))
-            .is_some_and(|carrier| carrier.shops.secret)
     }
 
     pub fn secret_shop_accessible(&self) -> bool {

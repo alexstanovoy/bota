@@ -860,11 +860,15 @@ impl App {
         self.view()?.viewer
     }
 
-    /// Whether our hero stands in its home shop.
+    /// Whether our living hero or personal courier physically reaches the home shop.
     pub fn at_home_shop(&self) -> bool {
-        self.shop_context()
-            .and_then(|context| context.hero)
-            .is_some_and(|hero| hero.shops.base)
+        self.shop_context().is_some_and(|context| {
+            context
+                .hero
+                .iter()
+                .chain(&context.courier)
+                .any(|carrier| carrier.shops.base)
+        })
     }
 
     /// The seat the bottom panel falls back to: our own, else the first one.

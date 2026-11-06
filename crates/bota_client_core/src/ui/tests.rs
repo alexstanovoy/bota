@@ -1,5 +1,6 @@
 //! The client core, tested without a window or a socket.
 
+use crate::BAG_SLOTS;
 use crate::ui::ChannelStops;
 use crate::ui::app::{App, CueKind, FeedKind, Killer, Tap, Victim, tap_again};
 use crate::ui::slots::{Look, Press, Slot, ability_look, decide, item_look, order_for};
@@ -2435,4 +2436,89 @@ fn shop_context_home_access_and_placement_use_the_transmitted_fountain_and_radiu
             "a full stash permits a purchase only into an eligible hero bag"
         );
     }
+}
+
+fn home_context_app(hero_at: Vec2, courier_at: Vec2, dead: bool) -> App {
+    let mut start = a_match_start();
+    if let bota_proto::ServerMsg::MatchStart { info } = &mut start {
+        info.fountains[0] = Vec2::from_ints(200, 200);
+        info.shop_range = 64;
+    }
+    let mut hero = a_unit();
+    hero.pos = hero_at;
+    if dead {
+        hero.hp = 0;
+    }
+    let mut courier = owned(4, UnitKind::Courier, Some(SlotId(0)));
+    courier.hero = None;
+    courier.items.truncate(6);
+    courier.pos = courier_at;
+    let mut player = a_player();
+    player.unit = Some(hero.id);
+    player.respawn_left = if dead { 30 } else { 0 };
+    let mut built = an_item(None, 0, 0, None);
+    built.id = ItemId::BRACER;
+    built.disassembly = Some(bota_proto::Disassembly::Window { ticks_left: 300 });
+    player.stash.as_mut().unwrap()[0] = Some(built);
+    let mut app = a_silent_app();
+    app.my_slot = Some(SlotId(0));
+    app.handle(start);
+    app.handle(snapshot_of(1, vec![hero, courier], vec![player]));
+    assert!(!app.lost, "valid shop context");
+    app
+}
+
+#[test]
+fn shop_context_home_indicator_includes_a_courier_without_the_hero() {
+    let app = home_context_app(
+        Vec2::from_ints(5000, 5000),
+        Vec2::from_ints(200, 200),
+        false,
+    );
+    assert!(
+        app.at_home_shop(),
+        "the owner's courier provides physical home access"
+    );
+    let context = app.shop_context().unwrap();
+    assert!(!context.hero.unwrap().shops.base);
+    assert!(context.courier.unwrap().shops.base);
+}
+
+#[test]
+fn shop_context_stash_disassembly_uses_the_commanded_carriers_announced_home() {
+    let mut app = home_context_app(
+        Vec2::from_ints(5000, 5000),
+        Vec2::from_ints(200, 200),
+        false,
+    );
+    app.act(crate::Intent::SelectCourier);
+    assert!(
+        app.can_disassemble(BAG_SLOTS),
+        "the courier reaches this match's stash"
+    );
+    app.act(crate::Intent::SelectHero);
+    assert!(
+        !app.can_disassemble(BAG_SLOTS),
+        "the commanded hero is away"
+    );
+}
+
+#[test]
+fn shop_context_dead_hero_has_no_physical_home_access_but_can_buy_into_stash() {
+    let app = home_context_app(Vec2::from_ints(200, 200), Vec2::from_ints(5000, 5000), true);
+    assert!(!app.at_home_shop(), "a dead body is not a physical carrier");
+    let view = app.view().unwrap();
+    assert!(
+        crate::purchase_fits(
+            view,
+            &view.players[0],
+            app.statics().unwrap(),
+            ItemId::IRON_BRANCH
+        ),
+        "base purchases remain possible into the stash during death"
+    );
+    assert!(
+        app.can_disassemble(BAG_SLOTS),
+        "the server permits stash disassembly during death"
+    );
 }

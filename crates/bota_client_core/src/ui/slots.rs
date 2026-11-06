@@ -78,12 +78,13 @@ impl App {
     pub fn can_disassemble(&self, slot: u8) -> bool {
         let in_reach = slot < BAG_SLOTS
             || self
-                .slot_unit()
-                .zip(self.my_team())
-                .is_some_and(|(unit, team)| {
-                    self.session()
-                        .is_some_and(|s| bota_core::at_home_shop(s.map(), team, unit.pos))
-                });
+                .my_slot
+                .and_then(|slot| self.player(slot))
+                .is_some_and(|player| player.respawn_left > 0)
+            || self
+                .commanded()
+                .and_then(|id| self.unit_carrier(id))
+                .is_some_and(|carrier| carrier.shops.base);
         in_reach
             && self
                 .item_in(slot)
