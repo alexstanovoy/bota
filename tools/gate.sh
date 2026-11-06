@@ -113,7 +113,7 @@ run_steps() { # the lines of lint_steps or wasm_steps (tools/steps.sh) on stdin:
 step ignored-audit tools/ignored_audit.sh
 # shellcheck disable=SC2086
 step test-groups python3 tools/test_groups.py check $selection
-step_if '[ "$fuzz" = 1 ]' "no crate and no fuzz target changed" fuzz-check fuzz/fuzz.sh check
+run_steps < <(fuzz_steps "$fuzz")
 run_steps < <(lint_steps "$crates")
 run_steps < <(wasm_steps "$crates")
 if has "$groups" import_items && [ -z "$(installs)" ]; then

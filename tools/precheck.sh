@@ -8,6 +8,7 @@
 # affects is tools/test_groups.py's plan, the same as the gate's):
 #   clippy       the crates with a changed file and every crate of the repository that depends on them
 #   test-groups  every test in exactly one group and every file routed (the gate's check)
+#   fuzz-check   the fuzz targets compile (compile only, as in the gate), when a crate they build on or they changed
 #   test         the test groups the change runs; the groups that failed in the last run go first, and the run stops at the
 #                first failure
 #   wasm         the browser build checks, only when a crate they cover changed
@@ -27,7 +28,7 @@ if [ "${PRECHECK_ALL:-0}" = 1 ]; then selection=--all; else selection="--base $b
 record=$(git rev-parse --git-path precheck-failed)
 started=$SECONDS
 step() { local name=$1 t=$SECONDS; shift; echo "== $name"; "$@" < /dev/null || { echo "PRECHECK-FAIL $name ($((SECONDS - t)) s)"; return 1; }; echo "   $name $((SECONDS - t)) s"; }
-run_steps() { # the lines of lint_steps or wasm_steps (tools/steps.sh) on stdin: the needed steps
+run_steps() { # the lines of lint_steps, fuzz_steps or wasm_steps (tools/steps.sh) on stdin: the needed steps
     local name need reason command words
     while IFS=$'\t' read -r name need reason command; do
         read -ra words <<< "$command"
@@ -40,20 +41,22 @@ run_steps() { # the lines of lint_steps or wasm_steps (tools/steps.sh) on stdin:
 plan=$(python3 tools/test_groups.py plan $selection) || { echo "PRECHECK-FAIL plan" >&2; exit 2; }
 groups=$(sed -n 's/^groups *//p' <<< "$plan")
 crates=$(sed -n 's/^crates *//p' <<< "$plan")
+fuzz=$(sed -n 's/^fuzz //p' <<< "$plan")
 scope=$(sed -n 's/^scope //p' <<< "$plan")
 # the stamp names the tree checked and the selection it was checked with (tools/stamp.sh)
 tree=$(tree_key) || exit 2
-if [ -z "$groups" ] && [ -z "$crates" ]; then
-    echo "precheck: no crate and no test group touched"
+if [ -z "$groups" ] && [ -z "$crates" ] && [ "$fuzz" != 1 ]; then
+    echo "precheck: no crate, no test group and no fuzz target touched"
     stamp_put "$tree-$scope" precheck
     echo "PRECHECK-OK ($((SECONDS - started)) s)"
     exit 0
 fi
-echo "precheck: crates ${crates:-none}; groups ${groups:-none}"
+echo "precheck: crates ${crates:-none}; groups ${groups:-none}; fuzz targets $([ "$fuzz" = 1 ] && echo checked || echo untouched)"
 
 run_steps < <(lint_steps "$crates") || exit 1
 # shellcheck disable=SC2086
 step test-groups python3 tools/test_groups.py check $selection || exit 1
+run_steps < <(fuzz_steps "$fuzz") || exit 1
 
 run_groups() { # the groups that failed last time first, then the rest
     local first=() rest=() g

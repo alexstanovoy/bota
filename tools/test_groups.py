@@ -15,7 +15,8 @@ crate's plain one that no running group uses, no changed file names a feature of
 check_tests, builds_to_list, beyond_plain and check_feature_files). `run` runs the test binaries
 the listing built directly, side by side and the longest of the last run first (target/test-groups-history.json), and
 checks that each ran exactly as many tests as its groups select, so this selection and libtest's own cannot drift apart.
-`plan` prints four lines: `groups NAME...`, `crates NAME...` (the workspace crates to lint), `fuzz 0|1` and `scope`
+`plan` prints four lines: `groups NAME...`, `crates NAME...` (the workspace crates to lint), `fuzz 0|1` (whether the fuzz
+targets are to be compiled: a crate they build on or the fuzz crate itself changed) and `scope`
 (what a stamp of the check names besides the tree).
 """
 
@@ -38,6 +39,7 @@ from pathlib import Path
 
 ROOT = Path(subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=True).stdout.strip())
 CONFIG = ROOT / "tools/test_groups.toml"
+FUZZ_MANIFEST = ROOT / "fuzz/Cargo.toml"
 PROFILE = "test-release"
 # A unittest suite is a build of its own: its directory stands where a crate's name does.
 UNITTEST = "unittest"
@@ -300,6 +302,12 @@ def default_base() -> str:
     return "origin/main" if found.returncode == 0 else "main"
 
 
+def fuzz_dependencies() -> set[str]:
+    """The crates the fuzz targets build on directly (the fuzz crate is outside the workspace, so Cargo's graph of it is not the router's)."""
+    manifest = tomllib.loads(FUZZ_MANIFEST.read_text())
+    return {name for name, spec in manifest["dependencies"].items() if isinstance(spec, dict) and "path" in spec}
+
+
 def plan(router: Router, paths: list[str] | None) -> tuple[set[str], set[str], bool]:
     """Groups to run, workspace crates to lint and whether the fuzz targets are to be checked; `paths` None: everything."""
     workspace = router.workspace()
@@ -318,7 +326,8 @@ def plan(router: Router, paths: list[str] | None) -> tuple[set[str], set[str], b
     crates: set[str] = set()
     for crate in touched:
         crates |= router.above(crate, launched=False) & workspace
-    return groups, crates, bool(crates) or any(p.startswith("fuzz/") for p in paths)
+    # `crates` holds every crate above a changed one, so it meets the fuzz targets' crates exactly when one of them is affected
+    return groups, crates, bool(crates & fuzz_dependencies()) or any(p.startswith("fuzz/") for p in paths)
 
 
 def plan_report(router: Router, merge_base: str | None, paths: list[str] | None) -> list[str]:

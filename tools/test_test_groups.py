@@ -58,6 +58,17 @@ class Routing(unittest.TestCase):
     def test_documents_run_nothing_and_lint_nothing(self):
         self.assertEqual(test_groups.plan(ROUTER, ["DEVELOPMENT.md", "crates/bota_server/README.md"]), (set(), set(), False))
 
+    def test_a_change_to_a_crate_the_fuzz_targets_build_on_checks_the_fuzz_targets(self):
+        for crate in ("bota_proto", "bota_core", "bota_replay", "bota_server", "bota_client_core"):
+            self.assertTrue(test_groups.plan(ROUTER, [f"crates/{crate}/src/lib.rs"])[2], crate)
+
+    def test_a_change_to_the_fuzz_targets_checks_the_fuzz_targets(self):
+        self.assertTrue(test_groups.plan(ROUTER, ["fuzz/fuzz_targets/server_orders.rs"])[2])
+
+    def test_a_change_the_fuzz_targets_do_not_build_on_leaves_them_alone(self):
+        for path in ("DEVELOPMENT.md", "crates/bota_radovid/src/lib.rs"):
+            self.assertFalse(test_groups.plan(ROUTER, [path])[2], path)
+
     def test_a_server_change_lints_the_server_only(self):
         self.assertEqual(test_groups.plan(ROUTER, [f"{SERVER}/net/conn.rs"])[1], {"bota_server"})
 

@@ -40,7 +40,7 @@ if arguments[0] == "plan":
         scope = os.environ.get("FLOW_SCOPE", scope)  # the real plan says full when a change selects everything
     print("groups", os.environ.get("FLOW_GROUPS", "core"))
     print("crates")
-    print("fuzz 0")
+    print("fuzz", os.environ.get("FLOW_FUZZ", "0"))
     print("scope", scope)
 elif arguments[0] == "check" and os.environ.get("FLOW_CHECK_FAILS"):
     sys.exit("test-groups: a test in no group")
@@ -64,6 +64,7 @@ class GateFlow(unittest.TestCase):
             self.write(f"tools/{name}", (TOOLS / name).read_text(), executable=True)
         self.write("tools/test_groups.py", GROUPS)
         self.write("tools/ignored_audit.sh", "#!/bin/sh\n", executable=True)
+        self.write("fuzz/fuzz.sh", '#!/bin/sh\necho "fuzz.sh $*" >> "$FLOW_TRACE"\n[ -z "$FLOW_FUZZ_FAILS" ]\n', executable=True)
         self.write("tools/import_items/src/main.rs", "fn main() {}\n")
         self.write("crates/sample/src/lib.rs", "fn sample() {}\n")
         self.write(".gitignore", "/temp/\n")
@@ -151,6 +152,36 @@ class GateFlow(unittest.TestCase):
         for skip in ("deny", "a-step-that-does-not-exist"):
             self.refused("gate", 1, "GATE-FAIL steps were skipped", GATE_SKIP=skip)
         self.passes("gate")
+
+    def fuzz_checks(self):
+        return [line for line in self.trace.read_text().splitlines() if line.startswith("fuzz.sh")]
+
+    def test_the_precheck_compiles_the_fuzz_targets_when_the_plan_says_so(self):
+        self.passes("precheck", FLOW_FUZZ="1")
+        self.assertEqual(self.fuzz_checks(), ["fuzz.sh check"])
+
+    def test_the_precheck_leaves_the_fuzz_targets_alone_when_nothing_they_build_on_changed(self):
+        self.passes("precheck", FLOW_FUZZ="0")
+        self.assertEqual(self.fuzz_checks(), [])
+
+    def test_a_fuzz_target_that_does_not_compile_fails_the_precheck(self):
+        self.refused("precheck", 1, "PRECHECK-FAIL fuzz-check", FLOW_FUZZ="1", FLOW_FUZZ_FAILS="1")
+
+    def test_a_change_to_the_fuzz_targets_alone_is_still_checked_by_the_precheck(self):
+        (self.repo / "crates/sample/src/extra.rs").unlink()
+        self.write("fuzz/fuzz_targets/sample.rs", "fn main() {}\n")
+        self.passes("precheck", FLOW_GROUPS="", FLOW_FUZZ="1")
+        self.assertEqual(self.fuzz_checks(), ["fuzz.sh check"])
+
+    def test_the_gate_compiles_the_fuzz_targets_when_the_plan_says_so_and_not_otherwise(self):
+        self.passes("precheck", FLOW_FUZZ="1")
+        self.trace.write_text("")
+        self.passes("gate", FLOW_FUZZ="1")
+        self.assertEqual(self.fuzz_checks(), ["fuzz.sh check"])
+        self.passes("precheck", FLOW_FUZZ="0", PRECHECK_ALL="1")
+        self.trace.write_text("")
+        self.assertIn("fuzz-check: not affected", self.passes("gate", FLOW_FUZZ="0", GATE_AGAIN="1", GATE_PRECHECKED="1").stdout)
+        self.assertEqual(self.fuzz_checks(), [])
 
     def test_a_failing_group_check_fails_the_gate(self):
         self.passes("precheck")
