@@ -402,7 +402,7 @@ fn the_rot_burns_and_slows_what_stands_in_it_and_lifts_when_switched_off() {
     let full = world.health.get(mark).expect("standing").hp;
     cast(&mut world, 1, Target::None);
     assert!(
-        carries(&world, pudge, ModifierKind::Rot { level: 0 }),
+        carries(&world, pudge, ModifierKind::Rot { level: 0, since: 0 }),
         "it is switched on"
     );
     run(&mut world, rules::BURN_PERIOD_TICKS * 4);
@@ -417,13 +417,14 @@ fn the_rot_burns_and_slows_what_stands_in_it_and_lifts_when_switched_off() {
             ModifierKind::Rotting {
                 level: 0,
                 slow_pct: 14,
+                since: 0,
             }
         ),
         "and is slowed while it stands there"
     );
     cast(&mut world, 1, Target::None);
     assert!(
-        !carries(&world, pudge, ModifierKind::Rot { level: 0 }),
+        !carries(&world, pudge, ModifierKind::Rot { level: 0, since: 0 }),
         "it is switched off"
     );
     run(&mut world, 3);
@@ -434,10 +435,83 @@ fn the_rot_burns_and_slows_what_stands_in_it_and_lifts_when_switched_off() {
             ModifierKind::Rotting {
                 level: 0,
                 slow_pct: 14,
+                since: 0,
             }
         ),
         "and nothing is left slowed"
     );
+}
+
+/// The ticks at which Rot's damage landed on `unit`, of `events` told by tick, with the
+/// amounts.
+fn rot_blows(events: &[(u32, crate::game::Event)], unit: Entity) -> Vec<(u32, i32)> {
+    events
+        .iter()
+        .filter_map(|(tick, event)| match event.kind() {
+            bota_proto::EventKind::Damaged {
+                target,
+                amount,
+                inflictor: Some(Inflictor::Ability(AbilityId::ROT)),
+                ..
+            } if target == wire_id(unit) => Some((*tick, amount)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Rot burns as it goes on, and every 0.2 s (`rot_tick`) after, its owner and what stands
+/// in it alike: 6 a time at its first level (Liquipedia, *Pudge*: "starting immediately upon
+/// debuff application"; Valve 2014-05-19: "Fixed Rot dealing one instance of self-damage
+/// while dealing two to the enemy").
+#[test]
+fn the_rot_burns_at_once_and_every_fifth_of_a_second_its_owner_and_enemies_alike() {
+    let (mut world, pudge, mark) = pudge_and_a_mark(150);
+    set_level(&mut world, pudge, 1, 1);
+    let mut events: Vec<(u32, crate::game::Event)> = Vec::new();
+    for event in cast(&mut world, 1, Target::None) {
+        events.push((0, event));
+    }
+    for tick in 1..13 {
+        for event in world.step() {
+            events.push((tick, event));
+        }
+    }
+    let times = |blows: Vec<(u32, i32)>| blows.into_iter().map(|(t, _)| t).collect::<Vec<_>>();
+    assert_eq!(times(rot_blows(&events, pudge)), [0, 6, 12], "its owner");
+    assert_eq!(
+        rot_blows(&events, mark),
+        [(0, 6), (6, 6), (12, 6)],
+        "and the creep in it, six a time"
+    );
+}
+
+/// Switched on and straight off, Rot still burns its owner once (Valve 2012-06-28: "Fixed a
+/// bug that allowed Rot not to deal damage to self by quickly toggling On / Off").
+#[test]
+fn the_rot_switched_on_and_off_at_once_still_burns_its_owner() {
+    // Whatever tick it is switched on at.
+    for wait in 0..3 {
+        let (mut world, pudge, _mark) = pudge_and_a_mark(1500);
+        set_level(&mut world, pudge, 1, 1);
+        run(&mut world, wait);
+        let mut events: Vec<(u32, crate::game::Event)> = Vec::new();
+        for event in cast(&mut world, 1, Target::None) {
+            events.push((0, event));
+        }
+        for event in cast(&mut world, 1, Target::None) {
+            events.push((1, event));
+        }
+        for tick in 2..10 {
+            for event in world.step() {
+                events.push((tick, event));
+            }
+        }
+        assert_eq!(
+            rot_blows(&events, pudge).len(),
+            1,
+            "one burn, {wait} ticks in"
+        );
+    }
 }
 
 #[test]
@@ -556,7 +630,12 @@ fn the_rot_never_kills_the_one_carrying_it() {
     set_level(&mut world, pudge, 1, 3);
     world.put_modifier(
         pudge,
-        Modifier::new(ModifierKind::Rot { level: 3 }, Some(pudge), None, None),
+        Modifier::new(
+            ModifierKind::Rot { level: 3, since: 0 },
+            Some(pudge),
+            None,
+            None,
+        ),
     );
     world.health.insert(pudge, health(20));
     run(&mut world, rules::BURN_PERIOD_TICKS * 40);
@@ -1034,6 +1113,7 @@ fn the_rot_leaves_a_tower_standing_in_it_untouched() {
             ModifierKind::Rotting {
                 level: 3,
                 slow_pct: 32,
+                since: 0,
             }
         ),
         "the rot lays nothing on a building"
@@ -1391,6 +1471,7 @@ fn a_courier_is_spell_immune_rot_and_hook_pass_it_by_and_only_dismember_holds_it
         ModifierKind::Rotting {
             level: 0,
             slow_pct: 14,
+            since: 0,
         }
     ));
     assert_eq!(

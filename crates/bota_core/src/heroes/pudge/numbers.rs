@@ -30,6 +30,8 @@ pub const HOOK_DAMAGE: [i32; 4] = PUDGE_MEAT_HOOK.value("damage").ints();
 pub const ROT_RADIUS: i32 = PUDGE_ROT.value("rot_radius").first().int();
 /// Damage the rot deals a second, by level.
 pub const ROT_DAMAGE_PER_SECOND: [i32; 4] = PUDGE_ROT.value("rot_damage").ints();
+/// Ticks between two burns of the rot: its `rot_tick`.
+pub const ROT_TICK_TICKS: u32 = PUDGE_ROT.value("rot_tick").first().secs().ticks();
 /// Percent of speed the rot takes, by level: the script's `rot_slow`, which it writes as a
 /// change of speed.
 pub const ROT_SLOW_PCT: [i32; 4] = {

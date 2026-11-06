@@ -156,15 +156,21 @@ pub enum ModifierKind {
     Rot {
         /// Which level of it is running, counted from zero.
         level: u8,
+        /// The tick it was switched on at: it burns then and every
+        /// [`rules::ROT_TICK_TICKS`] after.
+        since: u32,
     },
     /// Standing in an enemy's rot, as Dota's `modifier_pudge_rot` on them:
-    /// burned on the beat by whoever's rot it is, by the rot's level, and
-    /// slowed by what the rot's owner slows.
+    /// burned by whoever's rot it is, by the rot's level, and slowed by what
+    /// the rot's owner slows.
     Rotting {
         /// The rot's level, counted from zero.
         level: u8,
         /// Percent of speed it takes.
         slow_pct: u8,
+        /// The tick it was laid on at: the rot burns it then and every
+        /// [`rules::ROT_TICK_TICKS`] after while it stands in it.
+        since: u32,
     },
     /// Runs from whoever put it on, and neither swings nor casts, until it
     /// lifts.

@@ -796,6 +796,7 @@ fn kill_credit_flesh_heap_uses_credit_and_debuffs_outside_radius_and_nearby_deat
                         ModifierKind::Rotting {
                             level: 1,
                             slow_pct: 20,
+                            since: 0,
                         },
                         Some(ours[0]),
                         None,

@@ -76,10 +76,11 @@ fn every_modifier() -> Vec<ModifierKind> {
             lethal: false,
         },
         ModifierKind::Shadowraze { stacks: 1 },
-        ModifierKind::Rot { level: 0 },
+        ModifierKind::Rot { level: 0, since: 0 },
         ModifierKind::Rotting {
             level: 0,
             slow_pct: 14,
+            since: 0,
         },
         ModifierKind::Feared,
         ModifierKind::BloodGrenade { since: 0 },

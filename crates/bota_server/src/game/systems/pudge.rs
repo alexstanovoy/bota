@@ -24,15 +24,21 @@ impl World {
             self.rot_goes_out(caster);
             return true;
         }
+        let since = self.tick;
         self.put_modifier(
             caster,
             Modifier::new(
-                ModifierKind::Rot { level: level as u8 },
+                ModifierKind::Rot {
+                    level: level as u8,
+                    since,
+                },
                 Some(caster),
                 Some(Inflictor::Ability(AbilityId::ROT)),
                 None,
             ),
         );
+        // It burns as it goes on, before the tick's next pass of the modifiers.
+        self.rot(caster, level as u8, since);
         if let Some(at) = self.pos(caster) {
             self.spawn_mark(AbilityId::ROT, caster, at, 0);
         }

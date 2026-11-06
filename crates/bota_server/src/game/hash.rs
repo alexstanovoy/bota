@@ -180,14 +180,20 @@ impl StateHash for ModifierKind {
                 fnv.u8(11);
                 fnv.u8(stacks);
             }
-            ModifierKind::Rot { level } => {
+            ModifierKind::Rot { level, since } => {
                 fnv.u8(14);
                 fnv.u8(level);
+                fnv.u32(since);
             }
-            ModifierKind::Rotting { level, slow_pct } => {
+            ModifierKind::Rotting {
+                level,
+                slow_pct,
+                since,
+            } => {
                 fnv.u8(32);
                 fnv.u8(level);
                 fnv.u8(slow_pct);
+                fnv.u32(since);
             }
             ModifierKind::Feared => fnv.u8(15),
             ModifierKind::BloodGrenade { since } => {

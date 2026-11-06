@@ -54,9 +54,9 @@ pub fn resisted_ticks(stats: &Table<Stats>, on: Entity, kind: ModifierKind, tick
     kept.max(1) as u32
 }
 
-/// What a rot of a level burns on one beat of [`rules::BURN_PERIOD_TICKS`].
+/// What a rot of a level burns each [`rules::ROT_TICK_TICKS`].
 fn rot_beat(level: u8) -> i32 {
-    rules::ROT_DAMAGE_PER_SECOND[usize::from(level)] * rules::BURN_PERIOD_TICKS as i32
+    rules::ROT_DAMAGE_PER_SECOND[usize::from(level)] * rules::ROT_TICK_TICKS as i32
         / rules::TICKS_PER_SECOND as i32
 }
 
@@ -265,18 +265,7 @@ impl World {
                             );
                         }
                     }
-                    ModifierKind::Rot { level } => self.rot(entity, level, on_beat),
-                    ModifierKind::Rotting { level, .. } => {
-                        if on_beat && self.alive(entity) {
-                            self.push_hit(
-                                modifier.source,
-                                entity,
-                                rot_beat(level),
-                                DamageKind::Magical,
-                                modifier.inflictor,
-                            );
-                        }
-                    }
+                    ModifierKind::Rot { level, since } => self.rot(entity, level, since),
                     ModifierKind::Spell {
                         ability,
                         level,
@@ -338,13 +327,16 @@ impl World {
         self.recycle_entity_snapshot(entities);
     }
 
-    /// Burns its owner on the beat, never to death, and lays the rot on
-    /// every unit of another side with a hull standing in it.
+    /// One tick of a rot switched on at `since`: it burns its owner, never to
+    /// death, at `since` and every [`rules::ROT_TICK_TICKS`] after, and lays
+    /// itself on every enemy hero and basic unit standing in it, burning each
+    /// from the tick it was laid on, on the same rhythm, while it stands there
+    /// (Liquipedia, *Pudge*: "starting immediately upon debuff application").
     ///
     /// What it lays is handed out afresh every tick for two ticks, so walking
     /// out of it or switching it off lifts it. A rot whose owner is dead goes
     /// out.
-    fn rot(&mut self, owner: Entity, level: u8, on_beat: bool) {
+    pub(crate) fn rot(&mut self, owner: Entity, level: u8, since: u32) {
         if !self.alive(owner) {
             self.rot_goes_out(owner);
             return;
@@ -365,7 +357,8 @@ impl World {
             .talented(owner, AbilityId::ROT, "rot_slow", usize::from(level))
             .int();
         let slow_pct = u8::try_from(slow.clamp(0, 100)).expect("a percent");
-        if on_beat && self.above_last_point(owner) {
+        if (self.tick - since).is_multiple_of(rules::ROT_TICK_TICKS) && self.above_last_point(owner)
+        {
             self.push_sparing(
                 None,
                 owner,
@@ -394,8 +387,31 @@ impl World {
             if self.team.get(other).copied() != Some(side)
                 && self.spell_reaches(AbilityId::ROT, other)
             {
-                let rotting = ModifierKind::Rotting { level, slow_pct };
+                // Still rotting from this rot, it keeps the tick it was laid on.
+                let laid = self.modifiers.get(other).and_then(|on_it| {
+                    on_it.active().find_map(|held| match held.kind {
+                        ModifierKind::Rotting { since, .. } if held.source == Some(owner) => {
+                            Some(since)
+                        }
+                        _ => None,
+                    })
+                });
+                let laid = laid.unwrap_or(self.tick);
+                let rotting = ModifierKind::Rotting {
+                    level,
+                    slow_pct,
+                    since: laid,
+                };
                 self.put_modifier(other, Modifier::new(rotting, Some(owner), with, Some(2)));
+                if (self.tick - laid).is_multiple_of(rules::ROT_TICK_TICKS) {
+                    self.push_hit(
+                        Some(owner),
+                        other,
+                        rot_beat(level),
+                        DamageKind::Magical,
+                        with,
+                    );
+                }
             }
         }
     }
