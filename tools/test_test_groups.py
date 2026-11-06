@@ -297,6 +297,44 @@ class Running(unittest.TestCase):
         self.assertEqual(self.recorded(), "core\n")
         self.assertIn("(the runner: FileNotFoundError", out)
 
+    def test_skipped_unittests_fail_and_record_their_group(self):
+        for ordinary in (False, True):
+            with self.subTest(ordinary=ordinary):
+                code = (
+                    "import unittest\n"
+                    "class Contracts(unittest.TestCase):\n"
+                    "    @unittest.skip('required dependency unavailable')\n"
+                    "    def test_required(self): self.fail('never executed')\n"
+                    + ("    def test_ordinary(self): pass\n" if ordinary else "")
+                    + "unittest.main()\n"
+                )
+                passed, out = self.run_pool(self.python("tooling", code, expected=1 + ordinary))
+                self.assertFalse(passed, out)
+                self.assertEqual(self.recorded(), "tooling\n")
+                self.assertIn("1 skipped", out)
+
+    def test_ignored_or_measured_rust_tests_fail_instead_of_counting_as_executed(self):
+        for ignored, measured in ((1, 0), (0, 1)):
+            with self.subTest(ignored=ignored, measured=measured):
+                summary = f"test result: ok. 0 passed; 0 failed; {ignored} ignored; {measured} measured; 0 filtered out"
+                passed, out = self.run_pool(self.python("core", f"print({summary!r})", expected=1))
+                self.assertFalse(passed, out)
+                self.assertEqual(self.recorded(), "core\n")
+                self.assertIn(f"0 failed, {ignored} ignored, {measured} measured tests", out)
+
+    def test_manual_recorders_are_exempted_by_name_without_exempting_their_file(self):
+        build = Partition.BUILD
+        names = ["game::tests::determinism::print_pins", "game::tests::determinism::print_blind_pins",
+                 "game::tests::determinism::new_contract"]
+        listed = test_groups.Listed({"lib": names}, {"lib": test_groups.ROOT / SERVER / "lib.rs"},
+                                    executables={"lib": Path("/test-binary")})
+        target = test_groups.Target(build, "lib", (), (), ())
+        run = test_groups.invocation(CRATES, listed, target, {"game_determinism"}, {})
+        self.assertEqual(run.expected, 1)
+        for name in names[:2]:
+            self.assertIn(name, run.command)
+        self.assertNotIn(names[2], run.command)
+
     def test_output_that_is_not_utf8_is_told_and_counted(self):
         code = "import sys; sys.stdout.buffer.write(b'\\xff\\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured\\n')"
         passed, out = self.run_pool(self.python("core", code, expected=1))

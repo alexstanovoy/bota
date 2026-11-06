@@ -45,6 +45,13 @@ PROFILE = "test-release"
 UNITTEST = "unittest"
 # At most this many groups: few enough to know each by name, enough to follow the code's crates and subsystems.
 MAX_GROUPS = 30
+# These write reference data by hand; they are not regression contracts and never run in a gate.
+MANUAL_RECORDERS = {
+    ("bota_server", "lib"): frozenset({
+        "game::tests::determinism::print_pins",
+        "game::tests::determinism::print_blind_pins",
+    }),
+}
 
 
 class Failure(Exception):
@@ -771,8 +778,11 @@ def invocations(crates: dict[str, Crate], chosen: list[Group], places: dict[str,
 
 def invocation(crates: dict[str, Crate], listed: Listed, target: Target, owners: set[str], places: dict[str, str]) -> Invocation:
     selector = Selector(target.build, None, target.filters, (), (), ())
-    expected = sum(1 for n in listed.tests.get(target.name, []) if selects(selector, target.name, n))
     build = target.build
+    selected = [n for n in listed.tests.get(target.name, []) if selects(selector, target.name, n)]
+    recorders = sorted(set(selected) & MANUAL_RECORDERS.get((build.crate, target.name), frozenset()))
+    expected = len(selected) - len(recorders)
+    skips = [argument for name in recorders for argument in ("--skip", name)]
     key = " ".join([build.crate, build.profile, ",".join(build.features), target.name, *target.filters, *target.args])
     env = {k: v.format(**places) for k, v in target.env}
     if target.name == "doc":  # rustdoc builds and runs them: only cargo can
@@ -781,7 +791,7 @@ def invocation(crates: dict[str, Crate], listed: Listed, target: Target, owners:
     crate = crates[build.crate]
     # as `cargo test` runs a test binary: from its crate's directory, told where that is
     env |= {"CARGO_MANIFEST_DIR": str(ROOT / crate.directory), "CARGO_PKG_NAME": crate.name}
-    command = [str(listed.executables[target.name]), *target.filters, *target.args]
+    command = [str(listed.executables[target.name]), *target.filters, *target.args, *skips]
     return Invocation(key, command, ROOT / crate.directory, env, expected, owners)
 
 
@@ -1032,10 +1042,17 @@ def problem_of(log: Path, status: int, expected: int | None) -> str | None:
         for line in (raw.decode(errors="replace") for raw in output):
             found = re.match(r"test result: \w+\. (\d+) passed; (\d+) failed; (\d+) ignored; (\d+) measured", line)
             if found:
-                ran += sum(int(n) for n in found.groups())
+                passed, failed, ignored, measured = (int(n) for n in found.groups())
+                if failed or ignored or measured:
+                    return f"{failed} failed, {ignored} ignored, {measured} measured tests; every selected contract must execute"
+                ran += passed
             found = re.match(r"Ran (\d+) tests? in ", line)  # unittest
             if found:
                 ran += int(found.group(1))
+            if line.startswith("OK ("):
+                skipped = re.search(r"\bskipped=(\d+)", line)
+                if skipped and int(skipped.group(1)):
+                    return f"{skipped.group(1)} skipped unittest contracts"
     if expected is not None and ran != expected:
         return f"it ran {ran} tests where its groups select {expected} (the selection and libtest's disagree)"
     return None
