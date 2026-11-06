@@ -2,42 +2,10 @@
 
 use crate::{
     AbilityId, Aim, Angle, Attribute, Attributes, EffectId, EntityId, EventKind, Fixed, HeroId,
-    Inflictor, ItemId, NeutralId, Order, ProjectileModel, RuneKind, SlotId, TalentSlot, Team,
-    UnitKind, Vec2,
+    Inflictor, ItemId, NeutralId, Order, ProjectileModel, RuneKind, SlotId, StatusFlags, Talents,
+    Team, UnitKind, Vec2,
 };
 use serde::{Deserialize, Serialize};
-
-/// Conditions currently affecting a unit, as a bit set of the associated
-/// constants.
-#[derive(
-    Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash,
-)]
-pub struct StatusFlags {
-    /// The raw bits.
-    pub bits: u16,
-}
-
-impl StatusFlags {
-    /// Cannot act, move or turn.
-    pub const STUNNED: u16 = 1 << 0;
-    /// Movement speed is reduced.
-    pub const SLOWED: u16 = 1 << 4;
-    /// Losing health over time.
-    pub const DOT: u16 = 1 << 5;
-    /// Seen by the other team only through true sight.
-    pub const INVISIBLE: u16 = 1 << 6;
-    /// Immune to magical damage and most disables.
-    pub const MAGIC_IMMUNE: u16 = 1 << 7;
-    /// Cannot be attacked or damaged at all.
-    pub const INVULNERABLE: u16 = 1 << 9;
-    /// Performing a channelled ability or item action.
-    pub const CHANNELLING: u16 = 1 << 10;
-    /// Running from whoever put the fear on; cannot attack or cast.
-    pub const FEARED: u16 = 1 << 11;
-    /// In the cast point of an ability or an item: a new order to the body
-    /// breaks the cast off before anything is spent.
-    pub const CASTING: u16 = 1 << 12;
-}
 
 /// One ability slot of a visible unit, enemy or friendly.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -636,30 +604,6 @@ pub struct TeleportView {
     pub ticks_total: u32,
 }
 
-/// A set of a hero's talent slots: bit `n` holds [`TalentSlot`]`(n)`.
-#[derive(
-    Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash,
-)]
-pub struct Talents {
-    /// The raw bits.
-    pub bits: u8,
-}
-
-impl Talents {
-    /// Whether the set holds a slot.
-    pub const fn has(self, slot: TalentSlot) -> bool {
-        slot.0 < TalentSlot::COUNT && self.bits & (1 << slot.0) != 0
-    }
-
-    /// The set with a slot added.
-    pub const fn with(self, slot: TalentSlot) -> Talents {
-        assert!(slot.0 < TalentSlot::COUNT);
-        Talents {
-            bits: self.bits | (1 << slot.0),
-        }
-    }
-}
-
 /// The talents of one seat's hero.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct TalentView {
@@ -796,53 +740,6 @@ impl WorldView {
     pub fn day_tick(&self) -> u32 {
         self.game_tick()
             .saturating_add(self.clock.map_or(0, |shift| shift.day))
-    }
-
-    /// Calls `visit` on every entity handle the view carries, those of its
-    /// skipped ticks' events included: the one walk that puts a side's own
-    /// names into a view, so a field that adds a handle is walked here.
-    pub fn visit_ids(&mut self, visit: &mut dyn FnMut(&mut EntityId)) {
-        for unit in &mut self.units {
-            visit(&mut unit.id);
-            for order in &mut unit.queue {
-                order.visit_ids(visit);
-            }
-            for effect in &mut unit.effects {
-                effect.caster.iter_mut().for_each(&mut *visit);
-            }
-        }
-        for shot in &mut self.projectiles {
-            visit(&mut shot.id);
-            shot.source.iter_mut().for_each(&mut *visit);
-            shot.target.iter_mut().for_each(&mut *visit);
-        }
-        for player in &mut self.players {
-            player.unit.iter_mut().for_each(&mut *visit);
-        }
-        for loot in &mut self.loot {
-            visit(&mut loot.id);
-        }
-        for rune in &mut self.runes {
-            visit(&mut rune.id);
-        }
-        for pool in &mut self.pools {
-            visit(&mut pool.id);
-        }
-        for entry in &mut self.aggro {
-            visit(&mut entry.unit);
-            entry.target.iter_mut().for_each(&mut *visit);
-            if let Some(swing) = &mut entry.swing {
-                visit(&mut swing.target);
-            }
-        }
-        for teleport in &mut self.teleports {
-            visit(&mut teleport.building);
-        }
-        for skipped in &mut self.skipped_ticks {
-            for event in &mut skipped.events {
-                event.visit_ids(visit);
-            }
-        }
     }
 
     /// The unit with this id, if it is in [`units`](Self::units).

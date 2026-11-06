@@ -37,13 +37,13 @@ limits! {
 
     /// Most ticks an order may wait past the earliest tick it could take
     /// effect on, base and jitter together.
-    MAX_ORDER_DELAY_TICKS: u32 = 30;
+    MAX_ORDER_DELAY_TICKS: u32 = crate::game_limits::MAX_ORDER_DELAY_TICKS;
     /// Most orders one unit holds queued (Dota's Shift-queue) behind the one
     /// it carries out.
-    MAX_QUEUED_ORDERS: usize = 32;
+    MAX_QUEUED_ORDERS: usize = crate::game_limits::MAX_QUEUED_ORDERS;
     /// Most orders of one seat that may take effect on one tick, its units
     /// and queued orders together.
-    MAX_ORDERS_PER_TICK: usize = 64;
+    MAX_ORDERS_PER_TICK: usize = crate::game_limits::MAX_ORDERS_PER_TICK;
 
     /// Most bytes of memory a reader may hold for one frame it decodes: twenty
     /// times the payload at most. A byte of the wire stands for at most about
@@ -65,19 +65,19 @@ limits! {
     MAX_CHAT_GRAPHEMES: usize = 127;
 
     /// Inventory slots, where items work.
-    INVENTORY_SLOTS: usize = 6;
+    INVENTORY_SLOTS: usize = crate::game_limits::INVENTORY_SLOTS;
     /// Backpack slots, where items are carried inert.
-    BACKPACK_SLOTS: usize = 3;
+    BACKPACK_SLOTS: usize = crate::game_limits::BACKPACK_SLOTS;
     /// Stash slots at the home shop.
-    STASH_SLOTS: usize = 6;
+    STASH_SLOTS: usize = crate::game_limits::STASH_SLOTS;
     /// The number of a hero's town portal slot, after the inventory, the
     /// backpack and the stash: [`ItemSlot::TOWN_PORTAL`](crate::ItemSlot).
-    TOWN_PORTAL_SLOT: usize = 15;
+    TOWN_PORTAL_SLOT: usize = crate::game_limits::TOWN_PORTAL_SLOT;
 
     /// Most seats in one match.
-    MAX_SEATS: usize = 10;
+    MAX_SEATS: usize = crate::game_limits::MAX_SEATS;
     /// Most ability slots on any unit.
-    MAX_ABILITY_SLOTS: usize = 8;
+    MAX_ABILITY_SLOTS: usize = crate::game_limits::MAX_ABILITY_SLOTS;
     /// Most modifiers one unit carries at once, hidden and shown. What a hero
     /// in a five-a-side fight bears (its own buffs, its allies' auras, its
     /// enemies' debuffs) is a few dozen. A unit that carries this many takes
@@ -85,60 +85,57 @@ limits! {
     /// at all when every one it carries is untimed. The effects a view lists
     /// on a unit therefore never exceed it, and a client may refuse a view
     /// that does.
-    MAX_EFFECTS_PER_UNIT: usize = 128;
+    MAX_EFFECTS_PER_UNIT: usize = crate::game_limits::MAX_EFFECTS_PER_UNIT;
     /// Most units one view lists.
-    MAX_VIEW_UNITS: usize = 4_096;
+    MAX_VIEW_UNITS: usize = crate::game_limits::MAX_VIEW_UNITS;
     /// Most projectiles one view lists.
-    MAX_PROJECTILES: usize = 4_096;
+    MAX_PROJECTILES: usize = crate::game_limits::MAX_PROJECTILES;
     /// Most ground items one view lists.
-    MAX_SNAPSHOT_LOOT: usize = 4_096;
+    MAX_SNAPSHOT_LOOT: usize = crate::game_limits::MAX_SNAPSHOT_LOOT;
     /// Most trees a match starts with.
-    MAX_STATIC_TREES: usize = 4_096;
+    MAX_STATIC_TREES: usize = crate::game_limits::MAX_STATIC_TREES;
     /// Most trees planted in a match at once.
-    MAX_PLANTED_TREES: usize = 4_096;
+    MAX_PLANTED_TREES: usize = crate::game_limits::MAX_PLANTED_TREES;
     /// Most ticks one snapshot may tell were skipped: thirty seconds at 30
     /// ticks a second, the bound past which the server closes the
     /// connection.
-    MAX_SKIPPED_TICKS: usize = 900;
+    MAX_SKIPPED_TICKS: usize = crate::game_limits::MAX_SKIPPED_TICKS;
     /// Most events in one batch: at most 56 bytes inline each, plus three times the
     /// payload reserved for nested credits, stay within 80 MiB. Fixed across
     /// architectures so clients and servers share the same wire limit.
     MAX_EVENTS_PER_BATCH: usize = 1_273_270;
     /// Most entries in the shop of a match: room for every item there is.
-    MAX_SHOP_ENTRIES: usize = 1_024;
+    MAX_SHOP_ENTRIES: usize = crate::game_limits::MAX_SHOP_ENTRIES;
     /// Most shelves of limited stock a view lists: both sides' for every entry
     /// of the shop.
-    MAX_VIEW_STOCK: usize = 2 * MAX_SHOP_ENTRIES;
+    MAX_VIEW_STOCK: usize = crate::game_limits::MAX_VIEW_STOCK;
     /// Most orders told as accepted on one tick: every seat's.
-    MAX_ORDERS_TOLD: usize = MAX_SEATS * MAX_ORDERS_PER_TICK;
+    MAX_ORDERS_TOLD: usize = crate::game_limits::MAX_ORDERS_TOLD;
     /// Most components one shop entry lists.
-    MAX_SHOP_COMPONENTS: usize = 16;
+    MAX_SHOP_COMPONENTS: usize = crate::game_limits::MAX_SHOP_COMPONENTS;
     /// Most other recipes one shop entry may list.
-    MAX_SHOP_RECIPES: usize = 8;
+    MAX_SHOP_RECIPES: usize = crate::game_limits::MAX_SHOP_RECIPES;
     /// Most runs of a map's terrain.
-    MAX_TERRAIN_RUNS: usize = 262_144;
+    MAX_TERRAIN_RUNS: usize = crate::game_limits::MAX_TERRAIN_RUNS;
     /// Most opaque cells of a map.
-    MAX_OPAQUE_CELLS: usize = 262_144;
+    MAX_OPAQUE_CELLS: usize = crate::game_limits::MAX_OPAQUE_CELLS;
     /// Most runes one view lists: a jungle Bounty Rune lies until somebody takes
     /// it, and a spot holds [`MAX_RUNES_AT_SPOT`] at most.
-    MAX_SNAPSHOT_RUNES: usize = 1_024;
+    MAX_SNAPSHOT_RUNES: usize = crate::game_limits::MAX_SNAPSHOT_RUNES;
     /// Most runes that lie at one rune spot together; a spawn that would pass
     /// it is skipped.
-    MAX_RUNES_AT_SPOT: usize = 16;
+    MAX_RUNES_AT_SPOT: usize = crate::game_limits::MAX_RUNES_AT_SPOT;
     /// Most Lotus Pools one view lists.
-    MAX_LOTUS_POOLS: usize = 16;
+    MAX_LOTUS_POOLS: usize = crate::game_limits::MAX_LOTUS_POOLS;
     /// Secret-shop trigger volumes in one match.
-    MAX_SECRET_SHOPS: usize = 8;
+    MAX_SECRET_SHOPS: usize = crate::game_limits::MAX_SECRET_SHOPS;
     /// Corners of one convex shop trigger footprint.
-    MAX_SHOP_ZONE_CORNERS: usize = 32;
+    MAX_SHOP_ZONE_CORNERS: usize = crate::game_limits::MAX_SHOP_ZONE_CORNERS;
     /// At most one bounty, assist share and flagbearer bonus per seat.
-    MAX_DEATH_GOLD_AWARDS: usize = 3 * MAX_SEATS;
+    MAX_DEATH_GOLD_AWARDS: usize = crate::game_limits::MAX_DEATH_GOLD_AWARDS;
 }
 
-/// A hero's bag: the inventory and the backpack.
-pub const HERO_ITEM_SLOTS: usize = INVENTORY_SLOTS + BACKPACK_SLOTS;
-/// A courier's bag: an inventory, no backpack.
-pub const COURIER_ITEM_SLOTS: usize = INVENTORY_SLOTS;
+pub use crate::game_limits::{COURIER_ITEM_SLOTS, HERO_ITEM_SLOTS};
 
 // What the heaviest collections hold, element sizes included, fits what a frame may make a reader
 // hold: a bound that grows (or an element that does) fails the build, not a reader.

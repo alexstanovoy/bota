@@ -13,10 +13,12 @@ use crate::GoldRange;
 pub use crate::heroes::pudge::numbers::*;
 pub use crate::heroes::shadow_fiend::numbers::*;
 // The protocol's bounds are `bota_proto::limits`; the rules read them as `rules::NAME` too.
+pub use bota_proto::game_limits::{
+    BACKPACK_SLOTS, INVENTORY_SLOTS, MAX_EFFECTS_PER_UNIT, MAX_ORDER_DELAY_TICKS,
+    MAX_ORDERS_PER_TICK, MAX_QUEUED_ORDERS, STASH_SLOTS, TOWN_PORTAL_SLOT,
+};
 pub use bota_proto::limits::{
-    BACKPACK_SLOTS, INVENTORY_SLOTS, MAX_ANNOUNCED_NAME_BYTES, MAX_CHAT_BYTES, MAX_CHAT_GRAPHEMES,
-    MAX_EFFECTS_PER_UNIT, MAX_ORDER_DELAY_TICKS, MAX_ORDERS_PER_TICK, MAX_QUEUED_ORDERS,
-    MAX_SHOWN_NAME_BYTES, STASH_SLOTS, TOWN_PORTAL_SLOT,
+    MAX_ANNOUNCED_NAME_BYTES, MAX_CHAT_BYTES, MAX_CHAT_GRAPHEMES, MAX_SHOWN_NAME_BYTES,
 };
 
 /// Simulation ticks per second of game time.

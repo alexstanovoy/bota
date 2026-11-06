@@ -88,6 +88,7 @@ tests = [{ crate = "import_items", args = ["--include-ignored"] }]
 name = "tooling"
 about = "the gate's own machinery: test groups, routing, stamps and the gate and precheck flow (Python unittest)"
 paths = ["tools/test_*.py"]
+also_paths = ["crates/bota_core/build.rs", "crates/bota_core/rules_source.rs"]
 tests = [{ unittest = "tools" }]
 
 # bota_server: the simulation (game_*) and the server around it (server_*). A file of one game system runs its group and
@@ -112,6 +113,7 @@ paths = [
     "crates/bota_server/src/game/handles.rs",
     "crates/bota_server/src/game/delay.rs",
     "crates/bota_server/src/game/project.rs",
+    "crates/bota_server/src/game/perspective.rs",
     "crates/bota_server/src/game/spots.rs",
     "crates/bota_server/src/game/bodies.rs",
     "crates/bota_server/src/game/systems/mod.rs",

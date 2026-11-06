@@ -10,115 +10,286 @@ use sha2::{Digest, Sha256};
 use syn::parse::Parser;
 use syn::visit_mut::{self, VisitMut};
 
-pub const SOURCE_ROOTS: [&str; 3] = [
-    "crates/bota_core/src",
-    "crates/bota_proto/src",
-    "crates/bota_server/src",
+pub const SIM_ROOTS: [&str; 4] = [
+    "crates/bota_core/src/lib.rs",
+    "crates/bota_proto/src/lib.rs",
+    "crates/bota_server/src/game/mod.rs",
+    "crates/bota_server/src/engine/mod.rs",
+];
+const PROTO_SIM_MODULES: &[&str] = &[
+    "attrs",
+    "entity_ids",
+    "ids",
+    "game_limits",
+    "match_rule",
+    "math",
+    "order",
+    "status",
+    "talents",
+];
+const PROTO_WIRE_MODULES: &[&str] = &[
+    "bounded",
+    "chat",
+    "codec",
+    "contract",
+    "event",
+    "fingerprint",
+    "limits",
+    "msg",
+    "peer",
+    "registry",
+    "unpack",
+    "view",
 ];
 const MAX_FILES: usize = 4_096;
 const MAX_DEPTH: usize = 32;
 const MAX_FILE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_TOTAL_BYTES: usize = 64 * 1024 * 1024;
+const DATA_BOUNDARY: &str = "crates/bota_core/src/data/mod.rs";
 
 pub struct Identity {
     pub digest: u64,
-    pub data_files: BTreeSet<String>,
+    pub files: BTreeSet<String>,
+    pub modules: BTreeSet<String>,
+}
+
+struct Input {
+    path: PathBuf,
+    rust: bool,
+    module: bool,
+}
+
+struct Source {
+    text: String,
+    raw: bool,
+    includes: Vec<Included>,
+    modules: Vec<Module>,
+}
+
+struct Included {
+    path: String,
+    rust: bool,
+}
+
+struct Module {
+    directory: PathBuf,
+    name: String,
 }
 
 pub fn identity(root: &Path) -> Result<Identity, String> {
-    let mut pending = Vec::new();
-    let mut entries = 0;
-    for source in SOURCE_ROOTS {
-        discover(root, Path::new(source), 0, &mut entries, &mut pending)?;
-    }
+    let mut pending: Vec<_> = SIM_ROOTS
+        .iter()
+        .map(|path| Input {
+            path: PathBuf::from(path),
+            rust: true,
+            module: true,
+        })
+        .collect();
     let mut inputs = BTreeMap::new();
-    let mut data_files = BTreeSet::new();
+    let mut files = BTreeSet::from([DATA_BOUNDARY.to_string()]);
+    let mut modules = BTreeSet::new();
     let mut total = 0;
-    while let Some(path) = pending.pop() {
-        let name = portable(&path)?;
-        if inputs.contains_key(&name) {
+    if let Some(raw) = data_boundary(root)? {
+        inputs.insert((DATA_BOUNDARY.to_string(), true), (true, raw));
+    }
+    while let Some(input) = pending.pop() {
+        let name = portable(&input.path)?;
+        if name.starts_with("crates/bota_core/src/data/") {
+            return Err(format!(
+                "{name}: private item data must enter through ITEM_ROWS"
+            ));
+        }
+        if inputs.contains_key(&(name.clone(), input.rust)) {
             continue;
         }
         if inputs.len() >= MAX_FILES {
             return Err("too many rule input files".into());
         }
-        let bytes = read(root, &path)?;
+        let bytes = read(root, &input.path)?;
         total += bytes.len();
         if total > MAX_TOTAL_BYTES {
-            return Err("rule inputs exceed 64 MiB".into());
+            return Err(format!("{name}: rule inputs exceed 64 MiB"));
         }
-        let normalized = if path.extension().is_some_and(|ext| ext == "rs") {
-            let source =
-                String::from_utf8(bytes).map_err(|_| format!("{name}: expected UTF-8 Rust"))?;
-            let (text, included) = canonical(&name, &source)?;
-            for include in included {
-                let included = contained(&path, &include)?;
-                data_files.insert(portable(&included)?);
-                pending.push(included);
+        files.insert(name.clone());
+        if input.module {
+            modules.insert(name.clone());
+        }
+        let (raw, contents) = if input.rust {
+            let text = match String::from_utf8(normalize_crlf(&bytes)) {
+                Ok(text) => text,
+                Err(_) => {
+                    warning(
+                        &name,
+                        "not UTF-8; hashing raw source so rustc can report the error",
+                    );
+                    inputs.insert((name, true), (true, normalize_crlf(&bytes)));
+                    continue;
+                }
+            };
+            let source = source_file(&name, &text)?;
+            for include in source.includes {
+                if pending.len() >= MAX_FILES {
+                    return Err(format!("{name}: too many rule dependencies"));
+                }
+                pending.push(Input {
+                    path: contained(&input.path, &include.path)?,
+                    rust: include.rust,
+                    module: false,
+                });
             }
-            text.into_bytes()
+            if !input.module && !source.modules.is_empty() {
+                return Err(format!(
+                    "{name}: use normal modules rather than module declarations inside include!"
+                ));
+            }
+            for module in source.modules {
+                if pending.len() >= MAX_FILES {
+                    return Err(format!("{name}: too many rule dependencies"));
+                }
+                pending.push(Input {
+                    path: module_path(root, &module)?,
+                    rust: true,
+                    module: true,
+                });
+            }
+            (source.raw, source.text.into_bytes())
         } else {
-            normalize_data(&name, bytes)?
+            (false, bytes)
         };
-        inputs.insert(name, normalized);
+        inputs.insert((name, input.rust), (raw, contents));
     }
     let mut hash = Sha256::new();
-    frame(
-        &mut hash,
-        b"bota-rules/source-v1;syn=2.0.119;prettyplease=0.2.37",
-    );
-    for (name, source) in inputs {
-        if source.is_empty() {
+    frame(&mut hash, b"bota-rules/source-v2");
+    for ((name, rust), (raw, bytes)) in inputs {
+        if bytes.is_empty() {
             continue;
         }
         frame(&mut hash, name.as_bytes());
-        frame(&mut hash, &source);
+        frame(
+            &mut hash,
+            if !rust {
+                b"data"
+            } else if raw {
+                b"rust-raw"
+            } else {
+                b"rust-ast"
+            },
+        );
+        frame(&mut hash, &bytes);
     }
     let bytes = hash.finalize();
     Ok(Identity {
         digest: u64::from_le_bytes(bytes[..8].try_into().expect("eight digest bytes")),
-        data_files,
+        files,
+        modules,
     })
 }
 
-pub fn item_identifiers(root: &Path) -> Result<String, String> {
-    let source = read(root, Path::new("crates/bota_proto/src/ids.rs"))?;
-    let source = String::from_utf8(source).map_err(|_| "expected UTF-8 item identifiers")?;
-    let file = syn::parse_file(&source).map_err(|error| error.to_string())?;
-    let mut bindings: BTreeMap<u16, BTreeSet<String>> = BTreeMap::new();
-    let mut count = 0;
-    for item in file.items {
-        let syn::Item::Impl(item) = item else {
-            continue;
-        };
-        if !item_type(&item.self_ty) || test_only(&item.attrs) {
-            continue;
+fn normalize_crlf(bytes: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut at = 0;
+    while at < bytes.len() {
+        if bytes[at] == b'\r' && bytes.get(at + 1) == Some(&b'\n') {
+            at += 1;
         }
-        for item in item.items {
-            let syn::ImplItem::Const(item) = item else {
-                continue;
-            };
-            if !item_type(&item.ty) || test_only(&item.attrs) {
+        out.push(bytes[at]);
+        at += 1;
+    }
+    out
+}
+
+fn warning(name: &str, message: &str) {
+    println!(
+        "cargo:warning={name}: {}",
+        message.lines().collect::<Vec<_>>().join(" ")
+    );
+}
+
+fn data_boundary(root: &Path) -> Result<Option<Vec<u8>>, String> {
+    let bytes = read(root, Path::new(DATA_BOUNDARY))?;
+    let bytes = normalize_crlf(&bytes);
+    let file = match std::str::from_utf8(&bytes)
+        .ok()
+        .and_then(|source| syn::parse_file(source).ok())
+    {
+        Some(file) => file,
+        None => {
+            warning(
+                DATA_BOUNDARY,
+                "cannot parse the item-data fence; hashing raw source so rustc can report the error",
+            );
+            return Ok(Some(bytes));
+        }
+    };
+    let mut rows = 0;
+    for item in file
+        .items
+        .iter()
+        .filter(|item| !test_only(item_attributes(item)))
+    {
+        if let syn::Item::Use(item) = item
+            && !matches!(item.vis, syn::Visibility::Inherited)
+        {
+            let expected = matches!(&item.tree, syn::UseTree::Path(path) if path.ident == "item_mechanics" && matches!(&*path.tree, syn::UseTree::Name(name) if name.ident == "ITEM_ROWS"));
+            if !expected {
+                return Err(format!(
+                    "{DATA_BOUNDARY}: private item data may re-export only ITEM_ROWS"
+                ));
+            }
+            rows += 1;
+        } else if item_visibility(item)
+            .is_some_and(|visibility| !matches!(visibility, syn::Visibility::Inherited))
+        {
+            return Err(format!(
+                "{DATA_BOUNDARY}: private item data may export only ITEM_ROWS"
+            ));
+        }
+    }
+    if rows != 1 {
+        return Err(format!(
+            "{DATA_BOUNDARY}: expected exactly one ITEM_ROWS re-export"
+        ));
+    }
+    Ok(None)
+}
+
+pub fn item_identifiers(root: &Path, modules: &BTreeSet<String>) -> Result<String, String> {
+    let mut bindings = Bindings {
+        values: BTreeMap::new(),
+        count: 0,
+        error: None,
+    };
+    for name in modules
+        .iter()
+        .filter(|name| name.starts_with("crates/bota_proto/src/"))
+    {
+        let bytes = read(root, Path::new(name))?;
+        let text = match String::from_utf8(normalize_crlf(&bytes)) {
+            Ok(text) => text,
+            Err(_) => {
+                warning(
+                    name,
+                    "invalid UTF-8 identifiers; deferring the source error to rustc",
+                );
                 continue;
             }
-            count += 1;
-            if count > MAX_FILES {
-                return Err("too many item identifier bindings".into());
+        };
+        match syn::parse_file(&text) {
+            Ok(mut file) => bindings.visit_file_mut(&mut file),
+            Err(_) => {
+                warning(
+                    name,
+                    "cannot parse item identifiers; deferring the source error to rustc",
+                );
+                continue;
             }
-            let value = literal_item_id(&item.expr).ok_or_else(|| {
-                format!(
-                    "item identifier {} must be a literal ItemId(u16)",
-                    item.ident
-                )
-            })?;
-            bindings
-                .entry(value)
-                .or_default()
-                .insert(item.ident.to_string());
+        }
+        if let Some(error) = bindings.error {
+            return Err(format!("{name}: {error}"));
         }
     }
     let mut code = String::from("const fn item_identifier_digest(id: u16) -> u64 { match id {\n");
-    for (id, names) in bindings {
+    for (id, names) in bindings.values {
         let mut hash = Sha256::new();
         frame(&mut hash, b"bota-item-identifiers/v1");
         frame(&mut hash, &id.to_le_bytes());
@@ -133,8 +304,83 @@ pub fn item_identifiers(root: &Path) -> Result<String, String> {
     Ok(code)
 }
 
+struct Bindings {
+    values: BTreeMap<u16, BTreeSet<String>>,
+    count: usize,
+    error: Option<String>,
+}
+
+impl VisitMut for Bindings {
+    fn visit_file_mut(&mut self, file: &mut syn::File) {
+        if !test_only(&file.attrs) {
+            visit_mut::visit_file_mut(self, file);
+        }
+    }
+    fn visit_item_mut(&mut self, item: &mut syn::Item) {
+        if !test_only(item_attributes(item)) {
+            visit_mut::visit_item_mut(self, item);
+        }
+    }
+
+    fn visit_impl_item_mut(&mut self, item: &mut syn::ImplItem) {
+        let attributes: &[syn::Attribute] = match item {
+            syn::ImplItem::Const(item) => &item.attrs,
+            syn::ImplItem::Fn(item) => &item.attrs,
+            syn::ImplItem::Type(item) => &item.attrs,
+            syn::ImplItem::Macro(item) => &item.attrs,
+            _ => &[],
+        };
+        if !test_only(attributes) {
+            visit_mut::visit_impl_item_mut(self, item);
+        }
+    }
+
+    fn visit_trait_item_mut(&mut self, item: &mut syn::TraitItem) {
+        let attributes: &[syn::Attribute] = match item {
+            syn::TraitItem::Const(item) => &item.attrs,
+            syn::TraitItem::Fn(item) => &item.attrs,
+            syn::TraitItem::Type(item) => &item.attrs,
+            syn::TraitItem::Macro(item) => &item.attrs,
+            _ => &[],
+        };
+        if !test_only(attributes) {
+            visit_mut::visit_trait_item_mut(self, item);
+        }
+    }
+
+    fn visit_item_impl_mut(&mut self, item: &mut syn::ItemImpl) {
+        if item.trait_.is_none() && item_type(&item.self_ty) {
+            for item in &item.items {
+                let syn::ImplItem::Const(item) = item else {
+                    continue;
+                };
+                if !item_type(&item.ty) || test_only(&item.attrs) {
+                    continue;
+                }
+                self.count += 1;
+                if self.count > MAX_FILES {
+                    self.error = Some("too many item identifier bindings".into());
+                    return;
+                }
+                let Some(value) = literal_item_id(&item.expr) else {
+                    self.error = Some(format!(
+                        "item identifier {} must be a literal ItemId(u16)",
+                        item.ident
+                    ));
+                    return;
+                };
+                self.values
+                    .entry(value)
+                    .or_default()
+                    .insert(item.ident.to_string());
+            }
+        }
+        visit_mut::visit_item_impl_mut(self, item);
+    }
+}
+
 fn item_type(ty: &syn::Type) -> bool {
-    matches!(ty, syn::Type::Path(ty) if ty.path.is_ident("ItemId") || ty.path.is_ident("Self"))
+    matches!(ty, syn::Type::Path(ty) if path_is(&ty.path, "ItemId") || path_is(&ty.path, "Self"))
 }
 
 fn literal_item_id(expression: &syn::Expr) -> Option<u16> {
@@ -144,7 +390,7 @@ fn literal_item_id(expression: &syn::Expr) -> Option<u16> {
     let syn::Expr::Path(path) = &*call.func else {
         return None;
     };
-    if !(path.path.is_ident("ItemId") || path.path.is_ident("Self")) || call.args.len() != 1 {
+    if !(path_is(&path.path, "ItemId") || path_is(&path.path, "Self")) || call.args.len() != 1 {
         return None;
     }
     let syn::Expr::Lit(syn::ExprLit {
@@ -162,89 +408,85 @@ fn frame(hash: &mut Sha256, bytes: &[u8]) {
     hash.update(bytes);
 }
 
-fn discover(
-    root: &Path,
-    relative: &Path,
-    depth: usize,
-    entries: &mut usize,
-    files: &mut Vec<PathBuf>,
-) -> Result<(), String> {
-    if depth > MAX_DEPTH {
-        return Err("rule source directories exceed depth 32".into());
-    }
-    let directory = checked(root, relative)?;
-    for entry in std::fs::read_dir(directory).map_err(|e| e.to_string())? {
-        *entries += 1;
-        if *entries > MAX_FILES {
-            return Err("too many entries in rule source directories".into());
-        }
-        let entry = entry.map_err(|e| e.to_string())?;
-        let name = entry.file_name();
-        let name = name.to_str().ok_or("rule input names must be UTF-8")?;
-        if name == "tests" || name == "tests.rs" || name.ends_with("_tests.rs") {
-            continue;
-        }
-        let path = relative.join(name);
-        let kind = entry.file_type().map_err(|e| e.to_string())?;
-        if kind.is_symlink() {
-            return Err(format!(
-                "{}: rule inputs must not be symlinks",
-                portable(&path)?
-            ));
-        }
-        if kind.is_dir() {
-            discover(root, &path, depth + 1, entries, files)?;
-        } else if kind.is_file() && path.extension().is_some_and(|ext| ext == "rs") {
-            if files.len() >= MAX_FILES {
-                return Err("too many rule source files".into());
-            }
-            files.push(path);
-        }
-    }
-    Ok(())
-}
-
-fn checked(root: &Path, relative: &Path) -> Result<PathBuf, String> {
+fn input_path(root: &Path, relative: &Path) -> Result<Option<PathBuf>, String> {
+    let name = portable(relative)?;
     let mut path = root.to_path_buf();
     for part in relative.components() {
         let Component::Normal(part) = part else {
-            return Err("rule input escapes the repository".into());
+            return Err(format!("{name}: rule input escapes the repository"));
         };
         path.push(part);
-        if path
-            .symlink_metadata()
-            .map_err(|e| e.to_string())?
-            .file_type()
-            .is_symlink()
-        {
-            return Err("rule inputs must not be symlinks".into());
+        match path.symlink_metadata() {
+            Ok(meta) if meta.file_type().is_symlink() => {
+                return Err(format!("{name}: rule inputs must not be symlinks"));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(format!("{name}: {error}")),
         }
     }
-    Ok(path)
+    Ok(Some(path))
 }
 
 fn read(root: &Path, relative: &Path) -> Result<Vec<u8>, String> {
-    let path = checked(root, relative)?;
-    if !path
+    let name = portable(relative)?;
+    let path =
+        input_path(root, relative)?.ok_or_else(|| format!("{name}: rule input not found"))?;
+    let meta = path
         .symlink_metadata()
-        .map_err(|e| e.to_string())?
-        .file_type()
+        .map_err(|error| format!("{name}: {error}"))?;
+    if !meta.file_type().is_file() {
+        return Err(format!("{name}: rule input is not a regular file"));
+    }
+    let file = std::fs::File::open(path).map_err(|error| format!("{name}: {error}"))?;
+    if !file
+        .metadata()
+        .map_err(|error| format!("{name}: {error}"))?
         .is_file()
     {
-        return Err("rule input is not a regular file".into());
-    }
-    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
-    if !file.metadata().map_err(|e| e.to_string())?.is_file() {
-        return Err("rule input is not a regular file".into());
+        return Err(format!("{name}: rule input is not a regular file"));
     }
     let mut bytes = Vec::new();
     file.take(MAX_FILE_BYTES + 1)
         .read_to_end(&mut bytes)
-        .map_err(|e| e.to_string())?;
+        .map_err(|error| format!("{name}: {error}"))?;
     if bytes.len() as u64 > MAX_FILE_BYTES {
-        return Err("rule input exceeds 8 MiB".into());
+        return Err(format!("{name}: rule input exceeds 8 MiB"));
     }
     Ok(bytes)
+}
+
+fn module_path(root: &Path, module: &Module) -> Result<PathBuf, String> {
+    if module.directory.components().count() > MAX_DEPTH {
+        return Err(format!(
+            "{}: module tree exceeds depth {MAX_DEPTH}",
+            module.directory.display()
+        ));
+    }
+    let direct = module.directory.join(format!("{}.rs", module.name));
+    let nested = module.directory.join(&module.name).join("mod.rs");
+    match (input_path(root, &direct)?, input_path(root, &nested)?) {
+        (Some(_), None) => Ok(direct),
+        (None, Some(_)) => Ok(nested),
+        (None, None) => Err(format!(
+            "{}: module source not found (or {})",
+            portable(&direct)?,
+            portable(&nested)?
+        )),
+        (Some(_), Some(_)) => Err(format!(
+            "{}: ambiguous module source (also {})",
+            portable(&direct)?,
+            portable(&nested)?
+        )),
+    }
+}
+
+fn module_directory(path: &Path) -> PathBuf {
+    let parent = path.parent().unwrap_or_else(|| Path::new(""));
+    match path.file_name().and_then(|name| name.to_str()) {
+        Some("lib.rs" | "mod.rs" | "main.rs") => parent.to_path_buf(),
+        _ => parent.join(path.file_stem().expect("a source filename")),
+    }
 }
 
 fn portable(path: &Path) -> Result<String, String> {
@@ -281,69 +523,85 @@ fn contained(source: &Path, include: &str) -> Result<PathBuf, String> {
     Ok(relative)
 }
 
-fn normalize_data(name: &str, bytes: Vec<u8>) -> Result<Vec<u8>, String> {
-    if name.starts_with("crates/bota_proto/registry/") {
-        let text = String::from_utf8(bytes).map_err(|_| "expected a UTF-8 registry")?;
-        let lines: Vec<_> = text
-            .lines()
-            .map(str::trim)
-            .filter(|line| !line.is_empty() && !line.starts_with('#'))
-            .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
-            .filter(|line| {
-                name != "crates/bota_proto/registry/ids.txt" || !line.starts_with("item ")
-            })
-            .collect();
-        return Ok(lines.join("\n").into_bytes());
-    }
-    Ok(bytes)
+#[cfg(test)]
+pub fn canonical(name: &str, source: &str) -> Result<(String, Vec<String>), String> {
+    let source = source_file(name, source)?;
+    Ok((
+        source.text,
+        source
+            .includes
+            .into_iter()
+            .map(|include| include.path)
+            .collect(),
+    ))
 }
 
-pub fn canonical(name: &str, source: &str) -> Result<(String, Vec<String>), String> {
-    let mut file =
-        syn::parse_file(&source.replace("\r\n", "\n")).map_err(|e| format!("{name}: {e}"))?;
+fn source_file(name: &str, source: &str) -> Result<Source, String> {
+    let source = source.replace("\r\n", "\n");
+    let mut file = match syn::parse_file(&source) {
+        Ok(file) => file,
+        Err(error) => {
+            warning(
+                name,
+                &format!(
+                    "cannot canonicalize ({error}); hashing tagged raw source so rustc can report the error"
+                ),
+            );
+            return Ok(Source {
+                text: source,
+                raw: true,
+                includes: Vec::new(),
+                modules: Vec::new(),
+            });
+        }
+    };
     if test_only(&file.attrs) {
-        return Ok((String::new(), Vec::new()));
+        return Ok(Source {
+            text: String::new(),
+            raw: false,
+            includes: Vec::new(),
+            modules: Vec::new(),
+        });
     }
     let mut normalize = Normalize {
         name,
+        directory: module_directory(Path::new(name)),
         includes: Vec::new(),
+        modules: Vec::new(),
         error: None,
     };
     normalize.visit_file_mut(&mut file);
     if let Some(error) = normalize.error {
         return Err(format!("{name}: {error}"));
     }
-    if file.items.is_empty() {
-        return Ok((String::new(), normalize.includes));
-    }
-    Ok((prettyplease::unparse(&file), normalize.includes))
+    let text = if file.items.is_empty() {
+        String::new()
+    } else {
+        prettyplease::unparse(&file)
+    };
+    Ok(Source {
+        text,
+        raw: false,
+        includes: normalize.includes,
+        modules: normalize.modules,
+    })
 }
 
 struct Normalize<'a> {
     name: &'a str,
-    includes: Vec<String>,
+    directory: PathBuf,
+    includes: Vec<Included>,
+    modules: Vec<Module>,
     error: Option<String>,
 }
 
 impl Normalize<'_> {
     fn items(&mut self, items: &mut Vec<syn::Item>) {
-        items.retain(|item| match item {
-            syn::Item::Const(item) if item.ident == "_" => false,
-            syn::Item::Const(item) if self.name == "crates/bota_core/src/data/items.rs" => {
-                // The catalogue hashes evaluated item rows, including every imported number.
-                !matches!(&*item.ty, syn::Type::Path(ty) if ty.path.is_ident("ItemData"))
-            }
-            syn::Item::Const(item)
-                if self.name == "crates/bota_core/src/data/item_mechanics.rs"
-                    && item.ident == "ITEM_ROWS" =>
-            {
-                false
-            }
-            _ => !test_only(item_attributes(item)),
-        });
+        items.retain(|item| self.keep_item(item));
         for item in items.iter_mut() {
             self.visit_item_mut(item);
         }
+        items.retain(|item| !empty_item(item) && !matches!(item, syn::Item::Const(item) if item.ident == "_" && !contains_items(&item.expr)));
         // rustfmt sorts consecutive imports, including the names within a use tree.
         let mut from = 0;
         while from < items.len() {
@@ -360,11 +618,57 @@ impl Normalize<'_> {
             from = end;
         }
     }
+
+    fn keep_item(&mut self, item: &syn::Item) -> bool {
+        if test_only(item_attributes(item)) {
+            return false;
+        }
+        let module = match item {
+            syn::Item::Mod(module) => Some(module.ident.to_string()),
+            syn::Item::Use(item) => use_root(&item.tree),
+            _ => None,
+        };
+        let root_module = self.directory == module_directory(Path::new(self.name));
+        if root_module
+            && self.name == "crates/bota_core/src/lib.rs"
+            && let Some(name) = &module
+        {
+            if name == "data"
+                && let syn::Item::Mod(item) = item
+            {
+                if !matches!(item.vis, syn::Visibility::Inherited) || item.content.is_some() {
+                    self.error = Some("item data must remain a private out-of-line module".into());
+                }
+                if item.attrs.iter().any(path_attribute) {
+                    self.error = Some("production #[path] modules are not supported".into());
+                }
+            }
+            if ["data", "fingerprint", "text"].contains(&name.as_str()) {
+                return false;
+            }
+        }
+        if root_module
+            && self.name == "crates/bota_proto/src/lib.rs"
+            && let Some(name) = &module
+        {
+            if PROTO_WIRE_MODULES.contains(&name.as_str()) {
+                return false;
+            }
+            if matches!(item, syn::Item::Mod(_)) && !PROTO_SIM_MODULES.contains(&name.as_str()) {
+                self.error = Some(format!(
+                    "classify proto module {name} as a simulation helper or wire plumbing"
+                ));
+            }
+        }
+        true
+    }
 }
 
 impl VisitMut for Normalize<'_> {
     fn visit_attributes_mut(&mut self, attributes: &mut Vec<syn::Attribute>) {
-        attributes.retain(|attribute| !attribute.path().is_ident("doc"));
+        attributes.retain(|attribute| {
+            !attribute.path().is_ident("doc") && !inactive_attribute(attribute)
+        });
         for attribute in attributes {
             self.visit_attribute_mut(attribute);
         }
@@ -377,19 +681,41 @@ impl VisitMut for Normalize<'_> {
 
     fn visit_item_mod_mut(&mut self, item: &mut syn::ItemMod) {
         self.visit_attributes_mut(&mut item.attrs);
+        if item.attrs.iter().any(path_attribute) {
+            self.error = Some("production #[path] modules are not supported".into());
+            return;
+        }
         if let Some((_, items)) = &mut item.content {
+            let directory = self.directory.join(module_name(&item.ident));
+            if directory.components().count() > MAX_DEPTH {
+                self.error = Some("module tree exceeds depth 32".into());
+                return;
+            }
+            let parent = std::mem::replace(&mut self.directory, directory);
             self.items(items);
+            self.directory = parent;
+        } else if self.modules.len() < MAX_FILES {
+            self.modules.push(Module {
+                directory: self.directory.clone(),
+                name: module_name(&item.ident),
+            });
+        } else {
+            self.error = Some("too many module declarations".into());
         }
     }
 
     fn visit_block_mut(&mut self, block: &mut syn::Block) {
         block.stmts.retain(|statement| !matches!(statement, syn::Stmt::Item(item) if test_only(item_attributes(item))));
         visit_mut::visit_block_mut(self, block);
+        block
+            .stmts
+            .retain(|statement| !matches!(statement, syn::Stmt::Item(item) if empty_item(item)));
     }
 
     fn visit_item_impl_mut(&mut self, item: &mut syn::ItemImpl) {
-        let item_ids = self.name == "crates/bota_proto/src/ids.rs"
-            && matches!(&*item.self_ty, syn::Type::Path(ty) if ty.path.is_ident("ItemId"));
+        let item_ids = self.name.starts_with("crates/bota_proto/src/")
+            && item.trait_.is_none()
+            && item_type(&item.self_ty);
         item.items.retain(|item| match item {
             syn::ImplItem::Const(item) => {
                 !(item_ids && item_type(&item.ty)) && !test_only(&item.attrs)
@@ -460,10 +786,10 @@ impl VisitMut for Normalize<'_> {
         }
         // Only declarations are code here. Arbitrary macro arguments and matchers
         // can inspect attributes as data, so erasing them would hide rule changes.
-        let normalized = if item.path.is_ident("macro_rules") {
+        let normalized = if path_is(&item.path, "macro_rules") {
             macro_definition(item.tokens.clone(), 0)
-        } else if item.path.is_ident("world_tables") {
-            // This declaration DSL forwards Rust field metadata unchanged.
+        } else if declaration_macro(self.name, &item.path) {
+            // These declaration DSLs forward Rust field metadata unchanged.
             macro_declarations(item.tokens.clone(), 0)
         } else {
             Ok(item.tokens.clone())
@@ -474,10 +800,14 @@ impl VisitMut for Normalize<'_> {
         }
         if ["include", "include_str", "include_bytes"]
             .iter()
-            .any(|name| item.path.is_ident(name))
+            .any(|name| path_is(&item.path, name))
         {
             match syn::parse2::<syn::LitStr>(item.tokens.clone()) {
-                Ok(path) => self.includes.push(path.value()),
+                Ok(path) if self.includes.len() < MAX_FILES => self.includes.push(Included {
+                    path: path.value(),
+                    rust: path_is(&item.path, "include"),
+                }),
+                Ok(_) => self.error = Some("too many rule includes".into()),
                 Err(_) => {
                     self.error =
                         Some("rule includes must name a literal repository-relative path".into())
@@ -488,6 +818,143 @@ impl VisitMut for Normalize<'_> {
             self.error = Some(error);
         }
     }
+
+    fn visit_path_mut(&mut self, path: &mut syn::Path) {
+        if self.name.starts_with("crates/bota_server/src/")
+            && path.segments.len() >= 2
+            && path.segments[0].ident == "crate"
+        {
+            let module = path.segments[1].ident.to_string();
+            if !["game", "engine", "profile"].contains(&module.as_str()) {
+                self.error = Some(format!(
+                    "simulation module reaches crate::{module}; keep decision helpers under game or engine"
+                ));
+            }
+        }
+        visit_mut::visit_path_mut(self, path);
+    }
+}
+
+fn path_is(path: &syn::Path, name: &str) -> bool {
+    path.segments
+        .last()
+        .is_some_and(|segment| segment.ident == name)
+}
+
+fn declaration_macro(source: &str, path: &syn::Path) -> bool {
+    matches!(source,
+        "crates/bota_server/src/game/world.rs" if path_is(path, "world_tables"))
+        || matches!(source, "crates/bota_proto/src/match_rule.rs" if path_is(path, "kind_set"))
+}
+
+fn module_name(name: &syn::Ident) -> String {
+    let name = name.to_string();
+    name.strip_prefix("r#").unwrap_or(&name).to_owned()
+}
+
+fn use_root(tree: &syn::UseTree) -> Option<String> {
+    // Root re-exports in the rule crates name one module, never an alias.
+    match tree {
+        syn::UseTree::Path(path) => Some(path.ident.to_string()),
+        _ => None,
+    }
+}
+
+fn path_attribute(attribute: &syn::Attribute) -> bool {
+    if attribute.path().is_ident("path") {
+        return true;
+    }
+    attribute.path().is_ident("cfg_attr")
+        && attribute
+            .parse_args_with(
+                syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
+            )
+            .is_ok_and(|arguments| {
+                arguments
+                    .iter()
+                    .skip(1)
+                    .any(|meta| meta.path().is_ident("path"))
+            })
+}
+
+fn inactive_attribute(attribute: &syn::Attribute) -> bool {
+    attribute.path().is_ident("cfg_attr")
+        && attribute
+            .parse_args_with(
+                syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
+            )
+            .is_ok_and(|arguments| {
+                arguments
+                    .first()
+                    .is_some_and(|condition| cfg_without_tests(condition) == Some(false))
+            })
+}
+
+fn empty_item(item: &syn::Item) -> bool {
+    match item {
+        syn::Item::Impl(item) => item.trait_.is_none() && item.items.is_empty() && item.attrs.is_empty(),
+        syn::Item::Mod(item) => item.content.as_ref().is_some_and(|(_, items)| items.iter().all(|item| matches!(item, syn::Item::Use(item) if matches!(item.vis, syn::Visibility::Inherited)))),
+        _ => false,
+    }
+}
+
+fn contains_items(expression: &syn::Expr) -> bool {
+    struct Items(bool);
+    impl VisitMut for Items {
+        fn visit_item_mut(&mut self, _: &mut syn::Item) {
+            self.0 = true;
+        }
+        fn visit_macro_mut(&mut self, item: &mut syn::Macro) {
+            if ![
+                "assert",
+                "assert_eq",
+                "assert_ne",
+                "debug_assert",
+                "debug_assert_eq",
+                "debug_assert_ne",
+                "matches",
+                "panic",
+                "unreachable",
+            ]
+            .iter()
+            .any(|name| path_is(&item.path, name))
+            {
+                self.0 = true;
+                return;
+            }
+            match syn::punctuated::Punctuated::<syn::Expr, syn::Token![,]>::parse_terminated
+                .parse2(item.tokens.clone())
+            {
+                Ok(mut arguments) => {
+                    for argument in &mut arguments {
+                        self.visit_expr_mut(argument);
+                    }
+                }
+                Err(_) => self.0 = true,
+            }
+        }
+    }
+    let mut items = Items(false);
+    items.visit_expr_mut(&mut expression.clone());
+    items.0
+}
+
+fn item_visibility(item: &syn::Item) -> Option<&syn::Visibility> {
+    match item {
+        syn::Item::Const(item) => Some(&item.vis),
+        syn::Item::Enum(item) => Some(&item.vis),
+        syn::Item::ExternCrate(item) => Some(&item.vis),
+        syn::Item::Fn(item) => Some(&item.vis),
+        syn::Item::Mod(item) => Some(&item.vis),
+        syn::Item::Static(item) => Some(&item.vis),
+        syn::Item::Struct(item) => Some(&item.vis),
+        syn::Item::Trait(item) => Some(&item.vis),
+        syn::Item::TraitAlias(item) => Some(&item.vis),
+        syn::Item::Type(item) => Some(&item.vis),
+        syn::Item::Union(item) => Some(&item.vis),
+        syn::Item::Use(item) => Some(&item.vis),
+        _ => None,
+    }
 }
 
 // Hash the include expression itself, never the value it generates from this hash.
@@ -497,13 +964,13 @@ fn generated_include(name: &str, item: &syn::Macro) -> bool {
         "crates/bota_core/src/catalogue.rs" => "/item_identity.rs",
         _ => return false,
     };
-    if !item.path.is_ident("include") {
+    if !path_is(&item.path, "include") {
         return false;
     }
     let Ok(expression) = syn::parse2::<syn::ExprMacro>(item.tokens.clone()) else {
         return false;
     };
-    if !expression.mac.path.is_ident("concat") {
+    if !path_is(&expression.mac.path, "concat") {
         return false;
     }
     let Ok(arguments) = syn::punctuated::Punctuated::<syn::Expr, syn::Token![,]>::parse_terminated
@@ -524,7 +991,7 @@ fn generated_include(name: &str, item: &syn::Macro) -> bool {
     else {
         return false;
     };
-    environment.mac.path.is_ident("env")
+    path_is(&environment.mac.path, "env")
         && file.value() == file_name
         && syn::parse2::<syn::LitStr>(environment.mac.tokens.clone())
             .is_ok_and(|key| key.value() == "OUT_DIR")
@@ -655,16 +1122,8 @@ fn macro_declarations(tokens: TokenStream, depth: usize) -> Result<TokenStream, 
                 let test = meta.path().is_ident("test")
                     || (meta.path().is_ident("cfg")
                         && matches!(meta, syn::Meta::List(list) if syn::parse2::<syn::Meta>(list.tokens.clone()).is_ok_and(|meta| cfg_without_tests(&meta) == Some(false))));
-                if test {
-                    at = bracket + 1;
-                    while at < tokens.len() {
-                        let end = matches!(&tokens[at], TokenTree::Group(group) if group.delimiter() == Delimiter::Brace)
-                            || matches!(&tokens[at], TokenTree::Punct(mark) if mark.as_char() == ';');
-                        at += 1;
-                        if end {
-                            break;
-                        }
-                    }
+                if test && let Some(end) = declaration_end(&tokens, bracket + 1) {
+                    at = end;
                     continue;
                 }
             }
@@ -684,10 +1143,76 @@ fn macro_declarations(tokens: TokenStream, depth: usize) -> Result<TokenStream, 
     Ok(out)
 }
 
+// Opaque metavariables may stand for whole items. Keep them conservatively;
+// guessing their end could erase the next production sibling.
+fn declaration_end(tokens: &[TokenTree], mut at: usize) -> Option<usize> {
+    while matches!(tokens.get(at), Some(TokenTree::Punct(mark)) if mark.as_char() == '#') {
+        if !matches!(tokens.get(at + 1), Some(TokenTree::Group(group)) if group.delimiter() == Delimiter::Bracket)
+        {
+            return None;
+        }
+        at += 2;
+    }
+    if matches!(tokens.get(at), Some(TokenTree::Ident(name)) if name == "pub") {
+        at += 1;
+        if matches!(tokens.get(at), Some(TokenTree::Group(group)) if group.delimiter() == Delimiter::Parenthesis)
+        {
+            at += 1;
+        }
+    }
+    while matches!(tokens.get(at), Some(TokenTree::Ident(name)) if name == "unsafe" || name == "async" || name == "default")
+    {
+        at += 1;
+    }
+    let Some(TokenTree::Ident(kind)) = tokens.get(at) else {
+        return None;
+    };
+    let kind = kind.to_string();
+    if ![
+        "fn",
+        "impl",
+        "mod",
+        "struct",
+        "enum",
+        "union",
+        "trait",
+        "type",
+        "const",
+        "static",
+        "use",
+        "extern",
+        "macro_rules",
+    ]
+    .contains(&kind.as_str())
+    {
+        return None;
+    }
+    let constant = kind == "const"
+        && !matches!(tokens.get(at + 1), Some(TokenTree::Ident(name)) if name == "fn" || name == "unsafe" || name == "async");
+    let semicolon = constant || ["static", "type", "use"].contains(&kind.as_str());
+    let mut angles = 0usize;
+    for (offset, token) in tokens[at..].iter().enumerate() {
+        match token {
+            TokenTree::Punct(mark) if mark.as_char() == '<' => angles += 1,
+            TokenTree::Punct(mark) if mark.as_char() == '>' => angles = angles.saturating_sub(1),
+            TokenTree::Punct(mark) if mark.as_char() == ';' && angles == 0 => {
+                return Some(at + offset + 1);
+            }
+            TokenTree::Group(group)
+                if group.delimiter() == Delimiter::Brace && angles == 0 && !semicolon =>
+            {
+                return Some(at + offset + 1);
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 fn included_files(
     tokens: TokenStream,
     depth: usize,
-    files: &mut Vec<String>,
+    files: &mut Vec<Included>,
 ) -> Result<(), String> {
     if depth > 128 {
         return Err("rule macros exceed depth 128".into());
@@ -706,7 +1231,10 @@ fn included_files(
             if files.len() >= MAX_FILES {
                 return Err("too many rule includes".into());
             }
-            files.push(path.value());
+            files.push(Included {
+                path: path.value(),
+                rust: name == "include",
+            });
         }
         if let TokenTree::Group(group) = token {
             included_files(group.stream(), depth + 1, files)?;

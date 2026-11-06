@@ -9,21 +9,27 @@ fn main() {
         .join("../..")
         .canonicalize()
         .expect("the repository root");
-    for source in rules_source::SOURCE_ROOTS {
-        println!("cargo:rerun-if-changed={}", root.join(source).display());
-    }
     println!("cargo:rerun-if-changed=rules_source.rs");
     let identity = rules_source::identity(&root).expect("contained, valid rule sources");
-    for path in identity.data_files {
+    for path in &identity.files {
         println!("cargo:rerun-if-changed={}", root.join(path).display());
     }
     let output = std::env::var_os("OUT_DIR").expect("Cargo supplies the output directory");
     let output = Path::new(&output);
     let contents = format!("{:#018x}_u64\n", identity.digest);
     write_generated(&output.join("rules_identity.rs"), &contents);
-    let identifiers =
-        rules_source::item_identifiers(&root).expect("literal item identifier declarations");
+    let identifiers = rules_source::item_identifiers(&root, &identity.modules)
+        .expect("literal item identifier declarations");
     write_generated(&output.join("item_identity.rs"), &identifiers);
+    write_generated(
+        &output.join("rules_modules.txt"),
+        &identity
+            .modules
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n"),
+    );
 }
 
 fn write_generated(output: &Path, contents: &str) {

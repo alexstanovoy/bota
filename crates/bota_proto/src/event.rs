@@ -296,60 +296,6 @@ pub enum EventKind {
     },
 }
 
-impl EventKind {
-    /// Calls `visit` on every entity handle the event carries.
-    pub fn visit_ids(&mut self, visit: &mut dyn FnMut(&mut EntityId)) {
-        match self {
-            EventKind::Damaged { source, target, .. }
-            | EventKind::Missed { source, target }
-            | EventKind::Healed { source, target, .. } => {
-                source.iter_mut().for_each(&mut *visit);
-                visit(target);
-            }
-            EventKind::Died {
-                unit,
-                killer,
-                credited_hero,
-                ..
-            } => {
-                visit(unit);
-                killer.iter_mut().for_each(&mut *visit);
-                credited_hero.as_deref_mut().into_iter().for_each(visit);
-            }
-            EventKind::Landed {
-                caster, missile, ..
-            } => {
-                caster.iter_mut().for_each(&mut *visit);
-                missile.iter_mut().for_each(visit);
-            }
-            EventKind::TreeFelled { by, .. } => by.iter_mut().for_each(visit),
-            EventKind::ItemUsed { caster, target, .. } => {
-                caster.iter_mut().for_each(&mut *visit);
-                target.iter_mut().for_each(visit);
-            }
-            EventKind::Captured { unit, by, .. } | EventKind::ShrineActivated { unit, by, .. } => {
-                visit(unit);
-                by.iter_mut().for_each(visit);
-            }
-            EventKind::AbilityCast { caster: unit, .. }
-            | EventKind::LevelUp { unit, .. }
-            | EventKind::StructureDestroyed { unit, .. }
-            | EventKind::RuneActivated { unit, .. }
-            | EventKind::RuneBottled { unit, .. }
-            | EventKind::RuneDenied { unit, .. } => visit(unit),
-            EventKind::LotusGrown { pool, .. } => visit(pool),
-            EventKind::LotusPlucked { pool, unit, .. } => {
-                visit(pool);
-                unit.iter_mut().for_each(visit);
-            }
-            EventKind::ItemBought { .. }
-            | EventKind::Teleported { .. }
-            | EventKind::TreeGrew { .. }
-            | EventKind::RuneSpawned { .. } => {}
-        }
-    }
-}
-
 /// The seats a [`EventKind::Died`] names as assisting, in seat order.
 pub fn assisting_seats(bits: u16) -> impl Iterator<Item = SlotId> {
     (0..u16::BITS as u8)

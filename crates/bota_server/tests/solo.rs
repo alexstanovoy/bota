@@ -225,7 +225,7 @@ fn a_match_leaves_its_metadata_in_a_file_and_in_its_replay_and_the_recorder_writ
     assert_eq!(
         meta.records.first(),
         Some(&MetaRecord::RulesIdentity {
-            fingerprint: bota_core::RULES_VERSION
+            identity: bota_core::RULES_IDENTITY
         })
     );
     let over = records

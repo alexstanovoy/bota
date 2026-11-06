@@ -101,7 +101,7 @@ On `wasm32` the socket transports are absent; `WebSocketLink` (feature `web`) is
 Every hero lives in `crates/bota_core/src/heroes/<hero>/`: numbers, body, abilities, talents and the pure functions
 clients read. The checklists are rustdoc, next to the code they describe: `bota_core::heroes` for a hero or ability
 (registry lines, the module, the `HEROES` and `ABILITIES` rows, the server's hook and system, tests), `bota_core::ITEMS`
-for an item (registry line, table row, rules version, pins, shop tab, new stats, actives or buffs). A unit kind is a
+for an item (registry line, table row, catalogue agreement, new stats, actives or buffs, and end-to-end tests). A unit kind is a
 `UnitKind` variant plus its `UNIT_KINDS` row. Registry lines name ids by Dota's internal names (`item_blink`,
 `npc_dota_hero_nevermore`), which each table row carries as its `key`.
 
@@ -118,45 +118,51 @@ every wire struct.
   table that disagrees with `ids.txt`.
 
 There is no version negotiation. A client sends `bota_core::WIRE_FINGERPRINT` in its `Hello`: a hash of both
-registries and of `bota_core::RULES_VERSION`, a content-derived `u64` computed by `bota_core/build.rs`. A server of another fingerprint answers
+registries and of `bota_core::RULES_IDENTITY`, a content-derived `u64` computed by `bota_core/build.rs`. A server of another fingerprint answers
 `WireMismatch` and closes, so two builds that disagree, a balance change included, fail at the door instead of in
 mid-match.
 
-`RULES_VERSION` is an identity, never an ordered counter. No author bumps it, checks in generated values, or
-renumbers it after merging another rule change. The build hashes production Rust under `bota_core/src`,
-`bota_proto/src` and `bota_server/src`, including maps, the engine, game systems, order handling and visibility.
-Literal `include!`, `include_str!` and `include_bytes!` paths bring their repository-local data into the hash too.
-The generated identity file itself and test-only paths (`tests/`, `tests.rs`, `*_tests.rs`) are excluded.
+`RULES_IDENTITY` is an identity, never an ordered counter. No author bumps it, checks in generated values, or
+renumbers it after merging another rule change. The build follows production module declarations from
+`bota_core/src/lib.rs`, `bota_server/src/game/mod.rs`, `bota_server/src/engine/mod.rs`, and the simulation helpers
+exported by `bota_proto/src/lib.rs`. It excludes the core's item-data, compatibility and text-only modules;
+server transport, lobby, chat, CLI, profiling and spectator plumbing; and the protocol's message, framing,
+credential and codec modules. New protocol root modules must be classified explicitly as simulation helpers or
+wire plumbing. Decision helpers in the server belong under `game` or `engine`.
 
-The canonical representation uses exact parser/printer versions from `Cargo.toml`: comments and documentation,
-test-only declarations, layout, optional trailing commas, single-expression match-arm braces and reordered
-imports do not count. Tuple commas, literal contents, macro punctuation and macro matchers remain significant.
-The `world_tables!` declaration DSL forwards Rust documentation as metadata; arbitrary macro arguments can
-inspect attributes as data, so their attributes remain significant. Other production refactors may conservatively
-change the identity: this is a source contract, not a proof of semantic equivalence.
+The graph includes order validation, per-side visibility/event mapping, map/configuration decisions, and literal
+`include!`, `include_str!` and `include_bytes!` inputs, including qualified standard-library macros. Module bindings
+bring newly declared files into the graph; unreferenced files and `cfg(test)` modules are ignored. Production
+`#[path]` modules are refused explicitly, including conditional path attributes that could be active in production.
+Rust includes may contain inline declarations, but external modules belong in the normal module tree.
 
-The imported `ItemData` constants, the `ITEM_ROWS` constant, and associated `ItemId` constants belong to
-`Catalogue` prefix agreement instead. Their conversion functions and simulation mechanics are still global
-rules. Each row also binds the names and literal numeric values of its associated `ItemId` constants, generated
-from their declarations: changing an existing binding cannot bypass catalogue agreement, and a constant for an
-appended id leaves older prefixes unchanged. Keep these declarations as literal `ItemId(u16)` values; unsupported
-expressions fail the build. Changing an existing item's evaluated row changes its catalogue digest; appending rows preserves older
-prefixes. Match metadata keeps the frozen `rules_version: u32` header field, zero for content identities, and
-appends `MetaRecord::RulesIdentity` with the full `u64`.
+Canonicalization uses exact `syn`, `proc-macro2` and `prettyplease` versions. It removes comments, documentation,
+test-only declarations and layout; normalizes optional trailing commas and single-expression match-arm braces;
+and sorts imports. Tuple commas, literal contents, macro punctuation and matchers remain significant. Opaque
+macro fragments are retained conservatively instead of guessing where an item ends. Other production refactors
+can change the identity: this is a source contract, not a proof of semantic equivalence. If parsing fails, the build
+warns and hashes CRLF-normalized raw source under a separate tag, leaving rustc to report the actual source error.
 
-Hash inputs have sorted repository-relative UTF-8 paths, framed byte lengths, explicit little-endian encoding and
-a versioned SHA-256 domain. Neither machine paths, Git history, timestamps, compiler debug output nor target
-settings enter them. The first eight digest bytes form the identity; like the existing 64-bit wire fingerprint,
-this has a finite hash-collision probability and is not an authentication mechanism. Dependency and compiler
-behavior remains subject to the determinism tests; the identity describes the committed rule sources.
+The whole private `bota_core/src/data/` directory belongs to `Catalogue` prefix agreement. Its `mod.rs` is checked
+to re-export only `ITEM_ROWS`; another export fails the build. Adding a data helper and an item row preserves the
+identity and older catalogue prefixes. Each row also binds its associated `ItemId` names and literal numeric values,
+found at every AST depth: changing an existing binding cannot bypass agreement, and a constant for an appended id
+leaves older prefixes unchanged. Keep these declarations as literal `ItemId(u16)` values. Match metadata keeps the
+frozen `rules_version: u32` header field, zero for content identities, and appends `MetaRecord::RulesIdentity { identity }`.
 
-The build script reads only bounded, regular, repository-contained inputs and writes only in Cargo's output
-directory. It follows no symlinks, performs no network requests and launches no processes. Dynamic include paths
-are refused. Keep all production rules inside these source roots; test-only paths are reserved for tests.
-Cargo watches the three source directories recursively to detect added and deleted files, plus included data.
-Consequently a source-tree test or comment edit can rerun the build script even though its identity is unchanged;
-unrelated client, documentation and tool edits do not rerun it. Cargo may rebuild a crate after rerunning a build
-script even when generated output is unchanged. The generated file is written only when its content changes.
+Hash inputs have sorted repository-relative UTF-8 paths, framed lengths, explicit little-endian encoding and a
+versioned SHA-256 domain. Machine paths, Git history, timestamps, compiler debug output and target settings do not
+enter it. The first eight digest bytes form the identity; the existing 64-bit wire has the same finite
+hash-collision limitation and neither is authentication. Compiler/dependency behavior is checked by determinism tests.
+
+The build script reads bounded, regular, repository-contained inputs, follows no symlinks, performs no network
+requests and launches no processes. Dynamic includes are refused. It writes only in Cargo's output directory and
+only if output changes. Cargo watches each traced file individually, the private data export fence, and the build
+helper itself. Editing a test file under `bota_server/src/**/tests` does not rerun the identity builder. Changes to
+an inline test in a traced production file can rerun it while preserving the identity. There are no directory
+watches: adding a production module changes its watched parent declaration; deleting a traced file invalidates its
+watch. A complete repository checkout is required, including the server rule sources even for client builds.
+Packaging individual crates for crates.io is not supported by this build arrangement; publication policy is separate.
 
 ## Determinism
 

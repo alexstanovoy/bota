@@ -9,10 +9,10 @@ use core::fmt;
 
 use bota_proto::{EventKind, OutgoingOrder, ReplayRecord, ServerMsg, SlotId, Team, WorldView};
 
+use crate::game::perspective::{side_events, side_view};
 use crate::game::{
     Command, DelayLine, Entity, Event, Handles, MatchConfig, OrderDelay, RefusedOrder, World,
 };
-use crate::game_loop::{side_events, side_view};
 
 /// Invalid input or lifecycle use of a local match.
 #[derive(Clone, Debug, PartialEq, Eq)]

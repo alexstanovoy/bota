@@ -28,9 +28,9 @@ categories = ["games", "simulation"]
 [workspace.dependencies]
 syn = { version = "=2.0.119", default-features = false, features = ["full", "parsing", "printing", "visit-mut", "clone-impls"] }
 proc-macro2 = { version = "=1.0.107", default-features = false }
-quote = { version = "=1.0.47", default-features = false }
+quote = { version = "1.0.47", default-features = false }
 prettyplease = { version = "=0.2.37", default-features = false }
-sha2 = { version = "=0.11.1", default-features = false }
+sha2 = { version = "0.11.1", default-features = false }
 bota_client_core = { path = "crates/bota_client_core" }
 bota_core = { path = "crates/bota_core" }
 bota_proto = { path = "crates/bota_proto" }

@@ -10,15 +10,15 @@ use bota_proto::REGISTRY_DIGEST;
 /// do not count. Item rows use [`Catalogue`](crate::Catalogue) prefix digests,
 /// so appending data for an item preserves agreement on older catalogues.
 /// See `DEVELOPMENT.md` for the source boundary and canonicalization contract.
-pub const RULES_VERSION: u64 = include!(concat!(env!("OUT_DIR"), "/rules_identity.rs"));
+pub const RULES_IDENTITY: u64 = include!(concat!(env!("OUT_DIR"), "/rules_identity.rs"));
 
-/// The wire fingerprint: the [`REGISTRY_DIGEST`] and the [`RULES_VERSION`]
+/// The wire fingerprint: the [`REGISTRY_DIGEST`] and the [`RULES_IDENTITY`]
 /// together. A client's `Hello` carries it, a replay's header names it, and
 /// a server refuses a client of another one with `ServerMsg::WireMismatch`
 /// (see the `bota_proto` contract). The items are not in it: builds meet on
 /// the items both hold ([`Catalogue`](crate::Catalogue)), so an item added
 /// leaves older clients and replays playing.
-pub const WIRE_FINGERPRINT: u64 = wire_fingerprint(REGISTRY_DIGEST, RULES_VERSION);
+pub const WIRE_FINGERPRINT: u64 = wire_fingerprint(REGISTRY_DIGEST, RULES_IDENTITY);
 
 // Unlike text hashing, binary hashing must retain every byte, including 0x0d.
 const fn wire_fingerprint(registry: u64, rules: u64) -> u64 {

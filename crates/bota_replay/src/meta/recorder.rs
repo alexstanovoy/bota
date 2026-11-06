@@ -118,7 +118,7 @@ impl Recorder {
         self.out.push(&MetaRecord::Header(header), false);
         self.out.push(
             &MetaRecord::RulesIdentity {
-                fingerprint: bota_core::RULES_VERSION,
+                identity: bota_core::RULES_IDENTITY,
             },
             false,
         );

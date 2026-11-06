@@ -9,6 +9,7 @@ mod handles;
 mod hash;
 mod match_world;
 mod path;
+pub(crate) mod perspective;
 mod project;
 mod rng;
 mod seat;

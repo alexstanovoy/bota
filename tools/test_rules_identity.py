@@ -32,6 +32,17 @@ class RulesIdentityBuildTests(unittest.TestCase):
             self.assertEqual(self.identity(tree), initial, "comments must not move RULES")
             server.write_text(original)
 
+            plumbing = tree / "crates/bota_server/src/chat.rs"
+            plumbing_source = plumbing.read_text()
+            plumbing.write_text(plumbing_source + "\nfn identity_transport_probe() {}\n")
+            self.assertEqual(self.identity(tree), initial, "service plumbing is outside simulation identity")
+            plumbing.write_text(plumbing_source)
+            wire_limits = tree / "crates/bota_proto/src/limits.rs"
+            wire_source = wire_limits.read_text()
+            wire_limits.write_text(wire_source.replace("MAX_CHAT_BYTES: usize = 512;", "MAX_CHAT_BYTES: usize = 513;"))
+            self.assertEqual(self.identity(tree), initial, "wire-only bounds have their own wire fingerprint")
+            wire_limits.write_text(wire_source)
+
             data = tree / "crates/bota_core/src/data/items.rs"
             original_data = data.read_text()
             price = re.compile(r"(const ITEM_BOTTLE:.*?cost: )(\d+)", re.S)
@@ -53,6 +64,18 @@ class RulesIdentityBuildTests(unittest.TestCase):
             self.assertEqual(self.identity(tree), initial, "an appended id must preserve older catalogue prefixes")
             identifiers.write_text(original_identifiers)
 
+            original_mechanics = (tree / "crates/bota_core/src/data/item_mechanics.rs").read_text()
+            original_registry = (tree / "crates/bota_proto/registry/ids.txt").read_text()
+            self.append_item(tree, int(initial[2]))
+            appended = self.identity(tree, int(initial[2]))
+            self.assertEqual(appended[:2], initial[:2], "a real item, including its private helper, must preserve RULES and the older catalogue")
+            self.assertEqual(int(appended[2]), int(initial[2]) + 1, "the appended row is in the compiled catalogue")
+            self.assertNotEqual(self.identity(tree)[1], initial[1], "the full catalogue includes the appended item")
+            data.write_text(original_data)
+            identifiers.write_text(original_identifiers)
+            (tree / "crates/bota_core/src/data/item_mechanics.rs").write_text(original_mechanics)
+            (tree / "crates/bota_proto/registry/ids.txt").write_text(original_registry)
+
             self.git(tree, "switch", "-qc", "formation")
             server.write_text(original.replace("ILLUSION_RUNE_COUNT as i32 + 2", "ILLUSION_RUNE_COUNT as i32 + 3"))
             formation = self.identity(tree)
@@ -72,6 +95,36 @@ class RulesIdentityBuildTests(unittest.TestCase):
             merged = self.identity(tree)
             self.assertNotIn(merged, (initial, formation, duration), "the merge must derive its own identity")
             self.assertEqual(self.git(tree, "status", "--porcelain"), "", "no version or pin edits after the merge")
+
+            with map_source.open("a") as output:
+                output.write("\npub const BROKEN_SOURCE: u8 = ;\n")
+            result = subprocess.run(
+                ["cargo", "check", "--release", "--offline", "-p", "identity_probe"],
+                cwd=tree, capture_output=True, text=True,
+                env={**os.environ, "CARGO_TARGET_DIR": str(tree / "target")}, timeout=300,
+            )
+            self.assertNotEqual(result.returncode, 0, "rustc must reject invalid production source")
+            self.assertIn("expected expression", result.stderr)
+            self.assertIn("map.rs", result.stderr)
+            self.assertNotIn("failed to run custom build command", result.stderr)
+
+    def append_item(self, tree, item_id):
+        data = tree / "crates/bota_core/src/data/items.rs"
+        source = data.read_text()
+        row = re.search(r"pub\(crate\) const ITEM_BOOTS: ItemData = ItemData \{.*?^\};", source, re.M | re.S)
+        self.assertIsNotNone(row, "a simple imported row exists")
+        appended = row[0].replace("ITEM_BOOTS", "ITEM_RULES_TEST").replace("ItemId(0)", f"ItemId({item_id})").replace('"item_boots"', '"item_rules_test"')
+        data.write_text(source + "\n" + appended + "\n")
+        mechanics = tree / "crates/bota_core/src/data/item_mechanics.rs"
+        source = mechanics.read_text()
+        end = source.index("\n];", source.index("pub(crate) const ITEM_ROWS:"))
+        source = source[:end] + "\n    rules_test_row(&ITEM_RULES_TEST)," + source[end:]
+        source += "\nconst fn rules_test_row(data: &ItemData) -> ItemDef { from(data) }\n"
+        mechanics.write_text(source)
+        identifiers = tree / "crates/bota_proto/src/ids.rs"
+        identifiers.write_text(identifiers.read_text().replace("impl ItemId {", f"impl ItemId {{\n pub const RULES_TEST: ItemId = ItemId({item_id});", 1))
+        registry = tree / "crates/bota_proto/registry/ids.txt"
+        registry.write_text(registry.read_text().rstrip() + f"\nitem {item_id} live item_rules_test\n")
 
     def make_tree(self, tree):
         for crate in ("bota_core", "bota_proto"):
@@ -96,11 +149,13 @@ class RulesIdentityBuildTests(unittest.TestCase):
             '[dependencies]\nbota_core = { path = "../crates/bota_core" }\n'
         )
         (tree / "probe/src/main.rs").write_text(
-            'fn main() { println!("{:016x} {:016x}", bota_core::RULES_VERSION, bota_core::Catalogue::FULL.prefix().digest); }\n'
+            'fn main() { let catalogue = std::env::args().nth(1).map(|n| bota_core::Catalogue::first(n.parse().unwrap()).unwrap()).unwrap_or(bota_core::Catalogue::FULL); '
+            'println!("{:016x} {:016x} {}", bota_core::RULES_IDENTITY, catalogue.prefix().digest, bota_core::Catalogue::FULL.items()); }\n'
         )
 
-    def identity(self, tree):
-        return tuple(self.command(tree, "cargo", "run", "--release", "--offline", "--quiet", "-p", "identity_probe").split())
+    def identity(self, tree, prefix=None):
+        arguments = ("--", str(prefix)) if prefix is not None else ()
+        return tuple(self.command(tree, "cargo", "run", "--release", "--offline", "--quiet", "-p", "identity_probe", *arguments).split())
 
     def git(self, tree, *arguments):
         return self.command(tree, "git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c", "core.hooksPath=/dev/null", *arguments)

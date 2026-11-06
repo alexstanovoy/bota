@@ -528,10 +528,11 @@
 //! [`ClientMsg::Hello`](crate::ClientMsg::Hello): `bota_core::WIRE_FINGERPRINT`,
 //! which folds two numbers into one. The
 //! [`REGISTRY_DIGEST`](crate::REGISTRY_DIGEST) names the wire layout;
-//! `bota_core::RULES_VERSION` names the rules a client checks its orders
-//! against and predicts with (the tables and the integer functions of
-//! `bota_core`), bumped with every change to what they decide and held to
-//! that by a test over their code. A server built with another
+//! `bota_core::RULES_IDENTITY` is derived at build time from the simulation's
+//! module tree: shared rule and math helpers, world systems, validation,
+//! visibility and committed map inputs. Comments, layout and test-only
+//! modules do not count; item data uses catalogue prefix agreement. No
+//! author increments a number or renews a source pin. A server built with another
 //! fingerprint answers [`ServerMsg::WireMismatch`] with its own and closes the
 //! connection, before anything else could be misread: a server whose
 //! balance moved (a new patch's numbers, a changed table) and a client

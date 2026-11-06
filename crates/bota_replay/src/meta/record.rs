@@ -110,7 +110,7 @@ pub enum MetaRecord {
     },
     /// The complete content identity of the rules, recorded after the header.
     RulesIdentity {
-        fingerprint: u64,
+        identity: u64,
     },
 }
 

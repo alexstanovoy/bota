@@ -76,9 +76,9 @@ impl World {
                 effect.caster = effect.caster.filter(|caster| carried(*caster));
             }
         }
-        projectiles.truncate(bota_proto::limits::MAX_PROJECTILES);
-        loot.truncate(bota_proto::limits::MAX_SNAPSHOT_LOOT);
-        runes.truncate(bota_proto::limits::MAX_SNAPSHOT_RUNES);
+        projectiles.truncate(bota_proto::game_limits::MAX_PROJECTILES);
+        loot.truncate(bota_proto::game_limits::MAX_SNAPSHOT_LOOT);
+        runes.truncate(bota_proto::game_limits::MAX_SNAPSHOT_RUNES);
         debug_assert!(aggro.iter().all(|entry| {
             let carried = |id| units.binary_search_by_key(&id, |unit| unit.id).is_ok();
             carried(entry.unit)
@@ -616,9 +616,9 @@ impl World {
 /// says what the hero is and holds, leaving the illusion's own body (where
 /// it stands and faces, its health, statuses, effects, cast and queue).
 /// Whether every collection of the view is within the protocol's bounds
-/// ([`bota_proto::limits`]): what a client refuses a view for.
+/// ([`bota_proto::game_limits`]): what a client refuses a view for.
 fn within_limits(view: &WorldView) -> bool {
-    use bota_proto::limits::*;
+    use bota_proto::game_limits::*;
     view.units.len() <= MAX_VIEW_UNITS
         && view.projectiles.len() <= MAX_PROJECTILES
         && view.players.len() <= MAX_SEATS
@@ -644,13 +644,13 @@ fn within_limits(view: &WorldView) -> bool {
         })
 }
 
-/// Leaves out of `units` (sorted by handle) those past [`MAX_VIEW_UNITS`](bota_proto::limits),
+/// Leaves out of `units` (sorted by handle) those past [`MAX_VIEW_UNITS`](bota_proto::game_limits),
 /// the same ones every time: heroes and couriers are kept first, then buildings, then the
 /// viewer's side's units, then the others, each by handle. Whether any were left out: what named
 /// them must then be left out too. A world grows that crowded only past what a match holds, but
 /// a view past the bounds would be refused by every client, or not encode at all.
 fn keep_within_bounds(viewer: Option<Team>, units: &mut Vec<UnitView>) -> bool {
-    use bota_proto::limits::{MAX_EFFECTS_PER_UNIT, MAX_QUEUED_ORDERS, MAX_VIEW_UNITS};
+    use bota_proto::game_limits::{MAX_EFFECTS_PER_UNIT, MAX_QUEUED_ORDERS, MAX_VIEW_UNITS};
     for unit in units.iter_mut() {
         unit.effects.truncate(MAX_EFFECTS_PER_UNIT);
         unit.queue.truncate(MAX_QUEUED_ORDERS);

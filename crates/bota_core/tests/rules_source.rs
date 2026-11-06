@@ -17,7 +17,8 @@ fn formatting_docs_and_test_only_declarations_leave_the_identity_unchanged() {
         #[cfg(all(test, feature = \"anything\"))] const TEST: u8 = 5;\n\
         #[cfg(test)] mod tests { #[test] fn t() { panic!(\"anything\"); } }";
     assert_eq!(normalized(plain), normalized(editorial));
-    assert_eq!(normalized(plain), normalized(&plain.replace('\n', "\r\n")));
+    let lines = format!("{plain}\n");
+    assert_eq!(normalized(&lines), normalized(&lines.replace('\n', "\r\n")));
 }
 
 #[test]
@@ -67,17 +68,6 @@ fn macro_matchers_and_stringified_attributes_remain_significant() {
 }
 
 #[test]
-fn only_item_rows_are_left_to_the_catalogue_not_their_conversion_code() {
-    let path = "crates/bota_core/src/data/item_mechanics.rs";
-    let first = "fn from(x: u8) -> u8 { x } const ITEM_ROWS: &[u8] = &[1];";
-    let row = first.replace("&[1]", "&[1, 2]");
-    let helper = first.replace("{ x }", "{ x + 1 }");
-    let digest = |source: &str| rules_source::canonical(path, source).unwrap().0;
-    assert_eq!(digest(first), digest(&row));
-    assert_ne!(digest(first), digest(&helper));
-}
-
-#[test]
 fn nonliteral_item_identifiers_are_refused_instead_of_leaving_a_hash_gap() {
     let sources = Sources::new();
     sources.write(
@@ -85,8 +75,8 @@ fn nonliteral_item_identifiers_are_refused_instead_of_leaving_a_hash_gap() {
         "struct ItemId(u16); impl ItemId { const BOOTS: ItemId = ItemId(1 + 1); }",
     );
     assert_eq!(
-        rules_source::item_identifiers(&sources.0).err().as_deref(),
-        Some("item identifier BOOTS must be a literal ItemId(u16)")
+        sources.item_identifiers().err().as_deref(),
+        Some("crates/bota_proto/src/ids.rs: item identifier BOOTS must be a literal ItemId(u16)")
     );
 }
 
@@ -100,10 +90,26 @@ impl Sources {
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
-        for path in rules_source::SOURCE_ROOTS {
+        for path in [
+            "crates/bota_core/src",
+            "crates/bota_proto/src",
+            "crates/bota_server/src/game",
+            "crates/bota_server/src/engine",
+        ] {
             std::fs::create_dir_all(root.join(path)).unwrap();
         }
-        Self(root)
+        let sources = Self(root);
+        sources.write("crates/bota_core/src/lib.rs", "mod rules; mod data;");
+        sources.write("crates/bota_core/src/rules.rs", "const RULE: u8 = 1;");
+        sources.write(
+            "crates/bota_core/src/data/mod.rs",
+            "mod item_mechanics; pub(crate) use item_mechanics::ITEM_ROWS;",
+        );
+        sources.write("crates/bota_proto/src/lib.rs", "mod ids;");
+        sources.write("crates/bota_proto/src/ids.rs", "");
+        sources.write("crates/bota_server/src/game/mod.rs", "");
+        sources.write("crates/bota_server/src/engine/mod.rs", "");
+        sources
     }
 
     fn write(&self, path: &str, contents: &str) {
@@ -112,9 +118,189 @@ impl Sources {
         std::fs::write(path, contents).unwrap();
     }
 
+    fn item_identifiers(&self) -> Result<String, String> {
+        rules_source::item_identifiers(&self.0, &rules_source::identity(&self.0)?.modules)
+    }
+
     fn identity(&self) -> u64 {
         rules_source::identity(&self.0).unwrap().digest
     }
+}
+
+#[test]
+fn review_module_graph_ignores_plumbing_tests_and_unreferenced_sources() {
+    let sources = Sources::new();
+    let initial = sources.identity();
+    for path in [
+        "crates/bota_server/src/net/mod.rs",
+        "crates/bota_server/src/chat.rs",
+        "crates/bota_server/src/profile/mod.rs",
+        "crates/bota_server/src/main.rs",
+        "crates/bota_server/src/spectators.rs",
+        "crates/bota_server/src/lobby.rs",
+        "crates/bota_server/src/game/tests/extra.rs",
+        "crates/bota_server/src/game/unreferenced.rs",
+        "crates/bota_proto/src/codec.rs",
+    ] {
+        sources.write(path, "const UNRELATED: u8 = 1;");
+        assert_eq!(
+            sources.identity(),
+            initial,
+            "{path} is not a simulation module"
+        );
+    }
+    sources.write("crates/bota_server/src/game/mod.rs", "mod decision;");
+    sources.write(
+        "crates/bota_server/src/game/decision.rs",
+        "const RULE: u8 = 1;",
+    );
+    let bound = sources.identity();
+    sources.write(
+        "crates/bota_server/src/game/decision.rs",
+        "const RULE: u8 = 2;",
+    );
+    assert_ne!(sources.identity(), bound);
+}
+
+#[test]
+fn review_private_item_data_helpers_do_not_change_rules_but_exports_are_guarded() {
+    let sources = Sources::new();
+    let initial = sources.identity();
+    sources.write(
+        "crates/bota_core/src/data/item_mechanics.rs",
+        "const fn new_item_helper() -> u8 { 1 }",
+    );
+    assert_eq!(sources.identity(), initial);
+    sources.write(
+        "crates/bota_core/src/data/mod.rs",
+        "mod item_mechanics; pub(crate) use item_mechanics::{ITEM_ROWS, other_rule};",
+    );
+    let error = rules_source::identity(&sources.0)
+        .err()
+        .expect("the private data fence must hold");
+    assert!(error.contains("ITEM_ROWS"), "{error}");
+}
+
+#[test]
+fn review_production_path_attributes_are_refused_and_test_paths_are_ignored() {
+    let sources = Sources::new();
+    sources.write(
+        "crates/bota_core/src/lib.rs",
+        "#[path = \"outside.rs\"] mod rules;",
+    );
+    let error = rules_source::identity(&sources.0)
+        .err()
+        .expect("path attributes must not escape discovery");
+    assert!(error.contains("#[path]"), "{error}");
+    sources.write(
+        "crates/bota_core/src/lib.rs",
+        "mod rules; #[cfg(test)] #[path = \"outside.rs\"] mod tests;",
+    );
+    assert!(rules_source::identity(&sources.0).is_ok());
+}
+
+#[test]
+fn review_qualified_includes_are_hashed() {
+    let sources = Sources::new();
+    sources.write(
+        "crates/bota_core/src/rules.rs",
+        "const MAP: &[u8] = std::include_bytes!(\"../map.bin\");",
+    );
+    sources.write("crates/bota_core/map.bin", "one");
+    let initial = sources.identity();
+    sources.write("crates/bota_core/map.bin", "two");
+    assert_ne!(sources.identity(), initial);
+}
+
+#[test]
+fn review_anonymous_constants_with_items_keep_their_rule_code() {
+    let source = "const _: () = { impl Rule { fn decide() -> u8 { 1 } } };";
+    assert_ne!(
+        normalized(source),
+        normalized(&source.replace("{ 1 }", "{ 2 }"))
+    );
+}
+
+#[test]
+fn review_item_identifier_bindings_are_found_at_any_ast_depth() {
+    let sources = Sources::new();
+    let source = "struct ItemId(u16); mod nested { impl super::ItemId { const A: Self = Self(1); } } const _: () = { impl ItemId { const B: Self = Self(2); } };";
+    sources.write("crates/bota_proto/src/ids.rs", source);
+    let initial = sources.item_identifiers().unwrap();
+    sources.write(
+        "crates/bota_proto/src/ids.rs",
+        &source.replace("Self(1)", "Self(3)"),
+    );
+    assert_ne!(sources.item_identifiers().unwrap(), initial);
+    sources.write(
+        "crates/bota_proto/src/ids.rs",
+        &source.replace("Self(2)", "Self(4)"),
+    );
+    assert_ne!(sources.item_identifiers().unwrap(), initial);
+}
+
+#[test]
+fn review_cfg_test_macro_fragments_cannot_swallow_following_rule_siblings() {
+    let source =
+        "macro_rules! m { ($test:item) => { #[cfg(test)] $test fn decide() -> u8 { 1 } }; }";
+    assert_ne!(
+        normalized(source),
+        normalized(&source.replace("{ 1 }", "{ 2 }"))
+    );
+}
+
+#[test]
+fn review_parse_failures_fall_back_to_crlf_normalized_raw_source() {
+    let source = "fn broken( {\n";
+    let unix =
+        rules_source::canonical("broken.rs", source).expect("defer the real syntax error to rustc");
+    let windows = rules_source::canonical("broken.rs", &source.replace('\n', "\r\n")).unwrap();
+    assert_eq!(unix.0, windows.0);
+}
+
+#[test]
+fn review_nested_names_do_not_inherit_root_module_exclusions() {
+    let sources = Sources::new();
+    let source = "mod rules; mod data; mod nested { mod text { fn decide() -> u8 { 1 } } }";
+    sources.write("crates/bota_core/src/lib.rs", source);
+    let initial = sources.identity();
+    sources.write(
+        "crates/bota_core/src/lib.rs",
+        &source.replace("{ 1 }", "{ 2 }"),
+    );
+    assert_ne!(sources.identity(), initial);
+}
+
+#[test]
+fn documentation_in_audited_rule_declaration_macros_is_not_a_rule() {
+    for (path, source) in [
+        (
+            "crates/bota_server/src/game/world.rs",
+            "world_tables! { /// first\n pub struct World; state {} tables {} derived {} scratch {} }",
+        ),
+        (
+            "crates/bota_proto/src/match_rule.rs",
+            "kind_set! { /// first\n SomeSet of SomeKind }",
+        ),
+    ] {
+        assert_eq!(
+            rules_source::canonical(path, source).unwrap().0,
+            rules_source::canonical(path, &source.replace("first", "second"))
+                .unwrap()
+                .0
+        );
+    }
+}
+
+#[test]
+fn review_io_errors_name_the_input_path() {
+    let sources = Sources::new();
+    sources.write(
+        "crates/bota_core/src/rules.rs",
+        "const X: &str = include_str!(\"missing.txt\");",
+    );
+    let error = rules_source::identity(&sources.0).err().unwrap();
+    assert!(error.contains("missing.txt"), "{error}");
 }
 
 impl Drop for Sources {
@@ -127,6 +313,10 @@ impl Drop for Sources {
 fn new_deleted_server_sources_and_included_map_data_change_the_identity() {
     let sources = Sources::new();
     sources.write(
+        "crates/bota_core/src/lib.rs",
+        "mod rules; mod data; mod map;",
+    );
+    sources.write(
         "crates/bota_core/src/map.rs",
         "const MAP: &[u8] = include_bytes!(\"../map.bin\");",
     );
@@ -134,16 +324,18 @@ fn new_deleted_server_sources_and_included_map_data_change_the_identity() {
     assert!(
         rules_source::identity(&sources.0)
             .unwrap()
-            .data_files
+            .files
             .contains("crates/bota_core/map.bin")
     );
     let initial = sources.identity();
+    sources.write("crates/bota_server/src/game/mod.rs", "mod new_system;");
     sources.write(
-        "crates/bota_server/src/new_system.rs",
+        "crates/bota_server/src/game/new_system.rs",
         "const RULE: u8 = 1;",
     );
     assert_ne!(sources.identity(), initial);
-    std::fs::remove_file(sources.0.join("crates/bota_server/src/new_system.rs")).unwrap();
+    sources.write("crates/bota_server/src/game/mod.rs", "");
+    std::fs::remove_file(sources.0.join("crates/bota_server/src/game/new_system.rs")).unwrap();
     assert_eq!(sources.identity(), initial);
     sources.write("crates/bota_core/map.bin", "second map");
     assert_ne!(sources.identity(), initial);
@@ -191,14 +383,15 @@ fn escaping_or_dynamic_includes_are_refused_before_reading_them() {
 #[test]
 fn symlinked_rule_inputs_are_refused() {
     let sources = Sources::new();
+    sources.write("crates/bota_server/src/game/mod.rs", "mod rules;");
     std::os::unix::fs::symlink(
         "/outside",
-        sources.0.join("crates/bota_server/src/rules.rs"),
+        sources.0.join("crates/bota_server/src/game/rules.rs"),
     )
     .unwrap();
     assert_eq!(
         rules_source::identity(&sources.0).err().as_deref(),
-        Some("crates/bota_server/src/rules.rs: rule inputs must not be symlinks")
+        Some("crates/bota_server/src/game/rules.rs: rule inputs must not be symlinks")
     );
 }
 
@@ -207,19 +400,23 @@ fn the_build_uses_the_same_identity_as_the_source_contract() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     assert_eq!(
         rules_source::identity(&root).unwrap().digest,
-        bota_core::RULES_VERSION
+        bota_core::RULES_IDENTITY
     );
 }
 
 #[test]
-fn fingerprint_source_is_hashed_without_reading_the_generated_identity() {
+fn compatibility_helpers_are_outside_the_simulation_graph() {
     let sources = Sources::new();
+    sources.write(
+        "crates/bota_core/src/lib.rs",
+        "mod rules; mod data; mod fingerprint; mod text;",
+    );
     let path = "crates/bota_core/src/fingerprint.rs";
-    let source = "pub const RULES_VERSION: u64 = include!(concat!(env!(\"OUT_DIR\"), \"/rules_identity.rs\")); fn decide() -> u8 { 1 }";
+    let source = "pub const RULES_IDENTITY: u64 = include!(concat!(env!(\"OUT_DIR\"), \"/rules_identity.rs\")); fn decide() -> u8 { 1 }";
     sources.write(path, source);
     let initial = sources.identity();
     sources.write(path, &source.replace("{ 1 }", "{ 2 }"));
-    assert_ne!(sources.identity(), initial);
+    assert_eq!(sources.identity(), initial);
 }
 
 #[test]
@@ -231,5 +428,5 @@ fn identical_sources_have_a_fixed_digest_independent_of_their_directory() {
     }
     assert_eq!(first.identity(), other.identity());
     // Explicit framing and byte order, independent of Rust's Hash or Debug implementations.
-    assert_eq!(first.identity(), 0x4cd0_a4bb_639c_a36d);
+    assert_eq!(first.identity(), 0x2f4e_a2e6_4c11_1c58);
 }

@@ -327,15 +327,6 @@ pub struct SlotOrder {
     pub queue: bool,
 }
 
-impl SlotOrder {
-    /// Calls `visit` on every entity handle the order carries: the unit it
-    /// is for and the one it names.
-    pub fn visit_ids(&mut self, visit: &mut dyn FnMut(&mut EntityId)) {
-        self.unit.iter_mut().for_each(&mut *visit);
-        self.order.visit_ids(visit);
-    }
-}
-
 /// An order as a client sends it: the fields of [`ClientMsg::Order`], with the
 /// tick it was decided on always told.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
