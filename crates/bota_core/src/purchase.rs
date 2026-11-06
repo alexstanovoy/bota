@@ -198,33 +198,6 @@ impl HeldItem for Bought {
     }
 }
 
-/// Where the `parts` a seat buys go, one berth to each, or nothing when they do not all fit.
-/// `bag` is the hero's bag, absent while the hero is not in its shop or lies dead: what is bought
-/// away from the fountain waits in the stash.
-///
-/// A part that merges (a consumable, a ward) is one purchase of its own, which joins a compatible
-/// stack with room before it takes an empty slot; any other part takes the first empty slot, the
-/// bag's before the stash's.
-pub fn place_purchase<P: HeldItem>(
-    buyer: SlotId,
-    parts: &[ItemId],
-    bag: Option<&Shelf<'_, P>>,
-    stash: &Shelf<'_, P>,
-) -> Option<Vec<Berth>> {
-    let mut berths: Vec<Berth> = Vec::with_capacity(parts.len());
-    for part in parts {
-        let def = sold(*part)?;
-        if def.stack_limit > 0 {
-            debug_assert_eq!(parts.len(), 1, "a part that merges is bought alone");
-        }
-        let berth = bag
-            .and_then(|bag| purchase_slot(buyer, def, bag, Berth::Bag, &berths))
-            .or_else(|| purchase_slot(buyer, def, stash, Berth::Stash, &berths))?;
-        berths.push(berth);
-    }
-    Some(berths)
-}
-
 /// Resolve every missing part before charging gold or moving any item. Base-shop
 /// purchases may wait in the stash; secret-shop purchases need a physical carrier.
 pub fn place_shop_purchase<P: HeldItem>(
