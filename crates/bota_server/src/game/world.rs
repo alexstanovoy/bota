@@ -1016,6 +1016,9 @@ impl World {
             evasion: &mut self.evasion,
             missed: &mut self.missed,
             tick: self.tick,
+            inventory: &mut self.inventory,
+            illusion: &self.illusion,
+            wtf: self.wtf,
         };
         if amplified {
             hitting_system::<true>(cx);

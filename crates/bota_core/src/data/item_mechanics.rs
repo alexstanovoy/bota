@@ -8,7 +8,7 @@ use bota_proto::{Aim, Attribute, Attributes, EffectId, Fixed, ItemId};
 use super::items::*;
 use crate::{
     Affects, AllyUse, Carried, Dec, DisassembleRule, Dispel, Drink, Grenade, Immunity, ItemData,
-    ItemDef, LOTUS_TAKE_RANGE, Mend, NOTHING, Odds, OnAttack, PLAIN, Pool, Recipe, Scroll, Spends,
+    ItemDef, LOTUS_TAKE_RANGE, MagicBlock, Mend, NOTHING, Odds, OnAttack, PLAIN, Pool, Recipe, Scroll, Spends,
     Stock, UseSpec, hundredths_per_second, points, points_with, rules,
 };
 
@@ -30,6 +30,7 @@ const fn from(d: &ItemData) -> ItemDef {
                 initial: stock.initial,
                 max: stock.max,
                 restock_ticks: stock.every.ticks(),
+                opens_ticks: stock.opens.ticks(),
             }),
             None => None,
         },
@@ -1053,6 +1054,20 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         limits: ITEM_ROSHANS_BANNER.limits,
         ..from(&ITEM_ROSHANS_BANNER)
     },
+    // Infused Raindrops: Magical Damage Block, a charge and its cooldown a block; its charges
+    // spent, it is gone. Its mana regeneration while carried.
+    ItemDef {
+        name: "Infused Raindrops",
+        carried: Carried {
+            mana_regen: regen(&ITEM_INFUSED_RAINDROP, "mana_regen"),
+            ..NOTHING
+        },
+        magic_block: Some(MagicBlock {
+            amount: int(&ITEM_INFUSED_RAINDROP, "magic_damage_block"),
+            min_damage: int(&ITEM_INFUSED_RAINDROP, "min_damage"),
+        }),
+        ..from(&ITEM_INFUSED_RAINDROP)
+    },
 ];
 
 /// One kind of lotus, as its script gives it.
@@ -1117,6 +1132,10 @@ const _: () = {
             == 0
     );
 };
+
+// Infused Raindrops is bought with as many charges as its blocks: the script says both.
+const _: () =
+    assert!(ITEM_INFUSED_RAINDROP.charges as i32 == int(&ITEM_INFUSED_RAINDROP, "initial_charges"));
 
 // A Bottle is bought full: the charges it is bought with are all it holds, and the server fills
 // one to them.

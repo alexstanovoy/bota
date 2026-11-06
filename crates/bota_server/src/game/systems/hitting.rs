@@ -1,11 +1,14 @@
 //! Taking blows off the health they landed on.
 
-use bota_core::{ModifierKind, Odds, amplify, bite, bite_share, kind_def, mitigate, rules};
+use bota_core::{
+    ModifierKind, Odds, amplify, bite, bite_share, cooldown_after, item_def, kind_def, mitigate,
+    rules,
+};
 use bota_proto::{DamageKind, Fixed, Inflictor, Team, UnitKind, Vec2};
 
 use crate::game::{
-    Entity, Fear, Health, Hit, HitEffect, MatchRng, Modifier, Modifiers, PseudoRandom, Purpose,
-    Stats, Table, Transform, wire_id,
+    Entity, Fear, Health, Hit, HitEffect, Illusion, Inventory, MatchRng, Modifier, Modifiers,
+    PseudoRandom, Purpose, Stats, Table, Transform, wire_id,
 };
 
 use super::bubble::soak;
@@ -89,6 +92,12 @@ pub struct HitCx<'a> {
     pub abilities: &'a mut Table<crate::game::AbilityBook>,
     pub blocks: &'a mut Vec<super::spell_block::BlockActivation>,
     pub free_spells: bool,
+    /// What is carried: a magic block's charges and cooldown are spent by the blows it blocks.
+    pub inventory: &'a mut Table<Inventory>,
+    /// Which units are illusions: an illusion's items block nothing.
+    pub illusion: &'a Table<Illusion>,
+    /// Whether every cooldown comes to nothing (`-wtf`).
+    pub wtf: bool,
 }
 
 /// Takes every waiting blow off the health it landed on.
@@ -117,6 +126,9 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         abilities,
         blocks,
         free_spells,
+        inventory,
+        illusion,
+        wtf,
     } = cx;
     while let Some(blow) = hits.pop_front() {
         let standing = health
@@ -212,8 +224,18 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
                 (lost, applied, applied)
             }
             None => {
+                // A magic block answers to an enemy's blow alone, carried by no illusion.
+                let enemy = blow.source.is_some_and(|by| {
+                    by != blow.target && team.get(by).is_some_and(|&theirs| theirs != side)
+                });
+                let guard = MagicGuard {
+                    bag: inventory
+                        .get_mut(blow.target)
+                        .filter(|_| enemy && illusion.get(blow.target).is_none()),
+                    wtf,
+                };
                 let (taken, stolen) =
-                    damage_taken::<AMPLIFIED>(blow, &stat, modifiers.get_mut(blow.target));
+                    damage_taken::<AMPLIFIED>(blow, &stat, modifiers.get_mut(blow.target), guard);
                 let applied = bite(hp, taken, spared);
                 (Fixed::from_int(applied), applied, stolen)
             }
@@ -257,6 +279,7 @@ fn damage_taken<const AMPLIFIED: bool>(
     blow: Hit,
     stat: &Stats,
     mut on_it: Option<&mut Modifiers>,
+    guard: MagicGuard<'_>,
 ) -> (i32, i32) {
     let amount = dealt::<AMPLIFIED>(blow, on_it.as_deref());
     let protected = on_it.as_deref().is_some_and(|on_it| {
@@ -271,6 +294,10 @@ fn damage_taken<const AMPLIFIED: bool>(
         taken = taken * rules::BACKDOOR_DAMAGE_PCT / 100;
     }
     if blow.kind == DamageKind::Magical {
+        // The block comes first of every negation and ignores what the target takes more of
+        // (Liquipedia, Infused Raindrops: "the highest priority in the group of damage negating
+        // abilities", "Ignores every form of incoming damage amplification").
+        taken = guard.block(taken, amount, stat.cooldown_rate_bp);
         taken = more_magic(taken, stat.magic_taken_pct);
         if let Some(on_it) = on_it.as_deref_mut() {
             taken = soak(on_it, taken);
@@ -425,6 +452,55 @@ fn apply_attack_proc(
             Some(proc.inflictor),
             Some(ticks),
         ));
+    }
+}
+
+/// The carried magic blocks of a blow's target, where they may answer to it.
+struct MagicGuard<'a> {
+    /// The target's inventory; absent where no block answers to the blow.
+    bag: Option<&'a mut Inventory>,
+    wtf: bool,
+}
+
+impl MagicGuard<'_> {
+    /// What is left of magical damage `taken` (after resistance) once a carried magic block that
+    /// answers to a blow that `dealt` this much before reductions has blocked its share: the
+    /// first in the inventory proper, off cooldown and not muted, whose least damage the blow
+    /// reaches, which spends a charge and goes on its cooldown; any other carried keeps its own
+    /// (Dota 7.41e: "Multiple instances of Infused Raindrops no longer lose Magical Damage Block
+    /// charges simultaneously"; Liquipedia: "Neither consumes charges nor blocks any damage while
+    /// on cooldown"). One whose last charge is spent is gone.
+    fn block(self, taken: i32, dealt: i32, cooldown_rate_bp: i32) -> i32 {
+        let Some(bag) = self.bag else {
+            return taken;
+        };
+        for held in bag.slots.iter_mut().take(rules::INVENTORY_SLOTS) {
+            let Some(stack) = held.as_mut() else {
+                continue;
+            };
+            let Some(def) = item_def(stack.id) else {
+                continue;
+            };
+            let Some(guard) = def.magic_block else {
+                continue;
+            };
+            if stack.mute != 0 || stack.cooldown != 0 || dealt < guard.min_damage {
+                continue;
+            }
+            stack.cooldown = if self.wtf {
+                0
+            } else {
+                cooldown_after(def.cooldown, cooldown_rate_bp.max(1))
+            };
+            stack.touched = true;
+            stack.disassemble_until = 0;
+            stack.spend_one();
+            if stack.charges == 0 {
+                *held = None;
+            }
+            return taken - guard.amount.clamp(0, taken.max(0));
+        }
+        taken
     }
 }
 

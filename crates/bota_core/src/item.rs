@@ -295,6 +295,11 @@ pub struct Stock {
     pub max: u8,
     /// Ticks it takes to gain one more while it holds fewer than `max`.
     pub restock_ticks: u32,
+    /// The tick, counted from the start of the pregame, its first one comes in at, after which
+    /// it restocks as usual; zero for one stocked from the start. Dota's `ItemInitialStockTime`
+    /// counts game time from the pregame's start: its 990 s for Aghanim's Shard is the 15:00 of
+    /// a game clock that starts at -1:30.
+    pub opens_ticks: u32,
 }
 
 /// One set of parts an item is built from, and the attribute the build is
@@ -458,6 +463,22 @@ pub struct ItemDef {
     /// modifier ([`ModifierKind::Laid`](crate::ModifierKind::Laid)). Absent
     /// for an item whose passive lays nothing.
     pub on_attack: Option<OnAttack>,
+    /// The magical damage its passive blocks off a blow on its carrier, a charge a block: Dota's
+    /// Infused Raindrops. Absent for an item that blocks nothing.
+    pub magic_block: Option<MagicBlock>,
+}
+
+/// A carried passive that blocks a fixed share of a large magical blow from an enemy, a charge
+/// and its item's cooldown a block: Dota's Infused Raindrops' Magical Damage Block ("Consumes a
+/// charge to block 120 magic damage from damage instances over 75 damage").
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MagicBlock {
+    /// The magical damage it blocks of one blow, after the carrier's magic resistance:
+    /// `magic_damage_block`.
+    pub amount: i32,
+    /// The least magical damage a blow must deal, before reductions and after the dealer's
+    /// amplification, for it to block: `min_damage`.
+    pub min_damage: i32,
 }
 
 /// What an item's passive lays on whatever its carrier's attack strikes: Dota's attack
@@ -726,6 +747,7 @@ pub(crate) const PLAIN: ItemDef = ItemDef {
     lifetime: 0,
     disassemble: DisassembleRule::Window,
     on_attack: None,
+    magic_block: None,
 };
 
 /// What one item is, or nothing if no such item exists or it is retired.

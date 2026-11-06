@@ -370,6 +370,7 @@ fn every_stat_item_bought_adds_what_its_script_says_and_nothing_else() {
             && def.components.is_empty()
             && def.aim.is_none()
             && def.on_attack.is_none()
+            && def.magic_block.is_none()
             && !def.values.is_empty();
         if !stat_stick || STAT_ITEMS_TESTED_APART.contains(&item) {
             continue;

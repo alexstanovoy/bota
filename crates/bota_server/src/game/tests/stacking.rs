@@ -34,6 +34,8 @@ fn a_second_purchase_stacks_exactly_the_items_dota_stacks() {
         let id = ItemId(index as u16);
         let (mut world, hero) = a_hero_with_gold(100_000);
         for _ in 0..2 {
+            // A question of stacking, not of stock: the shelf holds what it can each time.
+            every_shelf_full(&mut world);
             assert!(
                 world.buy(bota_proto::SlotId(0), id, &mut Vec::new()),
                 "{}",

@@ -236,6 +236,9 @@ impl ItemId {
     pub const REFRESHER_SHARD: ItemId = ItemId(89);
     /// A planted lane-creep protection aura.
     pub const ROSHANS_BANNER: ItemId = ItemId(90);
+    /// Dota's `item_infused_raindrop`: a charge blocks a share of a large
+    /// magical blow.
+    pub const INFUSED_RAINDROP: ItemId = ItemId(91);
 }
 
 /// What did something: the ability or the item a unit used, as Dota's combat

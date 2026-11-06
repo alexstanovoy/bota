@@ -24,8 +24,9 @@ pub struct Item {
     /// `ItemStackable`, with `ItemStackableMax` where it has one.
     pub stackable: bool,
     pub stack_max: Option<i64>,
-    /// `ItemStockInitial`, `ItemStockMax` and `ItemStockTime` (thousandths of seconds).
-    pub stock: Option<(i64, i64, Milli)>,
+    /// `ItemStockInitial`, `ItemStockMax`, `ItemStockTime` and `ItemInitialStockTime`
+    /// (thousandths of seconds).
+    pub stock: Option<(i64, i64, Milli, Milli)>,
     pub purchasable: bool,
     pub secret_shop: bool,
     /// `SpellDispellableType` without its `SPELL_DISPELLABLE_` prefix: `NO`, `YES` or
@@ -78,6 +79,7 @@ const READ: &[&str] = &[
     "AbilityValues",
     "ItemCost",
     "ItemInitialCharges",
+    "ItemInitialStockTime",
     "ItemPurchasable",
     "ItemDroppable",
     "ItemSellable",
@@ -97,7 +99,7 @@ const READ: &[&str] = &[
 ];
 
 /// Keys known and left out: presentation, the shop's suggestions, and rules bota models
-/// elsewhere or not yet (targets, sharing, dispels, the shared cooldown's name).
+/// elsewhere or not yet (targets, sharing, dispels, the shared cooldown's name, Turbo's stock).
 const LEFT_OUT: &[&str] = &[
     "AbilitySharedCooldown",
     "AbilityUnitTargetFlags",
@@ -113,6 +115,7 @@ const LEFT_OUT: &[&str] = &[
     "ItemDisassembleRule",
     "ItemDisplayCharges",
     "ItemHideCharges",
+    "ItemInitialStockTimeTurbo",
     "ItemPermanent",
     "ItemQuality",
     "ItemRecipe",
@@ -167,6 +170,7 @@ pub fn read(key: &str, block: &Kv) -> Result<Item, String> {
             whole("ItemStockInitial", 0)?,
             whole("ItemStockMax", 0)?,
             seconds("ItemStockTime")?,
+            seconds("ItemInitialStockTime")?,
         )),
     };
     let recipe = match text("ItemResult")? {

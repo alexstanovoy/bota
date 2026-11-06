@@ -754,6 +754,17 @@ pub(crate) fn a_hero_with_gold(gold: i32) -> (World, Entity) {
     (world, hero)
 }
 
+/// Fills every shelf of every side's shop to its most, one that opens later too: for a test of
+/// what the shop takes or where it puts it, not of its stock.
+pub(crate) fn every_shelf_full(world: &mut World) {
+    for held in world.shop_stock.iter_mut() {
+        held.left = bota_core::item_def(held.item)
+            .and_then(|def| def.stock)
+            .map_or(held.left, |rule| rule.max);
+        held.restock_left = 0;
+    }
+}
+
 pub(crate) fn slot_of(world: &World, hero: Entity, at: usize) -> Option<ItemStack> {
     world.inventory.get(hero).and_then(|bag| bag.slots[at])
 }

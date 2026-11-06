@@ -129,10 +129,12 @@ fn write_row(out: &mut String, entry: &Registered, row: &Item, builds: &[Vec<u16
             .collect();
         format!("B::{}{rest}", row.behavior[0])
     };
-    let stock = row.stock.map_or("None".to_owned(), |(initial, max, every)| {
+    let stock = row.stock.map_or("None".to_owned(), |(initial, max, every, opens)| {
         format!(
-            "Some(StockData {{\n        initial: {initial},\n        max: {max},\n        every: {},\n    }})",
-            secs(every)
+            "Some(StockData {{\n        initial: {initial},\n        max: {max},\n        every: {},\n        \
+             opens: {},\n    }})",
+            secs(every),
+            secs(opens)
         )
     });
     let _ = write!(

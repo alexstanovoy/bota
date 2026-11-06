@@ -37,6 +37,7 @@ mod jungle;
 mod kill_credit;
 mod local;
 mod lotus;
+mod magic_block;
 mod map2;
 mod match_flow;
 mod movement;

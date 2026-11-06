@@ -129,6 +129,9 @@ pub struct StockData {
     pub max: u8,
     /// `ItemStockTime`: the wait for one more.
     pub every: Ms,
+    /// `ItemInitialStockTime`: when the first one comes in, counted from the start of the
+    /// pregame; zero for one stocked from the start.
+    pub opens: Ms,
 }
 
 /// One item as the script has it: numbers and Dota's internal names, nothing to show.

@@ -196,11 +196,19 @@ impl Fnv {
     const fn stock(self, value: Option<Stock>) -> Fnv {
         match value {
             None => self.u64(0),
-            Some(stock) => self
-                .u64(1)
-                .u64(stock.initial as u64)
-                .u64(stock.max as u64)
-                .u64(stock.restock_ticks as u64),
+            Some(stock) => {
+                let fnv = self
+                    .u64(1)
+                    .u64(stock.initial as u64)
+                    .u64(stock.max as u64)
+                    .u64(stock.restock_ticks as u64);
+                // A shelf stocked from the start digests as one before shelves could open later.
+                if stock.opens_ticks == 0 {
+                    fnv
+                } else {
+                    fnv.u64(0xA3).u64(stock.opens_ticks as u64)
+                }
+            }
         }
     }
 
@@ -414,6 +422,7 @@ pub(crate) const fn item_digest(def: &ItemDef) -> u64 {
         lifetime,
         disassemble,
         on_attack,
+        magic_block,
     } = *def;
     let fnv = Fnv::NEW
         .u64(id.0 as u64)
@@ -488,6 +497,13 @@ pub(crate) const fn item_digest(def: &ItemDef) -> u64 {
             .int(laid.restoration_cut_pct as i64)
             .flag(matches!(laid.affects, crate::Affects::EnemyUnits))
             .flag(laid.pierces_immunity),
+    };
+    let fnv = match magic_block {
+        None => fnv,
+        Some(block) => fnv
+            .u64(0xA4)
+            .int(block.amount as i64)
+            .int(block.min_damage as i64),
     };
     let fnv = if take_range == 0 {
         fnv

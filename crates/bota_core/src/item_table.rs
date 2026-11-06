@@ -81,6 +81,8 @@ const _: () = {
             assert!(stock.initial <= stock.max);
             assert!(stock.max > 0);
             assert!(stock.restock_ticks > 0);
+            // A shelf that opens later gains its first one then.
+            assert!(stock.opens_ticks == 0 || stock.initial < stock.max);
         }
         let mut part = 0;
         while part < ITEMS[at].components.len() {

@@ -8,7 +8,7 @@ use bota_core::ITEMS;
 use bota_proto::{ItemId, Order, SlotId, Vec2};
 
 use super::client::seated;
-use super::support::fresh_stack;
+use super::support::{every_shelf_full, fresh_stack};
 use crate::game::{ItemStack, World};
 use crate::local::LocalMatch;
 
@@ -105,6 +105,8 @@ fn arranged(state: &State) -> (LocalMatch, ClientSession) {
         world.transform.get_mut(hero).expect("placed").pos = Vec2::from_ints(9_000, 9_000);
     }
     assert_eq!(world.at_shop(hero), state.home, "{}", state.name);
+    // What fits is a question of room: every shelf holds what it can, one that opens later too.
+    every_shelf_full(world);
     let step = local.step(&[&[], &[]]).expect("a step");
     for message in step.into_iter().next().expect("seat 0") {
         session.ingest(message, &mut ()).expect("folds");

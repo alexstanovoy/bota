@@ -10,7 +10,8 @@ use bota_proto::{DamageKind, EventKind, Inflictor, ItemId, Target, Team, UnitKin
 use crate::game::{Entity, Event, Grenade, Modifier, ShopStock, World, wire_id};
 
 /// Every side's shop as a match on `catalogue` starts: each item sold from
-/// a limited stock at its starting count, by side, then in catalog order.
+/// a limited stock at its starting count, by side, then in catalog order. A
+/// shelf that opens later gains its first one on its opening tick.
 pub fn fresh_stock(catalogue: Catalogue) -> Vec<ShopStock> {
     let mut stock = Vec::new();
     for team in [Team::Radiant, Team::Dire] {
@@ -22,7 +23,9 @@ pub fn fresh_stock(catalogue: Catalogue) -> Vec<ShopStock> {
                 team,
                 item: ItemId(index as u16),
                 left: rule.initial,
-                restock_left: if rule.initial < rule.max {
+                restock_left: if rule.opens_ticks > 0 {
+                    rule.opens_ticks
+                } else if rule.initial < rule.max {
                     rule.restock_ticks
                 } else {
                     0
