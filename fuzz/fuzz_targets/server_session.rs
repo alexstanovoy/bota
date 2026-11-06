@@ -54,6 +54,7 @@ fn opts() -> ServerOpts {
         max_connections: Some(8),
         map: MapId(2),
         cheats: true,
+        lobby_cheats: false,
         immortal_structures: false,
         immortal_heroes: false,
         objectives: None,
