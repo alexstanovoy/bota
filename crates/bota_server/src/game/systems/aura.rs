@@ -87,6 +87,23 @@ impl World {
                 level: 1,
             });
         }
+        if let Some(mods) = self.modifiers.get(carrier) {
+            for held in mods.active() {
+                if let bota_core::ModifierKind::AuraEmitter { ability, level } = held.kind
+                    && let Spell::Cast {
+                        act: bota_core::Act::Roar(spec),
+                        ..
+                    } = *ability.spell()
+                {
+                    into.push(Source {
+                        carrier,
+                        aura: &spec.aura,
+                        ability: Some(ability.id()),
+                        level,
+                    });
+                }
+            }
+        }
         let Some(book) = self.abilities.get(carrier) else {
             return;
         };

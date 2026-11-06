@@ -873,6 +873,7 @@ fn a_courier_in_its_fountains_rejuvenation_takes_nothing_and_is_hit_again_once_i
     world.step();
     let swing = |world: &mut World| {
         world.hits.push_back(crate::game::Hit {
+            proc: None,
             blockable_source_team: None,
             source: None,
             inflictor: None,

@@ -256,6 +256,7 @@ pub(crate) const MAX_TOLD: usize = 4096;
 /// Something worth a sound or a flourish, told by the events of a tick.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CueKind {
+    BossRoar,
     /// A hero lets an attack go.
     Attack,
     /// The watched hero's attack lands.
@@ -363,6 +364,10 @@ pub enum FeedKind {
         by: Option<SlotId>,
         team: Team,
         destroyed: bool,
+    },
+    BossRoared {
+        objective: bota_proto::ObjectiveKind,
+        team: Team,
     },
     /// A map boss fell to this side.
     BossFell {

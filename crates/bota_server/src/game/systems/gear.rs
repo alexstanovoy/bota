@@ -335,6 +335,7 @@ impl World {
         }
         self.lapse_loot();
         let mut expired = Vec::new();
+        let mut delayed = Vec::new();
         for entity in self.entities.iter() {
             if let Some(book) = self.abilities.get_mut(entity) {
                 for slot in book.slots.iter_mut() {
@@ -366,6 +367,11 @@ impl World {
                 on_it.0.retain_mut(|held| {
                     held.ticks_left = held.ticks_left.map(|left| left.saturating_sub(1));
                     let over = held.ticks_left == Some(0);
+                    if over
+                        && let bota_core::ModifierKind::DelayedSpell { ability, level } = held.kind
+                    {
+                        delayed.push((entity, ability, level));
+                    }
                     lapsed |= over
                         && effect_def(held.kind.effect_id()).is_some_and(|def| def.ends_its_wearer);
                     !over
@@ -374,6 +380,9 @@ impl World {
                     self.lapsed_lives.push(entity);
                 }
             }
+        }
+        for (entity, ability, level) in delayed {
+            self.finish_delayed_spell(entity, ability, level);
         }
         for (entity, stack) in expired {
             self.recover_expired_item(entity, stack.id);

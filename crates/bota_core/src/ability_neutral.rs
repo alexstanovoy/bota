@@ -89,6 +89,9 @@ pub enum NeutralAbility {
     StrengthOfTheImmortal,
     Devotion,
     SpellBlock,
+    Bash,
+    RoshanSlam,
+    RevengeRoar,
 }
 
 impl NeutralAbility {
@@ -204,6 +207,7 @@ pub enum Stat {
     StatusResistPct,
     /// Reduction of incoming illusion attacks, leaving spells unaffected.
     IllusionAttackReductionPct,
+    IncomingDamagePct,
 }
 
 /// What a spell's own modifier does to the stats of whatever wears it: up
@@ -301,6 +305,13 @@ pub enum Strike {
         dps: i32,
         effect: EffectId,
     },
+    /// Rolled at the attack point and carried to impact as conditional attack damage.
+    Bash {
+        chance_pct: i32,
+        damage: Lv,
+        stun_ms: Lv,
+        effect: EffectId,
+    },
 }
 
 /// A passive that goes off as its bearer dies.
@@ -332,10 +343,13 @@ pub enum Throe {
 /// What a cast does once it goes off.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Act {
+    Roar(&'static Roar),
     /// Every enemy within `radius` of the caster takes `damage` of `kind`
     /// and is stunned, or wears the spell's modifier, for `hero_ms` on a hero
     /// and `other_ms` on anything else.
     Stomp {
+        growth: Option<crate::DamageGrowth>,
+        other_pct: i32,
         radius: Lv,
         damage: Lv,
         kind: DamageKind,
@@ -409,12 +423,38 @@ pub enum Act {
     },
     /// Carries the target `distance` along the line from the caster through
     /// it, at `speed`.
-    Push { distance: i32, speed: i32 },
+    Push {
+        distance: i32,
+        speed: i32,
+    },
     /// Takes the target's buffs off and slows it, the slow falling from
     /// `start_pct` by a fifth of it each second over `ms`.
-    Purge { start_pct: i32, ms: i32 },
+    Purge {
+        start_pct: i32,
+        ms: i32,
+    },
     /// A tornado of `kind` stands at the target for `life_ms`.
-    Tornado { kind: NeutralKind, life_ms: i32 },
+    Tornado {
+        kind: NeutralKind,
+        life_ms: i32,
+    },
+}
+
+/// A delayed area pulse, with a temporary incoming-damage aura.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Roar {
+    pub windup: u32,
+    pub windup_effect: EffectId,
+    pub emitter_effect: EffectId,
+    pub disarm_effect: EffectId,
+    pub damage_effect: EffectId,
+    pub radius: i32,
+    pub damage: i32,
+    pub growth: crate::DamageGrowth,
+    pub disarm: u32,
+    pub aura_duration: u32,
+    pub aura: Aura,
+    pub buff: Buff,
 }
 
 /// What a stomp leaves on what it hits.
@@ -867,6 +907,8 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
         ),
         Spell::Cast {
             act: Act::Stomp {
+                growth: None,
+                other_pct: 100,
                 radius: all(250),
                 damage: lv(25, 50, 75, 150),
                 kind: DamageKind::Magical,
@@ -899,6 +941,8 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
         ),
         Spell::Cast {
             act: Act::Stomp {
+                growth: None,
+                other_pct: 100,
                 radius: lv(300, 350, 400, 500),
                 damage: all(0),
                 kind: DamageKind::Magical,
@@ -1139,6 +1183,8 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
         ),
         Spell::Cast {
             act: Act::Stomp {
+                growth: None,
+                other_pct: 100,
                 radius: all(300),
                 damage: lv(150, 200, 250, 350),
                 kind: DamageKind::Magical,
@@ -1411,6 +1457,8 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
         cast("Slam", Aim::Own, false, &[150], &[secs(6)], 0, 300, 430),
         Spell::Cast {
             act: Act::Stomp {
+                growth: None,
+                other_pct: 100,
                 radius: all(350),
                 damage: all(250),
                 kind: DamageKind::Magical,
@@ -1503,6 +1551,8 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
         ),
         Spell::Cast {
             act: Act::Stomp {
+                growth: None,
+                other_pct: 100,
                 radius: all(300),
                 damage: all(200),
                 kind: DamageKind::Physical,
@@ -1812,6 +1862,107 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
             breakable: false,
         },
     ),
+    entry(
+        AbilityId(83),
+        crate::data::ROSHAN_BASH.key,
+        N::Bash,
+        AbilityDef {
+            max_level: 1,
+            pierces: crate::Pierces::Yes,
+            ..passive("Bash")
+        },
+        Spell::Strike(Strike::Bash {
+            chance_pct: crate::data::ROSHAN_BASH.first("bash_chance").int(),
+            damage: all(crate::data::ROSHAN_BASH.first("bonus_damage").int()),
+            stun_ms: all(crate::data::ROSHAN_BASH.first("stun_duration").0),
+            effect: EffectId(84),
+        }),
+    ),
+    entry(
+        AbilityId(84),
+        crate::data::ROSHAN_SLAM.key,
+        N::RoshanSlam,
+        AbilityDef {
+            max_level: 1,
+            ..cast(
+                "RoshanSlam",
+                Aim::Own,
+                false,
+                &[0],
+                &[crate::data::ROSHAN_SLAM
+                    .first("AbilityCooldown")
+                    .secs()
+                    .ticks()],
+                0,
+                crate::data::ROSHAN_SLAM.first("AbilityCastPoint").0 as u32,
+                570,
+            )
+        },
+        Spell::Cast {
+            act: Act::Stomp {
+                radius: all(crate::data::ROSHAN_SLAM.first("radius").int()),
+                damage: all(crate::data::ROSHAN_SLAM.first("damage").int()),
+                growth: Some(crate::DamageGrowth {
+                    per_step: all(crate::data::ROSHAN_SLAM.first("damage_growth").int()),
+                    clock: crate::GrowthClock {
+                        first_after_horn: 60 * rules::TICKS_PER_SECOND,
+                        period: 60 * rules::TICKS_PER_SECOND,
+                        cap: u32::MAX,
+                    },
+                }),
+                other_pct: 100 + crate::data::ROSHAN_SLAM.first("damage_bonus_creeps").int(),
+                kind: DamageKind::Magical,
+                hero_ms: all(crate::data::ROSHAN_SLAM.first("slow_duration").0),
+                other_ms: all(crate::data::ROSHAN_SLAM.first("slow_duration").0),
+                then: Then::Wear {
+                    buff: chill(
+                        all(-crate::data::ROSHAN_SLAM.first("slow_amount").int()),
+                        all(-crate::data::ROSHAN_SLAM.first("slow_amount").int()),
+                    ),
+                    effect: EffectId(83),
+                },
+            },
+            when: When::Think(CastRule::on_itself(&[Need::Crowd {
+                radius: 350,
+                at_least: 3,
+                heroes: 1,
+                on_it: false,
+            }])),
+            shared: None,
+        },
+    ),
+    entry(
+        AbilityId(85),
+        crate::data::ROSHAN_REVENGEROAR.key,
+        N::RevengeRoar,
+        AbilityDef {
+            max_level: 1,
+            immediate: true,
+            cast_while_stunned: true,
+            cast_while_silenced: true,
+            ..cast(
+                "RoarOfRetribution",
+                Aim::Own,
+                false,
+                &[0],
+                &[crate::data::ROSHAN_REVENGEROAR
+                    .first("AbilityCooldown")
+                    .secs()
+                    .ticks()],
+                0,
+                0,
+                0,
+            )
+        },
+        Spell::Cast {
+            when: When::Think(CastRule::on_itself(&[
+                Need::HurtBelow { pct: 85 },
+                Need::PreviousKillerHero { radius: 800 },
+            ])),
+            act: Act::Roar(&ROSHAN_ROAR),
+            shared: None,
+        },
+    ),
 ];
 
 /// The bubble the Marshmages put up: one modifier whichever of them cast
@@ -1820,3 +1971,63 @@ pub const WATER_BUBBLE_EFFECT: EffectId = EffectId(54);
 
 /// The modifier a purge leaves on an enemy.
 pub const PURGE_EFFECT: EffectId = EffectId(55);
+
+const ROSHAN_ROAR: Roar = Roar {
+    windup: crate::data::ROSHAN_REVENGEROAR
+        .first("windup_time")
+        .secs()
+        .ticks(),
+    windup_effect: EffectId(85),
+    emitter_effect: EffectId(86),
+    disarm_effect: EffectId(87),
+    damage_effect: EffectId(88),
+    radius: crate::data::ROSHAN_REVENGEROAR.first("radius").int(),
+    damage: crate::data::ROSHAN_REVENGEROAR.first("damage").int(),
+    growth: crate::DamageGrowth {
+        clock: crate::GrowthClock {
+            first_after_horn: 60 * rules::TICKS_PER_SECOND,
+            period: 60 * rules::TICKS_PER_SECOND,
+            cap: u32::MAX,
+        },
+        per_step: all(crate::data::ROSHAN_REVENGEROAR.first("damage_growth").int()),
+    },
+    disarm: crate::data::ROSHAN_REVENGEROAR
+        .first("disarm_duration")
+        .secs()
+        .ticks(),
+    aura_duration: crate::data::ROSHAN_REVENGEROAR
+        .first("duration")
+        .secs()
+        .ticks(),
+    aura: Aura {
+        growth_clock: None,
+        whom: Whom::Enemies,
+        reaches: Reach::Living,
+        radius: crate::data::ROSHAN_REVENGEROAR.first("radius").int(),
+        linger: 15,
+        modifier: AuraModifier::Spell(N::RevengeRoar),
+        breakable: false,
+        water: false,
+        invulnerable: false,
+    },
+    buff: Buff::of(
+        Stat::IncomingDamagePct,
+        all(crate::data::ROSHAN_REVENGEROAR.first("damage_pct").int()),
+    ),
+};
+
+/// Longest cast windup a snapshot may show, including a spell's declared delayed pulse.
+pub fn ability_cast_view_ticks(id: AbilityId) -> u32 {
+    let point = crate::ability_def(id).map_or(0, |d| d.point);
+    let ordinary = (u64::from(point) * u64::from(rules::TICKS_PER_SECOND))
+        .div_ceil(1000)
+        .min(u32::MAX.into()) as u32;
+    let delayed = match NeutralAbility::of(id).map(NeutralAbility::spell) {
+        Some(Spell::Cast {
+            act: Act::Roar(spec),
+            ..
+        }) => spec.windup,
+        _ => 0,
+    };
+    ordinary.max(delayed)
+}

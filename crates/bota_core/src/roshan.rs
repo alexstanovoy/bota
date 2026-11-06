@@ -36,7 +36,7 @@ pub const ROSHAN: UnitDef = UnitDef {
     attack_range: U.first("AttackRange").int(),
     acquisition: U.first("AttackAcquisitionRange").int(),
     attack_time: U.first("AttackRate").0 as u32,
-    attack_speed: 200, // Engine intrinsic; current Roshan mechanics, not exposed in npc_units.txt.
+    attack_speed: 200, // PN 6.86: BAT 2.0 and +100 attack speed; absent from npc_units.txt.
     attack_point: U.first("AttackAnimationPoint").0 as u32,
     attack_backswing: 300,
     projectile_speed: None,

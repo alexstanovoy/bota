@@ -408,6 +408,7 @@ impl Tracks {
             | EventKind::RuneDenied { .. }
             | EventKind::LotusGrown { .. }
             | EventKind::LotusPlucked { .. }
+            | EventKind::BossRoared { .. }
             | EventKind::BossFell { .. }
             | EventKind::ItemDestroyed { .. }
             | EventKind::ItemPlaced { .. }

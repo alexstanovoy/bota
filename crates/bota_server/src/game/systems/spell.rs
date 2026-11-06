@@ -48,6 +48,7 @@ impl World {
             level,
         };
         let went = match act {
+            Act::Roar(spec) => self.start_roar(cast, spec),
             Act::Stomp { .. } => self.stomp(cast, act),
             Act::Bolt { .. } => self.bolt(cast, act, target),
             Act::Chain { .. } => self.chain_lightning(cast, act, target),
@@ -107,6 +108,8 @@ impl World {
     /// creep.
     fn stomp(&mut self, cast: Cast, act: Act) -> bool {
         let Act::Stomp {
+            growth,
+            other_pct,
             radius,
             damage,
             kind,
@@ -122,6 +125,9 @@ impl World {
         };
         let reach = rules::units(at_level(&radius, cast.level));
         for foe in self.foes_within(cast.caster, at, reach) {
+            if !self.spell_reaches(cast.ability.id(), foe) {
+                continue;
+            }
             let ms = if self.is_hero(foe) { hero_ms } else { other_ms };
             let ms = at_level(&ms, cast.level);
             match then {
@@ -131,6 +137,14 @@ impl World {
                 }
             }
             let damage = at_level(&damage, cast.level);
+            let damage = growth.map_or(damage, |g| {
+                g.amount(damage, cast.level, self.clock(), self.schedule())
+            });
+            let damage = if self.is_hero(foe) {
+                damage
+            } else {
+                (i64::from(damage) * i64::from(other_pct) / 100).clamp(0, i32::MAX.into()) as i32
+            };
             if damage > 0 {
                 self.push_hit(Some(cast.caster), foe, damage, kind, cast.inflictor());
             }
@@ -163,7 +177,11 @@ impl World {
         let Some(on) = self.foe_aimed_at(cast, target) else {
             return false;
         };
-        self.dispel_basic(on);
+        self.dispel(
+            on,
+            crate::game::Dispel::Buffs,
+            crate::game::DispelPower::Basic,
+        );
         self.wear(cast, on, ms, u16::try_from(start_pct).unwrap_or(0))
     }
 
@@ -198,6 +216,101 @@ impl World {
                     state.cooldown = state.cooldown.max(ticks);
                 }
             }
+        }
+    }
+}
+
+impl World {
+    fn start_roar(&mut self, cast: Cast, spec: &bota_core::Roar) -> bool {
+        if !self.alive(cast.caster) {
+            return false;
+        }
+        if let Some(index) = self.lairs.iter().position(|l| l.unit == Some(cast.caster))
+            && let Some(team) = self.lairs[index].last_killer
+        {
+            let objective = self.map.lairs[index].objective;
+            self.events.push(crate::game::Event {
+                kind: bota_proto::EventKind::BossRoared { objective, team },
+                visible_to: crate::game::EventVisibility::Everyone,
+                gold_hidden_from: None,
+                source_told_to: crate::game::EventVisibility::Everyone,
+            });
+        }
+        self.dispel(
+            cast.caster,
+            crate::game::Dispel::Debuffs,
+            crate::game::DispelPower::Strong,
+        );
+        self.put_modifier(
+            cast.caster,
+            Modifier::new(
+                ModifierKind::DelayedSpell {
+                    ability: cast.ability,
+                    level: cast.level,
+                },
+                Some(cast.caster),
+                cast.inflictor(),
+                Some(spec.windup),
+            ),
+        );
+        true
+    }
+
+    pub(super) fn finish_delayed_spell(
+        &mut self,
+        caster: Entity,
+        ability: NeutralAbility,
+        level: u8,
+    ) {
+        if !self.alive(caster) {
+            return;
+        }
+        let Spell::Cast {
+            act: Act::Roar(spec),
+            ..
+        } = *ability.spell()
+        else {
+            return;
+        };
+        let cast = Cast {
+            caster,
+            ability,
+            level,
+        };
+        let Some(at) = self.pos(caster) else {
+            return;
+        };
+        self.put_modifier(
+            caster,
+            Modifier::new(
+                ModifierKind::AuraEmitter { ability, level },
+                Some(caster),
+                cast.inflictor(),
+                Some(spec.aura_duration),
+            ),
+        );
+        let damage = spec
+            .growth
+            .amount(spec.damage, level, self.clock(), self.schedule());
+        for foe in self.foes_within(caster, at, rules::units(spec.radius)) {
+            if self.stats.get(foe).is_some_and(|s| s.spell_immune) {
+                continue;
+            }
+            let kind = ModifierKind::Control {
+                control: bota_core::Control::Disarm,
+                effect: spec.disarm_effect,
+            };
+            self.put_modifier(
+                foe,
+                Modifier::new(kind, Some(caster), cast.inflictor(), Some(spec.disarm)),
+            );
+            self.push_hit(
+                Some(caster),
+                foe,
+                damage,
+                bota_proto::DamageKind::Magical,
+                cast.inflictor(),
+            );
         }
     }
 }

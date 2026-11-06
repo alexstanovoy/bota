@@ -42,6 +42,7 @@ pub struct Hit {
     /// The items whose passive the blow lays on the struck before its damage
     /// lands: an attack's, its own blow only.
     pub laid: Laid,
+    pub proc: Option<AttackProc>,
     /// Allegiance captured by a blockable spell projectile.
     pub blockable_source_team: Option<bota_proto::Team>,
     /// Whether it removes health rather than dealing damage (Dota's HP
@@ -154,7 +155,8 @@ state_hash!(Hit {
     laid,
     removal,
     spares,
-    blockable_source_team
+    blockable_source_team,
+    proc
 });
 state_hash!(Fear { line, most });
 
@@ -214,3 +216,21 @@ impl crate::engine::Specimen for HitEffect {
         }
     }
 }
+
+/// A conditional attack bonus captured at the attack point, independent of spell effects.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AttackProc {
+    pub inflictor: Inflictor,
+    pub bonus_damage: i32,
+    pub modifier: Option<bota_core::ModifierKind>,
+    pub ticks: u32,
+    /// Modifier immunity policy; unrelated to an attack's cannot-miss flag.
+    pub pierces: bota_core::Pierces,
+}
+state_hash!(AttackProc {
+    inflictor,
+    bonus_damage,
+    modifier,
+    ticks,
+    pierces
+});

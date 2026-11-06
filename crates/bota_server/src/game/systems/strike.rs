@@ -19,6 +19,7 @@ pub(super) struct Boost {
     pub crit_pct: i32,
     /// Whether the swing goes through evasion.
     pub accurate: bool,
+    pub proc: Option<crate::game::AttackProc>,
 }
 
 /// One strike of one unit, aimed at what its blow landed on.
@@ -82,10 +83,11 @@ impl World {
     /// of its own, and a critical strike. Its crits roll from the strongest
     /// down, each on a sequence of its own (its ability's slot), and stop at
     /// the first that hits: one that did not roll keeps its run.
-    pub(super) fn boost_of(&mut self, attacker: Entity, stats: &Stats) -> Boost {
+    pub(super) fn boost_of(&mut self, attacker: Entity, on: Entity, stats: &Stats) -> Boost {
         let mut boost = Boost {
             crit_pct: 100,
             accurate: false,
+            proc: None,
         };
         if stats.accuracy != Odds::NEVER {
             let rng = &self.rng;
@@ -121,7 +123,65 @@ impl World {
                 break;
             }
         }
+        boost.proc = self.conditional_proc(attacker, on);
         boost
+    }
+
+    /// Conditional attack bonuses roll once at the attack point and survive flight.
+    fn conditional_proc(
+        &mut self,
+        attacker: Entity,
+        on: Entity,
+    ) -> Option<crate::game::AttackProc> {
+        if self.wears_illusion(attacker)
+            || self.kind.get(on).is_some_and(|k| {
+                bota_core::kind_def(*k).target_class == bota_core::TargetClass::Ward
+            })
+        {
+            return None;
+        }
+        for (slot, ability, level) in self.passives(attacker) {
+            let Spell::Strike(Strike::Bash {
+                chance_pct,
+                damage,
+                stun_ms,
+                effect,
+            }) = *ability.spell()
+            else {
+                continue;
+            };
+            let given = Proc {
+                by: attacker,
+                on,
+                slot,
+                ability,
+                level,
+            };
+            if !self.cooled_down(given) {
+                continue;
+            }
+            let rng = &self.rng;
+            let rolls = entity_slot(&mut self.crit, attacker, Rolls::default);
+            let roll = rolls.at(slot, || {
+                PseudoRandom::new(rng.for_unit(Purpose::Crit, wire_id(attacker), slot as u8))
+            });
+            if !roll.roll(Odds::percent(chance_pct.clamp(0, 100) as u8)) {
+                continue;
+            }
+            self.start_cooldown(given);
+            self.tell_ability_triggered(attacker, ability.id());
+            return Some(crate::game::AttackProc {
+                inflictor: bota_proto::Inflictor::Ability(ability.id()),
+                bonus_damage: at_level(&damage, level),
+                modifier: Some(ModifierKind::Control {
+                    control: bota_core::Control::Stun,
+                    effect,
+                }),
+                ticks: ticks_of_ms(at_level(&stun_ms, level)),
+                pierces: ability.entry().def.pierces,
+            });
+        }
+        None
     }
 
     /// Answers to the blows that landed this tick: what their attackers'
@@ -273,7 +333,7 @@ impl World {
             Strike::Petrify { below_pct, ms, .. } => {
                 self.petrify(given, below_pct, at_level(&ms, given.level))
             }
-            Strike::Crit { .. } | Strike::Splash { .. } => {}
+            Strike::Crit { .. } | Strike::Splash { .. } | Strike::Bash { .. } => {}
         }
     }
 

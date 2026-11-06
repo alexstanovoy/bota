@@ -220,7 +220,7 @@ pub const JUNGLE_HOME: HomeDef = HomeDef {
 };
 
 /// The most abilities a neutral carries.
-pub const MAX_NEUTRAL_ABILITIES: usize = 4;
+pub const MAX_NEUTRAL_ABILITIES: usize = 7;
 
 const _: () = {
     let mut at = 0;
@@ -1809,7 +1809,14 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
         kind: NeutralKind::Roshan,
         name: "Roshan",
         unit: "npc_dota_roshan",
-        abilities: &[A::SpellBlock, A::StrengthOfTheImmortal, A::Devotion],
+        abilities: &[
+            A::RevengeRoar,
+            A::RoshanSlam,
+            A::Bash,
+            A::SpellBlock,
+            A::StrengthOfTheImmortal,
+            A::Devotion,
+        ],
         growth: Some(crate::NeutralGrowth {
             ability: NeutralAbility::StrengthOfTheImmortal,
             clock: crate::GrowthClock {

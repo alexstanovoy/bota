@@ -331,3 +331,14 @@ ability 82 live roshan_spell_block
 effect 83 live modifier_roshan_inherent_buffs
 effect 84 live modifier_roshan_devotion_aura
 effect 85 live modifier_roshan_spell_block
+
+ability 83 live roshan_bash
+ability 84 live roshan_slam
+ability 85 live roshan_revengeroar
+effect 86 live modifier_roshan_slam
+effect 87 live modifier_bashed
+effect 88 live modifier_roshan_revengeroar_windup
+effect 89 live modifier_roshan_revengeroar_aura
+effect 90 live modifier_roshan_revengeroar_disarm
+effect 91 live modifier_roshan_revengeroar
+effect 92 live modifier_silence

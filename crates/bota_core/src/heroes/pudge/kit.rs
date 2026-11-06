@@ -131,6 +131,7 @@ pub const DISMEMBER: AbilityDef = AbilityDef {
     range: DISMEMBER_RANGE,
     point: DISMEMBER_CAST_POINT_MS,
     duration: DISMEMBER_TICKS,
+    resisted_channel: true,
     // It holds a courier too, whose hits its bites take nothing of.
     pierces: Pierces::Yes,
     ..BARE_ABILITY

@@ -4,6 +4,15 @@ use bota_proto::{DamageKind, EffectId, Fixed, ItemId, StatusFlags, Team};
 
 use crate::{Act, Buff, NeutralAbility, Spell, Strike, Then, Throe, WATER_BUBBLE_EFFECT, rules};
 
+/// What a registered control modifier prevents.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Control {
+    Stun,
+    Root,
+    Disarm,
+    Silence,
+}
+
 /// One kind of modifier, with what there is of it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ModifierKind {
@@ -291,15 +300,48 @@ pub enum ModifierKind {
         amount: u16,
     },
     /// Percentage-of-maximum recovery, recalculated as the pools change.
-    Recovery { health_pct: i32, mana_pct: i32 },
+    Recovery {
+        health_pct: i32,
+        mana_pct: i32,
+    },
     /// An aura's fractional armor bonus and its registered effect.
-    BonusArmor { armor: Fixed, effect: EffectId },
+    BonusArmor {
+        armor: Fixed,
+        effect: EffectId,
+    },
+    Control {
+        control: Control,
+        effect: EffectId,
+    },
+    DelayedSpell {
+        ability: NeutralAbility,
+        level: u8,
+    },
+    AuraEmitter {
+        ability: NeutralAbility,
+        level: u8,
+    },
 }
 
 impl ModifierKind {
     /// The number the wire names this kind of modifier with.
     pub const fn effect_id(self) -> EffectId {
         match self {
+            ModifierKind::DelayedSpell { ability, .. } => match *ability.spell() {
+                Spell::Cast {
+                    act: Act::Roar(spec),
+                    ..
+                } => spec.windup_effect,
+                _ => panic!("not a delayed spell"),
+            },
+            ModifierKind::AuraEmitter { ability, .. } => match *ability.spell() {
+                Spell::Cast {
+                    act: Act::Roar(spec),
+                    ..
+                } => spec.emitter_effect,
+                _ => panic!("not an aura spell"),
+            },
+            ModifierKind::Control { effect, .. } => effect,
             ModifierKind::BonusArmor { effect, .. } => effect,
             ModifierKind::Recovery { .. } => EffectId::AEGIS_REGENERATION,
             ModifierKind::Mending { .. } => EffectId::MENDING,
@@ -386,9 +428,25 @@ impl ModifierKind {
     /// The [`StatusFlags`] bits it sets on whatever wears it: what holds,
     /// slows, burns or frightens it and what keeps magic off it. A neutral's
     /// spell sets what its own modifier does ([`spell_statuses`]).
+    /// The control semantics, including the older dedicated modifier kinds.
+    pub fn controls(self, kind: Control) -> bool {
+        match self {
+            ModifierKind::Control { control, .. } => control == kind,
+            ModifierKind::DelayedSpell { .. } | ModifierKind::Stunned => kind == Control::Stun,
+            ModifierKind::Rooted => kind == Control::Root,
+            ModifierKind::Disarmed => kind == Control::Disarm,
+            _ => false,
+        }
+    }
+
     pub fn statuses(self) -> u16 {
         match self {
-            ModifierKind::Stunned => StatusFlags::STUNNED,
+            ModifierKind::DelayedSpell { .. }
+            | ModifierKind::Stunned
+            | ModifierKind::Control {
+                control: Control::Stun,
+                ..
+            } => StatusFlags::STUNNED,
             ModifierKind::Shielded => StatusFlags::MAGIC_IMMUNE,
             ModifierKind::Slowed { .. } => StatusFlags::SLOWED,
             ModifierKind::Burning { .. }
@@ -521,9 +579,14 @@ impl ModifierKind {
 /// The effect a spell's own modifier shows, if the spell leaves one.
 pub const fn spell_effect(ability: NeutralAbility) -> Option<EffectId> {
     match *ability.spell() {
+        Spell::Cast {
+            act: Act::Roar(spec),
+            ..
+        } => Some(spec.damage_effect),
         Spell::Intrinsic { effect, .. } | Spell::Block { effect, .. } => Some(effect),
         Spell::Aura(aura) => Some(aura.effect),
         Spell::Storm { effect, .. }
+        | Spell::Strike(Strike::Bash { effect, .. })
         | Spell::Strike(Strike::Lay { effect, .. })
         | Spell::Strike(Strike::Petrify { effect, .. })
         | Spell::Throe(Throe::Rouse { effect, .. })
@@ -572,6 +635,10 @@ pub fn spell_statuses(ability: NeutralAbility, level: u8, amount: u16) -> u16 {
 /// modifier's own `amount`, falling as it wears off.
 pub const fn spell_buff(ability: NeutralAbility) -> Option<Buff> {
     match *ability.spell() {
+        Spell::Cast {
+            act: Act::Roar(spec),
+            ..
+        } => Some(spec.buff),
         Spell::Intrinsic { buff, .. } | Spell::Block { buff, .. } => Some(buff),
         Spell::Aura(aura) => Some(aura.buff),
         Spell::Storm { buff, .. }

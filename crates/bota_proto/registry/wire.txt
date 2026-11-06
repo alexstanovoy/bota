@@ -722,3 +722,7 @@ variant EventKind 24 ItemPlaced {}
 field EventKind::ItemPlaced 0 item: ItemId
 field EventKind::ItemPlaced 1 team: Team
 field EventKind::ItemPlaced 2 at: Vec2
+
+variant EventKind 25 BossRoared {}
+field EventKind::BossRoared 0 objective: ObjectiveKind
+field EventKind::BossRoared 1 team: Team

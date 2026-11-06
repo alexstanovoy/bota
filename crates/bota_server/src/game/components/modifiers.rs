@@ -7,6 +7,18 @@ use bota_proto::{AbilityId, Inflictor};
 use crate::engine::state_hash;
 use crate::engine::{Entity, Table};
 
+/// Which side of a unit's effects a dispel removes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Dispel {
+    Buffs,
+    Debuffs,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DispelPower {
+    Basic,
+    Strong,
+}
+
 /// One modifier on an entity.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Modifier {
@@ -68,6 +80,27 @@ pub fn disabled_in(modifiers: &Table<Modifiers>, held: &Modifier) -> bool {
 /// stacking aura or a strike.
 fn replaces(fresh: &Modifier, held: &Modifier) -> bool {
     match (held.kind, fresh.kind) {
+        (
+            ModifierKind::DelayedSpell { ability: had, .. },
+            ModifierKind::DelayedSpell { ability, .. },
+        )
+        | (
+            ModifierKind::AuraEmitter { ability: had, .. },
+            ModifierKind::AuraEmitter { ability, .. },
+        ) => had == ability,
+
+        (
+            ModifierKind::Control {
+                control: had,
+                effect: had_effect,
+            },
+            ModifierKind::Control { control, effect },
+        ) => {
+            had == control
+                && had_effect == effect
+                && (!bota_core::effect_def(effect).is_some_and(|e| e.per_source)
+                    || held.source == fresh.source)
+        }
         (ModifierKind::BonusArmor { effect: had, .. }, ModifierKind::BonusArmor { effect, .. }) => {
             had == effect
                 && (!bota_core::effect_def(effect).is_some_and(|e| e.per_source)

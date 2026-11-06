@@ -15,12 +15,14 @@ use crate::engine::Entity;
 /// disarms and breaks like stuns.
 fn shortened_by_resistance(kind: ModifierKind) -> bool {
     match kind {
+        ModifierKind::Control { .. } => true,
         ModifierKind::Spell { ability, level, .. } => {
             spell_buff(ability).is_some_and(|buff| buff.get(Stat::MovePct, level) < 0)
         }
         _ => matches!(
             kind,
             ModifierKind::Stunned
+                | ModifierKind::Dismembered { .. }
                 | ModifierKind::Feared
                 | ModifierKind::Slowed { .. }
                 | ModifierKind::Rotting { .. }
@@ -58,24 +60,48 @@ fn rot_beat(level: u8) -> i32 {
 }
 
 impl World {
+    pub(crate) fn dispel(
+        &mut self,
+        on: Entity,
+        polarity: crate::game::Dispel,
+        power: crate::game::DispelPower,
+    ) {
+        if let Some(mods) = self.modifiers.get_mut(on) {
+            mods.0.retain(|m| {
+                !bota_core::effect_def(m.kind.effect_id()).is_some_and(|d| {
+                    d.harmful == matches!(polarity, crate::game::Dispel::Debuffs)
+                        && (d.dispellable
+                            || (power == crate::game::DispelPower::Strong && d.strong_dispellable))
+                })
+            });
+        }
+    }
+
+    pub fn controlled(&self, entity: Entity, control: bota_core::Control) -> bool {
+        self.modifiers
+            .get(entity)
+            .is_some_and(|mods| mods.active().any(|m| m.kind.controls(control)))
+    }
     /// Whether an entity is held: it neither walks, nor turns, nor swings,
     /// nor casts until it lifts.
+    pub fn silenced(&self, entity: Entity) -> bool {
+        self.controlled(entity, bota_core::Control::Silence)
+    }
+
     pub fn held(&self, entity: Entity) -> bool {
-        self.active_modifier(entity, ModifierKind::Stunned)
-            .is_some()
+        self.controlled(entity, bota_core::Control::Stun)
     }
 
     /// Whether an entity is rooted: it cannot walk, nor turn to walk, but
     /// still swings and casts.
     pub fn rooted(&self, entity: Entity) -> bool {
-        self.active_modifier(entity, ModifierKind::Rooted).is_some()
+        self.controlled(entity, bota_core::Control::Root)
     }
 
     /// Whether an entity is disarmed: it cannot begin a swing. A neutral
     /// that is takes nothing on, stands still and casts nothing.
     pub fn disarmed(&self, entity: Entity) -> bool {
-        self.active_modifier(entity, ModifierKind::Disarmed)
-            .is_some()
+        self.controlled(entity, bota_core::Control::Disarm)
     }
 
     /// Whether an entity is broken: its own passives do nothing. What the
@@ -222,9 +248,15 @@ impl World {
                         amount,
                     } => self.spell_pulse(entity, modifier, (ability, level, amount)),
                     ModifierKind::Dismembered { level } => {
-                        let held_for = rules::DISMEMBER_TICKS - modifier.ticks_left.unwrap_or(0);
+                        let duration = modifier.ticks_total.unwrap_or(rules::DISMEMBER_TICKS);
+                        let held_for = duration.saturating_sub(modifier.ticks_left.unwrap_or(0));
                         let bites = 1..rules::DISMEMBER_BITES;
-                        if bites.map(dismember_bite_tick).any(|tick| tick == held_for)
+                        if bites
+                            .map(|bite| {
+                                (dismember_bite_tick(bite) * duration)
+                                    .div_ceil(rules::DISMEMBER_TICKS)
+                            })
+                            .any(|tick| tick == held_for)
                             && let Some(holder) = modifier.source
                             && self.alive(entity)
                         {

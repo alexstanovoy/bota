@@ -66,7 +66,12 @@ impl World {
         let with = Some(Inflictor::Ability(AbilityId::DISMEMBER));
         self.put_modifier(
             on,
-            Modifier::new(ModifierKind::Stunned, Some(caster), with, None),
+            Modifier::new(
+                ModifierKind::Stunned,
+                Some(caster),
+                with,
+                Some(rules::DISMEMBER_TICKS),
+            ),
         );
         let held = ModifierKind::Dismembered { level: level as u8 };
         self.put_modifier(
@@ -142,13 +147,24 @@ impl World {
         let Some(on) = self.dismember_mark(target) else {
             return false;
         };
+        let held = self.modifiers.get(on).is_some_and(|mods| {
+            mods.active().any(|m| {
+                matches!(m.kind, ModifierKind::Dismembered { .. }) && m.source == Some(caster)
+            })
+        });
+        if !held
+            || !self.alive(on)
+            || !self.within_reach(caster, on, rules::units(rules::DISMEMBER_RANGE))
+        {
+            return false;
+        }
         self.dismember_pulls(caster, on);
         if let (Some(at), Some(shown)) = (self.pos(on), self.mark_of(caster, AbilityId::DISMEMBER))
             && let Some(transform) = self.transform.get_mut(shown)
         {
             transform.pos = at;
         }
-        self.alive(on) && self.within_reach(caster, on, rules::units(rules::DISMEMBER_RANGE))
+        true
     }
 
     /// Lets go of what a dismember held: what it put on the mark and on

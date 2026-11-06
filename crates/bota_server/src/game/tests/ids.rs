@@ -7,6 +7,26 @@ use bota_proto::{DamageKind, EffectId, Fixed, IdSpace, RegisteredId, registered}
 /// the match below until it is listed here as well.
 fn every_modifier() -> Vec<ModifierKind> {
     let mut every = vec![
+        ModifierKind::DelayedSpell {
+            ability: bota_core::NeutralAbility::RevengeRoar,
+            level: 1,
+        },
+        ModifierKind::AuraEmitter {
+            ability: bota_core::NeutralAbility::RevengeRoar,
+            level: 1,
+        },
+        ModifierKind::Control {
+            control: bota_core::Control::Disarm,
+            effect: EffectId(87),
+        },
+        ModifierKind::Control {
+            control: bota_core::Control::Silence,
+            effect: EffectId(89),
+        },
+        ModifierKind::Control {
+            control: bota_core::Control::Stun,
+            effect: EffectId(84),
+        },
         ModifierKind::BonusArmor {
             armor: Fixed::ONE,
             effect: EffectId(79),
@@ -151,7 +171,10 @@ fn every_modifier() -> Vec<ModifierKind> {
             | ModifierKind::BottleRegeneration { .. }
             | ModifierKind::Laid { .. }
             | ModifierKind::Spell { .. } => {}
-            ModifierKind::BonusArmor { .. }
+            ModifierKind::DelayedSpell { .. }
+            | ModifierKind::AuraEmitter { .. }
+            | ModifierKind::Control { .. }
+            | ModifierKind::BonusArmor { .. }
             | ModifierKind::Dismembered { .. }
             | ModifierKind::MeatShield { .. } => {}
         }
@@ -174,6 +197,15 @@ fn every_effect_is_shown_under_its_registered_id() {
     let mut shown: Vec<(u16, String)> = every_modifier()
         .iter()
         .map(|kind| match kind {
+            ModifierKind::DelayedSpell { .. }
+            | ModifierKind::AuraEmitter { .. }
+            | ModifierKind::Control { .. } => (
+                kind.effect_id().0,
+                effect_def(kind.effect_id())
+                    .expect("registered")
+                    .name
+                    .to_owned(),
+            ),
             ModifierKind::BonusArmor { effect, .. } => (
                 effect.0,
                 effect_def(*effect).expect("registered").name.to_owned(),

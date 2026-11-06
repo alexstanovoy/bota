@@ -1,6 +1,6 @@
 //! The world as a side is allowed to see it.
 
-use bota_core::{ability_mana_cost, effect_def, kind_def, phase_ticks_left, rules};
+use bota_core::{ModifierKind, ability_mana_cost, effect_def, kind_def, phase_ticks_left, rules};
 use bota_proto::{
     AbilityId, AbilityView, AggroView, CastView, EffectView, Fixed, Inflictor, PlayerView,
     ProjectileView, StatusFlags, SwingView, TalentSlot, TalentView, Talents, Team, UnitKind,
@@ -812,6 +812,16 @@ impl World {
     /// The cast point an entity stands in: the ability it casts, none for
     /// an item, and the ticks before it goes off.
     fn cast_of(&self, entity: Entity) -> Option<CastView> {
+        if let Some(held) = self.modifiers.get(entity).and_then(|mods| {
+            mods.active()
+                .find(|m| matches!(m.kind, ModifierKind::DelayedSpell { .. }))
+        }) && let ModifierKind::DelayedSpell { ability, .. } = held.kind
+        {
+            return Some(CastView {
+                ability: Some(ability.id()),
+                goes_off_in: held.ticks_left.unwrap_or(0),
+            });
+        }
         let (ability, point, progress) = match self.action.get(entity)?.state {
             ActionState::CastAbility {
                 slot,
@@ -868,7 +878,7 @@ impl World {
             (stats.invulnerable, StatusFlags::INVULNERABLE),
             (stats.spell_immune, StatusFlags::MAGIC_IMMUNE),
             (self.is_channelling(entity), StatusFlags::CHANNELLING),
-            (self.is_casting(entity), StatusFlags::CASTING),
+            (self.cast_of(entity).is_some(), StatusFlags::CASTING),
         ] {
             if set {
                 bits |= flag;

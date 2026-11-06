@@ -75,6 +75,8 @@ pub enum Within {
 /// What must hold of the caster.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Need {
+    /// A real hero of the last killing side has drawn this boss's aggression.
+    PreviousKillerHero { radius: i32 },
     /// Below `pct` percent of its health.
     HurtBelow { pct: i32 },
     /// In an attack.

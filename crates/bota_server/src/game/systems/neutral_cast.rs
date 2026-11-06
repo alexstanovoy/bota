@@ -29,7 +29,20 @@ impl World {
             }
             if let Some((slot, target)) = self.wanted_cast(caster) {
                 let slot = AbilitySlot(slot as u8);
-                self.order_cast(caster, PendingCast::Ability { slot, target });
+                let pending = PendingCast::Ability { slot, target };
+                let immediate = self
+                    .abilities
+                    .get(caster)
+                    .and_then(|b| b.slots.get(usize::from(slot.0)))
+                    .and_then(|s| bota_core::ability_def(s.id))
+                    .is_some_and(|d| d.immediate);
+                if immediate {
+                    if let Some(orders) = self.orders.get_mut(caster) {
+                        orders.immediate = Some(pending);
+                    }
+                } else {
+                    self.order_cast(caster, pending);
+                }
             }
         }
         self.recycle_entity_snapshot(entities);
@@ -62,10 +75,10 @@ impl World {
 
     /// The first spell a neutral wants to cast now, and at what.
     fn wanted_cast(&self, caster: Entity) -> Option<(usize, Target)> {
-        let held = self.target_of(caster).filter(|held| self.alive(*held))?;
-        if !self.free_to_cast(caster) {
-            return None;
-        }
+        let held = self
+            .target_of(caster)
+            .or_else(|| self.neutral_ai.get(caster).and_then(|ai| ai.roused_by))
+            .filter(|held| self.alive(*held))?;
         let book = self.abilities.get(caster)?;
         for (slot, state) in book.slots.iter().enumerate() {
             let Some(ability) = NeutralAbility::of(state.id) else {
@@ -78,7 +91,13 @@ impl World {
             else {
                 continue;
             };
-            if !self.castable(caster, state) {
+            let def = &ability.entry().def;
+            let enabled =
+                self.free_to_cast(caster) || (def.cast_while_stunned && self.alive(caster));
+            if !enabled
+                || (self.silenced(caster) && !def.cast_while_silenced)
+                || !self.castable(caster, state)
+            {
                 continue;
             }
             if let Some(target) = self.cast_by_rule(caster, ability, &rule, held) {

@@ -12,7 +12,7 @@ use crate::game::{Bounty, Entity, Illusion, Modifier, PendingCast, UnitOrder, Wo
 impl World {
     /// An Illusion Rune: two illusions of the hero stand beside it, dealing a
     /// share of its damage and taking more of what is dealt to them, for
-    /// 75 s; the hero is stopped and loses its dispellable buffs, and the
+    /// 75 s; the hero is stopped and loses its basic-dispellable debuffs, and the
     /// illusions a rune of the hero made before are gone [LIQ Runes].
     ///
     /// The illusions stand round the hero, evenly, one body-length-and-a-bit
@@ -35,7 +35,11 @@ impl World {
         for other in old {
             self.despawn(other);
         }
-        self.dispel_basic(hero);
+        self.dispel(
+            hero,
+            crate::game::Dispel::Debuffs,
+            crate::game::DispelPower::Basic,
+        );
         self.set_order(hero, UnitOrder::Stand);
         let ranged = self
             .stats
@@ -129,15 +133,6 @@ impl World {
         }
         self.call_off_aims_at(hero);
         self.settle();
-    }
-
-    /// Takes the buffs a basic dispel takes off a unit.
-    pub(crate) fn dispel_basic(&mut self, unit: Entity) {
-        if let Some(on_it) = self.modifiers.get_mut(unit) {
-            on_it.0.retain(|held| {
-                !effect_def(held.kind.effect_id()).is_some_and(|def| def.dispellable)
-            });
-        }
     }
 
     /// Calls off what the other side aims at a hero an illusion of it was

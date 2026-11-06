@@ -40,6 +40,9 @@ pub fn table(dota: Option<&Path>) -> Result<String, String> {
         ("ROSHAN_DEVOTION", "roshan_devotion"),
         ("ROSHAN_INHERENT_BUFFS", "roshan_inherent_buffs"),
         ("ROSHAN_SPELL_BLOCK", "roshan_spell_block"),
+        ("ROSHAN_BASH", "roshan_bash"),
+        ("ROSHAN_SLAM", "roshan_slam"),
+        ("ROSHAN_REVENGEROAR", "roshan_revengeroar"),
     ] {
         let ability = abilities
             .get("DOTAAbilities")

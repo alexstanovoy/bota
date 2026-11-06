@@ -365,16 +365,13 @@ fn casts(view: &WorldView) -> Result<(), SessionError> {
         let Some(cast) = unit.cast else {
             continue;
         };
-        let point_ms = match cast.ability {
-            Some(ability) => bota_core::ability_def(ability).map_or(0, |def| def.point),
-            None => bota_core::ITEMS
-                .iter()
-                .map(|def| def.point)
-                .max()
-                .unwrap_or(0),
+        let point = match cast.ability {
+            Some(ability) => u64::from(bota_core::ability_cast_view_ticks(ability)),
+            None => {
+                let ms = bota_core::ITEMS.iter().map(|d| d.point).max().unwrap_or(0);
+                (u64::from(ms) * u64::from(rules::TICKS_PER_SECOND)).div_ceil(1000)
+            }
         };
-        // Widened as for a swing: the cast point is the rules' word in milliseconds.
-        let point = (u64::from(point_ms) * u64::from(rules::TICKS_PER_SECOND)).div_ceil(1000);
         if !(1..=point.max(1)).contains(&u64::from(cast.goes_off_in)) {
             return Err(SessionError::CastOutOfRange(unit.id));
         }

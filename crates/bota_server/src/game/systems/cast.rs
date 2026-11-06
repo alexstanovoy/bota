@@ -69,6 +69,9 @@ impl World {
         {
             return CastOutcome::Refused;
         }
+        if self.silenced(entity) && !def.cast_while_silenced {
+            return CastOutcome::Refused;
+        }
         let cost = self.ability_mana_cost(entity, ability.id, ability.level);
         if self.mana.get(entity).map_or(0, |m| m.mana.to_int()) < cost {
             return CastOutcome::Refused;

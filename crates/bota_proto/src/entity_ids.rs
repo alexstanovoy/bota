@@ -48,7 +48,8 @@ impl EventKind {
                 visit(pool);
                 unit.iter_mut().for_each(visit);
             }
-            EventKind::ItemPlaced { .. }
+            EventKind::BossRoared { .. }
+            | EventKind::ItemPlaced { .. }
             | EventKind::BossFell { .. }
             | EventKind::ItemDestroyed { .. }
             | EventKind::ItemTaken { .. }

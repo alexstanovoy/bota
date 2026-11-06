@@ -28,3 +28,18 @@ pub struct NeutralGrowth {
     pub clock: GrowthClock,
     pub ability: crate::NeutralAbility,
 }
+
+/// Damage added by one clock interval, per ability level.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DamageGrowth {
+    pub clock: GrowthClock,
+    pub per_step: crate::Lv,
+}
+impl DamageGrowth {
+    pub fn amount(self, base: i32, level: u8, clock: u32, schedule: Schedule) -> i32 {
+        (i64::from(base)
+            + i64::from(crate::at_level(&self.per_step, level))
+                * i64::from(self.clock.count(clock, schedule)))
+        .clamp(0, i32::MAX.into()) as i32
+    }
+}

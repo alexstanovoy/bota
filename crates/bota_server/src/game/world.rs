@@ -366,6 +366,7 @@ impl World {
         inflictor: Option<Inflictor>,
     ) {
         self.hits.push_back(Hit {
+            proc: None,
             blockable_source_team: None,
             source,
             inflictor,
@@ -460,6 +461,7 @@ impl World {
     ) {
         let damage_amp_bp = self.outgoing_damage_amp_bp(source, kind);
         self.hits.push_back(Hit {
+            proc: None,
             blockable_source_team: None,
             source,
             inflictor,

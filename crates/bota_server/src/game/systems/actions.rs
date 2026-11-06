@@ -43,6 +43,7 @@ struct Swing {
     effect: HitEffect,
     /// The items whose passive its blow lays on the struck.
     laid: Laid,
+    proc: Option<crate::game::AttackProc>,
 }
 
 /// How long an ability or an item holds the body: `point` and `backswing` in
@@ -276,7 +277,13 @@ impl World {
             ActionState::Attack { target, phase } => {
                 self.carry_swing_on(entity, &mut action, target, phase, &stats, held)
             }
-            ActionState::CastAbility { phase, .. } | ActionState::UseItem { phase, .. } => {
+            ActionState::CastAbility { phase, slot, .. } => {
+                let silenced = self.silenced(entity)
+                    && ability_def(self.ability_in(entity, slot))
+                        .is_none_or(|d| !d.cast_while_silenced);
+                self.carry_cast_on(entity, &mut action, phase, cast_gain, held || silenced)
+            }
+            ActionState::UseItem { phase, .. } => {
                 self.carry_cast_on(entity, &mut action, phase, cast_gain, held)
             }
         };
@@ -616,7 +623,16 @@ impl World {
         else {
             return;
         };
-        if !self.held(entity) && !self.feared(entity) {
+        let ignores_stun = match immediate {
+            PendingCast::Ability { slot, .. } => self
+                .abilities
+                .get(entity)
+                .and_then(|b| b.slots.get(usize::from(slot.0)))
+                .and_then(|s| bota_core::ability_def(s.id))
+                .is_some_and(|d| d.cast_while_stunned),
+            PendingCast::Item { .. } => false,
+        };
+        if ignores_stun || (!self.held(entity) && !self.feared(entity)) {
             self.begin(entity, immediate);
         }
     }
@@ -684,9 +700,14 @@ impl World {
     /// How long a cast holds the body. Absent when the slot holds nothing.
     fn timing_of(&self, entity: Entity, what: PendingCast) -> Option<Timing> {
         let (point, backswing, duration) = match what {
-            PendingCast::Ability { slot, .. } => {
+            PendingCast::Ability { slot, target } => {
                 let def = ability_def(self.ability_in(entity, slot))?;
-                (def.point, def.backswing, def.duration)
+                let duration = if def.resisted_channel {
+                    self.channel_duration(entity, target, def)
+                } else {
+                    def.duration
+                };
+                (def.point, def.backswing, duration)
             }
             PendingCast::Item { slot, .. } => {
                 let def = self.item_def_in(entity, usize::from(slot.0))?;
@@ -698,6 +719,31 @@ impl World {
             backswing,
             duration,
         })
+    }
+
+    fn channel_duration(
+        &self,
+        caster: Entity,
+        target: bota_proto::Target,
+        def: &bota_core::AbilityDef,
+    ) -> u32 {
+        let Some(on) = self.unit_aimed_at(target) else {
+            return 0;
+        };
+        if let Some(total) = self.modifiers.get(on).and_then(|mods| {
+            mods.active()
+                .filter(|m| {
+                    m.source == Some(caster) && m.inflictor == Some(Inflictor::Ability(def.id))
+                })
+                .filter_map(|m| m.ticks_total)
+                .max()
+        }) {
+            return total;
+        }
+        if self.is_channelling(caster) {
+            return 0;
+        }
+        super::modifiers::resisted_ticks(&self.stats, on, ModifierKind::Stunned, def.duration)
     }
 
     /// Milliseconds a cast point lasts for an entity: its own length, or
@@ -795,7 +841,7 @@ impl World {
                 0
             };
         let class_pct = self.class_pct_of(attacker, on);
-        let boost = self.boost_of(attacker, stats);
+        let boost = self.boost_of(attacker, on, stats);
         let striker = match self.kind.get(attacker) {
             // An illusion's attack counts as a creep's.
             Some(kind) if !self.wears_illusion(attacker) => {
@@ -812,6 +858,10 @@ impl World {
             None => Striker::Other,
         };
         let swing = Swing {
+            proc: boost.proc.map(|proc| crate::game::AttackProc {
+                bonus_damage: proc.bonus_damage * class_pct / 100,
+                ..proc
+            }),
             striker,
             damage: damage * boost.crit_pct / 100 * class_pct / 100,
             accurate: boost.accurate,
@@ -828,6 +878,7 @@ impl World {
                 for extra in self.multishot_targets(attacker, on, stats) {
                     let share = self.class_pct_on(attacker, extra);
                     let shot = Swing {
+                        proc: None,
                         damage: damage * share / 100,
                         ..swing.clone()
                     };
@@ -915,6 +966,7 @@ impl World {
     /// itself, and the magical damage of each pierce riding with it.
     fn strike_home(&mut self, attacker: Entity, on: Entity, swing: Swing) {
         self.hits.push_back(Hit {
+            proc: swing.proc,
             blockable_source_team: None,
             source: Some(attacker),
             inflictor: None,
@@ -934,6 +986,7 @@ impl World {
         });
         for (bonus, item) in swing.pierced {
             self.hits.push_back(Hit {
+                proc: None,
                 blockable_source_team: None,
                 source: Some(attacker),
                 inflictor: Some(Inflictor::Item(item)),
@@ -968,6 +1021,7 @@ impl World {
         self.projectile.insert(
             missile,
             Projectile {
+                proc: swing.proc,
                 speed,
                 source: Some(attacker),
                 inflictor: None,

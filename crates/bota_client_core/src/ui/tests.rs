@@ -2587,3 +2587,51 @@ fn aiming_a_physical_banner_uses_its_own_upgrade_level() {
         assert_eq!(app.area_of(Slot::Item(0)), radius);
     }
 }
+
+#[test]
+fn a_declared_delayed_roar_windup_is_accepted_but_a_longer_one_breaks_the_stream() {
+    let mut boss = a_unit();
+    boss.kind = UnitKind::Roshan;
+    boss.hero = None;
+    boss.owner = None;
+    boss.team = Team::Neutral;
+    boss.neutral = Some(bota_core::NeutralKind::Roshan.id());
+    boss.statuses.bits = StatusFlags::CASTING | StatusFlags::STUNNED;
+    for (ticks, accepted) in [(15, true), (16, false)] {
+        let mut app = a_started_app();
+        let mut boss = boss.clone();
+        boss.cast = Some(bota_proto::CastView {
+            ability: Some(bota_core::NeutralAbility::RevengeRoar.id()),
+            goes_off_in: ticks,
+        });
+        app.handle(snapshot_of(1, vec![boss], vec![a_seat(SlotId(0), None)]));
+        assert_eq!(!app.lost, accepted, "declared windup boundary {ticks}");
+    }
+}
+
+#[test]
+fn a_boss_roaring_out_of_sight_announces_globally_without_a_position_or_hidden_handle() {
+    let (mut app, _, _) = a_duel_app();
+    app.cues.clear();
+    app.handle(bota_proto::ServerMsg::Events {
+        tick: 10,
+        events: vec![EventKind::BossRoared {
+            objective: bota_proto::ObjectiveKind::Roshan,
+            team: Team::Radiant,
+        }],
+    });
+    app.pump(0.0);
+    let cue = app
+        .cues
+        .iter()
+        .find(|c| c.kind == crate::ui::app::CueKind::BossRoar)
+        .expect("global roar sound cue");
+    assert_eq!(cue.at, None);
+    assert_eq!(cue.target, None);
+    assert_eq!(cue.hero, None);
+    assert!(
+        app.feed
+            .iter()
+            .any(|line| matches!(line.kind, FeedKind::BossRoared { .. }))
+    );
+}

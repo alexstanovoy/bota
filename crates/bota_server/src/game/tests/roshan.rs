@@ -304,6 +304,11 @@ fn roshan_grows_health_damage_experience_from_one_minute_and_aura_armor_from_the
         let stats = world.stats.get(boss).expect("boss");
         assert_eq!(stats.max_hp, Fixed::from_int(hp), "at {seconds}s");
         assert_eq!(
+            world.health.get(boss).expect("living boss").hp,
+            Fixed::from_int(hp),
+            "live current health updates at {seconds}s"
+        );
+        assert_eq!(
             stats.armor,
             Fixed::from_ratio(armor_tenths, 10),
             "at {seconds}s"
@@ -968,4 +973,634 @@ fn dismember_refuses_without_spending_when_pit_sight_disappears_before_its_cast_
         0
     );
     assert!(!world.wears(boss, ModifierKind::Dismembered { level: 0 }));
+}
+
+#[test]
+fn roshan_slams_a_crowd_with_a_hero_and_deals_double_damage_to_creeps() {
+    use crate::game::UnitOrder;
+    use bota_core::{MELEE_CREEP, ability_def};
+    use bota_proto::{DamageKind, EventKind, Team, Vec2};
+    const CREEP: bota_core::UnitDef = bota_core::UnitDef {
+        max_hp: 5000,
+        damage: 0,
+        hp_regen: bota_proto::Fixed::ZERO,
+        move_speed: 300,
+        ..MELEE_CREEP
+    };
+    let mut world = match_with_roshan();
+    world.immortal_heroes = true;
+    let boss = boss(&world);
+    let at = world.pos(boss).expect("boss");
+    let hero = world.seats[0].unit.expect("hero");
+    world.transform.get_mut(hero).expect("hero").pos = at + Vec2::from_ints(100, 0);
+    world.set_order(hero, UnitOrder::Stand);
+    let a = world.spawn_unit(&CREEP, Team::Radiant, at + Vec2::from_ints(0, 160));
+    let b = world.spawn_unit(&CREEP, Team::Radiant, at + Vec2::from_ints(0, -160));
+    world.set_order(a, UnitOrder::Stand);
+    world.set_order(b, UnitOrder::Stand);
+    world.settle();
+    let mut casts = 0;
+    let mut hits = Vec::new();
+    for _ in 0..90 {
+        for event in world.step() {
+            match event.kind {
+                EventKind::AbilityCast { ability, .. }
+                    if ability_def(ability).is_some_and(|d| d.key == "roshan_slam") =>
+                {
+                    casts += 1
+                }
+                EventKind::Damaged {
+                    target,
+                    amount,
+                    kind: DamageKind::Magical,
+                    ..
+                } if target == crate::game::wire_id(a) || target == crate::game::wire_id(b) => {
+                    hits.push(amount)
+                }
+                _ => {}
+            }
+        }
+    }
+    assert_eq!(casts, 1);
+    assert_eq!(hits, vec![140, 140]);
+    for target in [hero, a, b] {
+        let slow = world
+            .modifiers
+            .get(target)
+            .expect("effects")
+            .active()
+            .find(|m| m.kind.effect_id() == bota_proto::EffectId(83))
+            .expect("Slam slows nearby units");
+        assert_eq!(
+            slow.ticks_total,
+            Some(120),
+            "creeps and heroes have the same duration in 7.40+"
+        );
+    }
+    assert_eq!(
+        world.stats.get(a).expect("creep stats").move_speed,
+        bota_proto::Fixed::from_int(150)
+    );
+    assert_eq!(world.stats.get(a).expect("creep stats").attack_speed, 50);
+    run(&mut world, 120);
+    for target in [hero, a, b] {
+        assert!(
+            !world
+                .modifiers
+                .get(target)
+                .expect("effects")
+                .active()
+                .any(|m| m.kind.effect_id() == bota_proto::EffectId(83))
+        );
+    }
+}
+
+#[test]
+fn roshans_bash_is_a_conditional_physical_attack_bonus_blocked_once_and_disabled_by_break() {
+    use crate::game::Modifier;
+    use bota_core::{HERO, ModifierKind, ability_def, effect_def};
+    use bota_proto::{DamageKind, EventKind, Team, Vec2};
+    const TARGET: bota_core::UnitDef = bota_core::UnitDef {
+        attributes: bota_proto::Attributes::ZERO,
+        primary: None,
+        max_hp: 10000,
+        armor: 0,
+        magic_resist_pct: 100,
+        damage: 0,
+        hp_regen: bota_proto::Fixed::ZERO,
+        move_speed: 0,
+        ..HERO
+    };
+    let mut world = match_with_roshan();
+    let boss = boss(&world);
+    let at = world.pos(boss).expect("boss");
+    assert!(
+        world
+            .abilities
+            .get(boss)
+            .expect("book")
+            .slots
+            .iter()
+            .any(|s| ability_def(s.id).is_some_and(|d| d.key == "roshan_bash"))
+    );
+    let target = world.spawn_unit(&TARGET, Team::Radiant, at + Vec2::from_ints(100, 0));
+    world.put_modifier(
+        target,
+        Modifier::new(
+            ModifierKind::MeatShield { amount: 10 },
+            None,
+            None,
+            Some(5000),
+        ),
+    );
+    world.settle();
+    let mut plain = 0;
+    let mut bashes = 0;
+    for _ in 0..1200 {
+        for event in world.step() {
+            if let EventKind::Damaged {
+                target: hit,
+                amount,
+                kind,
+                ..
+            } = event.kind
+                && hit == crate::game::wire_id(target)
+            {
+                assert_eq!(kind, DamageKind::Physical);
+                match amount {
+                    65 => plain += 1,
+                    115 => {
+                        bashes += 1;
+                        assert!(world.held(target));
+                        let held = world
+                            .modifiers
+                            .get(target)
+                            .expect("effects")
+                            .active()
+                            .find(|m| {
+                                effect_def(m.kind.effect_id())
+                                    .is_some_and(|d| d.key == "modifier_bashed")
+                            })
+                            .expect("Bash disable");
+                        assert!(
+                            !effect_def(held.kind.effect_id())
+                                .expect("effect")
+                                .dispellable
+                        );
+                    }
+                    other => panic!("unexpected attack damage {other}"),
+                }
+            }
+        }
+    }
+    assert!(plain > 0);
+    assert!(bashes > 0, "PRD must proc within32 attacks");
+    world.put_modifier(
+        boss,
+        Modifier::new(ModifierKind::Broken, None, None, Some(2000)),
+    );
+    for _ in 0..600 {
+        for event in world.step() {
+            if let EventKind::Damaged {
+                target: hit,
+                amount,
+                ..
+            } = event.kind
+                && hit == crate::game::wire_id(target)
+            {
+                assert_eq!(amount, 65);
+            }
+        }
+    }
+}
+
+#[test]
+fn roshan_roars_while_stunned_and_silenced_then_disarms_and_amplifies_after_windup() {
+    use crate::game::{Modifier, UnitOrder};
+    use bota_core::{Control, ModifierKind, ability_def, effect_def};
+    use bota_proto::{AbilitySlot, DamageKind, EffectId, EventKind, Target, Vec2};
+    let mut world = match_with_roshan();
+    world.immortal_heroes = true;
+    let boss = boss(&world);
+    let at = world.pos(boss).expect("boss");
+    let hero = world.seats[0].unit.expect("hero");
+    world.transform.get_mut(hero).expect("hero").pos = at + Vec2::from_ints(100, 0);
+    world.set_order(hero, UnitOrder::Stand);
+    world.settle();
+    let slot = world
+        .abilities
+        .get(boss)
+        .expect("book")
+        .slots
+        .iter()
+        .position(|s| ability_def(s.id).is_some_and(|d| d.key == "roshan_revengeroar"))
+        .expect("Roar in the imported NPC book");
+    world.put_modifier(
+        boss,
+        Modifier::new(ModifierKind::Stunned, Some(hero), None, Some(300)),
+    );
+    world.put_modifier(
+        boss,
+        Modifier::new(
+            ModifierKind::Control {
+                control: Control::Silence,
+                effect: EffectId(89),
+            },
+            Some(hero),
+            None,
+            Some(300),
+        ),
+    );
+    world.put_modifier(
+        boss,
+        Modifier::new(ModifierKind::Rooted, Some(hero), None, Some(300)),
+    );
+    assert!(world.begin_ability(boss, AbilitySlot(slot as u8), Target::None));
+    assert!(!world.rooted(boss), "strong dispel removes Ensnare's root");
+    assert!(
+        !world.wears(boss, ModifierKind::Stunned),
+        "strong dispel removes the incoming stun"
+    );
+    assert!(
+        !world
+            .modifiers
+            .get(boss)
+            .expect("effects")
+            .active()
+            .any(|m| m.kind.controls(Control::Silence))
+    );
+    assert!(world.held(boss), "Roar has its own full-disable windup");
+    let mut hits = Vec::new();
+    for tick in 1..=16 {
+        for event in world.step() {
+            if let EventKind::Damaged {
+                target,
+                amount,
+                kind: DamageKind::Magical,
+                ..
+            } = event.kind
+                && target == crate::game::wire_id(hero)
+            {
+                hits.push((tick, amount));
+            }
+        }
+    }
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].0, 15, "half-second windup");
+    assert_eq!(
+        hits[0].1, 45,
+        "own aura amplifies 50 magic damage before hero resistance"
+    );
+    assert!(!world.held(boss));
+    assert!(world.disarmed(hero));
+    let disarm = world
+        .modifiers
+        .get(hero)
+        .expect("effects")
+        .active()
+        .find(|m| m.kind.effect_id() == EffectId(87))
+        .expect("Roar disarm");
+    let def = effect_def(disarm.kind.effect_id()).expect("effect");
+    assert!(!def.dispellable);
+    assert!(!def.strong_dispellable);
+    assert_eq!(world.stats.get(hero).expect("stats").damage_taken_bp, 12500);
+    assert_eq!(
+        world.abilities.get(boss).expect("book").slots[slot].cooldown,
+        1800 - 16
+    );
+}
+
+#[test]
+fn roshan_never_procs_bash_on_a_banner_or_other_ward() {
+    use bota_core::{BANNERS, NeutralAbility};
+    use bota_proto::{EventKind, Team, Vec2};
+    let mut world = match_with_roshan();
+    let boss = boss(&world);
+    let at = world.pos(boss).expect("boss");
+    let banner = world.spawn_unit(&BANNERS[0], Team::Radiant, at + Vec2::from_ints(100, 0));
+    world.settle();
+    world.set_target(boss, banner);
+    for _ in 0..2000 {
+        let hp = world.stats.get(banner).expect("banner").max_hp;
+        world.health.get_mut(banner).expect("banner").hp = hp;
+        for event in world.step() {
+            assert!(
+                !matches!(event.kind,EventKind::AbilityCast{ability,..} if ability==NeutralAbility::Bash.id()),
+                "wards must not roll Bash"
+            );
+        }
+        assert!(!world.held(banner));
+    }
+}
+
+#[test]
+fn roshan_only_roars_below_85_percent_at_a_real_hero_from_the_previous_killing_side() {
+    use crate::game::{Modifier, UnitOrder};
+    use bota_core::{Control, ModifierKind, NeutralAbility};
+    use bota_proto::{EffectId, EventKind, Fixed, Team, Vec2};
+    for (previous, hero_side, hp_pct, expected) in [
+        (None, Team::Radiant, 84, false),
+        (Some(Team::Dire), Team::Radiant, 84, false),
+        (Some(Team::Radiant), Team::Radiant, 85, false),
+        (Some(Team::Radiant), Team::Radiant, 84, true),
+    ] {
+        let mut world = match_with_roshan();
+        world.immortal_heroes = true;
+        let boss = boss(&world);
+        let at = world.pos(boss).expect("boss");
+        let hero = world.seats[0].unit.expect("hero");
+        world.set_team(hero, hero_side);
+        world.transform.get_mut(hero).expect("hero").pos = at + Vec2::from_ints(100, 0);
+        world.set_order(hero, UnitOrder::Stand);
+        world.lairs[0].last_killer = previous;
+        world.settle();
+        let max = world.stats.get(boss).expect("stats").max_hp;
+        world.health.get_mut(boss).expect("boss").hp = Fixed {
+            raw: (i64::from(max.raw) * hp_pct / 100) as i32,
+        };
+        world.set_target(boss, hero);
+        world.neutral_ai.get_mut(boss).expect("mind").awake = true;
+        world.neutral_ai.get_mut(boss).expect("mind").roused_by = Some(hero);
+        world.put_modifier(
+            boss,
+            Modifier::new(ModifierKind::Disarmed, Some(hero), None, Some(300)),
+        );
+        world.put_modifier(
+            boss,
+            Modifier::new(ModifierKind::Stunned, Some(hero), None, Some(300)),
+        );
+        world.put_modifier(
+            boss,
+            Modifier::new(
+                ModifierKind::Control {
+                    control: Control::Silence,
+                    effect: EffectId(89),
+                },
+                Some(hero),
+                None,
+                Some(300),
+            ),
+        );
+        let mut roar = false;
+        let mut message = false;
+        for _ in 0..3 {
+            for event in world.step() {
+                match event.kind {
+                    EventKind::AbilityCast { ability, .. }
+                        if ability == NeutralAbility::RevengeRoar.id() =>
+                    {
+                        roar = true
+                    }
+                    EventKind::BossRoared { team, .. } => {
+                        assert_eq!(Some(team), previous);
+                        message = true;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        assert_eq!(roar, expected, "previous={previous:?}, hp={hp_pct}");
+        assert_eq!(message, expected);
+        if expected {
+            let shown = world.view(Team::Radiant);
+            let cast = shown
+                .unit(crate::game::wire_id(boss))
+                .expect("visible boss")
+                .cast
+                .expect("windup projected for the real animation");
+            assert_eq!(cast.ability, Some(NeutralAbility::RevengeRoar.id()));
+            assert!(cast.goes_off_in > 0);
+        }
+    }
+}
+
+#[test]
+fn unblocked_dismember_releases_roshan_after_his_status_resisted_duration() {
+    use crate::game::{AppliedModifier, AppliedModifiers, AppliedOrigin};
+    use bota_core::{ModifierKind, rules};
+    use bota_proto::{AbilitySlot, ModifierSpec, Order, Target, Vec2};
+    for change_resistance in [false, true] {
+        let mut cfg = config();
+        cfg.map = bota_proto::MapId(0);
+        cfg.objectives = bota_proto::ObjectiveSet::of(bota_proto::ObjectiveKind::Roshan);
+        cfg.picks[0].hero = bota_proto::HeroId::PUDGE;
+        let mut world = World::for_match(&cfg, cfg.rng());
+        world.creeps_halted = true;
+        world.immortal_heroes = true;
+        let boss = boss(&world);
+        let at = world.pos(boss).expect("boss");
+        let hero = world.seats[0].unit.expect("hero");
+        world.transform.get_mut(hero).expect("hero").pos = at + Vec2::from_ints(100, 0);
+        set_level(&mut world, hero, 3, 1);
+        world.settle();
+        let block = roshan_spell_block_slot(&world, boss);
+        world.abilities.get_mut(boss).expect("book").slots[block].cooldown = 1000;
+        advance_validated(
+            &mut world,
+            Some(hero),
+            Order::Cast {
+                slot: AbilitySlot(3),
+                target: Target::Unit(crate::game::wire_id(boss)),
+            },
+        );
+        for _ in 0..60 {
+            if world.is_channelling(hero) {
+                break;
+            }
+            world.step();
+        }
+        assert!(world.is_channelling(hero));
+        let duration = rules::DISMEMBER_TICKS * 3 / 4;
+        let stun = world
+            .modifiers
+            .get(boss)
+            .expect("effects")
+            .active()
+            .find(|m| m.kind == ModifierKind::Stunned)
+            .expect("stunned");
+        assert_eq!(stun.ticks_total, Some(duration));
+        let left = stun.ticks_left.expect("timed stun");
+        if change_resistance {
+            let mut mods = AppliedModifiers::default();
+            mods.push(AppliedModifier {
+                spec: ModifierSpec {
+                    status_resist: 5000,
+                    ..ModifierSpec::NOMINAL
+                },
+                ticks_left: Some(1000),
+                origin: AppliedOrigin::Setup,
+            });
+            world.applied.insert(boss, mods);
+        }
+        for _ in 0..left - 1 {
+            world.step();
+            assert!(world.held(boss));
+            assert!(
+                world.is_channelling(hero),
+                "the channel keeps its captured resistance"
+            );
+        }
+        world.step();
+        assert!(!world.held(boss));
+        assert!(!world.is_channelling(hero));
+        let released = world.pos(boss).expect("released");
+        world.tick_neutral_spells();
+        assert_eq!(world.pos(boss), Some(released));
+    }
+}
+
+#[test]
+fn roshan_does_not_slam_two_foes_or_a_crowd_without_a_hero() {
+    use crate::game::UnitOrder;
+    use bota_core::{MELEE_CREEP, NeutralAbility};
+    use bota_proto::{EventKind, Team, Vec2};
+    const CREEP: bota_core::UnitDef = bota_core::UnitDef {
+        max_hp: 5000,
+        damage: 0,
+        move_speed: 0,
+        ..MELEE_CREEP
+    };
+    for heroes in [false, true] {
+        let mut world = match_with_roshan();
+        world.immortal_heroes = true;
+        let boss = boss(&world);
+        let at = world.pos(boss).expect("boss");
+        if heroes {
+            let hero = world.seats[0].unit.expect("hero");
+            world.transform.get_mut(hero).expect("hero").pos = at + Vec2::from_ints(100, 0);
+            world.set_order(hero, UnitOrder::Stand);
+        }
+        for offset in if heroes {
+            &[(0, 160)][..]
+        } else {
+            &[(0, 100), (100, 0), (-100, 0)][..]
+        } {
+            let unit = world.spawn_unit(
+                &CREEP,
+                Team::Radiant,
+                at + Vec2::from_ints(offset.0, offset.1),
+            );
+            world.set_order(unit, UnitOrder::Stand);
+        }
+        world.settle();
+        for _ in 0..100 {
+            for event in world.step() {
+                assert!(
+                    !matches!(event.kind,EventKind::AbilityCast{ability,..} if ability==NeutralAbility::RoshanSlam.id())
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn slam_does_not_damage_or_slow_spell_immune_heroes_or_couriers() {
+    use crate::game::Modifier;
+    use bota_core::{COURIER, HERO, ModifierKind, NeutralAbility};
+    use bota_proto::{AbilitySlot, Target, Team, Vec2};
+    for def in [&COURIER, &HERO] {
+        let mut world = match_with_roshan();
+        let boss = boss(&world);
+        let at = world.pos(boss).expect("boss");
+        let target = world.spawn_unit(def, Team::Radiant, at + Vec2::from_ints(100, 0));
+        world.put_modifier(
+            target,
+            Modifier::new(ModifierKind::Shielded, None, None, Some(100)),
+        );
+        world.settle();
+        let hp = world.health.get(target).expect("target").hp;
+        let slot = world
+            .abilities
+            .get(boss)
+            .expect("book")
+            .slots
+            .iter()
+            .position(|s| s.id == NeutralAbility::RoshanSlam.id())
+            .expect("Slam");
+        assert!(world.begin_ability(boss, AbilitySlot(slot as u8), Target::None));
+        assert!(
+            !world
+                .modifiers
+                .get(target)
+                .expect("effects")
+                .active()
+                .any(|m| m.kind.effect_id() == bota_proto::EffectId(83))
+        );
+        world.step();
+        assert!(world.health.get(target).expect("target").hp >= hp);
+    }
+}
+
+#[test]
+fn roars_strong_dispel_cancels_a_normal_dismember_without_a_final_pull_or_bite() {
+    use bota_core::{ModifierKind, NeutralAbility};
+    use bota_proto::{AbilitySlot, Fixed, Order, Target, Vec2};
+    let mut cfg = config();
+    cfg.map = bota_proto::MapId(0);
+    cfg.objectives = bota_proto::ObjectiveSet::of(bota_proto::ObjectiveKind::Roshan);
+    cfg.picks[0].hero = bota_proto::HeroId::PUDGE;
+    let mut world = World::for_match(&cfg, cfg.rng());
+    world.creeps_halted = true;
+    world.immortal_heroes = true;
+    let boss = boss(&world);
+    let at = world.pos(boss).expect("boss");
+    let hero = world.seats[0].unit.expect("hero");
+    world.transform.get_mut(hero).expect("hero").pos = at + Vec2::from_ints(100, 0);
+    set_level(&mut world, hero, 3, 1);
+    world.settle();
+    let block = roshan_spell_block_slot(&world, boss);
+    world.abilities.get_mut(boss).expect("book").slots[block].cooldown = 1000;
+    let target = Target::Unit(crate::game::wire_id(boss));
+    advance_validated(
+        &mut world,
+        Some(hero),
+        Order::Cast {
+            slot: AbilitySlot(3),
+            target,
+        },
+    );
+    for _ in 0..60 {
+        if world.is_channelling(hero) {
+            break;
+        }
+        world.step();
+    }
+    assert!(world.is_channelling(hero));
+    assert!(world.wears(boss, ModifierKind::Dismembered { level: 0 }));
+    let slot = world
+        .abilities
+        .get(boss)
+        .expect("book")
+        .slots
+        .iter()
+        .position(|s| s.id == NeutralAbility::RevengeRoar.id())
+        .expect("Roar");
+    assert!(world.begin_ability(boss, AbilitySlot(slot as u8), Target::None));
+    let released = world.pos(hero).expect("caster") + Vec2::from_ints(200, 0);
+    world.transform.get_mut(boss).expect("boss").pos = released;
+    assert!(!world.dismember_holds(hero, target));
+    assert_eq!(world.pos(boss), Some(released));
+    let hp = world.health.get(boss).expect("boss").hp;
+    world.step();
+    assert!(!world.is_channelling(hero));
+    assert_eq!(world.pos(boss), Some(released));
+    assert!(
+        world.health.get(boss).expect("boss").hp >= hp - Fixed::ONE,
+        "no final damage bite after release"
+    );
+}
+
+#[test]
+fn an_illusion_rune_cleanses_slam_but_preserves_the_heros_beneficial_haste() {
+    use crate::game::Modifier;
+    use bota_core::{ModifierKind, NeutralAbility};
+    let mut world = match_with_roshan();
+    let hero = world.seats[0].unit.expect("hero");
+    world.put_modifier(
+        hero,
+        Modifier::new(
+            ModifierKind::Spell {
+                ability: NeutralAbility::RoshanSlam,
+                level: 1,
+                amount: 0,
+            },
+            None,
+            None,
+            Some(120),
+        ),
+    );
+    world.put_modifier(
+        hero,
+        Modifier::new(ModifierKind::Hastened { pct: 20 }, None, None, Some(120)),
+    );
+    world.make_rune_illusions(hero);
+    assert!(
+        !world
+            .modifiers
+            .get(hero)
+            .expect("effects")
+            .active()
+            .any(|m| m.kind.effect_id() == bota_proto::EffectId(83))
+    );
+    assert!(world.wears(hero, ModifierKind::Hastened { pct: 20 }));
 }

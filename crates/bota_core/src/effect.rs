@@ -22,6 +22,8 @@ pub struct EffectDef {
     pub retired: bool,
     /// Whether a basic dispel takes it off.
     pub dispellable: bool,
+    /// Additional eligibility for strong dispels; basic dispels are always strong-dispellable.
+    pub strong_dispellable: bool,
     /// Whether a hero keeps it through death, as Dota keeps a modifier that is
     /// not removed on death: what it has gathered.
     pub kept_through_death: bool,
@@ -46,6 +48,7 @@ const fn buff(id: u16, key: &'static str, name: &'static str) -> EffectDef {
         harmful: false,
         retired: false,
         dispellable: false,
+        strong_dispellable: false,
         kept_through_death: false,
         hidden: false,
         per_source: false,
@@ -103,7 +106,10 @@ const EFFECT_ROWS: &[EffectDef] = &[
     fleeting(1, "modifier_flask_healing", "Mending"),
     fleeting(2, "modifier_clarity_potion", "Clarity"),
     buff(3, "modifier_fountain_aura_buff", "Fountain"),
-    debuff(4, "modifier_stunned", "Stunned"),
+    EffectDef {
+        strong_dispellable: true,
+        ..debuff(4, "modifier_stunned", "Stunned")
+    },
     debuff(5, "bota_slowed", "Slowed"),
     debuff(6, "bota_burning", "Burning"),
     fleeting(7, "modifier_courier_burst", "Hastened"),
@@ -118,7 +124,10 @@ const EFFECT_ROWS: &[EffectDef] = &[
     // Burns whoever wears it: the enemies in it and, never to death, its
     // owner.
     debuff(16, "modifier_pudge_rot", "Rot"),
-    debuff(17, "modifier_nevermore_requiem_fear", "Feared"),
+    EffectDef {
+        strong_dispellable: true,
+        ..debuff(17, "modifier_nevermore_requiem_fear", "Feared")
+    },
     debuff(18, "modifier_nevermore_requiem_slow", "MagicBroken"),
     fleeting(19, "modifier_nevermore_frenzy", "Feasting"),
     buff(
@@ -127,9 +136,18 @@ const EFFECT_ROWS: &[EffectDef] = &[
         "FeastLinger",
     ),
     debuff(21, "modifier_item_blood_grenade_debuff", "BloodGrenade"),
-    debuff(22, "modifier_rooted", "Rooted"),
-    debuff(23, "modifier_disarmed", "Disarmed"),
-    debuff(24, "modifier_break", "Broken"),
+    EffectDef {
+        dispellable: true,
+        ..debuff(22, "modifier_rooted", "Rooted")
+    },
+    EffectDef {
+        dispellable: true,
+        ..debuff(23, "modifier_disarmed", "Disarmed")
+    },
+    EffectDef {
+        dispellable: true,
+        ..debuff(24, "modifier_break", "Broken")
+    },
     debuff(25, "modifier_kobold_disarm", "StealWeapon"),
     buff(
         26,
@@ -214,7 +232,10 @@ const EFFECT_ROWS: &[EffectDef] = &[
         ..buff(56, "modifier_fountain_glyph", "Fortified")
     },
     buff(57, "modifier_pudge_flesh_heap_block", "MeatShield"),
-    debuff(58, "modifier_pudge_dismember", "Dismembered"),
+    EffectDef {
+        strong_dispellable: true,
+        ..debuff(58, "modifier_pudge_dismember", "Dismembered")
+    },
     buff(
         59,
         "modifier_backdoor_protection_active",
@@ -268,6 +289,25 @@ const EFFECT_ROWS: &[EffectDef] = &[
     ),
     hidden(81, "modifier_roshan_devotion_aura", "DevotionAura"),
     hidden(82, "modifier_roshan_spell_block", "SpellBlock"),
+    EffectDef {
+        dispellable: true,
+        ..debuff(83, "modifier_roshan_slam", "RoshanSlam")
+    },
+    EffectDef {
+        strong_dispellable: true,
+        ..debuff(84, "modifier_bashed", "Bashed")
+    },
+    hidden(85, "modifier_roshan_revengeroar_windup", "RoarWindup"),
+    hidden(86, "modifier_roshan_revengeroar_aura", "RoarAura"),
+    debuff(87, "modifier_roshan_revengeroar_disarm", "RoarDisarm"),
+    EffectDef {
+        dispellable: true,
+        ..debuff(88, "modifier_roshan_revengeroar", "RoarOfRetribution")
+    },
+    EffectDef {
+        dispellable: true,
+        ..debuff(89, "modifier_silence", "Silenced")
+    },
 ];
 
 /// How many effect ids the protocol has ever handed out, retired ones

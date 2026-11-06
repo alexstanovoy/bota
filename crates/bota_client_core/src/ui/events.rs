@@ -79,6 +79,10 @@ impl App {
                 team,
                 destroyed: false,
             }),
+            EventKind::BossRoared { objective, team } => {
+                self.push_feed(FeedKind::BossRoared { objective, team });
+                self.cue(super::CueKind::BossRoar, 1.0, None);
+            }
             EventKind::BossFell { objective, team } => {
                 self.push_feed(FeedKind::BossFell { objective, team })
             }

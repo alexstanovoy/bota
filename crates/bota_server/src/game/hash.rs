@@ -1,7 +1,9 @@
 //! How the types of other crates go into the world fingerprint, see [`StateHash`]. The types of this
 //! crate say it next to their definitions.
 
-use bota_core::{GoldRange, MapDef, ModifierKind, NeutralKind, PowerCycle, Striker};
+use bota_core::{
+    Control, GoldRange, MapDef, ModifierKind, NeutralKind, Pierces, PowerCycle, Striker,
+};
 use bota_proto::RuneSet;
 use bota_proto::{
     AbilityId, AbilitySlot, Attribute, ClockShift, DamageKind, EntityId, HeroId, Inflictor, ItemId,
@@ -38,6 +40,8 @@ state_hash!(ModifierSpec {
 state_hash!(DamageKind as u8: DamageKind::Physical, DamageKind::Magical);
 state_hash!(Attribute as u8: Attribute::Strength, Attribute::Agility);
 state_hash!(NeutralId(0));
+state_hash!(Control as u8: Control::Stun,Control::Root);
+state_hash!(Pierces as u8: Pierces::No,Pierces::Yes);
 state_hash!(Striker as u8: Striker::MeleeHero, Striker::RangedHero);
 state_hash!(RejectReason as u8: RejectReason::HeroDead, RejectReason::UnknownTarget);
 state_hash!(NeutralKind as u8: NeutralKind::Kobold, NeutralKind::KoboldTunneler);
@@ -249,6 +253,21 @@ impl StateHash for ModifierKind {
             }
             ModifierKind::RuneInvisibility => fnv.u8(47),
             ModifierKind::RuneShield { left } => hash_tagged(fnv, 48, &[left]),
+            ModifierKind::Control { control, effect } => {
+                fnv.u8(52);
+                control.state_hash(fnv);
+                effect.0.state_hash(fnv);
+            }
+            ModifierKind::DelayedSpell { ability, level } => {
+                fnv.u8(53);
+                ability.id().0.state_hash(fnv);
+                level.state_hash(fnv);
+            }
+            ModifierKind::AuraEmitter { ability, level } => {
+                fnv.u8(54);
+                ability.id().0.state_hash(fnv);
+                level.state_hash(fnv);
+            }
             ModifierKind::BonusArmor { armor, effect } => {
                 fnv.u8(51);
                 armor.state_hash(fnv);

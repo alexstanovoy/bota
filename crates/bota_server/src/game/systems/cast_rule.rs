@@ -81,6 +81,27 @@ impl World {
         let caster = seen.caster;
         match need {
             Need::HurtBelow { pct } => self.below_pct(caster, pct),
+            Need::PreviousKillerHero { radius } => {
+                let previous = self
+                    .lairs
+                    .iter()
+                    .find(|l| l.unit == Some(caster))
+                    .and_then(|l| l.last_killer);
+                let provoker = self.neutral_ai.get(caster).and_then(|h| h.roused_by);
+                [Some(seen.held), provoker]
+                    .into_iter()
+                    .flatten()
+                    .any(|hero| {
+                        previous.is_some()
+                            && self.team.get(hero).copied() == previous
+                            && self.is_hero(hero)
+                            && !self.wears_illusion(hero)
+                            && self.alive(hero)
+                            && self
+                                .pos(hero)
+                                .is_some_and(|at| at.within(seen.at, rules::units(radius)))
+                    })
+            }
             Need::Swinging => matches!(
                 self.action.get(caster).map(|action| action.state),
                 Some(ActionState::Attack { .. })
@@ -119,7 +140,8 @@ impl World {
             Mark::AttacksCaster => self.target_of(unit) == Some(seen.caster),
             Mark::Buffed => self.modifiers.get(unit).is_some_and(|on_it| {
                 on_it.active().any(|held| {
-                    effect_def(held.kind.effect_id()).is_some_and(|def| def.dispellable)
+                    effect_def(held.kind.effect_id())
+                        .is_some_and(|def| def.dispellable && !def.harmful)
                 })
             }),
             Mark::Unmarked => !self.wears_spell_effect(unit, seen.ability),

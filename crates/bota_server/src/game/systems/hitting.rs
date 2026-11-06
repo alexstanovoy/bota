@@ -183,6 +183,9 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
             armor: stat.armor - fresh_cut,
             ..stat
         };
+        if let Some(proc) = blow.proc {
+            apply_attack_proc(blow, proc, &stat, kind, stats, modifiers);
+        }
         if let HitEffect::FountainDamage { .. } = blow.effect
             && let Some(on_it) = modifiers.get_mut(blow.target)
         {
@@ -387,6 +390,44 @@ fn barrier(on_it: &mut Modifiers, mut taken: i32) -> i32 {
     taken
 }
 
+/// The disable of a conditional attack occurs before its combined damage instance.
+fn apply_attack_proc(
+    blow: Hit,
+    proc: crate::game::AttackProc,
+    target: &Stats,
+    kinds: &Table<UnitKind>,
+    stats: &Table<Stats>,
+    modifiers: &mut Table<Modifiers>,
+) {
+    let Some(modifier) = proc.modifier else {
+        return;
+    };
+    if kinds
+        .get(blow.target)
+        .is_some_and(|kind| kind_def(*kind).target_class == bota_core::TargetClass::Ward)
+    {
+        return;
+    }
+    if target.spell_immune
+        && !match proc.pierces {
+            bota_core::Pierces::No => false,
+            bota_core::Pierces::Yes => true,
+            bota_core::Pierces::NotCouriers => kinds.get(blow.target) != Some(&UnitKind::Courier),
+        }
+    {
+        return;
+    }
+    let ticks = resisted_ticks(stats, blow.target, modifier, proc.ticks);
+    if let Some(held) = modifiers.get_mut(blow.target) {
+        held.put(Modifier::new(
+            modifier,
+            blow.source,
+            Some(proc.inflictor),
+            Some(ticks),
+        ));
+    }
+}
+
 /// Magical damage after the extra a target takes, in percent.
 fn more_magic(taken: i32, extra_pct: i32) -> i32 {
     if extra_pct == 0 {
@@ -489,6 +530,7 @@ fn stacked_damage(blow: Hit, on_it: Option<&Modifiers>) -> i32 {
 /// Pre-mitigation damage, amplified only when `AMPLIFIED`.
 fn dealt<const AMPLIFIED: bool>(blow: Hit, on_it: Option<&Modifiers>) -> i32 {
     let amount = stacked_damage(blow, on_it);
+    let amount = amount.saturating_add(blow.proc.map_or(0, |proc| proc.bonus_damage));
     if AMPLIFIED {
         amplify(amount, blow.damage_amp_bp)
     } else {

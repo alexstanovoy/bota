@@ -192,7 +192,9 @@ pub fn derive_stats(cx: StatsCx<'_>) {
             now.physical_amp_bp = dealt(now.physical_amp_bp);
             now.magic_amp_bp = dealt(now.magic_amp_bp);
             now.pure_amp_bp = dealt(now.pure_amp_bp);
-            now.damage_taken_bp = illusion.taken_bp;
+            now.damage_taken_bp = (i64::from(now.damage_taken_bp) * i64::from(illusion.taken_bp)
+                / i64::from(rules::NOMINAL_BP))
+            .clamp(0, i32::MAX.into()) as i32;
         }
         let max = Regen {
             hp: now.max_hp,
@@ -532,7 +534,10 @@ fn add_modifiers<'a>(
                 let radius = if wearer.night { night } else { day };
                 now.vision_grant = Some((side, Fixed::from_int(radius)));
             }
-            ModifierKind::Recovery { .. }
+            ModifierKind::DelayedSpell { .. }
+            | ModifierKind::AuraEmitter { .. }
+            | ModifierKind::Control { .. }
+            | ModifierKind::Recovery { .. }
             | ModifierKind::Mending { .. }
             | ModifierKind::Clarity { .. }
             | ModifierKind::Fountain { .. }
@@ -601,6 +606,9 @@ fn add_buff(now: &mut Stats, sums: &mut Sums, buff: &Buff, level: u8, wearer: We
         now.max_hp = scaled(now.max_hp, 100 + of(Stat::MaxHpPct));
     }
     now.magic_taken_pct += of(Stat::MagicTakenPct);
+    now.damage_taken_bp =
+        (i64::from(now.damage_taken_bp) * i64::from(100 + of(Stat::IncomingDamagePct)) / 100)
+            .clamp(0, i32::MAX.into()) as i32;
     now.cooldown_rate_bp -= of(Stat::CooldownPct) * rules::NOMINAL_BP / 100;
     let accuracy = u8::try_from(of(Stat::AccuracyPct).clamp(0, 100)).unwrap_or(0);
     now.accuracy = now.accuracy.or(Odds::percent(accuracy));

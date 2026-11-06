@@ -634,3 +634,33 @@ fn the_spells_that_are_never_cast_stay_uncast() {
         }
     }
 }
+
+#[test]
+fn enemy_purge_ignores_slam_as_a_reason_to_cast_and_preserves_it_when_removing_haste() {
+    let mut world = day();
+    let satyr = world.spawn_neutral(NeutralKind::SatyrTrickster, CAMP, 1, 0);
+    let hero = bystander(&mut world, CAMP + Vec2::from_ints(120, 0));
+    world.settle();
+    put_on(
+        &mut world,
+        hero,
+        ModifierKind::Spell {
+            ability: NeutralAbility::RoshanSlam,
+            level: 1,
+            amount: 0,
+        },
+        600,
+    );
+    rouse(&mut world, satyr, hero);
+    assert!(
+        !until_cast(&mut world, satyr, NeutralAbility::Purge, 60),
+        "an enemy slow is not a buff to purge"
+    );
+    put_on(&mut world, hero, ModifierKind::Hastened { pct: 20 }, 600);
+    assert!(until_cast(&mut world, satyr, NeutralAbility::Purge, 120));
+    assert!(!carries(&world, hero, ModifierKind::Hastened { pct: 0 }));
+    assert!(
+        spell_on(&world, hero, NeutralAbility::RoshanSlam).is_some(),
+        "enemy Purge leaves harmful effects alone"
+    );
+}

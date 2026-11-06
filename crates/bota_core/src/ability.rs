@@ -102,6 +102,9 @@ pub struct AbilityDef {
     /// every ability of 7.41f that carries that flag is immediate, so no
     /// flag of its own is kept.
     pub immediate: bool,
+    /// Whether this spell can begin despite a stun or silence.
+    pub cast_while_stunned: bool,
+    pub cast_while_silenced: bool,
     /// Whether ordering it while a channel runs leaves the channel be:
     /// Dota's `DOTA_ABILITY_BEHAVIOR_IGNORE_CHANNEL`. Only an ability with
     /// no cast point, backswing or duration may.
@@ -118,6 +121,8 @@ pub struct AbilityDef {
     pub backswing: u32,
     /// Ticks it runs on after the cast. Zero: over at once.
     pub duration: u32,
+    /// The target's status resistance shortens this channel.
+    pub resisted_channel: bool,
     /// Whether a cast switches it on or off: Dota's
     /// `DOTA_ABILITY_BEHAVIOR_TOGGLE`. It is on while its caster wears a
     /// modifier it put on him.
@@ -158,6 +163,8 @@ pub(crate) const BARE_ABILITY: AbilityDef = AbilityDef {
     ultimate: false,
     at_an_enemy: false,
     immediate: false,
+    cast_while_stunned: false,
+    cast_while_silenced: false,
     ignores_channel: false,
     mana: &[],
     cooldown: &[],
@@ -165,6 +172,7 @@ pub(crate) const BARE_ABILITY: AbilityDef = AbilityDef {
     point: 0,
     backswing: 0,
     duration: 0,
+    resisted_channel: false,
     toggle: false,
     pierces: Pierces::No,
     aura: None,

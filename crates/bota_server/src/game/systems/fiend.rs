@@ -47,6 +47,7 @@ impl World {
         let which = SHADOW_FIEND_RAZES[reach];
         for mark in struck {
             self.hits.push_back(Hit {
+                proc: None,
                 blockable_source_team: None,
                 source: Some(caster),
                 inflictor: Some(Inflictor::Ability(which)),
@@ -87,6 +88,7 @@ impl World {
             _ => 100,
         };
         self.hits.push_back(Hit {
+            proc: None,
             blockable_source_team: None,
             source: Some(caster),
             inflictor: Some(Inflictor::Ability(raze)),
@@ -227,6 +229,7 @@ impl World {
     /// line that frightens, frightens what it does not kill.
     fn cross(&mut self, line: &RequiemLine, other: Entity) {
         self.hits.push_back(Hit {
+            proc: None,
             blockable_source_team: None,
             source: Some(line.owner),
             inflictor: Some(Inflictor::Ability(AbilityId::REQUIEM)),

@@ -77,3 +77,43 @@ pub const ROSHAN_SPELL_BLOCK: ScriptData = ScriptData {
         ("status_resistance", &[Dec(25000)]),
     ],
 };
+pub const ROSHAN_BASH: ScriptData = ScriptData {
+    key: "roshan_bash",
+    values: &[
+        ("IsBreakable", &[Dec(1000)]),
+        ("bash_chance", &[Dec(15000)]),
+        ("bonus_damage", &[Dec(50000)]),
+        ("stun_duration", &[Dec(1650)]),
+    ],
+};
+pub const ROSHAN_SLAM: ScriptData = ScriptData {
+    key: "roshan_slam",
+    values: &[
+        ("AbilityManaCost", &[Dec(0)]),
+        ("AbilityCooldown", &[Dec(10000)]),
+        (
+            "AbilityCastPoint",
+            &[Dec(470), Dec(470), Dec(470), Dec(470)],
+        ),
+        ("radius", &[Dec(350000)]),
+        ("slow_duration", &[Dec(4000)]),
+        ("slow_amount", &[Dec(50000)]),
+        ("damage", &[Dec(70000)]),
+        ("damage_growth", &[Dec(10000)]),
+        ("damage_bonus_creeps", &[Dec(100000)]),
+    ],
+};
+pub const ROSHAN_REVENGEROAR: ScriptData = ScriptData {
+    key: "roshan_revengeroar",
+    values: &[
+        ("AbilityManaCost", &[Dec(0)]),
+        ("AbilityCooldown", &[Dec(60000)]),
+        ("radius", &[Dec(600000)]),
+        ("damage", &[Dec(50000)]),
+        ("damage_pct", &[Dec(25000)]),
+        ("duration", &[Dec(12000)]),
+        ("damage_growth", &[Dec(10000)]),
+        ("disarm_duration", &[Dec(2000)]),
+        ("windup_time", &[Dec(500)]),
+    ],
+};

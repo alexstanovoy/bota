@@ -75,9 +75,9 @@ The count is derived from the authoritative game clock on updates and respawns. 
 is a separate aura: radius 5 from the installed `roshan_devotion` row, 0.5-second linger,
 allied living units only, excluding invulnerable units. Only armor spreads.
 
-The NPC script supplies level 30; current Roshan mechanics document 200 attack speed with
-2-second BAT. That attack speed is an engine intrinsic, absent from the installed text row;
-it has not been independently confirmed from engine source. The existing simulator rule
+The NPC script supplies level 30. Valve [6.86](https://www.dota2.com/balanceofpower/)
+establishes 2-second BAT and +100 attack speed (200 total). The attack-speed bonus is an
+engine intrinsic, absent from the installed text row. The existing simulator rule
 that maximum-health changes preserve the filled fraction is retained; no first-party
 Roshan-specific exception was found. The shared Q16.16 health representation saturates near
 32,768 HP (around 206 minutes of this growth); no extra growth cap is added.
@@ -107,3 +107,61 @@ Valve [7.40](https://www.dota2.com/patches/7.40) makes lifesteal treat Roshan as
 shared target factors are 60% for attack lifesteal and 20% for spell lifesteal, from the
 [current mechanics](https://liquipedia.net/dota2/Lifesteal). The attack consumer uses health
 actually removed, after mitigation, and excludes ward-type targets including Banner.
+
+
+## Bash, Slam and Roar
+
+The importer retains the installed `roshan_bash`, `roshan_slam` and `roshan_revengeroar`
+numeric rows. Bash rolls 15% pseudo-random chance at the attack point, carries its 50 physical
+bonus and 1.65-second piercing stun through impact, and is disabled by Break. The conditional
+bonus follows critical/base-attack scaling, is mitigated and blocked once with the attack,
+and contributes to actual-damage lifesteal, excluding the base used by cleave. Ward targets
+do not roll Bash. Valve [7.38](https://www.dota2.com/patches/7.38) adds its distinct attack
+animation; the client selects that follow-through from the reported attack proc, correlated
+with the attack point rather than another cast.
+
+Slam casts against a crowd of at least three enemies containing a hero. It has 350 radius,
+0.47-second cast point, 10-second cooldown, 70 magic damage plus 10 per elapsed minute, and
+50% movement/attack slow for four seconds. Valve [7.40](https://www.dota2.com/patches/7.40)
+makes creep damage double while keeping the same slow duration. Spell-immune recipients
+are excluded. The first damage increment is at 1:00: this follows the installed base/growth
+and the documented 10-minute 170-damage table. Secondary prose describing an increment
+at the horn conflicts with that table; no first-party minute-boundary implementation was found.
+
+Valve [7.39](https://www.dota2.com/patches/7.39) makes Roar work through stun and silence,
+strongly dispel on cast, and announce globally. It triggers below 85% health against a real
+hero of the previous killing team within 800. Its imported half-second windup precedes
+600-radius magic damage (50 plus 10 per elapsed minute), two-second disarm, and a 12-second
+25% incoming-damage aura with half-second linger. Valve 7.40 makes the disarm undispellable.
+The same minute-boundary reading as Slam is used. The windup is projected through the shared
+cast view; its declared duration also bounds client validation. The global announcement
+carries neither coordinates nor a hidden entity handle.
+
+## Gameplay bug-fix regressions
+
+The accompanying announcement's Bug Fixes list is read alongside the gameplay payload;
+the payload alone omits several fixes. Relevant historical fixes retain their intent after
+later balance changes. Tests use current values.
+
+| Valve fix | Regression |
+| --- | --- |
+| [2011-12-01](https://store.steampowered.com/oldnews/6912): “Fixed Roshan bashing wards.” | `roshan_never_procs_bash_on_a_banner_or_other_ward` protects proc eligibility; normal attacks still work. |
+| [2013-01-31](https://store.steampowered.com/oldnews/9872): Slam stopped slowing/damaging nearby units. | `roshan_slams_a_crowd_with_a_hero_and_deals_double_damage_to_creeps` observes autonomous casting, slow strength, equal four-second durations and expiration. |
+| [2013-03-14](https://store.steampowered.com/oldnews/10145): Slam incorrectly dealt physical damage. | The same scenario requires magical damage; `slam_does_not_damage_or_slow_spell_immune_heroes_or_couriers` covers immunity. Visage's unsupported Familiar interaction remains deferred. |
+| [2011-11-17](https://store.steampowered.com/oldnews/6812): Dismember lasted too long on Roshan. | `unblocked_dismember_releases_roshan_after_his_status_resisted_duration` goes through a normal cast order, checks target and channel release, and changes resistance during the hold. |
+| [Spring Cleaning 2016](https://www.dota2.com/springcleaning2016): live health upgrades waited until respawn. | The living growth test checks both current and maximum health across minute boundaries; the dead/respawn test checks current strength on return. |
+| [7.33b](https://store.steampowered.com/news/app/570/view/3703690760958334829): north pit allowed wards. | `ward_items_and_dispenser_cannot_be_placed_in_installed_exclusion_volumes` uses the installed convex volumes. Watcher capture from the same patch was removed in 7.34. |
+| [7.39b](https://store.steampowered.com/news/app/570/view/536603447519085191): “Fixed Roshan's Roar not playing the fx/animation” | A real-server natural-respawn scenario observes the imported animation, particles, global sound and message. A separate snapshot test accepts the declared 15-tick windup and refuses a longer one. |
+| [7.41c](https://store.steampowered.com/news/app/570/view/681874975890606523): Shard's mana cost was missing from its icon. | `refresher_shard_displays_its_mana_cost_on_the_item_and_plays_its_refresh_effect` observes “200” in that slot, then consumption and the imported refresh particle. Item costs use the shared item definition. |
+
+Enemy Purge removes beneficial effects and selects only beneficial dispellable effects as a
+reason to cast. Friendly cleansing removes harmful effects. The Slam/Purge and Illusion Rune
+regressions protect both directions, so introducing a removable slow cannot make enemy
+Purge help its victim.
+
+The same 7.41c announcement fixes Orb/Shard cooldown sharing and Meepo cloning Banner.
+Orb and Meepo are absent; those specific interactions remain deferred. Shard copies share
+their physical cooldown now. Interrupted Grab position/facing (7.38c), Banner particle
+cleanup, and remaining loot/pit bug-fix cases belong to their corresponding player paths.
+The separate Block of Cheese shield is not a Roshan drop and is not modeled here; its
+historical shield fixes must not be mistaken for standard Cheese's restoration behavior.

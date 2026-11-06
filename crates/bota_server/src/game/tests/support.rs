@@ -186,6 +186,7 @@ pub(crate) fn world_with_projectile_uphill_state(launch_tier: u8, can_miss_uphil
     world.projectile.insert(
         missile,
         Projectile {
+            proc: None,
             speed: Fixed::ONE,
             source: None,
             inflictor: None,
@@ -1144,6 +1145,7 @@ pub(crate) fn manual_projectile_damage(
         world.projectile.insert(
             missile,
             Projectile {
+                proc: None,
                 speed: Fixed::ONE,
                 source: Some(source),
                 inflictor: None,

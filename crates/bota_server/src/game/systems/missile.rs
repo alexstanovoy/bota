@@ -79,6 +79,7 @@ pub fn missile_system(cx: MissileCx<'_>) {
 fn land(shot: &Projectile, uphill: bool, side: Option<Team>, hits: &mut VecDeque<Hit>) {
     let blockable = matches!(shot.inflictor,Some(Inflictor::Ability(id)) if bota_core::ability_def(id).is_some_and(|def|def.block==bota_core::BlockTiming::Impact));
     hits.push_back(Hit {
+        proc: shot.proc,
         blockable_source_team: if blockable { side } else { None },
         source: shot.source,
         inflictor: shot.inflictor,
@@ -98,6 +99,7 @@ fn land(shot: &Projectile, uphill: bool, side: Option<Team>, hits: &mut VecDeque
     });
     for &(damage, item) in &shot.pierced {
         hits.push_back(Hit {
+            proc: None,
             blockable_source_team: None,
             source: shot.source,
             inflictor: Some(Inflictor::Item(item)),

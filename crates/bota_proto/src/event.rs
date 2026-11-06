@@ -319,6 +319,11 @@ pub enum EventKind {
     },
     /// A placed item announced to both sides, including its map location.
     ItemPlaced { item: ItemId, team: Team, at: Vec2 },
+    /// A boss announces its roar globally, without revealing coordinates or entity handles.
+    BossRoared {
+        objective: ObjectiveKind,
+        team: Team,
+    },
 }
 
 /// The seats a [`EventKind::Died`] names as assisting, in seat order.

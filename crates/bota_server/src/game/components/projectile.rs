@@ -43,6 +43,7 @@ pub struct Projectile {
     pub striker: Option<bota_core::Striker>,
     /// The items whose passive its blow lays on the struck: an attack's.
     pub laid: crate::game::Laid,
+    pub proc: Option<crate::game::AttackProc>,
 }
 
 state_hash!(Projectile {
@@ -61,5 +62,6 @@ state_hash!(Projectile {
     pierce_amp_bp,
     effect,
     striker,
-    laid
+    laid,
+    proc
 });

@@ -38,6 +38,7 @@ impl World {
         self.projectile.insert(
             missile,
             Projectile {
+                proc: None,
                 speed: Fixed::from_int(speed),
                 source: Some(cast.caster),
                 inflictor: cast.inflictor(),
