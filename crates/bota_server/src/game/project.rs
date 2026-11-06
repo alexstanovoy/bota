@@ -528,6 +528,13 @@ impl World {
         if viewer.is_none_or(|team| team == unit.team) {
             return Some(unit);
         }
+        // The sheet first, so that nothing it copies from the hero escapes
+        // what is kept from the other side below.
+        if let Some(illusion) = self.illusion.get(entity)
+            && let Some(hero) = self.project_unit(viewer, illusion.of)
+        {
+            wear_sheet(&mut unit, hero);
+        }
         unit.queue.clear();
         unit.effects
             .retain(|effect| effect_def(effect.id).is_none_or(|def| !def.own_side_only));
@@ -542,11 +549,6 @@ impl World {
         {
             unit.effects
                 .retain(|effect| effect_def(effect.id).is_none_or(|def| !def.sighted_only));
-        }
-        if let Some(illusion) = self.illusion.get(entity)
-            && let Some(hero) = self.project_unit(viewer, illusion.of)
-        {
-            wear_sheet(&mut unit, hero);
         }
         unit.vision_grant = unit.vision_grant.filter(|(side, _)| Some(*side) == viewer);
         keep_to_its_side(&mut unit);
@@ -678,9 +680,6 @@ impl World {
     }
 }
 
-/// Puts a hero's sheet on the view of an illusion of it: everything that
-/// says what the hero is and holds, leaving the illusion's own body (where
-/// it stands and faces, its health, statuses, effects, cast and queue).
 /// Whether every collection of the view is within the protocol's bounds
 /// ([`bota_proto::game_limits`]): what a client refuses a view for.
 fn within_limits(view: &WorldView) -> bool {
@@ -737,6 +736,10 @@ fn keep_within_bounds(viewer: Option<Team>, units: &mut Vec<UnitView>) -> bool {
     true
 }
 
+/// Puts a hero's sheet on the view of an illusion of it: everything that
+/// says what the hero is and holds, leaving the illusion's own body (where
+/// it stands and faces, its health, statuses, effects, cast, forced
+/// movement, channel and queue).
 fn wear_sheet(illusion: &mut UnitView, hero: UnitView) {
     let body = UnitView {
         id: illusion.id,

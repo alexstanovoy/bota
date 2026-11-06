@@ -960,3 +960,31 @@ fn the_warp_channelled_is_told_with_the_unit() {
         "the channel is over"
     );
 }
+
+/// An illusion shows the other side its hero's sheet, but its body is its own: a hero warping in
+/// the fog does not give its channel away through an illusion of it that the other side sees.
+#[test]
+fn an_illusion_in_sight_tells_the_other_side_nothing_of_its_heros_warp() {
+    let mut world = gates_match(&[Team::Radiant, Team::Dire]);
+    let caster = hero(&world, 0);
+    before_gate(&mut world, caster, 1);
+    let at = gate(&world, 1);
+    order(&mut world, 0, None, click(at), false);
+    until_channelling(&mut world, caster);
+    let dire = hero(&world, 1);
+    let beside_dire = pos(&world, dire) + Vec2::from_ints(200, 0);
+    super::illusions::stand_in_illusion(&mut world, caster, beside_dire);
+    world.step();
+    assert!(world.is_channelling(caster), "the warp runs on");
+    let radiant_heroes: Vec<_> = world
+        .view(Team::Dire)
+        .units
+        .into_iter()
+        .filter(|unit| unit.kind == UnitKind::Hero && unit.team == Team::Radiant)
+        .collect();
+    assert_eq!(radiant_heroes.len(), 1, "Dire sees the illusion alone");
+    assert_eq!(
+        radiant_heroes[0].channel, None,
+        "nor is it told the hero's warp"
+    );
+}

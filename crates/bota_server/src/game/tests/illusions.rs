@@ -20,7 +20,7 @@ const STAND_IN_TICKS: u32 = 20 * bota_core::rules::TICKS_PER_SECOND;
 /// (its souls among them), health and mana, facing as it does and standing
 /// still, an illusion of it for [`STAND_IN_TICKS`], the other side's aims at
 /// the hero called off.
-fn stand_in_illusion(world: &mut World, hero: Entity, at: Vec2) -> Entity {
+pub(super) fn stand_in_illusion(world: &mut World, hero: Entity, at: Vec2) -> Entity {
     let team = *world.team.get(hero).expect("a side");
     let slot = *world.owner.get(hero).expect("a seat");
     let kind = *world.hero.get(hero).expect("a hero");

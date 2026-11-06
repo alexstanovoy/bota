@@ -301,9 +301,9 @@
 //!   level, attributes, every stat, abilities, items, mana and regeneration
 //!   are the hero's on that tick. Its body is its own: where it stands and
 //!   faces, its health and maximum health, statuses, effects (less the
-//!   marker, which is told to its own side alone), cast and aggro. What the
-//!   bodies do (the damage an illusion takes and deals, the buffs on it) may
-//!   give it away, as in Dota.
+//!   marker, which is told to its own side alone), cast, forced movement,
+//!   channel and aggro. What the bodies do (the damage an illusion takes and
+//!   deals, the buffs on it) may give it away, as in Dota.
 //! - Handles: once an illusion of a hero is made, the other side's names for
 //!   the hero and for its illusions made before name nothing any more, and
 //!   they are all named afresh in one batch, so no name the hero was known
