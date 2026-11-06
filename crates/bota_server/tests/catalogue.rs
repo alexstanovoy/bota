@@ -232,6 +232,39 @@ fn play_replay(records: &[ReplayRecord]) -> Result<u32, SessionError> {
 }
 
 #[test]
+fn a_counter_version_replay_is_refused_with_the_existing_error() {
+    use bota_client_core::{ReplayPlayer, ReplayRefusal};
+    use bota_core::WIRE_FINGERPRINT;
+    use bota_proto::{ReplayHeader, encode_frame_to_vec};
+    let recorded = bota_proto::fnv1a(&[
+        &bota_proto::REGISTRY_DIGEST.to_le_bytes(),
+        &97_u32.to_le_bytes(),
+    ]);
+    let bytes = encode_frame_to_vec(&ReplayRecord::Header(ReplayHeader::new(recorded))).unwrap();
+    let mut player = ReplayPlayer::from_reader(std::io::Cursor::new(bytes));
+    assert!(player.poll(0.0).is_empty());
+    let error = player
+        .error()
+        .expect("incompatible rules are refused before playback");
+    assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+    assert_eq!(
+        error
+            .get_ref()
+            .and_then(|inner| inner.downcast_ref::<ReplayRefusal>()),
+        Some(&ReplayRefusal::OtherVersion {
+            recorded,
+            plays: WIRE_FINGERPRINT
+        })
+    );
+    assert_eq!(
+        error.to_string(),
+        format!(
+            "recorded with wire fingerprint {recorded:016x}; this build plays {WIRE_FINGERPRINT:016x}"
+        )
+    );
+}
+
+#[test]
 fn a_client_built_before_newer_items_plays_without_them_and_its_replay_plays_here() {
     let path = std::env::temp_dir().join(format!("bota-catalogue-{}.brp", std::process::id()));
     let (address, server) = serve(opts(path.clone()));

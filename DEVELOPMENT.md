@@ -118,10 +118,45 @@ every wire struct.
   table that disagrees with `ids.txt`.
 
 There is no version negotiation. A client sends `bota_core::WIRE_FINGERPRINT` in its `Hello`: a hash of both
-registries and of `bota_core::RULES_VERSION`, which is bumped with every change to what `bota_core` decides (a test
-fails until a change is versioned or declared to decide nothing new). A server of another fingerprint answers
+registries and of `bota_core::RULES_VERSION`, a content-derived `u64` computed by `bota_core/build.rs`. A server of another fingerprint answers
 `WireMismatch` and closes, so two builds that disagree, a balance change included, fail at the door instead of in
 mid-match.
+
+`RULES_VERSION` is an identity, never an ordered counter. No author bumps it, checks in generated values, or
+renumbers it after merging another rule change. The build hashes production Rust under `bota_core/src`,
+`bota_proto/src` and `bota_server/src`, including maps, the engine, game systems, order handling and visibility.
+Literal `include!`, `include_str!` and `include_bytes!` paths bring their repository-local data into the hash too.
+The generated identity file itself and test-only paths (`tests/`, `tests.rs`, `*_tests.rs`) are excluded.
+
+The canonical representation uses exact parser/printer versions from `Cargo.toml`: comments and documentation,
+test-only declarations, layout, optional trailing commas, single-expression match-arm braces and reordered
+imports do not count. Tuple commas, literal contents, macro punctuation and macro matchers remain significant.
+The `world_tables!` declaration DSL forwards Rust documentation as metadata; arbitrary macro arguments can
+inspect attributes as data, so their attributes remain significant. Other production refactors may conservatively
+change the identity: this is a source contract, not a proof of semantic equivalence.
+
+The imported `ItemData` constants, the `ITEM_ROWS` constant, and associated `ItemId` constants belong to
+`Catalogue` prefix agreement instead. Their conversion functions and simulation mechanics are still global
+rules. Each row also binds the names and literal numeric values of its associated `ItemId` constants, generated
+from their declarations: changing an existing binding cannot bypass catalogue agreement, and a constant for an
+appended id leaves older prefixes unchanged. Keep these declarations as literal `ItemId(u16)` values; unsupported
+expressions fail the build. Changing an existing item's evaluated row changes its catalogue digest; appending rows preserves older
+prefixes. Match metadata keeps the frozen `rules_version: u32` header field, zero for content identities, and
+appends `MetaRecord::RulesIdentity` with the full `u64`.
+
+Hash inputs have sorted repository-relative UTF-8 paths, framed byte lengths, explicit little-endian encoding and
+a versioned SHA-256 domain. Neither machine paths, Git history, timestamps, compiler debug output nor target
+settings enter them. The first eight digest bytes form the identity; like the existing 64-bit wire fingerprint,
+this has a finite hash-collision probability and is not an authentication mechanism. Dependency and compiler
+behavior remains subject to the determinism tests; the identity describes the committed rule sources.
+
+The build script reads only bounded, regular, repository-contained inputs and writes only in Cargo's output
+directory. It follows no symlinks, performs no network requests and launches no processes. Dynamic include paths
+are refused. Keep all production rules inside these source roots; test-only paths are reserved for tests.
+Cargo watches the three source directories recursively to detect added and deleted files, plus included data.
+Consequently a source-tree test or comment edit can rerun the build script even though its identity is unchanged;
+unrelated client, documentation and tool edits do not rerun it. Cargo may rebuild a crate after rerunning a build
+script even when generated output is unchanged. The generated file is written only when its content changes.
 
 ## Determinism
 
@@ -186,6 +221,9 @@ What the main suites cover:
   streams every 1500 ticks) on every map, and replays them with all-seeing drivers to prove that what a side is shown
   never changes the simulation. A deliberate rule change re-records them with the ignored `print_pins` and
   `print_blind_pins` tests; `cargo bench -p bota_server --bench dummy -- --test` checks the bench digests.
+  Rule identities never enter these state/output digests. Keep the golden expectations: a changed source hash
+  must not automatically approve changed output. A merge needs new pins only when its actual output changes;
+  hashes of two changed matches cannot predict the output of their combined rules.
 - `bota_server/tests/client.rs` plays a lockstep match over a real socket; `tests/bad_links.rs` through a proxy that
   delays, jitters, stalls and resets the line; `tests/malformed.rs` against hostile peers. With
   `--features websocket` they also run over `ws://` and `wss://` (test certificate in `bota_server/tests/tls`).

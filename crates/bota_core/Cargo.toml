@@ -12,5 +12,19 @@ categories.workspace = true
 bota_proto = { workspace = true }
 unicode-segmentation = "1.13.3"
 
+[build-dependencies]
+syn.workspace = true
+proc-macro2.workspace = true
+quote.workspace = true
+prettyplease.workspace = true
+sha2.workspace = true
+
+[dev-dependencies]
+syn.workspace = true
+proc-macro2.workspace = true
+quote.workspace = true
+prettyplease.workspace = true
+sha2.workspace = true
+
 [lints]
 workspace = true

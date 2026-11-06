@@ -107,7 +107,7 @@ impl Recorder {
             magic: MetaHeader::MAGIC,
             schema: MetaHeader::SCHEMA,
             wire_fingerprint: bota_core::WIRE_FINGERPRINT,
-            rules_version: bota_core::RULES_VERSION,
+            rules_version: 0,
             match_id: info.match_id,
             map: info.map.0,
             tick_rate: info.tick_rate,
@@ -116,6 +116,12 @@ impl Recorder {
             catalogue_digest: info.catalogue.digest,
         };
         self.out.push(&MetaRecord::Header(header), false);
+        self.out.push(
+            &MetaRecord::RulesIdentity {
+                fingerprint: bota_core::RULES_VERSION,
+            },
+            false,
+        );
     }
 
     /// The whole-map view of a tick.

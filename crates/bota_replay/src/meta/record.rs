@@ -19,7 +19,8 @@ pub struct MetaHeader {
     pub schema: u16,
     /// The wire fingerprint of the build that wrote it: where it came from, never a gate.
     pub wire_fingerprint: u64,
-    /// The version of the rules the match was played by.
+    /// The legacy rules counter; zero for content identities, which the appended
+    /// [`MetaRecord::RulesIdentity`] records without changing this frozen header.
     pub rules_version: u32,
     pub match_id: u64,
     pub map: u16,
@@ -106,6 +107,10 @@ pub enum MetaRecord {
         tick: u32,
         /// 0 Radiant, 1 Dire; none for a draw.
         winner: Option<u8>,
+    },
+    /// The complete content identity of the rules, recorded after the header.
+    RulesIdentity {
+        fingerprint: u64,
     },
 }
 

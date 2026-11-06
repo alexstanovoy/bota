@@ -1,7 +1,7 @@
 //! Which items a match plays with. Item ids only grow, so a build that holds
 //! more items still meets one that holds fewer: the two play on the first
 //! ids both hold, when they agree on what those items are. What an item is
-//! (every number and rule a match plays it by) is its digest; a prefix of the
+//! (every number, identifier binding and rule a match plays it by) is its digest; a prefix of the
 //! catalogue is told by its length and the digest of its items.
 
 use bota_proto::{Aim, Attribute, Attributes, CataloguePrefix, Fixed, ItemId};
@@ -10,6 +10,8 @@ use crate::{
     AllyUse, Carried, DisassembleRule, ITEM_COUNT, ITEMS, ItemDef, Mend, Odds, Pool, Recipe,
     Spends, Stock, UseSpec, item_def, sold, sold_items,
 };
+
+include!(concat!(env!("OUT_DIR"), "/item_identity.rs"));
 
 /// The items a match plays with: the first so many ids of this build's
 /// catalogue. Only ever one this build holds.
@@ -383,6 +385,7 @@ pub(crate) const fn item_digest(def: &ItemDef) -> u64 {
     } = *def;
     let fnv = Fnv::NEW
         .u64(id.0 as u64)
+        .u64(item_identifier_digest(id.0))
         .text(key)
         .int(cost as i64)
         .u64(charges as u64)

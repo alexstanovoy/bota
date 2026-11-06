@@ -1,19 +1,16 @@
-//! The number a build's wire is known by: its registries and its rules.
+//! The content identities of a build's rules and wire.
 
-use bota_proto::{REGISTRY_DIGEST, fnv1a};
+use bota_proto::REGISTRY_DIGEST;
 
-/// The version of the rules a client checks its orders against and predicts
-/// with: every table and integer function of this crate but its game data
-/// (`data/`), whose items the [`Catalogue`](crate::Catalogue) digests.
+/// A content identity, not an ordered release number: the first eight SHA-256
+/// bytes, little endian, of the canonical production sources of the rule,
+/// protocol and server crates, their maps and included data.
 ///
-/// Bump it with every change to what they decide: a number, a table entry,
-/// what a function returns. A test pins it together with a digest of this
-/// crate's code that ignores comments and layout, and fails on any change of
-/// that code until the pin is renewed; a changed number or string forces the
-/// bump. A comment, a reformatting or a refactor that decides nothing
-/// differently renews the pin and leaves the version, so builds that agree on
-/// the rules keep meeting.
-pub const RULES_VERSION: u32 = 102;
+/// Computed at build time; comments, layout, documentation and test-only items
+/// do not count. Item rows use [`Catalogue`](crate::Catalogue) prefix digests,
+/// so appending data for an item preserves agreement on older catalogues.
+/// See `DEVELOPMENT.md` for the source boundary and canonicalization contract.
+pub const RULES_VERSION: u64 = include!(concat!(env!("OUT_DIR"), "/rules_identity.rs"));
 
 /// The wire fingerprint: the [`REGISTRY_DIGEST`] and the [`RULES_VERSION`]
 /// together. A client's `Hello` carries it, a replay's header names it, and
@@ -21,5 +18,32 @@ pub const RULES_VERSION: u32 = 102;
 /// (see the `bota_proto` contract). The items are not in it: builds meet on
 /// the items both hold ([`Catalogue`](crate::Catalogue)), so an item added
 /// leaves older clients and replays playing.
-pub const WIRE_FINGERPRINT: u64 =
-    fnv1a(&[&REGISTRY_DIGEST.to_le_bytes(), &RULES_VERSION.to_le_bytes()]);
+pub const WIRE_FINGERPRINT: u64 = wire_fingerprint(REGISTRY_DIGEST, RULES_VERSION);
+
+// Unlike text hashing, binary hashing must retain every byte, including 0x0d.
+const fn wire_fingerprint(registry: u64, rules: u64) -> u64 {
+    let parts = [registry.to_le_bytes(), rules.to_le_bytes()];
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    let mut part = 0;
+    while part < parts.len() {
+        let mut byte = 0;
+        while byte < parts[part].len() {
+            hash ^= parts[part][byte] as u64;
+            hash = hash.wrapping_mul(0x0100_0000_01b3);
+            byte += 1;
+        }
+        part += 1;
+    }
+    hash
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn carriage_return_bytes_distinguish_binary_rule_identities() {
+        assert_ne!(
+            super::wire_fingerprint(1, 0x0d01),
+            super::wire_fingerprint(1, 0x010d)
+        );
+    }
+}

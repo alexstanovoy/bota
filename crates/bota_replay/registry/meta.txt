@@ -45,3 +45,5 @@ field MetaRecord::End 0 tick: u32
 field MetaRecord::End 1 winner: Option<u8>
 variant Who 0 Hero(u8)
 variant Who 1 Other
+variant MetaRecord 9 RulesIdentity {}
+field MetaRecord::RulesIdentity 0 fingerprint: u64

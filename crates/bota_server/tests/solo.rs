@@ -218,6 +218,16 @@ fn a_match_leaves_its_metadata_in_a_file_and_in_its_replay_and_the_recorder_writ
     let meta = decode(&meta_file).expect("a file");
     assert!(meta.complete && meta.skipped == 0);
     assert_eq!(meta.header.wire_fingerprint, bota_core::WIRE_FINGERPRINT);
+    assert_eq!(
+        meta.header.rules_version, 0,
+        "the frozen legacy field is reserved"
+    );
+    assert_eq!(
+        meta.records.first(),
+        Some(&MetaRecord::RulesIdentity {
+            fingerprint: bota_core::RULES_VERSION
+        })
+    );
     let over = records
         .iter()
         .find_map(|r| match r {
