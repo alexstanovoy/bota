@@ -3,11 +3,11 @@
 use bota_core::{
     AMPLIFY_DAMAGE_PCT, AMPLIFY_SPELL_AMP_BP, ARCANE_COOLDOWN_CUT_BP, ARCANE_MANA_CUT_BP, Buff,
     Carried, Growth, HASTE_RUNE_SPEED, INVISIBILITY_FADE_TICKS, ModifierKind, NeutralAbility, Odds,
-    Regen, Stat, TALENT_ARMOR, TALENT_SPELL_LIFESTEAL_PCT, Talent, UnitDef, ability_def,
-    agility_armor, agility_attack_speed, cut_rate, fixed, intelligence_magic_resist_bp, item_def,
-    primary_damage, regen, rules, soul_damage, spell_buff,
+    Regen, Stat, TALENT_ARMOR, TALENT_SPELL_LIFESTEAL_PCT, Talent, UnitDef, agility_armor,
+    agility_attack_speed, cut_rate, fixed, intelligence_magic_resist_bp, item_def, primary_damage,
+    regen, rules, soul_damage, spell_buff,
 };
-use bota_proto::{AbilityId, Attributes, Fixed, ModifierSpec};
+use bota_proto::{Attributes, Fixed, ModifierSpec};
 
 use crate::game::{
     AbilityBook, AppliedModifiers, Def, Entity, EntityAllocator, Health, Illusion, Inventory,
@@ -465,9 +465,8 @@ fn add_heap(now: &mut Stats, kept: u32, book: Option<&AbilityBook>) {
     if kept == 0 {
         return;
     }
-    let key = ability_def(AbilityId::FLESH_HEAP).map_or("", |def| def.key);
     let per_stack = book.map_or(rules::FLESH_HEAP_STRENGTH_PER_STACK, |book| {
-        fixed(book.talented(key, "flesh_heap_strength_buff_amount", 0))
+        fixed(book.talented(rules::FLESH_HEAP_STRENGTH_VALUE, 0))
     });
     let kept = i32::try_from(kept).unwrap_or(i32::MAX);
     now.attributes.strength += per_stack * Fixed::from_int(kept);

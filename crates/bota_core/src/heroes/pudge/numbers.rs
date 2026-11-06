@@ -8,7 +8,7 @@ use crate::heroes_data::{
     NPC_DOTA_HERO_PUDGE, PUDGE_DISMEMBER, PUDGE_FLESH_HEAP, PUDGE_INNATE_GRAFT_FLESH,
     PUDGE_MEAT_HOOK, PUDGE_ROT,
 };
-use crate::{fixed, ints_of, ticks_of, turn_rate_brads};
+use crate::{AbilityValue, fixed, ints_of, ticks_of, turn_rate_brads};
 
 /// How fast Pudge turns, in brads per tick: his `MovementTurnRate`.
 pub const PUDGE_TURN_RATE_BRADS: u16 = turn_rate_brads(NPC_DOTA_HERO_PUDGE.turn_rate);
@@ -167,3 +167,14 @@ pub const TALENT_FLESH_HEAP_FACTOR: Fixed = {
     assert!(heap.0 == shield.0);
     fixed(heap)
 };
+/// The values Pudge's talents change, for the server to read with a caster's talents
+/// ([`AbilityValue::talented`]): each named here, so a missing one fails the build.
+pub const HOOK_DAMAGE_VALUE: &AbilityValue = PUDGE_MEAT_HOOK.value("damage");
+pub const ROT_SLOW_VALUE: &AbilityValue = PUDGE_ROT.value("rot_slow");
+pub const MEAT_SHIELD_BLOCK_VALUE: &AbilityValue = PUDGE_FLESH_HEAP.value("damage_block");
+pub const FLESH_HEAP_STRENGTH_VALUE: &AbilityValue =
+    PUDGE_INNATE_GRAFT_FLESH.value("flesh_heap_strength_buff_amount");
+pub const DISMEMBER_CHANNEL_VALUE: &AbilityValue = PUDGE_DISMEMBER.value("AbilityChannelTime");
+pub const DISMEMBER_BITES_VALUE: &AbilityValue = PUDGE_DISMEMBER.value("ticks");
+pub const DISMEMBER_DAMAGE_VALUE: &AbilityValue = PUDGE_DISMEMBER.value("dismember_damage");
+pub const DISMEMBER_STRENGTH_VALUE: &AbilityValue = PUDGE_DISMEMBER.value("strength_damage");

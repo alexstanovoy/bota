@@ -49,9 +49,7 @@ impl World {
                 speed: Fixed::from_int(rules::HOOK_SPEED),
                 reach_left: reach,
                 radius: rules::units(rules::HOOK_RADIUS),
-                damage: self
-                    .talented(caster, AbilityId::MEAT_HOOK, "damage", level)
-                    .int(),
+                damage: self.talented(caster, rules::HOOK_DAMAGE_VALUE, level).int(),
                 damage_amp_bp,
                 mana: self.ability_mana_cost(caster, AbilityId::MEAT_HOOK, level as u8 + 1),
                 caught: None,

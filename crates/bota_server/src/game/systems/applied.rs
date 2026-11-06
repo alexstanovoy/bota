@@ -1,7 +1,8 @@
 //! Applied stat changes: their countdown and the rates they leave.
 
 use bota_core::{
-    Dec, ability_cooldown, ability_data, ability_def, ability_mana_cost, item_def, rules,
+    AbilityValue, Dec, ability_cooldown, ability_data, ability_def, ability_mana_cost, item_def,
+    rules,
 };
 use bota_proto::{AbilityId, DamageKind, Fixed, ItemId};
 
@@ -69,13 +70,12 @@ impl World {
     /// rate. An imported ability whose cooldown a talent changes reads it
     /// with the entity's talents.
     pub fn ability_cooldown(&self, entity: Entity, id: AbilityId, level: u8) -> u32 {
-        let base = if self.imports(id, "AbilityCooldown") {
-            let at = usize::from(level.max(1) - 1);
-            self.talented(entity, id, "AbilityCooldown", at)
-                .secs()
-                .ticks()
-        } else {
-            ability_cooldown(id, level)
+        let base = match imported(id, "AbilityCooldown") {
+            Some(value) => {
+                let at = usize::from(level.max(1) - 1);
+                self.talented(entity, value, at).secs().ticks()
+            }
+            None => ability_cooldown(id, level),
         };
         self.cooldown_after_rate(entity, base)
     }
@@ -83,32 +83,20 @@ impl World {
     /// Ticks a cast of an ability runs on once its cast point is over, its
     /// channel: what the entity's talents make of an imported ability's.
     pub fn ability_duration(&self, entity: Entity, id: AbilityId, level: u8) -> u32 {
-        if self.imports(id, "AbilityChannelTime") {
+        if let Some(value) = imported(id, "AbilityChannelTime") {
             let at = usize::from(level.max(1) - 1);
-            return self
-                .talented(entity, id, "AbilityChannelTime", at)
-                .secs()
-                .ticks();
+            return self.talented(entity, value, at).secs().ticks();
         }
         ability_def(id).map_or(0, |def| def.duration)
     }
 
-    /// The value `name` of an imported ability at `level` (from zero), with
-    /// the bonuses of the talents the entity has learned.
-    pub fn talented(&self, entity: Entity, id: AbilityId, name: &str, level: usize) -> Dec {
-        let key = ability_def(id).map_or("", |def| def.key);
+    /// An imported value at `level` (from zero), with the bonuses of the talents the entity
+    /// has learned.
+    pub fn talented(&self, entity: Entity, value: &AbilityValue, level: usize) -> Dec {
         match self.abilities.get(entity) {
-            Some(book) => book.talented(key, name, level),
-            None => crate::game::AbilityBook::default().talented(key, name, level),
+            Some(book) => book.talented(value, level),
+            None => value.at(level),
         }
-    }
-
-    /// Whether an ability's imported row holds the value `name` with a bonus
-    /// beside its number.
-    fn imports(&self, id: AbilityId, name: &str) -> bool {
-        ability_def(id)
-            .and_then(|def| ability_data(def.key))
-            .is_some_and(|data| data.find(name).is_some())
     }
 
     /// Mana one use of an item costs an entity, after its mana cost rate.
@@ -156,3 +144,9 @@ impl World {
 }
 
 pub use bota_core::{cooldown_after, cost_after};
+
+/// An ability's imported value `name`, where its row holds one beside its number: what a
+/// talent may change.
+fn imported(id: AbilityId, name: &str) -> Option<&'static AbilityValue> {
+    ability_data(ability_def(id)?.key)?.find(name)
+}

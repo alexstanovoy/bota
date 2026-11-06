@@ -96,10 +96,8 @@ pub fn ability_damage_projection(
         }
         AbilityId::DISMEMBER => {
             let at = rank.min(rules::DISMEMBER_DAMAGE_PER_SECOND.len() - 1);
-            let dismember =
-                bota_core::ability_data("pudge_dismember").expect("Pudge's dismember is imported");
-            let channel = dismember.value("AbilityChannelTime").at(at).secs();
-            let bites = u32::try_from(dismember.value("ticks").at(at).int())
+            let channel = rules::DISMEMBER_CHANNEL_VALUE.at(at).secs();
+            let bites = u32::try_from(rules::DISMEMBER_BITES_VALUE.at(at).int())
                 .expect("a dismember bites a handful of times");
             let landed = (0..bites)
                 .filter(|&bite| {
@@ -109,8 +107,8 @@ pub fn ability_damage_projection(
                 })
                 .count();
             let bite = bota_core::heroes::pudge::dismember_bite_damage(
-                dismember.value("dismember_damage").at(at),
-                dismember.value("strength_damage").at(at),
+                rules::DISMEMBER_DAMAGE_VALUE.at(at),
+                rules::DISMEMBER_STRENGTH_VALUE.at(at),
                 actor.attributes.strength,
                 channel,
                 bites,

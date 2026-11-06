@@ -74,7 +74,7 @@ impl World {
         let level = usize::from(self.carried_level(caster, AbilityId::DISMEMBER).max(1) - 1);
         let with = Some(Inflictor::Ability(AbilityId::DISMEMBER));
         let channel = self
-            .talented(caster, AbilityId::DISMEMBER, "AbilityChannelTime", level)
+            .talented(caster, rules::DISMEMBER_CHANNEL_VALUE, level)
             .secs();
         self.put_modifier(
             on,
@@ -86,7 +86,7 @@ impl World {
             ),
         );
         let bites = self
-            .talented(caster, AbilityId::DISMEMBER, "ticks", level)
+            .talented(caster, rules::DISMEMBER_BITES_VALUE, level)
             .int();
         let held = ModifierKind::Dismembered {
             level: level as u8,
@@ -114,8 +114,8 @@ impl World {
             .stats
             .get(caster)
             .map_or(Fixed::ZERO, |stats| stats.attributes.strength);
-        let per_second = self.talented(caster, AbilityId::DISMEMBER, "dismember_damage", level);
-        let factor = self.talented(caster, AbilityId::DISMEMBER, "strength_damage", level);
+        let per_second = self.talented(caster, rules::DISMEMBER_DAMAGE_VALUE, level);
+        let factor = self.talented(caster, rules::DISMEMBER_STRENGTH_VALUE, level);
         let amount = dismember_bite_damage(per_second, factor, strength, channel, bites);
         self.push_hit_with_effect(
             Some(caster),
@@ -161,7 +161,7 @@ impl World {
     pub fn cast_meat_shield(&mut self, caster: Entity, level: usize) -> bool {
         let block = ModifierKind::MeatShield {
             amount: self
-                .talented(caster, AbilityId::MEAT_SHIELD, "damage_block", level)
+                .talented(caster, rules::MEAT_SHIELD_BLOCK_VALUE, level)
                 .int(),
         };
         let ticks = rules::MEAT_SHIELD_TICKS[level];

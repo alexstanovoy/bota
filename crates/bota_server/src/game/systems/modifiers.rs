@@ -354,7 +354,7 @@ impl World {
         // What the owner's talents make of the level's slow, as Dota's rot
         // writes it: a change of speed.
         let slow = -self
-            .talented(owner, AbilityId::ROT, "rot_slow", usize::from(level))
+            .talented(owner, rules::ROT_SLOW_VALUE, usize::from(level))
             .int();
         let slow_pct = u8::try_from(slow.clamp(0, 100)).expect("a percent");
         if (self.tick - since).is_multiple_of(rules::ROT_TICK_TICKS) && self.above_last_point(owner)
