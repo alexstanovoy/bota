@@ -959,6 +959,7 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
             ticks: ticks(&ITEM_BLIGHT_STONE, "corruption_duration"),
             armor: armor_taken(&ITEM_BLIGHT_STONE, "corruption_armor"),
             dps: 0,
+            beat_ticks: 0,
             slow_pct: 0,
             ranged_slow_pct: 0,
             restoration_cut_pct: 0,
@@ -977,6 +978,7 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
             ticks: ticks(&ITEM_ORB_OF_VENOM, "poison_duration"),
             armor: Fixed::ZERO,
             dps: int(&ITEM_ORB_OF_VENOM, "damage"),
+            beat_ticks: ticks(&ITEM_ORB_OF_VENOM, "tick_interval"),
             slow_pct: 0,
             ranged_slow_pct: 0,
             restoration_cut_pct: 0,
@@ -997,6 +999,7 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
             ticks: ticks(&ITEM_ORB_OF_FROST, "duration"),
             armor: Fixed::ZERO,
             dps: 0,
+            beat_ticks: 0,
             slow_pct: -int(&ITEM_ORB_OF_FROST, "slow_melee"),
             ranged_slow_pct: -int(&ITEM_ORB_OF_FROST, "slow_ranged"),
             restoration_cut_pct: int(&ITEM_ORB_OF_FROST, "heal_reduction"),
@@ -1059,8 +1062,17 @@ const _: () = {
     assert!(crate::EFFECTS[EffectId::FROST.0 as usize].dispellable);
     assert!(ITEM_ORB_OF_FROST.first("slow_melee").0 < 0);
     assert!(ITEM_ORB_OF_FROST.first("slow_ranged").0 < 0);
-    // The server beats a laid poison once a second.
-    assert!(ITEM_ORB_OF_VENOM.first("tick_interval").0 == 1000);
+    // A beat is a whole number of ticks, and removes a whole share of the damage per second.
+    assert!(ticks(&ITEM_ORB_OF_VENOM, "tick_interval") > 0);
+    assert!(
+        ticks(&ITEM_ORB_OF_VENOM, "tick_interval") as i64 * 1000
+            == ITEM_ORB_OF_VENOM.first("tick_interval").0 as i64 * rules::TICKS_PER_SECOND as i64
+    );
+    assert!(
+        (int(&ITEM_ORB_OF_VENOM, "damage") * ticks(&ITEM_ORB_OF_VENOM, "tick_interval") as i32)
+            % rules::TICKS_PER_SECOND as i32
+            == 0
+    );
 };
 
 // A Bottle is bought full: the charges it is bought with are all it holds, and the server fills

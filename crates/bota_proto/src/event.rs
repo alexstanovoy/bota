@@ -55,6 +55,10 @@ pub enum EventKind {
         /// The ability or item that dealt it. Absent for an attack's own
         /// blow.
         inflictor: Option<Inflictor>,
+        /// Whether it removed health rather than dealt damage (Dota's HP
+        /// Removal): reduced as damage of its `kind` is, it set off nothing
+        /// that answers to damage.
+        removal: bool,
     },
     /// An attack did not land: the target evaded it, or it was thrown
     /// uphill and missed.

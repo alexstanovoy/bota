@@ -169,10 +169,13 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
             on_it.stack_fountain_damage(blow.source);
         }
         let dealt = stacked_damage(blow, modifiers.get(blow.target));
-        let spared = kind.get(blow.target).is_some_and(|k| {
-            (immortal_structures && kind_def(*k).structure)
-                || (immortal_heroes && *k == UnitKind::Hero)
-        });
+        // A blow that spares stops one short of the last point after every amplification and
+        // cut, as an immortal unit does.
+        let spared = blow.spares
+            || kind.get(blow.target).is_some_and(|k| {
+                (immortal_structures && kind_def(*k).structure)
+                    || (immortal_heroes && *k == UnitKind::Hero)
+            });
         let Some(hp) = health.get(blow.target).map(|pool| pool.hp) else {
             continue;
         };

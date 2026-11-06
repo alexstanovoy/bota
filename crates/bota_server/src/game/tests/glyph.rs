@@ -41,6 +41,7 @@ fn pure_blow(world: &mut World, from: Entity, on: Entity) -> i32 {
         effect: HitEffect::None,
         laid: crate::game::Laid::NONE,
         removal: false,
+        spares: false,
     });
     let before = world.health.get(on).expect("standing").hp;
     world.step();

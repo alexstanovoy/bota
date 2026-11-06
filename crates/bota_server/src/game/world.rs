@@ -378,19 +378,22 @@ impl World {
             effect: crate::game::HitEffect::None,
             laid: crate::game::Laid::NONE,
             removal: false,
+            spares: false,
         });
     }
 
-    /// Lays on the queue a removal of health (Dota's HP Removal) of `kind`:
-    /// mitigated as damage of that kind, setting off nothing that answers to
-    /// damage.
-    pub(crate) fn push_removal(
+    /// Lays on the queue a blow of `kind` that never takes the last point
+    /// (Dota's non-lethal damage), however it is amplified on the way. One
+    /// that `removes` health (Dota's HP Removal) is mitigated as damage of
+    /// its kind and sets off nothing that answers to damage.
+    pub(crate) fn push_sparing(
         &mut self,
         source: Option<Entity>,
         target: Entity,
         amount: i32,
         kind: bota_proto::DamageKind,
         inflictor: Option<Inflictor>,
+        removes: bool,
     ) {
         let damage_amp_bp = self.outgoing_damage_amp_bp(source, kind);
         self.hits.push_back(Hit {
@@ -407,7 +410,8 @@ impl World {
             uphill: false,
             effect: crate::game::HitEffect::None,
             laid: crate::game::Laid::NONE,
-            removal: true,
+            removal: removes,
+            spares: true,
         });
     }
 
@@ -436,6 +440,7 @@ impl World {
             effect: crate::game::HitEffect::None,
             laid: crate::game::Laid::NONE,
             removal: false,
+            spares: false,
         });
     }
 
@@ -466,6 +471,7 @@ impl World {
             effect,
             laid: crate::game::Laid::NONE,
             removal: false,
+            spares: false,
         });
     }
 

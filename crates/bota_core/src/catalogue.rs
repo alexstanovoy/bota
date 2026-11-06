@@ -457,6 +457,7 @@ pub(crate) const fn item_digest(def: &ItemDef) -> u64 {
             .u64(laid.ticks as u64)
             .fixed(laid.armor)
             .int(laid.dps as i64)
+            .u64(laid.beat_ticks as u64)
             .int(laid.slow_pct as i64)
             .int(laid.ranged_slow_pct as i64)
             .int(laid.restoration_cut_pct as i64)

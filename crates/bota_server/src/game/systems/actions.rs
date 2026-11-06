@@ -902,6 +902,7 @@ impl World {
             effect: swing.effect,
             laid: swing.laid,
             removal: false,
+            spares: false,
         });
         for (bonus, item) in swing.pierced {
             self.hits.push_back(Hit {
@@ -919,6 +920,7 @@ impl World {
                 effect: HitEffect::None,
                 laid: crate::game::Laid::NONE,
                 removal: false,
+                spares: false,
             });
         }
     }

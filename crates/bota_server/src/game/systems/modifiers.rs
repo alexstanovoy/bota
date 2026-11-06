@@ -3,7 +3,7 @@
 use bota_core::{
     ModifierKind, Stat, breaks_regen, dismember_bite_tick, item_def, rules, spell_buff,
 };
-use bota_proto::{AbilityId, DamageKind, Fixed, Inflictor, ItemId, Team};
+use bota_proto::{AbilityId, DamageKind, Inflictor, ItemId, Team};
 
 use crate::game::{Landed, Modifier, Stats, Table, World, cooldown_after, disabled_in};
 
@@ -163,31 +163,6 @@ impl World {
     /// Their time runs down in [`World::tick_gear`].
     ///
     /// A burn that is not lethal stops one short of the last point.
-    /// The beat of what an item laid that removes health: its `dps`, a
-    /// magical HP removal, every whole second since it was laid, never the
-    /// last point (Dota 7.07: Poison Attack "is no longer lethal and is now
-    /// flagged as HP Removal").
-    fn laid_beat(&mut self, on: Entity, modifier: Modifier, item: ItemId, since: u32) {
-        let Some(laid) = item_def(item).and_then(|def| def.on_attack) else {
-            return;
-        };
-        let since_then = self.tick.saturating_sub(since);
-        if laid.dps <= 0 || since_then == 0 || !since_then.is_multiple_of(rules::TICKS_PER_SECOND) {
-            return;
-        }
-        let left = self.health.get(on).map_or(0, |health| health.hp.to_int());
-        let amount = laid.dps.min(left - 1);
-        if amount > 0 {
-            self.push_removal(
-                modifier.source,
-                on,
-                amount,
-                DamageKind::Magical,
-                modifier.inflictor,
-            );
-        }
-    }
-
     pub fn tick_modifiers(&mut self) {
         let on_beat = self.tick.is_multiple_of(rules::BURN_PERIOD_TICKS);
         let entities = self.take_entity_snapshot();
@@ -207,22 +182,25 @@ impl World {
                         kind,
                         lethal,
                     } => {
-                        if !on_beat {
+                        if !on_beat || amount <= 0 {
                             continue;
                         }
-                        let left = self
-                            .health
-                            .get(entity)
-                            .map_or(0, |health| health.hp.to_int());
-                        let amount = if lethal { amount } else { amount.min(left - 1) };
-                        if amount > 0 && self.health.get(entity).is_some_and(|h| h.hp > Fixed::ZERO)
-                        {
+                        if lethal && self.alive(entity) {
                             self.push_hit(
                                 modifier.source,
                                 entity,
                                 amount,
                                 kind,
                                 modifier.inflictor,
+                            );
+                        } else if !lethal && self.above_last_point(entity) {
+                            self.push_sparing(
+                                modifier.source,
+                                entity,
+                                amount,
+                                kind,
+                                modifier.inflictor,
+                                false,
                             );
                         }
                     }
@@ -304,13 +282,15 @@ impl World {
             transform.pos = at;
         }
         let with = Some(Inflictor::Ability(AbilityId::ROT));
-        let left = self
-            .health
-            .get(owner)
-            .map_or(0, |health| health.hp.to_int());
-        let own = rot_beat(level).min(left - 1);
-        if on_beat && own > 0 {
-            self.push_hit(None, owner, own, DamageKind::Magical, with);
+        if on_beat && self.above_last_point(owner) {
+            self.push_sparing(
+                None,
+                owner,
+                rot_beat(level),
+                DamageKind::Magical,
+                with,
+                false,
+            );
         }
         let reach = rules::units(rules::ROT_RADIUS);
         for other in self.entities.iter().collect::<Vec<_>>() {
@@ -327,6 +307,39 @@ impl World {
                 self.put_modifier(other, Modifier::new(rotting, Some(owner), with, Some(2)));
             }
         }
+    }
+
+    /// The beat of what an item laid that removes health: its `dps` over
+    /// each `beat_ticks` since it was laid, a magical HP removal that never
+    /// takes the last point (Dota 7.07: Poison Attack "is no longer lethal
+    /// and is now flagged as HP Removal").
+    fn laid_beat(&mut self, on: Entity, modifier: Modifier, item: ItemId, since: u32) {
+        let Some(laid) = item_def(item).and_then(|def| def.on_attack) else {
+            return;
+        };
+        let since_then = self.tick.saturating_sub(since);
+        if laid.dps <= 0 || since_then == 0 || !since_then.is_multiple_of(laid.beat_ticks) {
+            return;
+        }
+        if self.above_last_point(on) {
+            let amount = laid.dps * laid.beat_ticks as i32 / rules::TICKS_PER_SECOND as i32;
+            self.push_sparing(
+                modifier.source,
+                on,
+                amount,
+                DamageKind::Magical,
+                modifier.inflictor,
+                true,
+            );
+        }
+    }
+
+    /// Whether an entity has health above its last point, for a blow that
+    /// spares it to take.
+    fn above_last_point(&self, entity: Entity) -> bool {
+        self.health
+            .get(entity)
+            .is_some_and(|health| health.hp.to_int() > 1)
     }
 
     /// Puts out every drink a blow is enough to break, and sets back every

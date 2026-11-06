@@ -45,6 +45,10 @@ pub struct Hit {
     /// Whether it removes health rather than dealing damage (Dota's HP
     /// Removal): it sets off nothing that answers to damage.
     pub removal: bool,
+    /// Whether it stops one short of the last point (Dota's non-lethal
+    /// damage): held to that after every amplification and cut, so no
+    /// amplification makes it lethal.
+    pub spares: bool,
 }
 
 /// The items whose passive an attack's blow lays on the struck (Dota's
@@ -146,7 +150,8 @@ state_hash!(Hit {
     uphill,
     effect,
     laid,
-    removal
+    removal,
+    spares
 });
 state_hash!(Fear { line, most });
 

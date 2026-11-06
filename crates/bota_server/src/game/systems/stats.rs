@@ -145,6 +145,7 @@ pub fn derive_stats(cx: StatsCx<'_>) {
             night,
         };
         add_modifiers(&mut now, &mut sums, working(), wearer);
+        sums.pace.change(-sums.laid_slow_pct);
         now.restoration_bp = rules::NOMINAL_BP * (100 - sums.restoration_cut_pct) / 100;
         if let Some(on_it) = modifiers.get(entity) {
             add_feast(&mut now, &mut sums.pace, on_it, abilities.get(entity));
@@ -329,6 +330,9 @@ struct Sums {
     /// attacks laid: Dota's Frost-based items do not stack, "the highest
     /// values take priority" (7.39).
     restoration_cut_pct: i32,
+    /// Percent of the pace taken off by the strongest of what attacks laid,
+    /// on the same rule; it adds to every other slow.
+    laid_slow_pct: i32,
 }
 
 impl Sums {
@@ -339,6 +343,7 @@ impl Sums {
             damage_pct: 0,
             bonus_damage: 0,
             restoration_cut_pct: 0,
+            laid_slow_pct: 0,
         }
     }
 }
@@ -451,7 +456,7 @@ fn add_modifiers<'a>(
                     } else {
                         laid.slow_pct
                     };
-                    sums.pace.change(-slow.clamp(0, 100));
+                    sums.laid_slow_pct = sums.laid_slow_pct.max(slow.clamp(0, 100));
                     sums.restoration_cut_pct = sums
                         .restoration_cut_pct
                         .max(laid.restoration_cut_pct.clamp(0, 100));

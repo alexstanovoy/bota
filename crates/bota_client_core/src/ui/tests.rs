@@ -1678,6 +1678,7 @@ fn our_blow_cues_the_unit_it_lands_on() {
             amount: 50,
             kind: bota_proto::DamageKind::Physical,
             inflictor: None,
+            removal: false,
         }],
     });
     app.pump(0.0);

@@ -451,6 +451,9 @@ pub struct OnAttack {
     /// HP removal that sets off nothing that answers to damage and never takes
     /// the last point.
     pub dps: i32,
+    /// How often it removes its share of `dps`, in ticks: the item's
+    /// `tick_interval`; zero for one that removes nothing.
+    pub beat_ticks: u32,
     /// Percent of its pace a melee wearer walks slower: Dota's Frost slows
     /// "13% (6% against melee targets)".
     pub slow_pct: i32,
