@@ -61,37 +61,48 @@ fn take_pending(recv: &mpsc::Receiver<NetEvent>) -> Box<dyn crate::net::FrameStr
 #[test]
 fn pending_admissions_share_a_source_bound_across_tcp_and_websocket() {
     let (tcp, ws, recv) = listeners();
-    let clients: Vec<_> = (0..MAX_PER_IPV4)
-        .map(|n| connect_from(1, if n % 2 == 0 { tcp } else { ws }, n % 2 != 0))
-        .collect();
+    let mut clients = Vec::new();
+    let mut held = Vec::new();
+    for n in 0..MAX_PER_IPV4 {
+        clients.push(connect_from(
+            1,
+            if n % 2 == 0 { tcp } else { ws },
+            n % 2 != 0,
+        ));
+        // HTTP 101 precedes adoption reservation. The event, still unadopted, is the fence.
+        held.push(take_pending(&recv));
+    }
     rejected(&mut connect_from(1, tcp, false));
     let mut excess = connect_from(1, ws, true);
     rejected(&mut excess);
     // Taking a queued stream alone does not release its reservation: adoption still owns it.
-    let pending = take_pending(&recv);
+    let pending = held.pop().expect("a held stream");
     rejected(&mut connect_from(1, tcp, false));
     drop(pending);
     let fresh = connect_from(1, ws, true);
-    for _ in 0..MAX_PER_IPV4 {
-        drop(take_pending(&recv));
-    }
+    drop(take_pending(&recv));
     assert!(
         recv.try_recv().is_err(),
         "no excess socket entered the queue"
     );
-    drop((clients, fresh));
+    drop((held, clients, fresh));
 }
 
 #[test]
 fn pending_admissions_share_a_global_bound_across_tcp_and_websocket() {
     let (tcp, ws, recv) = listeners();
-    let clients: Vec<_> = (0..MAX_PENDING_CONNECTIONS)
-        .map(|n| connect_from(n as u8 + 1, if n % 2 == 0 { tcp } else { ws }, n % 2 != 0))
-        .collect();
-    rejected(&mut connect_from(100, tcp, false));
-    for _ in 0..MAX_PENDING_CONNECTIONS {
-        drop(take_pending(&recv));
+    let mut clients = Vec::new();
+    let mut held = Vec::new();
+    for n in 0..MAX_PENDING_CONNECTIONS {
+        clients.push(connect_from(
+            n as u8 + 1,
+            if n % 2 == 0 { tcp } else { ws },
+            n % 2 != 0,
+        ));
+        held.push(take_pending(&recv));
     }
+    rejected(&mut connect_from(100, tcp, false));
+    drop(held);
     let fresh = connect_from(100, ws, true);
     drop(take_pending(&recv));
     assert!(
