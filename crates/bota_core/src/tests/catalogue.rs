@@ -12,7 +12,7 @@ type Change = (&'static str, fn(&mut ItemDef));
 #[test]
 fn every_rule_of_an_item_moves_its_digest() {
     let bottle = *item_def(ItemId::BOTTLE).expect("the Bottle is in the catalogue");
-    let changes: [Change; 33] = [
+    let changes: [Change; 34] = [
         ("cooldown group", |d| {
             d.cooldown_group = Some(ItemId::REFRESHER_SHARD)
         }),
@@ -23,6 +23,9 @@ fn every_rule_of_an_item_moves_its_digest() {
         ("sale rule", |d| d.limits.sellable = false),
         ("ground destruction", |d| d.limits.killable = false),
         ("backpack rule", |d| d.limits.backpack = false),
+        ("pickup eligibility", |d| {
+            d.pickup = crate::PickupEligibility::RealHero
+        }),
         ("pickup lifetime", |d| d.pickup_lifetime = 1),
         ("reincarnation", |d| d.reincarnation = Some(1)),
         ("expiry recovery", |d| {

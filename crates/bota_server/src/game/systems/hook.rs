@@ -125,8 +125,8 @@ impl World {
             self.kill_by_hp_removal(hook.owner, caught);
             return;
         }
-        hook.caught = (!self.stats.get(caught).is_some_and(|s| s.forced_move_immune))
-            .then_some(caught);
+        hook.caught =
+            (!self.stats.get(caught).is_some_and(|s| s.forced_move_immune)).then_some(caught);
         if hook.caught.is_some() && self.push.get(caught).is_some_and(|push| push.carries()) {
             self.push.remove(caught);
             self.forget_walk(caught);

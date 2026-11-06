@@ -659,10 +659,9 @@ impl World {
         let takes = if self.rune.get(mark).is_some() {
             self.is_real_hero(unit)
         } else {
-            self.loot.get(mark).is_some_and(|loot| {
-                item_def(loot.0.id)
-                    .is_none_or(|def| def.reincarnation.is_none() || self.is_real_hero(unit))
-            }) && self.inventory.get(unit).is_some()
+            self.loot
+                .get(mark)
+                .is_some_and(|loot| self.may_receive_item(unit, loot.0.id))
         };
         if !takes {
             return Err(RejectReason::WrongTargetKind);
@@ -753,6 +752,9 @@ impl World {
     /// from the shop the order marks rather than sells, so only a stack
     /// that is not the seat's own is refused.
     fn check_sale(&self, unit: Entity, seat: &Seat, at: usize) -> Result<(), RejectReason> {
+        if !in_stash(at) && self.copied_inventory(unit) {
+            return Err(RejectReason::ItemRestricted);
+        }
         let held = if in_stash(at) {
             seat.stash.slots.get(at - BAG_SLOTS).copied().flatten()
         } else {
@@ -842,6 +844,9 @@ impl World {
         at: usize,
         target: &Target,
     ) -> Result<(), RejectReason> {
+        if self.copied_inventory(unit) {
+            return Err(RejectReason::ItemRestricted);
+        }
         if at >= BAG_SLOTS {
             return Err(RejectReason::NotInBag);
         }
@@ -869,7 +874,9 @@ impl World {
                 let to = self.seen_by(seat, *target)?;
                 if to == unit
                     || self.team.get(to) != Some(&seat.team)
-                    || self.inventory.get(to).is_none()
+                    || self
+                        .held_in_bag(unit, at)
+                        .is_none_or(|s| !self.may_receive_item(to, s.id))
                 {
                     return Err(RejectReason::WrongTargetKind);
                 }

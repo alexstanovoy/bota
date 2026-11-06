@@ -859,6 +859,9 @@ impl World {
         let Some(one) = rest.part_one(item) else {
             return false;
         };
+        if !self.physical_inventory(user) || !self.may_receive_item(to, one.id) {
+            return false;
+        }
         let kept = (rest.charges > 0 || item_def(rest.id).is_some_and(|def| def.cast_charges > 0))
             .then_some(rest);
         if let Some(place) = self
@@ -1167,6 +1170,9 @@ impl World {
         to: usize,
     ) -> Option<bota_proto::RejectReason> {
         use bota_proto::RejectReason;
+        if !(in_stash(from) && in_stash(to)) && self.copied_inventory(unit) {
+            return Some(RejectReason::ItemRestricted);
+        }
         let total = BAG_SLOTS + seat.stash.slots.len();
         let named = |at: usize| at < total || in_town_portal(at);
         if from == to || !named(from) || !named(to) {
@@ -1254,6 +1260,9 @@ impl World {
     /// purchase pays back what it cost; anything else pays back
     /// [`rules::SELL_PCT`] of it.
     pub fn sell_item(&mut self, slot: SlotId, unit: Entity, at: usize) -> bool {
+        if !in_stash(at) && self.copied_inventory(unit) {
+            return false;
+        }
         let Some(seat) = self.seats.iter().position(|s| s.slot == slot) else {
             return false;
         };
@@ -1384,6 +1393,9 @@ impl World {
         }
         let entities = self.take_entity_snapshot();
         for holder in entities.iter().copied() {
+            if !self.physical_inventory(holder) {
+                continue;
+            }
             let Some(at_pos) = self.pos(holder) else {
                 continue;
             };

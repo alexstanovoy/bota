@@ -676,3 +676,243 @@ fn killing_roshan_does_not_capture_any_watchers_after_734_removed_that_reward() 
     kill(&mut world);
     assert_eq!(owners(&world), before);
 }
+
+#[test]
+fn physical_inventory_aegis_recipient_eligibility_is_enforced_by_direct_pickup_and_by_receipt() {
+    use crate::game::{Handling, ItemStack, wire_id};
+    use bota_proto::{Order, RejectReason, SlotId, Target, Vec2};
+    let mut world = match_with_roshan();
+    kill(&mut world);
+    let aegis = loot(&world, ItemId::AEGIS);
+    let at = world.pos(aegis).expect("ground");
+    let hero = world.seats[0].unit.expect("hero");
+    world.transform.get_mut(hero).expect("hero").pos = at + Vec2::from_ints(100, 0);
+    let courier = world.seats[0].courier.expect("courier");
+    world.transform.get_mut(courier).expect("courier").pos = at;
+    world.settle();
+    let take = Order::Take {
+        target: Target::Unit(wire_id(aegis)),
+    };
+    assert_eq!(
+        world.validate_order(SlotId(0), Some(wire_id(courier)), &take),
+        Err(RejectReason::WrongTargetKind)
+    );
+    assert!(
+        !world.take_item(courier, wire_id(aegis)),
+        "the simulation entry point uses the same recipient rule"
+    );
+    world
+        .handling
+        .insert(courier, Handling::Take { loot: aegis });
+    world.step();
+    assert!(world.loot.contains(aegis));
+    assert!(world.handling.get(courier).is_none());
+    let ground = world.loot.get(aegis).expect("untouched Aegis").0;
+    assert_eq!(ground.owner, SlotId(u8::MAX));
+    assert_eq!(ground.life, 0);
+    assert!(
+        !world
+            .inventory
+            .get(courier)
+            .expect("bag")
+            .held()
+            .any(|s| s.id == ItemId::AEGIS)
+    );
+    let cheese = world.lay_loot(
+        ItemStack::dropped(ItemId::CHEESE).expect("Cheese"),
+        at + Vec2::from_ints(20, 0),
+    );
+    assert!(
+        world.take_item(courier, wire_id(cheese)),
+        "ordinary loot remains available to a courier"
+    );
+    run(&mut world, 3);
+    assert!(
+        world
+            .inventory
+            .get(courier)
+            .expect("bag")
+            .held()
+            .any(|s| s.id == ItemId::CHEESE)
+    );
+    let (hero, _) = take_aegis(&mut world);
+    assert!(
+        world
+            .inventory
+            .get(hero)
+            .expect("hero bag")
+            .held()
+            .any(|s| s.id == ItemId::AEGIS)
+    );
+}
+
+#[test]
+fn physical_inventory_an_illusion_cannot_turn_copied_inventory_into_ground_items_stash_items_or_sale_proceeds()
+ {
+    use crate::game::{Command, wire_id};
+    use bota_proto::{ItemSlot, Order, RejectReason, SlotId, Target};
+    for action in 0..3 {
+        let (mut world, hero) = match_hero();
+        let item = if action == 0 {
+            ItemId::ROSHANS_BANNER
+        } else {
+            ItemId::BOOTS
+        };
+        hand_item(&mut world, hero, item, 1);
+        world.make_rune_illusions(hero);
+        let copy = world
+            .entities
+            .iter()
+            .find(|e| world.illusion.get(*e).is_some())
+            .expect("controlled illusion");
+        world.transform.get_mut(copy).expect("copy").pos = world.pos(hero).expect("real hero");
+        world.settle();
+        let order = match action {
+            0 => Order::Put {
+                slot: ItemSlot(0),
+                target: Target::None,
+            },
+            1 => Order::Swap {
+                from: ItemSlot(0),
+                to: ItemSlot(crate::game::BAG_SLOTS as u8),
+            },
+            _ => Order::Sell { slot: ItemSlot(0) },
+        };
+        assert_eq!(
+            world.validate_order(SlotId(0), Some(wire_id(copy)), &order),
+            Err(RejectReason::ItemRestricted),
+            "action {action}"
+        );
+        let gold = world.seats[0].gold;
+        world.advance(&[Command {
+            slot: SlotId(0),
+            unit: Some(wire_id(copy)),
+            order,
+            seq: 1,
+            queue: false,
+        }]);
+
+        let direct = match action {
+            0 => world.put_item(copy, 0, Target::None),
+            1 => world.move_item(SlotId(0), copy, 0, crate::game::BAG_SLOTS),
+            _ => world.sell_item(SlotId(0), copy, 0),
+        };
+        assert!(!direct);
+        run(&mut world, 2);
+        assert_eq!(world.seats[0].gold, gold);
+        assert!(world.seats[0].stash.slots.iter().all(Option::is_none));
+        assert!(!world.entities.iter().any(|e| world.loot.contains(e)));
+        assert!(
+            world
+                .inventory
+                .get(copy)
+                .expect("copy bag")
+                .held()
+                .any(|s| s.id == item)
+        );
+        assert!(
+            world
+                .inventory
+                .get(hero)
+                .expect("real bag")
+                .held()
+                .any(|s| s.id == item)
+        );
+        assert!(
+            world.put_item(hero, 0, Target::None),
+            "the real item still drops through the same API"
+        );
+        run(&mut world, 2);
+        assert!(
+            world
+                .entities
+                .iter()
+                .any(|e| world.loot.get(e).is_some_and(|s| s.0.id == item))
+        );
+    }
+}
+
+#[test]
+fn physical_inventory_an_illusion_cannot_receive_a_real_item_or_charge() {
+    use crate::game::{Handling, ItemStack, wire_id};
+    use bota_proto::{Order, RejectReason, SlotId, Target, Vec2};
+    let (mut world, hero) = match_hero();
+    hand_item(&mut world, hero, ItemId::MANGO, 2);
+    world.make_rune_illusions(hero);
+    let copy = world
+        .entities
+        .iter()
+        .find(|e| world.illusion.get(*e).is_some())
+        .expect("copy");
+    let at = world.pos(hero).expect("hero");
+    world.transform.get_mut(copy).expect("copy").pos = at + Vec2::from_ints(40, 0);
+    world.settle();
+    let ground = world.lay_loot(ItemStack::dropped(ItemId::CHEESE).expect("Cheese"), at);
+    world.settle();
+    assert_eq!(
+        world.validate_order(
+            SlotId(0),
+            Some(wire_id(copy)),
+            &Order::Take {
+                target: Target::Unit(wire_id(ground))
+            }
+        ),
+        Err(RejectReason::WrongTargetKind)
+    );
+    assert!(!world.take_item(copy, wire_id(ground)));
+    world.handling.insert(copy, Handling::Take { loot: ground });
+    world.step();
+    assert!(world.loot.contains(ground));
+    assert!(!world.put_item(hero, 0, Target::Unit(wire_id(copy))));
+    assert!(!world.give_one(hero, 0, wire_id(copy), (250, None)));
+    assert_eq!(slot_of(&world, hero, 0).expect("real Mango").charges, 2);
+}
+
+#[test]
+fn physical_inventory_copied_sale_marks_never_pay_gold_including_on_the_illusion_expiry_tick() {
+    use bota_core::ModifierKind;
+    use bota_proto::{SlotId, Vec2};
+    for expires_now in [false, true] {
+        let (mut world, hero) = match_hero();
+        hand_item(&mut world, hero, ItemId::BOOTS, 1);
+        world.transform.get_mut(hero).expect("hero").pos = Vec2::from_ints(8000, 9600);
+        world.settle();
+        assert!(world.sell_item(SlotId(0), hero, 0));
+        assert!(slot_of(&world, hero, 0).expect("Boots").for_sale);
+        world.make_rune_illusions(hero);
+        let copy = world
+            .entities
+            .iter()
+            .find(|e| world.illusion.get(*e).is_some())
+            .expect("copy");
+        world.transform.get_mut(copy).expect("copy").pos = world.map.fountains[0];
+        if expires_now {
+            for modifier in &mut world.modifiers.get_mut(copy).expect("modifiers").0 {
+                if modifier.kind == ModifierKind::Illusion {
+                    modifier.ticks_left = Some(1);
+                }
+            }
+        }
+        world.settle();
+        let gold = world.seats[0].gold;
+        world.step();
+        assert_eq!(
+            world.seats[0].gold, gold,
+            "copied sale mark, expiry={expires_now}"
+        );
+        world.transform.get_mut(hero).expect("hero").pos = world.map.fountains[0];
+        world.step();
+        assert!(
+            world.seats[0].gold > gold,
+            "the original marked item really sells"
+        );
+        assert!(
+            !world
+                .inventory
+                .get(hero)
+                .expect("real bag")
+                .held()
+                .any(|s| s.id == ItemId::BOOTS)
+        );
+    }
+}

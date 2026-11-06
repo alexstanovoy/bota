@@ -814,3 +814,37 @@ fn public_lair_snapshot_validation_rejects_unknown_future_and_private_evidence_i
         );
     }
 }
+
+#[test]
+fn physical_inventory_owned_rune_illusions_fold_but_untagged_extra_heroes_are_still_refused() {
+    let cfg = mid_config();
+    let mut world = crate::game::World::for_match(&cfg, cfg.rng());
+    let hero = world.seats[0].unit.expect("hero");
+    world.make_rune_illusions(hero);
+    let view = world.view(Team::Radiant);
+    let mut session = session_for(&cfg.info(), 0);
+    session
+        .ingest_snapshot(view.clone(), &mut ())
+        .expect("real controlled rune copies fold");
+    assert_eq!(
+        session.own_hero().expect("scoreboard hero").id,
+        crate::game::wire_id(hero)
+    );
+    let copy = world
+        .entities
+        .iter()
+        .find(|e| world.illusion.get(*e).is_some())
+        .expect("copy");
+    let mut bad = view;
+    bad.units
+        .iter_mut()
+        .find(|u| u.id == crate::game::wire_id(copy))
+        .expect("copy shown")
+        .effects
+        .retain(|e| e.id != bota_proto::EffectId::ILLUSION);
+    let mut session = session_for(&cfg.info(), 0);
+    assert!(matches!(
+        session.ingest_snapshot(bad, &mut ()),
+        Err(IngestError::Session(SessionError::AmbiguousOwnHero { .. }))
+    ));
+}

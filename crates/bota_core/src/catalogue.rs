@@ -354,6 +354,7 @@ impl Fnv {
 pub(crate) const fn item_digest(def: &ItemDef) -> u64 {
     let ItemDef {
         limits,
+        pickup,
         public_loot,
         public_placement,
         cooldown_group,
@@ -503,6 +504,9 @@ pub(crate) const fn item_digest(def: &ItemDef) -> u64 {
     }
     if cooldown_in_inventory {
         fnv = fnv.u64(0xAA);
+    }
+    if matches!(pickup, crate::PickupEligibility::RealHero) {
+        fnv = fnv.u64(0xAD).u64(1);
     }
     if public_placement {
         fnv = fnv.u64(0xAC);

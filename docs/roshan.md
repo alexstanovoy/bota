@@ -283,3 +283,22 @@ Valve's [December 2023 Banner fix](https://store.steampowered.com/news/app/570/v
 states that its particles sometimes survived incorrectly. The real-server expiry and enemy
 attack scenarios require the model and every owned particle instance, including children,
 to finish. Simulator scenarios separately protect independent Banner and Glyph aura sources.
+
+## Physical loot and illusion inventory
+
+Valve's [March 2012 fix](https://store.steampowered.com/oldnews/7601) prohibits courier
+pickup of Aegis. The script does not encode the recipient rule, so the catalogue declares
+its real-hero eligibility explicitly. The same predicate is used by checked orders, direct
+simulation errands and receipt, including handover targets. Rejection starts no pickup
+lifetime and changes neither the ground stack nor its ownership. Ordinary courier loot
+pickup remains available.
+
+[Illusion inventory rules](https://liquipedia.net/dota2/Illusions) keep copied equipment
+nonphysical. Illusions cannot pick up, drop, hand over, sell, or move those copies into the
+real stash. Incoming item/charge handovers are refused too. Seat-owned stash operations
+remain separate from the illusion's bag. Regressions cover validated commands and direct
+simulation calls, with controls using the original hero's item and courier-carried Cheese.
+Automatic sales also reject copies, including an inherited sale mark on the copy's final
+lifetime tick. The guard uses durable copy identity as well as the active modifier, whose
+expiry precedes automatic sales. The live-client regression accepts properly marked own
+rune copies, refuses their attempted Banner drop, and then drops the original hero's item.

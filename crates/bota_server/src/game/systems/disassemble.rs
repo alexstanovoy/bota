@@ -33,6 +33,9 @@ impl World {
         seat: &Seat,
         at: usize,
     ) -> Result<(), RejectReason> {
+        if !in_stash(at) && self.copied_inventory(unit) {
+            return Err(RejectReason::ItemRestricted);
+        }
         let held = self
             .stack_at(unit, seat, at)
             .ok_or(RejectReason::EmptySlot)?;
@@ -55,6 +58,9 @@ impl World {
         seat: &Seat,
         at: usize,
     ) -> Result<(), RejectReason> {
+        if !in_stash(at) && self.copied_inventory(unit) {
+            return Err(RejectReason::ItemRestricted);
+        }
         let held = self
             .stack_at(unit, seat, at)
             .ok_or(RejectReason::EmptySlot)?;

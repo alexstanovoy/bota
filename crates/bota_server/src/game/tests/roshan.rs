@@ -780,12 +780,18 @@ fn an_illusion_arrow_keeps_its_attack_classification_after_the_illusion_is_gone(
     let expected = damage.expect("a normal ranged attack was launched");
     world.despawn(illusion);
     for _ in 0..60 {
-        if let Some(amount) = world.step().into_iter().find_map(|event| match event.kind() {
-            EventKind::Damaged { target, amount, .. } if target == crate::game::wire_id(boss) => {
-                Some(amount)
-            }
-            _ => None,
-        }) {
+        if let Some(amount) = world
+            .step()
+            .into_iter()
+            .find_map(|event| match event.kind() {
+                EventKind::Damaged { target, amount, .. }
+                    if target == crate::game::wire_id(boss) =>
+                {
+                    Some(amount)
+                }
+                _ => None,
+            })
+        {
             assert_eq!(amount, expected);
             assert!(
                 world
@@ -1657,8 +1663,11 @@ fn a_hook_passes_through_roshan_without_damage_drag_or_stun() {
         assert_eq!(world.pos(boss), Some(at));
         assert!(!world.held(boss));
     }
-    assert_eq!(world.health.get(boss).expect("boss").hp, hp,
-        "Valve's Meat Hook notes explicitly include Roshan among pass-through units");
+    assert_eq!(
+        world.health.get(boss).expect("boss").hp,
+        hp,
+        "Valve's Meat Hook notes explicitly include Roshan among pass-through units"
+    );
 }
 
 fn migrating_boss_on_open_ground() -> (World, crate::game::Entity, crate::game::Entity) {

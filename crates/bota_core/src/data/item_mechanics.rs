@@ -1013,6 +1013,8 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
     ItemDef {
         name: "Aegis of the Immortal",
         limits: ITEM_AEGIS.limits,
+        // Valve 2012-03-22: couriers cannot pick up Aegis; this is an engine rule.
+        pickup: crate::PickupEligibility::RealHero,
         public_loot: true,
         pickup_lifetime: ticks(&ITEM_AEGIS, "disappear_time"),
         reincarnation: Some(ticks(&ITEM_AEGIS, "reincarnate_time")),

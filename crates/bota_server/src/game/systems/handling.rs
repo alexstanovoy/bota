@@ -10,6 +10,21 @@ use crate::game::{
 };
 
 impl World {
+    /// Illusion bags are copies for stats and display, never physical inventories.
+    pub(crate) fn copied_inventory(&self, unit: Entity) -> bool {
+        self.illusion.contains(unit) || self.wears_illusion(unit)
+    }
+    pub(crate) fn physical_inventory(&self, unit: Entity) -> bool {
+        self.inventory.contains(unit) && !self.copied_inventory(unit)
+    }
+    pub(crate) fn may_receive_item(&self, unit: Entity, item: bota_proto::ItemId) -> bool {
+        self.physical_inventory(unit)
+            && bota_core::item_def(item).is_some_and(|def| match def.pickup {
+                bota_core::PickupEligibility::InventoryCarrier => true,
+                bota_core::PickupEligibility::RealHero => self.is_real_hero(unit),
+            })
+    }
+
     /// Starts walking an item out of one of a unit's bag slots.
     ///
     /// Aimed at a point the item will be laid there; aimed at nothing, at the
@@ -33,7 +48,9 @@ impl World {
                 };
                 if to == unit
                     || self.team.get(to) != self.team.get(unit)
-                    || self.inventory.get(to).is_none()
+                    || self
+                        .held_in_bag(unit, slot)
+                        .is_none_or(|s| !self.may_receive_item(to, s.id))
                 {
                     return false;
                 }
@@ -45,10 +62,11 @@ impl World {
     }
 
     fn may_put_item(&self, unit: Entity, slot: usize) -> bool {
-        self.held_in_bag(unit, slot).is_some_and(|stack| {
-            stack.rune.is_none()
-                && bota_core::item_def(stack.id).is_some_and(|def| def.limits.droppable)
-        })
+        self.physical_inventory(unit)
+            && self.held_in_bag(unit, slot).is_some_and(|stack| {
+                stack.rune.is_none()
+                    && bota_core::item_def(stack.id).is_some_and(|def| def.limits.droppable)
+            })
     }
 
     /// Starts walking a hero over to a rune to destroy it: an attack order
@@ -74,7 +92,9 @@ impl World {
         let takes = if self.rune.get(mark).is_some() {
             self.is_real_hero(unit)
         } else {
-            self.loot.get(mark).is_some() && self.inventory.get(unit).is_some()
+            self.loot
+                .get(mark)
+                .is_some_and(|stack| self.may_receive_item(unit, stack.0.id))
         };
         if !takes {
             return false;
@@ -139,7 +159,12 @@ impl World {
         if !self.may_put_item(unit, slot) {
             return true;
         }
-        if !self.alive(to) || self.team.get(to) != self.team.get(unit) {
+        if !self.alive(to)
+            || self.team.get(to) != self.team.get(unit)
+            || self
+                .held_in_bag(unit, slot)
+                .is_none_or(|s| !self.may_receive_item(to, s.id))
+        {
             return true;
         }
         let (Some(_), Some(at)) = (self.pos(unit), self.pos(to)) else {
@@ -182,6 +207,9 @@ impl World {
         let Some(Loot(stack)) = self.loot.get(loot).copied() else {
             return true;
         };
+        if !self.may_receive_item(unit, stack.id) {
+            return true;
+        }
         let Some(spot) = self.pos(loot) else {
             return true;
         };

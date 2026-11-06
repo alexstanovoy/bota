@@ -314,11 +314,19 @@ pub struct Recipe<'a> {
 /// build-time checks refuse a row whose recipe asks for more.
 pub const MAX_COMPONENTS: usize = 4;
 
+/// Who may receive the physical item; copied illusion inventory is never a carrier.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PickupEligibility {
+    InventoryCarrier,
+    RealHero,
+}
+
 /// One entry of the catalog.
 #[derive(Clone, Copy, Debug)]
 pub struct ItemDef {
     /// Rules declared by this row for carrying and destroying the item.
     pub limits: crate::ItemLimits,
+    pub pickup: PickupEligibility,
     /// Picking up or destroying it is public information for both sides.
     pub public_loot: bool,
     /// Placement is a public map event, including its location.
@@ -667,6 +675,7 @@ impl ItemDef {
 /// names only what sets it apart.
 pub(crate) const PLAIN: ItemDef = ItemDef {
     limits: crate::ItemLimits::UNRESTRICTED,
+    pickup: PickupEligibility::InventoryCarrier,
     public_loot: false,
     public_placement: false,
     cooldown_group: None,

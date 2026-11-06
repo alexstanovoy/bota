@@ -647,7 +647,7 @@ fn own_state(owner: Owner, hero: Option<HeroId>, view: &WorldView) -> Result<(),
         }
         player.kit.as_ref().map_or(0, |kit| kit.items.len())
     };
-    own_hero_claims(owner, view, player.unit)?;
+    own_hero_claims(owner, view, player.unit, player.hero)?;
     own_courier(owner, view)?;
     own_item_slots(owner, view, body_items, stash_items)
 }
@@ -656,11 +656,18 @@ fn own_hero_claims(
     owner: Owner,
     view: &WorldView,
     scoreboard: Option<EntityId>,
+    hero: HeroId,
 ) -> Result<(), SessionError> {
     for unit in &view.units {
         if unit.kind == UnitKind::Hero
             && unit.owner == Some(owner.slot)
             && Some(unit.id) != scoreboard
+            && !(unit.team == owner.team
+                && unit.hero == Some(hero)
+                && unit
+                    .effects
+                    .iter()
+                    .any(|effect| effect.id == bota_proto::EffectId::ILLUSION))
         {
             return Err(SessionError::AmbiguousOwnHero {
                 scoreboard,

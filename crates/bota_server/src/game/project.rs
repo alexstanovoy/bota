@@ -64,7 +64,8 @@ impl World {
         if units_trimmed || loot_trimmed {
             let ids: Vec<bota_proto::EntityId> = units.iter().map(|unit| unit.id).collect();
             let carried = |id| ids.binary_search(&id).is_ok();
-            let target_kept = |id| carried(id) || loot.binary_search_by_key(&id, |item| item.id).is_ok();
+            let target_kept =
+                |id| carried(id) || loot.binary_search_by_key(&id, |item| item.id).is_ok();
             // A unit kept tells whom it fights only if that one is kept too: what it does stays
             // told, at whom does not, and no hold is told on nobody.
             aggro.retain(|entry| carried(entry.unit));
@@ -75,8 +76,9 @@ impl World {
                 }
                 entry.swing = entry.swing.filter(|swing| target_kept(swing.target));
             }
-            projectiles
-                .retain(|shot| shot.source.is_none_or(carried) && shot.target.is_none_or(target_kept));
+            projectiles.retain(|shot| {
+                shot.source.is_none_or(carried) && shot.target.is_none_or(target_kept)
+            });
             for effect in units.iter_mut().flat_map(|unit| &mut unit.effects) {
                 effect.caster = effect.caster.filter(|caster| carried(*caster));
             }
@@ -84,14 +86,16 @@ impl World {
         projectiles.truncate(bota_proto::game_limits::MAX_PROJECTILES);
         debug_assert!(aggro.iter().all(|entry| {
             let carried = |id| units.binary_search_by_key(&id, |unit| unit.id).is_ok();
-            let target_kept = |id| carried(id) || loot.binary_search_by_key(&id, |item| item.id).is_ok();
+            let target_kept =
+                |id| carried(id) || loot.binary_search_by_key(&id, |item| item.id).is_ok();
             carried(entry.unit)
                 && entry.target.is_none_or(target_kept)
                 && entry.swing.is_none_or(|swing| target_kept(swing.target))
         }));
         debug_assert!(projectiles.iter().all(|shot| {
             let carried = |id| units.binary_search_by_key(&id, |unit| unit.id).is_ok();
-            let target_kept = |id| carried(id) || loot.binary_search_by_key(&id, |item| item.id).is_ok();
+            let target_kept =
+                |id| carried(id) || loot.binary_search_by_key(&id, |item| item.id).is_ok();
             shot.source.is_none_or(carried) && shot.target.is_none_or(target_kept)
         }));
         debug_assert!(units.iter().flat_map(|unit| &unit.effects).all(|effect| {
