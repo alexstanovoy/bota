@@ -273,3 +273,64 @@ fn seat_zero(msg: &ServerMsg) -> Option<&bota_proto::LobbySlot> {
         _ => None,
     }
 }
+
+#[test]
+fn an_open_spectator_gets_no_input_settlements_in_full_or_borrowed_views() {
+    let mut opts = realtime(79);
+    opts.players = 1;
+    opts.spectators = Spectators::Open;
+    let addr = start_server(opts);
+    let (mut player, _) = join_as_bot(addr, "seated");
+    let mut watcher = TestClient::connect(addr);
+    watcher.hello(Role::Spectator, None);
+    assert_eq!(watcher.welcome(), None);
+    for (seq, eyes) in [(1, None), (2, Some(SlotId(0)))] {
+        watcher.send(&ClientMsg::ViewAs { seat: eyes });
+        let perspective = watcher.recv_until(|message| {
+            snapshot(message).filter(|view| view.viewer == eyes.map(|_| Team::Radiant))
+        });
+        assert_eq!(perspective.viewer, eyes.map(|_| Team::Radiant));
+        let view = player.recv_until(snapshot);
+        player.send(&ClientMsg::Order {
+            seq,
+            unit: None,
+            order: Order::Move {
+                target: Target::Pos(Vec2::from_ints(7000, 7000)),
+            },
+            seen: Some(view.tick),
+            queue: false,
+        });
+        let settled = player.recv_until(|message| {
+            snapshot(message).filter(|view| {
+                view.order_delays
+                    .iter()
+                    .any(|delay| delay.settled.is_some_and(|settled| settled.sequence == seq))
+            })
+        });
+        let told = watcher.collect_through_tick(settled.tick + 1);
+        let views: Vec<_> = told
+            .iter()
+            .filter_map(|message| snapshot(message.clone()))
+            .filter(|view| view.tick >= settled.tick && view.viewer == eyes.map(|_| Team::Radiant))
+            .collect();
+        assert!(
+            !views.is_empty(),
+            "the requested spectator perspective reached the settlement tick"
+        );
+        assert!(
+            views.iter().any(|view| !view.order_delays.is_empty()),
+            "measured latency remains public"
+        );
+        assert!(
+            views
+                .iter()
+                .flat_map(|view| &view.order_delays)
+                .all(|delay| delay.settled.is_none()),
+            "an open spectator gets no sequence, connection or input snapshot metadata"
+        );
+        assert!(
+            orders_told(&told).is_empty(),
+            "open spectators still receive no orders"
+        );
+    }
+}

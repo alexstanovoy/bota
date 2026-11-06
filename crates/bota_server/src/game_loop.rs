@@ -957,7 +957,15 @@ impl Server {
                 return false;
             }
         };
-        let told = self.told.give(id, slot.is_some());
+        let Some(told) = self.told.give(id, slot.is_some()) else {
+            if let Some(conn) = self.conn(id) {
+                conn.send(&ServerMsg::Refused {
+                    reason: RejectReason::NotAdmitted,
+                });
+            }
+            self.drop_conn(id);
+            return false;
+        };
         if let Some(conn) = self.conn(id) {
             conn.send(&ServerMsg::Welcome {
                 player_id: told,
@@ -1684,10 +1692,27 @@ impl Server {
         let mut full = world.view_full();
         full.order_delays = line.views(None);
         let (full_frame, full_view) = snapshot_frame_and_view(full);
+        let open_eyes = |team| {
+            self.spectators.iter().any(|watcher| {
+                !watcher.late && !watcher.locked && self.sight_of(watcher.id).1 == team
+            })
+        };
+        let open_full_frame = open_eyes(None)
+            .then(|| open_snapshot_frame(full_view.clone()))
+            .flatten();
         let full_events = visible_events(events, None);
         let sides = [Team::Radiant, Team::Dire].map(|team| {
-            let frame = snapshot_frame(side_view(world, line, handles, team));
-            (team, frame, side_events(events, handles, team, world.tick))
+            let view = side_view(world, line, handles, team);
+            let open_frame = open_eyes(Some(team))
+                .then(|| open_snapshot_frame(view.clone()))
+                .flatten();
+            let frame = snapshot_frame(view);
+            (
+                team,
+                frame,
+                side_events(events, handles, team, world.tick),
+                open_frame,
+            )
         });
         if let Some(frame) = &full_frame {
             replay.record_snapshot(&full_view, frame);
@@ -1705,9 +1730,13 @@ impl Server {
             let (eyes, viewing) = self.sight_of(conn.id);
             // Seats never sit on the jungle's side.
             let side = sides.iter().find(|(team, ..)| Some(*team) == viewing);
+            let open = self.roster.seat_of(conn.id).is_none() && !locked(conn.id);
             let (frame, told) = match side {
-                Some((_, frame, told)) => (frame, told),
-                None => (&full_frame, &full_events),
+                Some((_, frame, told, open_frame)) => (if open { open_frame } else { frame }, told),
+                None => (
+                    if open { &open_full_frame } else { &full_frame },
+                    &full_events,
+                ),
             };
             if let Some(frame) = frame {
                 conn.send_tick(frame.clone(), world.tick, told.clone());
@@ -1732,8 +1761,8 @@ impl Server {
         // Late spectators watching the whole map are told the simulation's
         // handles, those with a side's fog that side's names, as live.
         let [
-            (_, radiant_frame, radiant_events),
-            (_, dire_frame, dire_events),
+            (_, radiant_frame, radiant_events, _),
+            (_, dire_frame, dire_events, _),
         ] = sides;
         Some(HeldTick {
             tick: world.tick,
@@ -1823,6 +1852,9 @@ impl Server {
                 let Some((slot, team)) = self.roster.seat_of(id).map(|s| (s.slot, s.team)) else {
                     return;
                 };
+                let Some(connection) = self.told.get(id) else {
+                    return;
+                };
                 let (unit, order) = inbox.handles.heard(team, unit, order);
                 let cmd = Command {
                     slot,
@@ -1831,7 +1863,7 @@ impl Server {
                     queue,
                     seq,
                 };
-                if let Err(reason) = inbox.line.give(world, cmd, seen)
+                if let Err(reason) = inbox.line.give_from(world, cmd, seen, Some(connection))
                     && let Some(conn) = self.conn(id)
                 {
                     conn.send(&ServerMsg::OrderRejected { seq, reason });
@@ -1894,6 +1926,14 @@ fn snapshot_frame_and_view(view: WorldView) -> (Option<Vec<u8>>, WorldView) {
         unreachable!("a snapshot was built");
     };
     (frame, view)
+}
+
+/// Open spectators borrow sight, never input identities or acknowledgements.
+fn open_snapshot_frame(mut view: WorldView) -> Option<Vec<u8>> {
+    for delay in &mut view.order_delays {
+        delay.settled = None;
+    }
+    snapshot_frame(view)
 }
 
 /// A snapshot as a frame ready to queue. None, told on stderr as an error, when the view does

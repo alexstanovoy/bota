@@ -50,6 +50,7 @@ mod catalog;
 mod chat;
 mod commands;
 mod handshake;
+mod item_merge;
 mod lair;
 mod lasthit;
 mod latency;

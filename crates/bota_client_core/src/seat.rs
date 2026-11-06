@@ -166,13 +166,19 @@ impl Seat {
     ) -> Result<Ingested, IngestError<O::Error>> {
         let session = self.session.as_mut().expect("the match has started");
         match msg {
-            ServerMsg::Welcome { slot, .. } => {
+            ServerMsg::Welcome {
+                player_id, slot, ..
+            } => {
                 if slot != session.slot() {
                     return Err(SessionError::Stream(
                         "server welcomed a reconnect to another seat",
                     )
                     .into());
                 }
+                if let Some(seated) = &mut self.seated {
+                    seated.player = player_id;
+                }
+                session.bind_connection(player_id);
                 self.resuming = true;
                 Ok(Ingested::Passed(Box::new(msg)))
             }

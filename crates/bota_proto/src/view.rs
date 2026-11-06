@@ -2,8 +2,8 @@
 
 use crate::{
     AbilityId, Aim, Angle, Attribute, Attributes, EffectId, EntityId, EventKind, Fixed, HeroId,
-    Inflictor, ItemId, NeutralId, Order, ProjectileModel, RuneKind, SlotId, StatusFlags, Talents,
-    Team, UnitKind, Vec2,
+    Inflictor, ItemId, NeutralId, Order, PlayerId, ProjectileModel, RuneKind, SlotId, StatusFlags,
+    Talents, Team, UnitKind, Vec2,
 };
 use serde::{Deserialize, Serialize};
 
@@ -605,6 +605,25 @@ pub struct OrderDelayView {
     /// effect after the earliest tick it could have: zero for an order given on
     /// the view of tick `T` that took effect on tick `T + 1`.
     pub ticks: u32,
+    /// Last command removed from this seat's delay line, processed before
+    /// this snapshot. Available after this seat first has a measured applied
+    /// order. Told to its side's players and locked watchers, never live open
+    /// spectators (including those borrowing a seat's eyes).
+    pub settled: Option<OrderSettlement>,
+}
+
+/// An authoritative input settlement, scoped to the greeted connection.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct OrderSettlement {
+    /// Public connection identity from Welcome; absent for an in-process match.
+    pub connection: Option<PlayerId>,
+    /// Sender's order number, interpreted only within that connection.
+    pub sequence: u32,
+    /// Snapshot the sender based this order on, when it stamped one.
+    pub seen: Option<u32>,
+    /// Simulation tick whose snapshot first contains this order's effects
+    /// or its refusal. Queueing a body action does not complete that action.
+    pub tick: u32,
 }
 
 /// One tick whose snapshot a connection was never sent, with the events of it

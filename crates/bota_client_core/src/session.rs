@@ -6,6 +6,7 @@
 //! acknowledgements are returned for the caller to transmit, and a client's
 //! own state rides along through an [`Observer`].
 
+mod confirmations;
 mod error;
 mod memory;
 mod missiles;
@@ -140,6 +141,7 @@ pub struct ClientSession {
     ledger: OrderLedger,
     waits: LocalWaits,
     next_seq: u32,
+    confirmations: confirmations::Confirmations,
     stream: StreamState,
 }
 
@@ -176,7 +178,9 @@ impl ClientSession {
         options: SessionOptions,
     ) -> Result<Self, SessionError> {
         check_match(seated, info)?;
-        Self::seat(MatchStatic::new(info)?, seated.slot, seated.hero, options)
+        let mut session = Self::seat(MatchStatic::new(info)?, seated.slot, seated.hero, options)?;
+        session.bind_connection(seated.player);
+        Ok(session)
     }
 
     fn folding(
@@ -201,8 +205,19 @@ impl ClientSession {
             ledger: OrderLedger::default(),
             waits: LocalWaits::default(),
             next_seq: 0,
+            confirmations: confirmations::Confirmations::default(),
             stream: StreamState::default(),
         }
+    }
+
+    pub(crate) fn bind_connection(&mut self, player: bota_proto::PlayerId) {
+        if self.confirmations.bind(player) {
+            self.waits.clear_swap_predictions();
+        }
+    }
+
+    pub(crate) fn confirmed_sequence(&self) -> u32 {
+        self.confirmations.through()
     }
 
     /// Folds one server message in.
@@ -346,6 +361,15 @@ impl ClientSession {
         if body_changed {
             self.ledger.clear(None);
         }
+        let settled = self.current().and_then(|view| {
+            view.order_delays
+                .iter()
+                .find(|d| Some(d.slot) == self.slot())
+                .and_then(|d| d.settled)
+        });
+        self.confirmations.snapshot(settled, tick);
+        let context = crate::readiness::backpack_context(self);
+        self.waits.synchronize(tick, &context);
         let ack = self.settle_stream(tick);
         obs.after_snapshot(self).map_err(IngestError::Observer)?;
         Ok(Ingested::Snapshot {
@@ -393,14 +417,16 @@ impl ClientSession {
             .ok_or(SessionError::SequenceExhausted)?;
         let ends_body = crate::ends_body(self, order);
         self.ledger.record(seq, order, ends_body)?;
+        self.confirmations.record(seq, seen);
         // A queued use starts its wait only when its unit takes it up.
         if !order.waits()
             && let Some(body) = wait_started_by(self, order)
         {
             self.waits.start(body, seq, seen);
         }
+        let context = crate::readiness::backpack_context(self);
         self.waits
-            .start_mutes(seq, order, seen, OrderLatency::measured(self));
+            .start_mutes(seq, order, seen, OrderLatency::measured(self), &context);
         self.next_seq = seq;
         Ok(OutgoingOrder {
             seq,

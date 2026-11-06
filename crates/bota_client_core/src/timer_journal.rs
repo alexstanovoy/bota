@@ -54,14 +54,28 @@ impl<T: Copy> TimerJournal<T> {
         removed
     }
 
+    /// Transforms retained values without changing which order owns them.
+    pub fn map_values(&mut self, mut map: impl FnMut(T) -> T) {
+        for (_, value) in self
+            .base
+            .iter_mut()
+            .chain(self.entries[..self.count].iter_mut().flatten())
+        {
+            *value = map(*value);
+        }
+    }
+
     /// The newest timer still standing.
     pub fn current(&self) -> Option<T> {
+        self.current_entry().map(|(_, value)| value)
+    }
+
+    pub fn current_entry(&self) -> Option<(u32, T)> {
         self.entries[..self.count]
             .iter()
             .rev()
             .find_map(|timer| *timer)
             .or(self.base)
-            .map(|(_, value)| value)
     }
 }
 

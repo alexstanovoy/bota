@@ -288,6 +288,12 @@ pub fn world_view(creeps: u32) -> WorldView {
         order_delays: vec![OrderDelayView {
             slot: SlotId(0),
             ticks: 3,
+            settled: Some(OrderSettlement {
+                connection: None,
+                sequence: 10,
+                seen: Some(5390),
+                tick: 5394,
+            }),
         }],
         skipped_ticks: vec![SkippedTick {
             tick: 5398,

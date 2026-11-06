@@ -750,3 +750,8 @@ field PlayerView 17 backpack: Option<BackpackView>
 field BackpackView 0 used: u16
 field BackpackView 1 grace_left: [u8; 3]
 
+field OrderDelayView 2 settled: Option<OrderSettlement>
+field OrderSettlement 0 connection: Option<PlayerId>
+field OrderSettlement 1 sequence: u32
+field OrderSettlement 2 seen: Option<u32>
+field OrderSettlement 3 tick: u32

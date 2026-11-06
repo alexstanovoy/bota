@@ -673,3 +673,106 @@ fn adding_ward_charges_preserves_a_fresh_residents_first_entry_grace() {
     swap(&mut world, 6, 0);
     assert_eq!(slot_of(&world, hero, 0).expect("returned resident").mute, 0);
 }
+
+fn ward_projection_scene(
+    cfg: &crate::game::MatchConfig,
+) -> (World, Entity, bota_client_core::ClientSession) {
+    use bota_client_core::{ClientSession, MatchStatic, SessionOptions};
+    let (mut world, hero) = lane_item();
+    let mut used = fresh_stack(ItemId::SENTRY_WARD, 1);
+    used.backpack.enter(bota_proto::SlotId(0), world.tick);
+    used.backpack.leave();
+    world.inventory.get_mut(hero).expect("bag").slots[1] = Some(used);
+    world.inventory.get_mut(hero).expect("bag").slots[6] =
+        Some(fresh_stack(ItemId::OBSERVER_WARD, 1));
+    world.settle();
+    let mut view = world.view(Team::Radiant);
+    view.order_delays.push(bota_proto::OrderDelayView {
+        slot: bota_proto::SlotId(0),
+        ticks: 0,
+        settled: None,
+    });
+    let mut client = ClientSession::seat(
+        MatchStatic::new(&cfg.info()).expect("match"),
+        bota_proto::SlotId(0),
+        Some(bota_proto::HeroId::SHADOW_FIEND),
+        SessionOptions::default(),
+    )
+    .expect("own seat");
+    client
+        .ingest_snapshot(view, &mut ())
+        .expect("opening snapshot");
+    client
+        .ingest_events(world.tick, &[], &mut ())
+        .expect("opening tick");
+    (world, hero, client)
+}
+
+fn predicted_swap(
+    world: &World,
+    client: &mut bota_client_core::ClientSession,
+    line: &mut crate::game::DelayLine,
+    from: u8,
+    to: u8,
+) {
+    let outgoing = client
+        .issue(bota_client_core::IssuedOrder {
+            unit: None,
+            order: Order::Swap {
+                from: ItemSlot(from),
+                to: ItemSlot(to),
+            },
+            queue: false,
+        })
+        .expect("dependent swap");
+    let command = crate::game::Command {
+        slot: bota_proto::SlotId(0),
+        unit: None,
+        order: outgoing.order,
+        queue: false,
+        seq: outgoing.seq,
+    };
+    assert_eq!(line.give(world, command, Some(outgoing.seen)), Ok(()));
+}
+
+#[test]
+fn a_kind_changing_merge_prediction_matches_two_ordered_server_swaps() {
+    use bota_client_core::{ControlledUnit, OrderLatency};
+    let cfg = config();
+    let (mut world, hero, mut client) = ward_projection_scene(&cfg);
+    let applies = world.tick + OrderLatency::measured(&client).lands();
+    let mut line = crate::game::DelayLine::new(&cfg, &[]).expect("no intentional delay");
+    for (from, to) in [(1, 6), (6, 1)] {
+        predicted_swap(&world, &mut client, &mut line, from, to);
+    }
+    assert_eq!(
+        client
+            .waits()
+            .mute_left(ControlledUnit::Hero, ItemSlot(1), applies),
+        Some(rules::BACKPACK_MUTE_TICKS),
+        "unacknowledged projection retains the exhausted ingredient's restriction"
+    );
+    let mut refused = Vec::new();
+    let (orders, _) = line.advance(&mut world, &mut refused);
+    assert_eq!(orders.len(), 2);
+    assert!(refused.is_empty());
+    let result = slot_of(&world, hero, 1).expect("server combined and returned the wards");
+    assert_eq!(result.id, ItemId::WARD_DISPENSER);
+    assert_eq!(
+        result.mute,
+        rules::BACKPACK_MUTE_TICKS - 1,
+        "one upkeep has elapsed since ordered application"
+    );
+    let mut view = world.view(Team::Radiant);
+    view.order_delays = line.views(Some(Team::Radiant));
+    client
+        .ingest_snapshot(view, &mut ())
+        .expect("settled snapshot");
+    assert_eq!(
+        client
+            .waits()
+            .mute_left(ControlledUnit::Hero, ItemSlot(1), world.tick),
+        Some(result.mute),
+        "settlement replaces the forecast with the authoritative stack"
+    );
+}

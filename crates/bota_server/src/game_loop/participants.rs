@@ -25,17 +25,27 @@ pub(super) struct Told {
 impl Told {
     /// Hands connection `id` its number: the next seat's, or the next
     /// watcher's.
-    pub(super) fn give(&mut self, id: PlayerId, seated: bool) -> PlayerId {
-        let told = if seated {
-            self.seats += 1;
-            PlayerId(self.seats)
+    pub(super) fn give(&mut self, id: PlayerId, seated: bool) -> Option<PlayerId> {
+        let counter = if seated {
+            &mut self.seats
         } else {
-            self.watchers += 1;
-            PlayerId(WATCHERS_FROM + self.watchers)
+            &mut self.watchers
         };
+        let next = counter
+            .checked_add(1)
+            .filter(|next| *next < WATCHERS_FROM)?;
+        *counter = next;
+        let told = PlayerId(if seated { next } else { WATCHERS_FROM + next });
         self.ids.retain(|(own, _)| *own != id);
         self.ids.push((id, told));
-        told
+        Some(told)
+    }
+
+    pub(super) fn get(&self, id: PlayerId) -> Option<PlayerId> {
+        self.ids
+            .iter()
+            .find(|(own, _)| *own == id)
+            .map(|(_, told)| *told)
     }
 
     /// Takes connection `id`'s number back; none for one never greeted.
@@ -80,5 +90,35 @@ impl Server {
         } else if let Some(conn) = self.conn(id) {
             conn.send(&self.lobby_state());
         }
+    }
+}
+
+#[cfg(test)]
+mod settlement_tests {
+    use super::*;
+
+    #[test]
+    fn a_seated_connection_identity_never_enters_the_watcher_namespace() {
+        let mut told = Told {
+            seats: WATCHERS_FROM - 1,
+            ..Told::default()
+        };
+        let next: Option<PlayerId> = told.give(PlayerId(1), true);
+        assert!(
+            next.is_none(),
+            "exhaustion must not reuse a connection namespace"
+        );
+        assert!(told.ids.is_empty());
+    }
+
+    #[test]
+    fn a_watcher_connection_identity_never_wraps_or_panics() {
+        let mut told = Told {
+            watchers: WATCHERS_FROM - 1,
+            ..Told::default()
+        };
+        let next: Option<PlayerId> = told.give(PlayerId(1), false);
+        assert!(next.is_none());
+        assert!(told.ids.is_empty());
     }
 }

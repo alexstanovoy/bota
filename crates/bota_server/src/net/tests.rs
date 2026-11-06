@@ -852,9 +852,19 @@ fn a_delayed_order_takes_effect_late_and_its_delay_is_told() {
             continue;
         }
         assert_ne!(hero_of(&view), Some(at_rest));
+        let settled = view.order_delays[0]
+            .settled
+            .expect("the snapshot confirms the released order");
+        assert_eq!(settled.sequence, 1);
+        assert_eq!(settled.seen, Some(first.tick));
+        assert_eq!(settled.tick, due);
+        assert!(settled.connection.is_some());
         assert_eq!(
-            view.order_delays,
-            vec![bota_proto::OrderDelayView { slot, ticks: DELAY }]
+            view.order_delays
+                .iter()
+                .map(|d| (d.slot, d.ticks))
+                .collect::<Vec<_>>(),
+            vec![(slot, DELAY)]
         );
         return;
     }

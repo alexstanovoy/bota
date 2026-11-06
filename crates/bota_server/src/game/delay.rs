@@ -90,6 +90,7 @@ struct HeldOrder {
     cmd: Command,
     /// The tick of the view it was given on, as its sender said.
     seen: Option<u32>,
+    connection: Option<bota_proto::PlayerId>,
 }
 
 /// One seat's orders in flight.
@@ -109,6 +110,7 @@ struct SeatLine {
     /// The delay the latest applied order that named its view took effect
     /// with. Absent until one does.
     measured: Option<u32>,
+    settled: Option<bota_proto::OrderSettlement>,
 }
 
 /// Every seat's orders in flight, and how late each seat's took effect.
@@ -143,6 +145,7 @@ impl DelayLine {
                 held: VecDeque::with_capacity(MAX_ORDER_DELAY_TICKS as usize + 1),
                 burst: None,
                 measured: None,
+                settled: None,
             })
             .collect::<Vec<_>>();
         debug_assert!(lines.windows(2).all(|w| w[0].slot < w[1].slot));
@@ -157,8 +160,20 @@ impl DelayLine {
     pub fn give(
         &mut self,
         world: &World,
+        cmd: Command,
+        seen: Option<u32>,
+    ) -> Result<(), RejectReason> {
+        self.give_from(world, cmd, seen, None)
+    }
+
+    /// Capture the connection identity on admission, before a later reconnect
+    /// can replace the holder of this seat.
+    pub(crate) fn give_from(
+        &mut self,
+        world: &World,
         mut cmd: Command,
         seen: Option<u32>,
+        connection: Option<bota_proto::PlayerId>,
     ) -> Result<(), RejectReason> {
         // The one door of a seat's orders: no ground off the map goes further.
         cmd.order = bota_core::order_on_map(cmd.order);
@@ -188,6 +203,7 @@ impl DelayLine {
             key,
             cmd,
             seen,
+            connection,
         });
         assert!(line.held.len() <= (MAX_ORDER_DELAY_TICKS as usize + 1) * MAX_ORDERS_PER_TICK);
         Ok(())
@@ -230,6 +246,12 @@ impl DelayLine {
                 }
                 let held = line.held.pop_front().expect("the front was just seen");
                 let cmd = held.cmd;
+                line.settled = Some(bota_proto::OrderSettlement {
+                    connection: held.connection,
+                    sequence: cmd.seq,
+                    seen: held.seen,
+                    tick: next,
+                });
                 match world.check_incoming_order(cmd.slot, cmd.unit, &cmd.order, cmd.queue) {
                     Ok(()) => {
                         commands.push(cmd);
@@ -249,7 +271,9 @@ impl DelayLine {
     }
 
     /// The measured delays a view through `viewer` carries: every seat of
-    /// that side, or of every side when absent, in slot order.
+    /// that side, or of every side when absent, in slot order. A seat appears
+    /// after its first applied order with a stamped view; its latest released
+    /// command's settlement is carried alongside that measurement thereafter.
     pub fn views(&self, viewer: Option<Team>) -> Vec<OrderDelayView> {
         self.seats
             .iter()
@@ -258,6 +282,7 @@ impl DelayLine {
                 line.measured.map(|ticks| OrderDelayView {
                     slot: line.slot,
                     ticks,
+                    settled: line.settled,
                 })
             })
             .collect()

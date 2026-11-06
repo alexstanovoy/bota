@@ -89,7 +89,13 @@ fn without_a_delay_every_order_takes_effect_on_the_next_tick() {
             views,
             &vec![OrderDelayView {
                 slot: SlotId(0),
-                ticks: 0
+                ticks: 0,
+                settled: Some(bota_proto::OrderSettlement {
+                    connection: None,
+                    sequence: seq as u32,
+                    seen: Some(seq as u32),
+                    tick: seq as u32 + 1
+                }),
             }]
         );
     }
