@@ -451,6 +451,12 @@ impl ModifierKind {
         matches!(self, ModifierKind::FountainInvulnerable)
     }
 
+    /// Whether wearing it keeps a unit from hiding: it is seen though it would be invisible,
+    /// as a dismember's hold reveals what it holds (Dota 7.31).
+    pub const fn reveals(self) -> bool {
+        matches!(self, ModifierKind::Dismembered { .. })
+    }
+
     /// Whether wearing it keeps a unit from using items: Dota's `MODIFIER_STATE_MUTED`.
     pub const fn mutes(self) -> bool {
         matches!(self, ModifierKind::HookFollowthrough)

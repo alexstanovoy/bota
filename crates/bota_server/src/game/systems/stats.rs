@@ -182,6 +182,9 @@ pub fn derive_stats(cx: StatsCx<'_>) {
             let_more_magic_through(&mut now, pct);
         }
         now.restoration_bp = rules::NOMINAL_BP * (100 - sums.restoration_cut_pct) / 100;
+        if working().any(|held| held.kind.reveals()) {
+            now.hides = false;
+        }
         if let Some(on_it) = modifiers.get(entity) {
             add_feast(&mut now, &mut sums.pace, on_it, abilities.get(entity));
         }

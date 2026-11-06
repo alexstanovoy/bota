@@ -1539,6 +1539,30 @@ fn a_dismember_ends_when_its_hold_is_taken_off() {
     assert!(!world.is_channelling(pudge), "and the channel ends with it");
 }
 
+/// What a dismember holds cannot turn invisible: the hold reveals it for its duration (Valve
+/// 7.31: Dismember among "the abilities [that] now consistently reveal invisibility for their
+/// duration"; 6.85: "Fixed Dismember sometimes not granting True Sight over the target").
+#[test]
+fn a_dismember_keeps_what_it_holds_seen_through_an_invisibility_rune() {
+    let (mut world, pudge, mark) = pudge_and_a_hero_mark(150);
+    set_level(&mut world, pudge, 3, 1);
+    world.fill_pools(pudge);
+    dismember(&mut world, mark);
+    world.put_modifier(
+        mark,
+        Modifier::new(ModifierKind::RuneInvisibility, Some(mark), None, Some(1200)),
+    );
+    run(&mut world, bota_core::INVISIBILITY_FADE_TICKS + 3);
+    assert!(world.is_channelling(pudge), "still held");
+    assert!(
+        world
+            .visibility
+            .get(mark)
+            .is_some_and(|seen| seen.by(Team::Radiant)),
+        "and seen though its cloak has faded"
+    );
+}
+
 #[test]
 fn a_meat_shield_takes_its_block_off_every_blow_for_four_seconds() {
     let (mut world, pudge, _mark) = pudge_and_a_mark(2000);
