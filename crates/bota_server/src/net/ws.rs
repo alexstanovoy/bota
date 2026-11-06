@@ -5,11 +5,13 @@
 //!
 //! One binary message is one frame, length prefix included. The request's
 //! path and `Origin` are not looked at: a seat key authenticates, and no
-//! cookie is ever read.
+//! cookie is ever read. Nor is `X-Forwarded-For`, which any peer could forge:
+//! behind a reverse proxy every peer counts as the proxy's address in the
+//! bounds per source.
 
 use std::future::Future;
 use std::io;
-use std::net::{Shutdown, TcpStream as StdTcpStream};
+use std::net::{IpAddr, Shutdown, TcpStream as StdTcpStream};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -33,14 +35,15 @@ use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tokio_tungstenite::tungstenite::{Bytes, Error as WsError, Message};
 
 use crate::net::{
-    ACCEPT_RETRY, Breach, FrameSink, FrameSource, FrameStream, NetEvent, ReadEnd,
+    ACCEPT_RETRY, Breach, FrameSink, FrameSource, FrameStream, NetEvent, Places, ReadEnd,
     SEND_BUFFER_BYTES, Split,
 };
 
 /// How long a peer has for its TLS handshake and WebSocket upgrade together.
 const HANDSHAKE_DEADLINE: Duration = Duration::from_secs(10);
-/// Handshakes under way at once; later peers wait in the kernel's backlog.
+/// Handshakes under way at once; a peer past it is let go at once.
 const MAX_HANDSHAKES: usize = 64;
+
 /// Frames read ahead of a connection's reader thread.
 const INBOUND_FRAMES: usize = 16;
 /// The largest message a client may send: one frame of the largest payload.
@@ -121,30 +124,36 @@ impl WsListener {
     }
 }
 
-/// Accepts peers, at most [`MAX_HANDSHAKES`] of them in handshakes at once,
-/// and hands each that completes in time to the server thread.
+/// Accepts every peer as it comes, so that the kernel's backlog never fills, and hands each whose
+/// handshake completes in time to the server thread. A peer is let go at once when
+/// [`MAX_HANDSHAKES`] are under way, or as many of its source's as the bounds per source allow
+/// ([`groups`](crate::net::groups)).
 async fn accept_all(
     listener: TcpListener,
     tls: Option<TlsAcceptor>,
     events: std_mpsc::Sender<NetEvent>,
 ) {
     let handshakes = Arc::new(Semaphore::new(MAX_HANDSHAKES));
+    let per_source = Places::default();
     let server_gone = Arc::new(AtomicBool::new(false));
     while !server_gone.load(Ordering::Relaxed) {
-        let Ok(permit) = Arc::clone(&handshakes).acquire_owned().await else {
-            return;
-        };
-        let tcp = match listener.accept().await {
-            Ok((tcp, _)) => tcp,
+        let (tcp, peer) = match listener.accept().await {
+            Ok(accepted) => accepted,
             Err(_) => {
                 tokio::time::sleep(ACCEPT_RETRY).await;
                 continue;
             }
         };
+        let Some(place) = per_source.take(peer.ip()) else {
+            continue;
+        };
+        let Ok(permit) = Arc::clone(&handshakes).try_acquire_owned() else {
+            continue;
+        };
         let (tls, events, server_gone) = (tls.clone(), events.clone(), Arc::clone(&server_gone));
         tokio::spawn(async move {
             let opened = tokio::time::timeout(HANDSHAKE_DEADLINE, open(tcp, tls)).await;
-            drop(permit);
+            drop((permit, place));
             if let Ok(Ok(stream)) = opened
                 && events.send(NetEvent::Connected(stream)).is_err()
             {
@@ -201,6 +210,10 @@ impl<S> FrameStream for WsStream<S>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
+    fn peer(&self) -> Option<IpAddr> {
+        self.socket.peer_addr().ok().map(|addr| addr.ip())
+    }
+
     fn split(self: Box<Self>, idle_timeout: Option<Duration>) -> io::Result<Split> {
         let WsStream {
             ws,

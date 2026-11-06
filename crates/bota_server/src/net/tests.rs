@@ -1046,6 +1046,8 @@ fn a_reader_that_keeps_up_is_never_skipped_and_a_stalled_one_is_at_once() {
 }
 
 mod chat;
+#[cfg(feature = "websocket")]
+mod limits;
 mod lobby_close;
 mod pick_clock;
 mod picks;

@@ -5,7 +5,7 @@
 
 use std::fmt;
 use std::io::{self, BufReader, Read, Write};
-use std::net::{Shutdown, TcpStream};
+use std::net::{IpAddr, Shutdown, TcpStream};
 use std::time::Duration;
 
 use bota_proto::{LEN_PREFIX, MAX_CLIENT_PAYLOAD_LEN};
@@ -59,6 +59,12 @@ pub trait FrameStream: Send {
     /// with `idle_timeout` on every read and every write, and hands back the
     /// TCP socket underneath, kept to abort the connection.
     fn split(self: Box<Self>, idle_timeout: Option<Duration>) -> io::Result<Split>;
+
+    /// The address the peer connects from, for the bounds per source; none when the transport
+    /// cannot tell, and all such peers count as one source.
+    fn peer(&self) -> Option<IpAddr> {
+        None
+    }
 }
 
 /// A transport taken apart for one connection's threads.
@@ -93,6 +99,10 @@ pub trait FrameSink: Send {
 }
 
 impl FrameStream for TcpStream {
+    fn peer(&self) -> Option<IpAddr> {
+        self.peer_addr().ok().map(|addr| addr.ip())
+    }
+
     fn split(self: Box<Self>, idle_timeout: Option<Duration>) -> io::Result<Split> {
         let stream = *self;
         // Either failure only costs latency: Nagle's delay, or the kernel's default buffer, with

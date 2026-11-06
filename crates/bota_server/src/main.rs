@@ -167,7 +167,8 @@ struct Args {
     /// With `false`, a hero some seat holds is refused to the others.
     #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
     same_heroes_allowed: bool,
-    /// Most connections held at once, a peer let go counted until its connection is closed.
+    /// Most connections held at once, a peer let go counted until its connection is closed. A
+    /// quarter of them at most have not said Hello; a newcomer past that takes a stranger's place.
     #[arg(long, default_value_t = DEFAULT_MAX_CONNECTIONS)]
     max_connections: usize,
     /// Print the wire fingerprint of this build (its registries and its rules) and exit. Every

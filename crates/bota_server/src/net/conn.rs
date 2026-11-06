@@ -1,6 +1,6 @@
 //! One connected peer: reader thread, writer thread, outbox.
 
-use std::net::{Shutdown, TcpStream};
+use std::net::{IpAddr, Shutdown, TcpStream};
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
@@ -35,6 +35,9 @@ pub struct Connection {
     pub id: PlayerId,
     /// When it was adopted, for the deadline of its Hello.
     pub opened: Instant,
+    /// The address it comes from, which the bounds per source count ([`groups`]); none when
+    /// the transport cannot tell.
+    pub peer: Option<IpAddr>,
     /// The socket underneath, kept to abort the connection from the server
     /// thread.
     socket: TcpStream,
@@ -102,6 +105,7 @@ impl Connection {
     ) -> std::io::Result<Connection> {
         let reader_hold = Arc::new(terms.live.hold());
         let writer_hold = Arc::clone(&reader_hold);
+        let peer = stream.peer();
         let Split {
             source,
             sink,
@@ -125,6 +129,7 @@ impl Connection {
         let connection = Connection {
             id,
             opened,
+            peer,
             socket,
             outbox,
             ticks_sent,

@@ -39,6 +39,12 @@ pub const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(5);
 /// connections for ever.
 pub const HELLO_DEADLINE: Duration = Duration::from_secs(10);
 
+/// The share of [`ServerOpts::max_connections`] that connections which have not said Hello may
+/// hold at most, so that the rest is always room for those that did. One source holds at most
+/// its bounds of them ([`groups`](crate::net::groups)); connections that said Hello have no
+/// bound per source: players behind one address all play.
+pub const STRANGERS_SHARE_DIVISOR: usize = 4;
+
 /// How long a lobby without a deadline of its own waits for a first seat to
 /// be held before an unjoined match is abandoned.
 pub const UNJOINED_AFTER: Duration = Duration::from_secs(60);
@@ -676,15 +682,31 @@ impl Server {
             .min()
     }
 
-    /// Accepts a fresh stream and hands out a `PlayerId`, unless the server
-    /// holds as many connections as it may.
+    /// Accepts a fresh stream and hands out a `PlayerId`, unless its source
+    /// already holds as many connections that have not said Hello as its bounds
+    /// allow ([`groups`](crate::net::groups)). A server that holds as many
+    /// connections as it may, or as many strangers as their share
+    /// ([`STRANGERS_SHARE_DIVISOR`]), lets a stranger go to make room (see
+    /// [`Server::make_room`]), never a connection that said Hello; with none,
+    /// the stream is let go.
     fn adopt(&mut self, stream: Box<dyn FrameStream>) {
-        if self
-            .opts
-            .max_connections
-            .is_some_and(|most| self.conns.len().max(self.live.count()) >= most)
-        {
-            return;
+        if let Some(peer) = stream.peer() {
+            let strangers = self
+                .conns
+                .iter()
+                .filter(|c| !self.greeted(c.id))
+                .filter_map(|c| c.peer);
+            if crate::net::over_bound(peer, strangers) {
+                return;
+            }
+        }
+        if let Some(most) = self.opts.max_connections {
+            let strangers = self.conns.iter().filter(|c| !self.greeted(c.id)).count();
+            let full = self.conns.len().max(self.live.count()) >= most;
+            let crowded = strangers >= (most / STRANGERS_SHARE_DIVISOR).max(1);
+            if (full || crowded) && !self.make_room(most) {
+                return;
+            }
         }
         let id = PlayerId(self.next_player);
         self.next_player += 1;
@@ -701,6 +723,28 @@ impl Server {
             Ok(conn) => self.conns.push(conn),
             Err(error) => eprintln!("bota_server: could not take a connection ({error})"),
         }
+    }
+
+    /// Lets a connection that has not said Hello go, at once, for a newcomer: the oldest of the
+    /// source that holds the most of them, so that a source flooding the server lets its own go
+    /// and not a fair client's that is about to say Hello. Whether there is room then: a
+    /// connection let go still holds threads for a moment, so the live ones may pass `most` by
+    /// those, never by more than `most` again.
+    fn make_room(&mut self, most: usize) -> bool {
+        let strangers: Vec<&Connection> =
+            self.conns.iter().filter(|c| !self.greeted(c.id)).collect();
+        let source = |c: &Connection| c.peer.map(crate::net::source);
+        let held =
+            |of: Option<crate::net::Group>| strangers.iter().filter(|c| source(c) == of).count();
+        let oldest = strangers
+            .iter()
+            .max_by_key(|c| (held(source(c)), std::cmp::Reverse(c.opened)))
+            .map(|c| c.id);
+        let Some(oldest) = oldest else {
+            return false;
+        };
+        self.lose_conn(oldest);
+        self.conns.len() < most && self.live.count() < most.saturating_mul(2)
     }
 
     /// What a Hello may have: with reserved seats no seat without the key for
