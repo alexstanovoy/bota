@@ -7,9 +7,12 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use bota_proto::{ClientMsg, Role, ServerMsg, encode_frame_to_vec};
+use bota_proto::{
+    ClientMsg, HeroId, PlayerId, RejectReason, Role, SeatKey, ServerMsg, SlotId, TickMode,
+    encode_frame_to_vec,
+};
 
-use crate::{Net, Redial, Transport};
+use crate::{Endpoint, Link, Net, Redial, Transport};
 
 fn hello() -> ClientMsg {
     ClientMsg::hello(Role::Bot, "net", None, bota_core::WIRE_FINGERPRINT)
@@ -127,4 +130,57 @@ fn a_stalled_caller_holds_a_bounded_inbox_of_a_flooding_server() {
         written < 40 * 1024 * 1024,
         "{written} bytes were taken in for a caller that read none"
     );
+}
+
+/// A client that comes back to its seat with the seat's key (a new process, a new link) may
+/// find the server still holding it for the old connection, which the server has not yet seen
+/// end: it is refused (SeatHeld), and dials again by its policy until the seat is let go.
+#[test]
+fn a_seat_still_held_for_the_old_connection_is_taken_once_it_is_let_go() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr").to_string();
+    let server = thread::spawn(move || {
+        let mut buf = [0u8; 4096];
+        let (mut first, _) = listener.accept().expect("accept");
+        let _ = first.read(&mut buf).expect("the hello arrives");
+        let held = ServerMsg::Refused {
+            reason: RejectReason::SeatHeld,
+        };
+        first
+            .write_all(&encode_frame_to_vec(&held).expect("encode"))
+            .expect("refused");
+        drop(first);
+        let (mut fresh, _) = listener.accept().expect("the client dials again");
+        let _ = fresh.read(&mut buf).expect("the hello arrives again");
+        let welcome = ServerMsg::Welcome {
+            player_id: PlayerId(1),
+            slot: Some(SlotId(0)),
+            tick_rate: 30,
+            mode: TickMode::Lockstep,
+        };
+        fresh
+            .write_all(&encode_frame_to_vec(&welcome).expect("encode"))
+            .expect("welcome");
+        // Held open until the client has its seat.
+        while fresh.read(&mut buf).is_ok_and(|read| read > 0) {}
+    });
+    let redial = Redial {
+        attempts: 3,
+        first_wait: Duration::from_millis(1),
+        longest_wait: Duration::from_millis(1),
+    };
+    let endpoint = Endpoint::parse(&addr).expect("an endpoint");
+    let key = Some(SeatKey([7; 32]));
+    let (link, seated) = Link::join_at(
+        endpoint,
+        "net",
+        HeroId::SHADOW_FIEND,
+        key,
+        Duration::from_secs(30),
+        redial,
+    )
+    .expect("the seat, once the old connection let it go");
+    assert_eq!(seated.slot, SlotId(0));
+    drop(link);
+    server.join().expect("the server side ends");
 }

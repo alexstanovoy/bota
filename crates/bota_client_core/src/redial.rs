@@ -18,6 +18,10 @@ use bota_proto::{ClientMsg, RejectReason, Role, SeatKey, ServerMsg, encode_frame
 /// found it dead) it refuses the fresh one with
 /// [`RejectReason::SeatHeld`]; that counts as a failed attempt, and the
 /// attempts of one break are counted until a fresh connection is welcomed.
+/// So does a seat's first `Hello` when it is refused so: a client that comes
+/// back with the seat's key (a new process, a new link) may find its old
+/// connection not yet let go, which the server only learns when it sees it
+/// end.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Redial {
     /// Attempts after one break before giving up; zero never dials again.
@@ -79,7 +83,8 @@ pub(crate) struct Rejoin {
     /// The match is over, the server speaks another wire or refused the
     /// client for good: nothing to come back to.
     finished: bool,
-    /// A fresh connection was greeted and not yet welcomed.
+    /// A seat's `Hello` went out, on the first connection or a fresh one,
+    /// and was not yet welcomed.
     rejoining: bool,
     /// Attempts spent since the connection broke, until a welcome.
     pub spent: u32,
@@ -108,9 +113,11 @@ impl Rejoin {
         let mut msg = msg.clone();
         if let ClientMsg::Hello { role, key, .. } = &mut msg
             && matches!(role, Role::Player | Role::Bot)
-            && key.is_none()
         {
-            key.clone_from(&self.key);
+            if key.is_none() {
+                key.clone_from(&self.key);
+            }
+            self.rejoining = true;
         }
         let kept = match msg {
             ClientMsg::Hello { .. } => &mut self.hello,
