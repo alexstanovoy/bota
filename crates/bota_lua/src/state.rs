@@ -1,4 +1,4 @@
-use bota_client_core::{ClientSession, IssuedOrder};
+use bota_client_core::{ClientSession, IssuedOrder, VelocityEstimate};
 use bota_proto::{AbilityView, EntityId, HeroId, ItemSlot, ItemView, Kit, SlotId, Team, UnitView};
 use luagee::{LuaError, TableId, Value, Vm};
 
@@ -22,7 +22,12 @@ pub(crate) struct Player {
     pub respawn_left: u32,
 }
 
-pub(crate) struct KnownUnit { pub unit: UnitView, pub visible: bool }
+pub(crate) struct KnownUnit {
+    pub unit: UnitView,
+    pub visible: bool,
+    pub last_visible: (u32, bota_proto::Vec2),
+    pub velocity: Option<VelocityEstimate>,
+}
 
 pub(crate) struct Snapshot {
     pub team: Team,
@@ -63,7 +68,7 @@ impl Snapshot {
                     stash: own.then(|| player.stash.clone()).flatten(), respawn_left: player.respawn_left }
             }).collect(),
             damage: session.recent_events().iter().filter_map(|event| match event.kind { bota_proto::EventKind::Damaged { source: Some(source), target, .. } => Some((event.tick, source, target)), _ => None }).collect(),
-            units: session.entities().iter().map(|track| KnownUnit { unit: track.unit.clone(), visible: view.units.binary_search_by_key(&track.unit.id, |unit| unit.id).is_ok() }).collect(),
+            units: session.entities().iter().map(|track| KnownUnit { unit: track.unit.clone(), visible: view.units.binary_search_by_key(&track.unit.id, |unit| unit.id).is_ok(), last_visible: (track.last_seen_tick, track.unit.pos), velocity: track.velocity }).collect(),
         })
     }
 }
@@ -175,5 +180,33 @@ mod tests {
         assert!(hidden_player.stash.is_none());
         assert!(hidden_player.kit.is_none());
         assert!(!enemy.units.iter().any(|known| Some(known.unit.id) == own_player.unit));
+    }
+
+    #[test]
+    fn last_visible_motion_freezes_when_an_enemy_walks_into_fog() {
+        use bota_proto::{Order, Target, Vec2};
+        let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+        let id = sessions[0].own_player().expect("player").unit.expect("hero");
+        let home = bota_core::fountain_pos(sessions[0].map(), Team::Radiant);
+        let middle = Vec2::from_ints(9216, 9216);
+        let mut last_seen = None;
+        let mut hidden_ticks = 0;
+        for _ in 0..2000 {
+            let radiant = sessions[0].issue(IssuedOrder::hero(Order::Move { target: Target::Pos(if last_seen.is_some() { home } else { middle }) })).expect("radiant order");
+            let dire = sessions[1].issue(IssuedOrder::hero(Order::Move { target: Target::Pos(middle) })).expect("dire order");
+            let streams = local.step(&[&[radiant], &[dire]]).expect("step");
+            for (session, stream) in sessions.iter_mut().zip(streams) { support::fold(session, stream); }
+            let snapshot = Snapshot::capture(&sessions[1]).expect("opposing snapshot");
+            let Some(known) = snapshot.units.iter().find(|known| known.unit.id == id) else { continue };
+            if known.visible {
+                assert_eq!(known.last_visible, (snapshot.tick, known.unit.pos));
+                last_seen = Some((known.last_visible, known.velocity));
+            } else {
+                assert_eq!(Some((known.last_visible, known.velocity)), last_seen);
+                hidden_ticks += 1;
+                if hidden_ticks == 10 { break; }
+            }
+        }
+        assert_eq!(hidden_ticks, 10, "the enemy was seen moving, then lost in fog");
     }
 }
