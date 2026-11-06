@@ -59,6 +59,7 @@ pub(crate) fn stats() -> Stats {
         spell_lifesteal_pct: 0,
         magic_taken_pct: 0,
         damage_taken_bp: rules::NOMINAL_BP,
+        restoration_bp: rules::NOMINAL_BP,
         accuracy: Odds::NEVER,
     }
 }

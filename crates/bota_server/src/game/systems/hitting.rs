@@ -401,7 +401,8 @@ fn heal_source(
         return;
     };
     if pool.hp > Fixed::ZERO {
-        pool.hp = (pool.hp + Fixed::from_int(amount)).min(stat.max_hp);
+        let amount = super::bubble::restored(Fixed::from_int(amount), stat.restoration_bp);
+        pool.hp = (pool.hp + amount).min(stat.max_hp);
     }
 }
 

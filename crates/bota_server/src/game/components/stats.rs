@@ -93,6 +93,10 @@ pub struct Stats {
     /// it takes, in basis points where 10_000 is all of it: an illusion
     /// takes more than that.
     pub damage_taken_bp: i32,
+    /// Share of what it regenerates and of every heal it takes that comes
+    /// through, in basis points where 10_000 is all of it: Dota's Health
+    /// Restoration.
+    pub restoration_bp: i32,
     /// Chance an attack of its goes through evasion: every source of it
     /// stacked as Dota stacks accuracy.
     pub accuracy: Odds,

@@ -392,8 +392,12 @@ impl ModifierKind {
             ModifierKind::Feared => StatusFlags::FEARED,
             ModifierKind::BloodGrenade { .. } => StatusFlags::SLOWED | StatusFlags::DOT,
             ModifierKind::Laid { item, .. } => match crate::ITEMS[item.0 as usize].on_attack {
-                Some(laid) if laid.dps > 0 => StatusFlags::DOT,
-                _ => 0,
+                Some(laid) => {
+                    let slows = laid.slow_pct > 0 || laid.ranged_slow_pct > 0;
+                    (if laid.dps > 0 { StatusFlags::DOT } else { 0 })
+                        | (if slows { StatusFlags::SLOWED } else { 0 })
+                }
+                None => 0,
             },
             ModifierKind::Spell {
                 ability,

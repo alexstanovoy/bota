@@ -860,10 +860,11 @@ impl World {
         let ceiling = self.stats.get(on).copied();
         let mut restored = 0;
         if let Some(pool) = self.health.get_mut(on)
-            && let Some(most) = ceiling.map(|stats| stats.max_hp)
+            && let Some(stats) = ceiling
         {
             let before = pool.hp;
-            pool.hp = (pool.hp + Fixed::from_int(hp)).min(most);
+            let hp = super::bubble::restored(Fixed::from_int(hp), stats.restoration_bp);
+            pool.hp = (pool.hp + hp).min(stats.max_hp);
             restored = (pool.hp - before).to_int();
         }
         let mut refilled = 0;

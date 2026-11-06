@@ -959,6 +959,9 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
             ticks: ticks(&ITEM_BLIGHT_STONE, "corruption_duration"),
             armor: armor_taken(&ITEM_BLIGHT_STONE, "corruption_armor"),
             dps: 0,
+            slow_pct: 0,
+            ranged_slow_pct: 0,
+            restoration_cut_pct: 0,
             // Liquipedia, Orb of Blight: it affects "Allied units", "Buildings", "Ward-type units".
             affects: Affects::Everything,
             pierces_immunity: pierces_immunity(&ITEM_BLIGHT_STONE),
@@ -974,6 +977,9 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
             ticks: ticks(&ITEM_ORB_OF_VENOM, "poison_duration"),
             armor: Fixed::ZERO,
             dps: int(&ITEM_ORB_OF_VENOM, "damage"),
+            slow_pct: 0,
+            ranged_slow_pct: 0,
+            restoration_cut_pct: 0,
             // Liquipedia, Orb of Venom: it does not affect "Buildings", "Ward-type units", "Ally
             // units" (Dota 2012-06-11: "Fixed Poison Attack working on denies"; 2011-07-01: "Fixed
             // ability affecting buildings").
@@ -981,6 +987,25 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
             pierces_immunity: pierces_immunity(&ITEM_ORB_OF_VENOM),
         }),
         ..from(&ITEM_ORB_OF_VENOM)
+    },
+    // Orb of Frost: Frost, a slow by the struck's attack and a cut of its Health Restoration (Dota
+    // 7.39: "now reduces Health Restoration"; 7.41: "Now also modifies incoming healing").
+    ItemDef {
+        name: "Orb of Frost",
+        on_attack: Some(OnAttack {
+            effect: EffectId::FROST,
+            ticks: ticks(&ITEM_ORB_OF_FROST, "duration"),
+            armor: Fixed::ZERO,
+            dps: 0,
+            slow_pct: -int(&ITEM_ORB_OF_FROST, "slow_melee"),
+            ranged_slow_pct: -int(&ITEM_ORB_OF_FROST, "slow_ranged"),
+            restoration_cut_pct: int(&ITEM_ORB_OF_FROST, "heal_reduction"),
+            // Liquipedia, Orb of Frost: it does not affect "Buildings", "Ward-type units",
+            // "Couriers"; Dota 7.41e: "Frost no longer applies when attacking allies".
+            affects: Affects::EnemyUnits,
+            pierces_immunity: pierces_immunity(&ITEM_ORB_OF_FROST),
+        }),
+        ..from(&ITEM_ORB_OF_FROST)
     },
 ];
 
@@ -1028,6 +1053,12 @@ const _: () = {
     assert!(ITEM_BLIGHT_STONE.first("corruption_armor").0 < 0);
     assert!(matches!(ITEM_ORB_OF_VENOM.dispel, Dispel::Basic));
     assert!(crate::EFFECTS[EffectId::POISON_ATTACK.0 as usize].dispellable);
+    // Frost names no SpellDispellableType; Liquipedia, Orb of Frost: its debuff is "Dispellable by
+    // any Dispel sources".
+    assert!(matches!(ITEM_ORB_OF_FROST.dispel, Dispel::Unstated));
+    assert!(crate::EFFECTS[EffectId::FROST.0 as usize].dispellable);
+    assert!(ITEM_ORB_OF_FROST.first("slow_melee").0 < 0);
+    assert!(ITEM_ORB_OF_FROST.first("slow_ranged").0 < 0);
     // The server beats a laid poison once a second.
     assert!(ITEM_ORB_OF_VENOM.first("tick_interval").0 == 1000);
 };

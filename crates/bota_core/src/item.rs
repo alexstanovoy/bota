@@ -451,6 +451,14 @@ pub struct OnAttack {
     /// HP removal that sets off nothing that answers to damage and never takes
     /// the last point.
     pub dps: i32,
+    /// Percent of its pace a melee wearer walks slower: Dota's Frost slows
+    /// "13% (6% against melee targets)".
+    pub slow_pct: i32,
+    /// Percent of its pace a ranged wearer walks slower.
+    pub ranged_slow_pct: i32,
+    /// Percent taken off the wearer's Health Restoration: what it
+    /// regenerates and every heal it takes.
+    pub restoration_cut_pct: i32,
     /// What it lands on.
     pub affects: Affects,
     /// Whether it goes through spell immunity: the item's `SpellImmunityType`.

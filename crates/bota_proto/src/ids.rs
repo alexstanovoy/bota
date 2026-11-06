@@ -227,6 +227,9 @@ impl ItemId {
     /// Dota's `item_orb_of_venom`: its carrier's attacks poison, once each
     /// cooldown.
     pub const ORB_OF_VENOM: ItemId = ItemId(86);
+    /// Dota's `item_orb_of_frost`: its carrier's attacks slow and cut Health
+    /// Restoration.
+    pub const ORB_OF_FROST: ItemId = ItemId(87);
 }
 
 /// What did something: the ability or the item a unit used, as Dota's combat
@@ -407,6 +410,9 @@ impl EffectId {
     /// An Orb of Venom's Poison Attack (`modifier_item_orb_of_venom_slow`):
     /// magical damage every second.
     pub const POISON_ATTACK: EffectId = EffectId(79);
+    /// An Orb of Frost's Frost (`modifier_orb_of_frost_debuff`): a slow and
+    /// less Health Restoration.
+    pub const FROST: EffectId = EffectId(80);
 }
 
 /// An index into a unit's ability slots, as listed in

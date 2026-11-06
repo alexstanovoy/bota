@@ -127,13 +127,22 @@ impl World {
     }
 
     /// Mends a unit by `amount`, a fraction of a point included, up to its
-    /// maximum.
+    /// maximum: the share its Health Restoration lets through.
     pub(crate) fn mend_part(&mut self, entity: Entity, amount: Fixed) {
-        let Some(max) = self.stats.get(entity).map(|stats| stats.max_hp) else {
+        let Some(stats) = self.stats.get(entity) else {
             return;
         };
+        let (max, amount) = (stats.max_hp, restored(amount, stats.restoration_bp));
         if let Some(health) = self.health.get_mut(entity) {
             health.hp = (health.hp + amount).min(max);
         }
+    }
+}
+
+/// The share of a heal of `amount` a Health Restoration of `bp` lets through.
+pub(crate) fn restored(amount: Fixed, bp: i32) -> Fixed {
+    let raw = i64::from(amount.raw) * i64::from(bp) / i64::from(bota_core::rules::NOMINAL_BP);
+    Fixed {
+        raw: raw.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32,
     }
 }

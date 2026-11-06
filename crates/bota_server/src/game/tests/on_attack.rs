@@ -426,3 +426,126 @@ fn the_poison_removes_health_and_never_the_last_point() {
     run(&mut world, 2 * rules::TICKS_PER_SECOND);
     assert!(world.alive(mark), "never the last point");
 }
+
+/// The Orb of Frost's numbers, as the catalogue holds them from `item_orb_of_frost`.
+fn frost() -> bota_core::OnAttack {
+    item_def(ItemId::ORB_OF_FROST)
+        .and_then(|def| def.on_attack)
+        .expect("the Orb of Frost lays its frost")
+}
+
+/// What `mark`'s stats come to with and without the Frost an Orb of Frost's attack laid on it.
+fn frosted(on: Put) -> (crate::game::Stats, crate::game::Stats) {
+    let (world, _, mark, _) = first_landing(&[ItemId::ORB_OF_FROST], on);
+    assert_eq!(laid_on(&world, mark, ItemId::ORB_OF_FROST).0, 1, "frosted");
+    let mut world = world;
+    world.step();
+    let with = *world.stats.get(mark).expect("derived");
+    let (mut world, _, mark, _) = first_landing(&[], on);
+    world.step();
+    (with, *world.stats.get(mark).expect("derived"))
+}
+
+/// An Orb of Frost bought through the shop slows what its carrier's attack strikes, 13% a ranged
+/// target and 6% a melee one (`slow_ranged`, `slow_melee`; Dota 7.38b: "Melee Movement Slow
+/// increased from 5% to 6%"), for 3 seconds (`duration`).
+#[test]
+fn an_orb_of_frost_slows_a_ranged_target_thirteen_percent_and_a_melee_one_six() {
+    let laid = frost();
+    assert_eq!((laid.ranged_slow_pct, laid.slow_pct), (13, 6));
+    assert_eq!(laid.ticks, 3 * rules::TICKS_PER_SECOND);
+    let (with, bare) = frosted(foe_hero);
+    let close = |a: Fixed, b: Fixed| (a - b).raw.abs() <= Fixed::from_ratio(1, 100).raw;
+    assert!(
+        close(
+            with.move_speed,
+            bare.move_speed * Fixed::from_ratio(87, 100)
+        ),
+        "{:?} of {:?}",
+        with.move_speed,
+        bare.move_speed
+    );
+    let (with, bare) =
+        frosted(|world, at| world.spawn_unit(&bota_core::MELEE_CREEP, Team::Dire, at));
+    assert!(
+        close(
+            with.move_speed,
+            bare.move_speed * Fixed::from_ratio(94, 100)
+        ),
+        "{:?} of {:?}",
+        with.move_speed,
+        bare.move_speed
+    );
+}
+
+/// Frost cuts the struck's Health Restoration by 15% (`heal_reduction`; Dota 7.41e: "increased
+/// from 13% to 15%"): what it regenerates and every heal it takes (7.41: "Now also modifies
+/// incoming healing").
+#[test]
+fn an_orb_of_frost_cuts_health_restoration_fifteen_percent() {
+    assert_eq!(frost().restoration_cut_pct, 15);
+    let (with, bare) = frosted(foe_hero);
+    assert_eq!(with.restoration_bp, 8_500);
+    assert!(
+        (with.hp_regen.raw - bare.hp_regen.raw * 85 / 100).abs() <= 1,
+        "{:?} of {:?}",
+        with.hp_regen,
+        bare.hp_regen
+    );
+    let (mut world, hero, mark, _) = first_landing(&[ItemId::ORB_OF_FROST], foe_hero);
+    world.set_order(hero, crate::game::UnitOrder::Stand);
+    world.step();
+    world.health.get_mut(mark).expect("alive").hp = Fixed::from_int(100);
+    let regen = world.stats.get(mark).expect("derived").hp_regen;
+    let (restored, _) = world.refill_pools(mark, 200, 0);
+    assert_eq!(restored, 170, "a heal of 200 comes through as 170");
+    world.step();
+    assert!(world.health.get(mark).expect("alive").hp >= Fixed::from_int(270) + regen);
+}
+
+/// Frost lands on enemy units alone (Liquipedia, Orb of Frost: not "Buildings", "Ward-type units",
+/// "Couriers"; Dota 7.41e: "Frost no longer applies when attacking allies"), and spell immunity
+/// keeps it off (no `SpellImmunityType`).
+#[test]
+fn an_orb_of_frost_lands_on_enemy_units_alone() {
+    let marks: [(&str, Put); 4] = [
+        ("a tower", |world, at| {
+            world.spawn_unit(bota_core::tower_def(1), Team::Dire, at)
+        }),
+        ("a ward", |world, at| {
+            world.spawn_unit(&bota_core::OBSERVER_WARD, Team::Dire, at)
+        }),
+        ("an allied creep", |world, at| {
+            world.spawn_unit(&bota_core::MELEE_CREEP, Team::Radiant, at)
+        }),
+        ("a courier", |world, at| {
+            world.spawn_unit(&bota_core::COURIER, Team::Dire, at)
+        }),
+    ];
+    for (case, mark) in marks {
+        let (mut world, hero) = out_of_fountain_after_buying(&[ItemId::ORB_OF_FROST]);
+        let at = world.transform.get(hero).expect("standing").pos;
+        let mark = mark(&mut world, at + Vec2::from_ints(300, 0));
+        world.step();
+        world
+            .hits
+            .push_back(swing_laying(hero, mark, ItemId::ORB_OF_FROST));
+        world.step();
+        assert_eq!(laid_on(&world, mark, ItemId::ORB_OF_FROST).0, 0, "{case}");
+    }
+}
+
+/// A basic dispel takes Frost off (Liquipedia, Orb of Frost: "Dispellable by any Dispel
+/// sources"), and the struck walks and mends at its own pace again.
+#[test]
+fn a_basic_dispel_takes_frost_off() {
+    let (mut world, hero, mark, _) = first_landing(&[ItemId::ORB_OF_FROST], foe_hero);
+    world.set_order(hero, crate::game::UnitOrder::Stand);
+    world.dispel_basic(mark);
+    world.step();
+    assert_eq!(laid_on(&world, mark, ItemId::ORB_OF_FROST).0, 0);
+    assert_eq!(
+        world.stats.get(mark).expect("derived").restoration_bp,
+        rules::NOMINAL_BP
+    );
+}

@@ -139,11 +139,13 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         let wearer = Wearer {
             base_armor,
             hero: kind.kind == bota_proto::UnitKind::Hero,
+            ranged,
             illusion,
             sheltered_by_fountain: kind.fountain_shelters,
             night,
         };
         add_modifiers(&mut now, &mut sums, working(), wearer);
+        now.restoration_bp = rules::NOMINAL_BP * (100 - sums.restoration_cut_pct) / 100;
         if let Some(on_it) = modifiers.get(entity) {
             add_feast(&mut now, &mut sums.pace, on_it, abilities.get(entity));
         }
@@ -188,7 +190,14 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         };
         let kinds = working().map(|held| held.kind);
         let regen = settled_regen(kind, carried, now.attributes, max, kinds);
-        (now.hp_regen, now.mana_regen) = (regen.hp, regen.mana);
+        // Health Restoration takes its share of what is regenerated, never of
+        // a loss.
+        let hp_regen = if regen.hp > Fixed::ZERO {
+            scaled_bp(regen.hp, now.restoration_bp)
+        } else {
+            regen.hp
+        };
+        (now.hp_regen, now.mana_regen) = (hp_regen, regen.mana);
         follow_pools(
             stats.get(entity).copied(),
             &now,
@@ -316,6 +325,10 @@ struct Sums {
     damage_pct: i32,
     /// Flat bonus attack damage: the items', the souls', the buffs'.
     bonus_damage: i32,
+    /// Percent of Health Restoration taken off by the strongest of what
+    /// attacks laid: Dota's Frost-based items do not stack, "the highest
+    /// values take priority" (7.39).
+    restoration_cut_pct: i32,
 }
 
 impl Sums {
@@ -325,6 +338,7 @@ impl Sums {
             absolute_pace: None,
             damage_pct: 0,
             bonus_damage: 0,
+            restoration_cut_pct: 0,
         }
     }
 }
@@ -347,6 +361,7 @@ fn attack_damage(now: &mut Stats, sums: &Sums) {
 struct Wearer {
     base_armor: Fixed,
     hero: bool,
+    ranged: bool,
     illusion: bool,
     sheltered_by_fountain: bool,
     night: bool,
@@ -431,6 +446,15 @@ fn add_modifiers<'a>(
             ModifierKind::Laid { item, .. } => {
                 if let Some(laid) = item_def(item).and_then(|def| def.on_attack) {
                     now.armor -= laid.armor;
+                    let slow = if wearer.ranged {
+                        laid.ranged_slow_pct
+                    } else {
+                        laid.slow_pct
+                    };
+                    sums.pace.change(-slow.clamp(0, 100));
+                    sums.restoration_cut_pct = sums
+                        .restoration_cut_pct
+                        .max(laid.restoration_cut_pct.clamp(0, 100));
                 }
             }
             ModifierKind::MagicBroken { pct } => {
@@ -700,6 +724,7 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32, night: bool) -> Stats {
         spell_lifesteal_pct: 0,
         magic_taken_pct: 0,
         damage_taken_bp: rules::NOMINAL_BP,
+        restoration_bp: rules::NOMINAL_BP,
         accuracy: Odds::NEVER,
         move_speed: Fixed::from_int(kind.move_speed + up.move_speed),
         turn_rate: kind.turn_rate,

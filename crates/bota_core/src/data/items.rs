@@ -2259,3 +2259,31 @@ pub(crate) const ITEM_ORB_OF_VENOM: ItemData = ItemData {
         ("poison_duration", &[Dec::of("3")]),
     ],
 };
+
+pub(crate) const ITEM_ORB_OF_FROST: ItemData = ItemData {
+    id: ItemId(87),
+    key: "item_orb_of_frost",
+    retired: false,
+    cost: 300,
+    behavior: B::PASSIVE,
+    cast_range: 0,
+    cast_point: Ms::secs("0"),
+    channel: Ms::secs("0"),
+    cooldown: Ms::secs("0"),
+    mana: 0,
+    health: 0,
+    charges: 0,
+    stack: 0,
+    stock: None,
+    purchasable: true,
+    secret_shop: false,
+    dispel: Dispel::Unstated,
+    immunity: Immunity::Unstated,
+    builds: &[],
+    values: &[
+        ("slow_melee", &[Dec::of("-6")]),
+        ("slow_ranged", &[Dec::of("-13")]),
+        ("duration", &[Dec::of("3")]),
+        ("heal_reduction", &[Dec::of("15")]),
+    ],
+};
