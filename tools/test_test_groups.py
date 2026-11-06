@@ -1,5 +1,6 @@
 """tools/test_groups.py's routing, selection and guards, on this repository's own groups (tools/test_groups.toml)."""
 
+import io
 import os
 import signal
 import subprocess
@@ -145,14 +146,14 @@ class Running(unittest.TestCase):
         self.scratch = Path(scratch.name)
         self.record = self.scratch / "failed"
 
-    def pool(self, jobs=2):
-        return test_groups.Pool(jobs, self.record, self.scratch / "logs")
+    def pool(self, share=2):
+        return test_groups.Pool(share, self.record, self.scratch / "logs")
 
-    def run_pool(self, *runs, jobs=2):
+    def run_pool(self, *runs, share=2):
         with open(self.scratch / "out", "w") as out:
             stdout, sys.stdout = sys.stdout, out
             try:
-                passed = self.pool(jobs).run(list(runs))
+                passed = self.pool(share).run(list(runs))
             finally:
                 sys.stdout = stdout
         return passed, (self.scratch / "out").read_text()
@@ -194,7 +195,7 @@ class Running(unittest.TestCase):
         )
         runs = [test_groups.Invocation(f"g{n}", [sys.executable, "-c", wait, str(self.scratch), f"arrived-{n}"], self.scratch, {}, None, {f"g{n}"})
                 for n in range(3)]
-        passed, out = self.run_pool(*runs, jobs=3)
+        passed, out = self.run_pool(*runs, share=3)
         self.assertTrue(passed, out)
 
     def test_the_first_failure_stops_the_runs_in_flight_and_the_rest(self):
@@ -206,7 +207,7 @@ class Running(unittest.TestCase):
         self.assertFalse(finished.exists())
 
     def test_the_first_failure_is_told_last(self):
-        passed, out = self.run_pool(self.python("fine", "pass"), self.python("broken", "raise SystemExit(3)"), jobs=1)
+        passed, out = self.run_pool(self.python("fine", "pass"), self.python("broken", "raise SystemExit(3)"), share=1)
         self.assertFalse(passed)
         self.assertTrue(out.rstrip().splitlines()[-1].startswith("test-groups: FAILED after"), out)
         self.assertIn("groups broken", out.rstrip().splitlines()[-1])
@@ -227,7 +228,7 @@ class Running(unittest.TestCase):
         started = self.scratch / "started"
         pool = self.pool()
         pool.failure = "an earlier failure"
-        pool.slots.acquire()
+        pool.take(1)
         pool.execute(self.python("late", f"open({str(started)!r}, 'w')"), self.scratch / "late.log")
         self.assertFalse(started.exists())
 
@@ -258,11 +259,31 @@ class Running(unittest.TestCase):
 
 
 class Share(unittest.TestCase):
-    def test_the_share_is_split_into_binaries_and_their_test_threads(self):
-        self.assertEqual(test_groups.split_share(32, None, None), (4, 8))
-        self.assertEqual(test_groups.split_share(6, None, None), (1, 6))
-        self.assertEqual(test_groups.split_share(32, 8, None), (8, 4))
-        self.assertEqual(test_groups.split_share(32, 2, 12), (2, 12))
+    def test_runs_wait_while_the_share_has_no_room_for_their_threads(self):
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        runs = [test_groups.Invocation(f"g{n}", [sys.executable, "-c", "pass"], Path(scratch.name), {}, None, {f"g{n}"}, cost=2)
+                for n in range(5)]
+        pool = test_groups.Pool(4, None, Path(scratch.name) / "logs")
+        stdout, sys.stdout = sys.stdout, io.StringIO()
+        try:
+            passed = pool.run(runs)
+        finally:
+            sys.stdout = stdout
+        self.assertTrue(passed)
+        self.assertLessEqual(pool.most, 4)
+
+    def test_a_run_holds_the_cpus_it_used_last_time_within_its_threads(self):
+        self.assertEqual(test_groups.cost_of(None, 12), 12)
+        self.assertEqual(test_groups.cost_of({"seconds": 50.0, "cores": 0.2}, 12), 1)
+        self.assertEqual(test_groups.cost_of({"seconds": 30.0, "cores": 9.3}, 12), 10)
+        self.assertEqual(test_groups.cost_of({"seconds": 30.0, "cores": 31.0}, 12), 12)
+
+    def test_a_run_larger_than_the_share_runs_alone(self):
+        pool = test_groups.Pool(4, None, Path(tempfile.gettempdir()))
+        pool.take(16)
+        self.assertEqual(pool.used, 16)  # it did not wait: nothing else ran
+        pool.give(16)
 
     def test_heavy_cpus_bounds_the_share(self):
         environment = os.environ.get("HEAVY_CPUS")
@@ -270,11 +291,11 @@ class Share(unittest.TestCase):
         os.environ["HEAVY_CPUS"] = "2"
         self.assertLessEqual(test_groups.cpu_share(), 2)
 
-    def test_a_job_count_that_is_no_number_is_refused(self):
+    def test_a_share_that_is_no_number_is_refused(self):
         result = subprocess.run([sys.executable, "-B", str(test_groups.ROOT / "tools/test_groups.py"), "run", "core"],
-                                env=os.environ | {"TEST_GROUPS_JOBS": "four"}, capture_output=True, text=True)
+                                env=os.environ | {"TEST_GROUPS_CPUS": "four"}, capture_output=True, text=True)
         self.assertEqual(result.returncode, 2, result.stderr)
-        self.assertIn("TEST_GROUPS_JOBS 'four': a whole number of at least one", result.stderr)
+        self.assertIn("TEST_GROUPS_CPUS 'four': a whole number of at least one", result.stderr)
 
 
 class Guards(unittest.TestCase):
