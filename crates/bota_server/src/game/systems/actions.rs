@@ -1170,13 +1170,15 @@ impl World {
         )
     }
 
-    /// Whether the target is standing, seen by the attacker's side, and
-    /// within `reach` edge to edge.
+    /// Whether the target is standing, seen by the attacker's side, open to
+    /// attacks and within `reach` edge to edge. A swing at one that turns
+    /// ethereal is given up.
     fn worth_swinging_at(&self, attacker: Entity, on: Entity, reach: Fixed) -> bool {
         self.health
             .get(on)
             .is_some_and(|health| health.hp > Fixed::ZERO)
             && self.can_see_of(attacker, on)
+            && !self.attack_immune(on)
             && self.within_reach(attacker, on, reach)
     }
 }

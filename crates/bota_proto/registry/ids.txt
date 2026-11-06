@@ -189,6 +189,7 @@ item 88 live item_aegis
 item 89 live item_refresher_shard
 item 90 live item_roshans_banner
 item 91 live item_infused_raindrop
+item 92 live item_ghost
 
 effect 0 retired bota_haste
 effect 1 live modifier_flask_healing
@@ -349,3 +350,4 @@ effect 94 live modifier_roshan_grab_thrown
 effect 95 live modifier_roshan_moving
 effect 96 live modifier_knockback
 effect 97 live modifier_roshan_moving_knockback_timeout
+effect 98 live modifier_ghost_state

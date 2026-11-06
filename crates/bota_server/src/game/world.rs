@@ -794,6 +794,21 @@ impl World {
     /// Stats worked out afresh, pools following their maxima, and the
     /// structures guarded.
     pub(crate) fn refresh_stats(&mut self) {
+        self.derive_stats_of(None);
+        self.guard_structures();
+        self.guard_cheated_heroes();
+        self.wear_backdoor();
+        self.wear_capture_guards();
+    }
+
+    /// One entity's stats worked out afresh within a tick, for what changes them before the
+    /// tick's blows are felt (Ghost Form put on by an item's use).
+    pub(crate) fn refresh_stats_of(&mut self, entity: Entity) {
+        self.derive_stats_of(Some(entity));
+    }
+
+    /// Every entity's stats, or `only` one's, worked out afresh.
+    fn derive_stats_of(&mut self, only: Option<Entity>) {
         let night = self.time_of_day().night;
         derive_stats(StatsCx {
             lairs: &self.lairs,
@@ -811,11 +826,8 @@ impl World {
             health: &mut self.health,
             mana: &mut self.mana,
             night,
+            only,
         });
-        self.guard_structures();
-        self.guard_cheated_heroes();
-        self.wear_backdoor();
-        self.wear_capture_guards();
     }
 
     /// The tick of the game clock: the tick, moved on by `-startgame`. Every
@@ -933,6 +945,7 @@ impl World {
             team: &mut self.team,
             visibility: &mut self.visibility,
             health: &self.health,
+            stats: &self.stats,
             kind: &self.kind,
             ground: &self.ground,
             hits: &mut self.hits,

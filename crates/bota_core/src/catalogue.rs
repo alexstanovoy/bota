@@ -340,6 +340,9 @@ impl Fnv {
                 .int(grenade.slow_pct as i64)
                 .u64(grenade.debuff_ticks as u64),
             UseSpec::Eat { health, mana } => self.u64(14).int(health as i64).int(mana as i64),
+            UseSpec::Ethereal { ticks, magic_pct } => {
+                self.u64(15).u64(ticks as u64).int(magic_pct as i64)
+            }
             UseSpec::Bottle(drink) => self
                 .u64(13)
                 .int(drink.health as i64)

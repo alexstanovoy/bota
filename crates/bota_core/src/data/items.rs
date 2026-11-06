@@ -3063,3 +3063,37 @@ pub(crate) const ITEM_INFUSED_RAINDROP: ItemData = ItemData {
         ("initial_charges", &[Dec::of("6")]),
     ],
 };
+
+pub(crate) const ITEM_GHOST: ItemData = ItemData {
+    id: ItemId(92),
+    key: "item_ghost",
+    retired: false,
+    cost: 1500,
+    behavior: B::NO_TARGET.and(B::IMMEDIATE),
+    cast_range: 0,
+    cast_point: Ms::secs("0"),
+    channel: Ms::secs("0"),
+    cooldown: Ms::secs("22"),
+    mana: 0,
+    health: 0,
+    charges: 0,
+    stack: 0,
+    stock: None,
+    purchasable: true,
+    secret_shop: false,
+    dispel: Dispel::Basic,
+    immunity: Immunity::Unstated,
+    limits: ItemLimits {
+        droppable: true,
+        sellable: true,
+        killable: true,
+        backpack: true,
+    },
+    cooldown_in_inventory: false,
+    builds: &[],
+    values: &[
+        ("bonus_all_stats", &[Dec::of("5")]),
+        ("duration", &[Dec::of("4")]),
+        ("extra_spell_damage_percent", &[Dec::of("-30")]),
+    ],
+};

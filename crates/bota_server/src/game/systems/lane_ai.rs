@@ -120,7 +120,7 @@ impl World {
         if keeping && self.hostile_unseen(seeker, held) {
             return Some(held);
         }
-        if !self.hostile(seeker, held) {
+        if !self.hostile(seeker, held) || self.attack_immune(held) {
             return self
                 .best_valid_in_range(seeker, acquisition, candidates)
                 .or_else(|| keeping.then_some(held));

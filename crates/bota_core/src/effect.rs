@@ -320,6 +320,7 @@ const EFFECT_ROWS: &[EffectDef] = &[
             "ContactCooldown",
         )
     },
+    fleeting(98, "modifier_ghost_state", "Ethereal"),
 ];
 
 /// How many effect ids the protocol has ever handed out, retired ones

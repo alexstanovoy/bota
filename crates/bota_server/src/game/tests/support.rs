@@ -55,6 +55,7 @@ pub(crate) fn stats() -> Stats {
         phased: false,
         invulnerable: false,
         spell_immune: false,
+        ethereal: false,
         hit_count: None,
         glyph: false,
         vision_grant: None,

@@ -239,6 +239,9 @@ impl ItemId {
     /// Dota's `item_infused_raindrop`: a charge blocks a share of a large
     /// magical blow.
     pub const INFUSED_RAINDROP: ItemId = ItemId(91);
+    /// Dota's `item_ghost`, the Ghost Scepter: its use turns the user
+    /// ethereal.
+    pub const GHOST_SCEPTER: ItemId = ItemId(92);
 }
 
 /// What did something: the ability or the item a unit used, as Dota's combat
@@ -424,6 +427,9 @@ impl EffectId {
     pub const FROST: EffectId = EffectId(80);
     /// Recovery when an Aegis expires or is reclaimed.
     pub const AEGIS_REGENERATION: EffectId = EffectId(81);
+    /// A Ghost Scepter's Ghost Form (`modifier_ghost_state`): ethereal, no
+    /// attack in or out and no physical damage, more magic taken.
+    pub const GHOST_FORM: EffectId = EffectId(98);
 }
 
 /// An index into a unit's ability slots, as listed in

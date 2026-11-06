@@ -9,7 +9,7 @@ use bota_core::{
 use bota_proto::{Attributes, Fixed, ModifierSpec};
 
 use crate::game::{
-    AbilityBook, AppliedModifiers, Def, EntityAllocator, Health, Illusion, Inventory, Level,
+    AbilityBook, AppliedModifiers, Def, Entity, EntityAllocator, Health, Illusion, Inventory, Level,
     MAX_COMBINED_MODIFIER_SCALE, Mana, Modifier, Modifiers, StatBonus, Stats, Table, Upgrades,
     carried_bonus, disabled_in,
 };
@@ -42,6 +42,9 @@ pub struct StatsCx<'a> {
     pub illusion: &'a Table<Illusion>,
     /// Whether it is night, which every unit sees by.
     pub night: bool,
+    /// The one entity to rewrite, for one whose stats change within a tick (an item used that
+    /// turns it ethereal); absent for every entity.
+    pub only: Option<Entity>,
 }
 
 /// Rewrites every entity's [`Stats`] from the kind of unit it is, how far it
@@ -68,8 +71,9 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         mana,
         illusion: illusions,
         night,
+        only,
     } = cx;
-    for entity in entities.iter() {
+    for entity in entities.iter().filter(|&entity| only.is_none_or(|one| one == entity)) {
         let Some(Def(kind)) = def.get(entity) else {
             continue;
         };
@@ -162,6 +166,13 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         };
         add_modifiers(&mut now, &mut sums, working(), wearer);
         sums.pace.change(-sums.laid_slow_pct);
+        // Ethereal form does nothing while its wearer is spell immune (Dota 7.39e: "Ghost Form is
+        // no longer active while the wearer is Debuff Immune"); its cut stacks multiplicatively
+        // with every other.
+        if let Some(pct) = sums.ethereal_pct.filter(|_| !now.spell_immune) {
+            now.ethereal = true;
+            let_more_magic_through(&mut now, pct);
+        }
         now.restoration_bp = rules::NOMINAL_BP * (100 - sums.restoration_cut_pct) / 100;
         if let Some(on_it) = modifiers.get(entity) {
             add_feast(&mut now, &mut sums.pace, on_it, abilities.get(entity));
@@ -360,6 +371,10 @@ struct Sums {
     /// Percent of the pace taken off by the strongest of what attacks laid,
     /// on the same rule; it adds to every other slow.
     laid_slow_pct: i32,
+    /// The magic resistance cut of the strongest ethereal form worn: several do not stack
+    /// (Liquipedia, Ghost Scepter: "the one with higher value takes priority"). Absent for one
+    /// that wears none.
+    ethereal_pct: Option<i32>,
 }
 
 impl Sums {
@@ -371,6 +386,7 @@ impl Sums {
             bonus_damage: 0,
             restoration_cut_pct: 0,
             laid_slow_pct: 0,
+            ethereal_pct: None,
         }
     }
 }
@@ -490,12 +506,9 @@ fn add_modifiers<'a>(
                         .max(laid.restoration_cut_pct.clamp(0, 100));
                 }
             }
-            ModifierKind::MagicBroken { pct } => {
-                let let_through =
-                    i64::from(rules::NOMINAL_BP - now.magic_resist_bp) * i64::from(100 + pct) / 100;
-                now.magic_resist_bp = (i64::from(rules::NOMINAL_BP) - let_through)
-                    .clamp(rules::MIN_MAGIC_RESIST_BP.into(), rules::NOMINAL_BP.into())
-                    as i32;
+            ModifierKind::MagicBroken { pct } => let_more_magic_through(now, pct),
+            ModifierKind::Ethereal { pct } => {
+                sums.ethereal_pct = Some(sums.ethereal_pct.map_or(pct, |had| had.max(pct)));
             }
             ModifierKind::Guarded { armor, .. } => {
                 now.armor += kept(wearer.illusion, Fixed::from_int(armor));
@@ -792,6 +805,7 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32, night: bool) -> Stats {
         phased: false,
         invulnerable: kind.invulnerable,
         spell_immune: kind.spell_immune,
+        ethereal: false,
         hit_count: kind.hit_count,
         glyph: false,
         vision_grant: None,
@@ -815,6 +829,16 @@ fn follow(held: Fixed, was: Fixed, now: Fixed) -> Fixed {
     Fixed {
         raw: kept.clamp(i64::from(Fixed::EPSILON.raw), i64::from(now.raw)) as i32,
     }
+}
+
+/// Lets `pct` percent more of magic damage through a unit's resistance, down to the least
+/// resistance there is.
+fn let_more_magic_through(now: &mut Stats, pct: i32) {
+    let let_through =
+        i64::from(rules::NOMINAL_BP - now.magic_resist_bp) * i64::from(100 + pct) / 100;
+    now.magic_resist_bp = (i64::from(rules::NOMINAL_BP) - let_through)
+        .clamp(rules::MIN_MAGIC_RESIST_BP.into(), rules::NOMINAL_BP.into())
+        as i32;
 }
 
 /// Movement speed as Dota works it out: the flat pace (the unit's own, its

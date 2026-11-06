@@ -242,6 +242,14 @@ pub enum UseSpec {
     },
     /// Throws a Blood Grenade.
     Grenade(Grenade),
+    /// Turns the user ethereal for a while ([`ModifierKind::Ethereal`](crate::ModifierKind::Ethereal)):
+    /// Dota's Ghost Form.
+    Ethereal {
+        /// How long it lasts.
+        ticks: u32,
+        /// Percent added to the share of magic damage the user's resistance lets through.
+        magic_pct: i32,
+    },
     /// Eats a charge: mends the user (or, for an item that may be aimed at
     /// one, an allied hero in reach) by this much health and mana at once:
     /// Dota's lotuses, Cheese and Royale with Cheese.

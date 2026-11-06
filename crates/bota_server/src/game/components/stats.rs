@@ -124,6 +124,9 @@ pub struct Stats {
     pub invulnerable: bool,
     /// Whether an enemy's spell passes it by unless the spell pierces it.
     pub spell_immune: bool,
+    /// Whether it is ethereal ([`ModifierKind::Ethereal`](bota_core::ModifierKind::Ethereal)):
+    /// no attack lands on it or leaves it, and physical damage passes it by.
+    pub ethereal: bool,
     /// Its health counted in hits, see [`UnitDef::hit_count`].
     ///
     /// [`UnitDef::hit_count`]: bota_core::UnitDef::hit_count

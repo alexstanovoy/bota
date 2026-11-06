@@ -101,9 +101,18 @@ impl World {
     }
 
     /// Whether an entity is disarmed: it cannot begin a swing. A neutral
-    /// that is takes nothing on, stands still and casts nothing.
+    /// that is takes nothing on, stands still and casts nothing. An ethereal
+    /// one is disarmed as well (Dota's Ghost Form: "unable to attack").
     pub fn disarmed(&self, entity: Entity) -> bool {
         self.controlled(entity, bota_core::Control::Disarm)
+            || self.attack_immune(entity)
+    }
+
+    /// Whether no attack reaches an entity: an ethereal one (Dota's Ghost
+    /// Form: "cannot attack or be attacked"), whether the attack is an
+    /// enemy's or an ally's.
+    pub fn attack_immune(&self, entity: Entity) -> bool {
+        self.stats.get(entity).is_some_and(|stats| stats.ethereal)
     }
 
     /// Whether an entity is broken: its own passives do nothing. What the

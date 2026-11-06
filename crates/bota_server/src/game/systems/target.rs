@@ -182,9 +182,12 @@ impl World {
             .or_else(|| demoted.filter(|&last| self.reachable(seeker, range, last)))
     }
 
-    /// Whether an entity is a candidate for another at all.
+    /// Whether an entity is a candidate for another's attacks at all: none
+    /// that no attack reaches.
     pub fn reachable(&self, seeker: Entity, range: Fixed, other: Entity) -> bool {
-        self.within_reach(seeker, other, range) && self.hostile(seeker, other)
+        self.within_reach(seeker, other, range)
+            && self.hostile(seeker, other)
+            && !self.attack_immune(other)
     }
 
     /// Whether two entities stand within `reach` of each other, edge to edge.
@@ -231,11 +234,11 @@ impl World {
 
     /// Whether one entity may be attacked by another on an order.
     ///
-    /// Only what is alive and seen by the attacker's side. An enemy may unless
-    /// it is invulnerable; one of your own only once it is
-    /// [`deniable`](World::deniable).
+    /// Only what is alive, seen by the attacker's side and open to attacks.
+    /// An enemy may unless it is invulnerable; one of your own only once it
+    /// is [`deniable`](World::deniable).
     pub fn may_attack_on_order(&self, attacker: Entity, on: Entity) -> bool {
-        if !self.alive(on) || !self.can_see_of(attacker, on) {
+        if !self.alive(on) || !self.can_see_of(attacker, on) || self.attack_immune(on) {
             return false;
         }
         let (Some(mine), Some(theirs)) =

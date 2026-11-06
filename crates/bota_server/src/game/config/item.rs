@@ -1,10 +1,10 @@
 //! What using an item does to a world: each [`UseSpec`] of the catalog
 //! ([`bota_core::ITEMS`]) turned into the change it makes.
 
-use bota_core::{AllyUse, ItemDef, Mend, UseSpec, item_def};
+use bota_core::{AllyUse, ItemDef, Mend, ModifierKind, UseSpec, item_def};
 use bota_proto::{DispenserView, Inflictor, ItemId, ItemView, StoredRune, Target, Team, Vec2};
 
-use crate::game::{Entity, Event, EventVisibility, Inventory, ItemStack, World, wire_id};
+use crate::game::{Entity, Event, EventVisibility, Inventory, ItemStack, Modifier, World, wire_id};
 
 impl World {
     /// Uses an item at the moment its cast point lands, and tells it.
@@ -131,6 +131,17 @@ impl World {
                 self.replenish_mana(user, target, mana, (with, def.cast_range))
             }
             UseSpec::Grenade(_) => self.throw_grenade(user, target, item),
+            UseSpec::Ethereal { ticks, magic_pct } => {
+                let ghost = ModifierKind::Ethereal { pct: magic_pct };
+                self.put_modifier(
+                    user,
+                    Modifier::new(ghost, Some(user), Some(with), Some(ticks)),
+                );
+                // In force from the use on: the tick's blows and missiles, felt after the use,
+                // already meet a ghost.
+                self.refresh_stats_of(user);
+                true
+            }
             UseSpec::Bottle(drink) => self.use_bottle(user, slot, target, drink),
             UseSpec::Eat { health, mana } => {
                 // On an ally the item's own amounts land at the share its ally use names.

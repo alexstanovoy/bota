@@ -162,6 +162,7 @@ impl StateHash for ModifierKind {
             } => hash_tagged(fnv, 13, &[hp_per_second, magic_resist_pct]),
             ModifierKind::ArmorBroken { armor } => hash_tagged(fnv, 10, &[armor.raw]),
             ModifierKind::MagicBroken { pct } => hash_tagged(fnv, 16, &[pct]),
+            ModifierKind::Ethereal { pct } => hash_tagged(fnv, 51, &[pct]),
             ModifierKind::Laid { item, since } => {
                 hash_tagged(fnv, 50, &[i32::from(item.0), since as i32])
             }

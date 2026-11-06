@@ -143,7 +143,10 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
                 .active()
                 .any(|held| held.kind == ModifierKind::Shielded)
         });
-        if !standing || stat.invulnerable || shielded {
+        // Physical damage passes an ethereal unit by (Dota's Ghost Form: "immune to physical
+        // damage").
+        let passes_by = stat.ethereal && blow.kind == DamageKind::Physical;
+        if !standing || stat.invulnerable || shielded || passes_by {
             continue;
         }
         if let Some(side) = blow.blockable_source_team

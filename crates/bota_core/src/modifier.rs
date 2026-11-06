@@ -298,6 +298,14 @@ pub enum ModifierKind {
         /// beats fall on every whole second since.
         since: u32,
     },
+    /// Ethereal form (Dota's Ghost Form, `modifier_ghost_state`): attacked by nothing and
+    /// attacking nothing, no physical damage taken, and magic resistance letting through `pct`
+    /// percent more. While its wearer is spell immune it does nothing (Dota 7.39e: "Ghost Form
+    /// is no longer active while the wearer is Debuff Immune").
+    Ethereal {
+        /// Percent added to the share of magic damage let through.
+        pct: i32,
+    },
     /// What a neutral's spell left, at the level it was cast at. `amount`
     /// is the spell's own count: the blows a Steal Weapon has counted, the
     /// magical damage a bubble has left to soak.
@@ -409,6 +417,7 @@ impl ModifierKind {
                 Some(laid) => laid.effect,
                 None => panic!("an item that lays nothing laid a modifier"),
             },
+            ModifierKind::Ethereal { .. } => EffectId::GHOST_FORM,
         }
     }
 

@@ -6,7 +6,7 @@ use bota_core::{facing_towards, kind_def, move_towards, per_tick};
 use bota_proto::{DamageKind, Fixed, Inflictor, Team, UnitKind, Vec2};
 
 use crate::game::{
-    Entity, EntityAllocator, Ground, Health, Hit, HitEffect, Projectile, Table, Transform,
+    Entity, EntityAllocator, Ground, Health, Hit, HitEffect, Projectile, Stats, Table, Transform,
     Visibility,
 };
 
@@ -22,6 +22,8 @@ pub struct MissileCx<'a> {
     pub visibility: &'a mut Table<Visibility>,
     /// Health, for telling whether a missile still has anybody to reach.
     pub health: &'a Table<Health>,
+    /// Whether a target is ethereal: an attack's missile in flight at one is given up.
+    pub stats: &'a Table<Stats>,
     /// What each target is: a structure never evades an uphill attack.
     pub kind: &'a Table<UnitKind>,
     /// Elevation under a missile's source and target when it arrives.
@@ -43,6 +45,7 @@ pub fn missile_system(cx: MissileCx<'_>) {
         team,
         visibility,
         health,
+        stats,
         kind,
         ground,
         hits,
@@ -51,9 +54,14 @@ pub fn missile_system(cx: MissileCx<'_>) {
         let Some(shot) = projectile.get(missile).cloned() else {
             continue;
         };
+        // An attack's missile does not reach an ethereal target, however far it has flown (Dota
+        // 6.87: "Ethereal now blocks in-flight attack projectiles fully").
+        let attack_blocked =
+            shot.striker.is_some() && stats.get(shot.target).is_some_and(|stats| stats.ethereal);
         let standing = health
             .get(shot.target)
-            .is_some_and(|health| health.hp > Fixed::ZERO);
+            .is_some_and(|health| health.hp > Fixed::ZERO)
+            && !attack_blocked;
         let to = transform.get(shot.target).map(|t| t.pos);
         let (true, Some(to)) = (standing, to) else {
             give_up(missile, entities, projectile, transform, team, visibility);

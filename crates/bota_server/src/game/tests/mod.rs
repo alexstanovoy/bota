@@ -24,6 +24,7 @@ mod feast;
 mod fiend;
 mod fillers;
 mod forest_paths;
+mod ghost;
 mod glyph;
 mod grenade;
 mod handles;

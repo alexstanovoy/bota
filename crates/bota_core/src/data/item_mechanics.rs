@@ -1068,6 +1068,24 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         }),
         ..from(&ITEM_INFUSED_RAINDROP)
     },
+    // Ghost Scepter: its attributes, and Ghost Form, ethereal for a while at once and breaking no
+    // order (`DOTA_ABILITY_BEHAVIOR_IMMEDIATE`). The ethereal cooldown it shares with Ethereal
+    // Blade and Crella's Crozier (`AbilitySharedCooldown`) waits on neither: bota sells neither.
+    ItemDef {
+        name: "Ghost Scepter",
+        carried: Carried {
+            attributes: Attributes::all(int(&ITEM_GHOST, "bonus_all_stats")),
+            ..NOTHING
+        },
+        aim: Some(Aim::Own),
+        immediate: true,
+        effect: UseSpec::Ethereal {
+            ticks: ticks(&ITEM_GHOST, "duration"),
+            // "30% more vulnerable to magic damage", written as -30.
+            magic_pct: -int(&ITEM_GHOST, "extra_spell_damage_percent"),
+        },
+        ..from(&ITEM_GHOST)
+    },
 ];
 
 /// One kind of lotus, as its script gives it.
@@ -1131,6 +1149,13 @@ const _: () = {
             % rules::TICKS_PER_SECOND as i32
             == 0
     );
+};
+
+// Ghost Form is taken off by a basic dispel, as `SpellDispellableType` says.
+const _: () = {
+    assert!(matches!(ITEM_GHOST.dispel, Dispel::Basic));
+    assert!(crate::EFFECTS[EffectId::GHOST_FORM.0 as usize].dispellable);
+    assert!(ITEM_GHOST.first("extra_spell_damage_percent").0 < 0);
 };
 
 // Infused Raindrops is bought with as many charges as its blocks: the script says both.

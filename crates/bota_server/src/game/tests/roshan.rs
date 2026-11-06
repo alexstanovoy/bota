@@ -835,6 +835,7 @@ fn a_spell_bolt_arrives_as_a_spell_instead_of_an_attack() {
             team: &mut world.team,
             visibility: &mut world.visibility,
             health: &world.health,
+            stats: &world.stats,
             kind: &world.kind,
             ground: &world.ground,
             hits: &mut world.hits,
