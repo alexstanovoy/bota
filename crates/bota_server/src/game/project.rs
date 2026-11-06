@@ -57,6 +57,23 @@ impl World {
                 runes.extend(self.project_rune(viewer, entity));
             }
         }
+        if keep_within_bounds(viewer, &mut units) {
+            let ids: Vec<bota_proto::EntityId> = units.iter().map(|unit| unit.id).collect();
+            let carried = |id| ids.binary_search(&id).is_ok();
+            aggro.retain(|entry| {
+                carried(entry.unit)
+                    && entry.target.is_none_or(carried)
+                    && entry.swing.is_none_or(|swing| carried(swing.target))
+            });
+            projectiles
+                .retain(|shot| shot.source.is_none_or(carried) && shot.target.is_none_or(carried));
+            for effect in units.iter_mut().flat_map(|unit| &mut unit.effects) {
+                effect.caster = effect.caster.filter(|caster| carried(*caster));
+            }
+        }
+        projectiles.truncate(bota_proto::limits::MAX_PROJECTILES);
+        loot.truncate(bota_proto::limits::MAX_SNAPSHOT_LOOT);
+        runes.truncate(bota_proto::limits::MAX_SNAPSHOT_RUNES);
         debug_assert!(aggro.iter().all(|entry| {
             let carried = |id| units.binary_search_by_key(&id, |unit| unit.id).is_ok();
             carried(entry.unit)
@@ -599,6 +616,32 @@ fn within_limits(view: &WorldView) -> bool {
                 && unit.effects.len() <= MAX_EFFECTS_PER_UNIT
                 && unit.queue.len() <= MAX_QUEUED_ORDERS
         })
+}
+
+/// Leaves out of `units` (sorted by handle) those past [`MAX_VIEW_UNITS`](bota_proto::limits),
+/// the same ones every time: heroes and couriers are kept first, then buildings, then the
+/// viewer's side's units, then the others, each by handle. Whether any were left out: what named
+/// them must then be left out too. A world grows that crowded only past what a match holds, but
+/// a view past the bounds would be refused by every client, or not encode at all.
+fn keep_within_bounds(viewer: Option<Team>, units: &mut Vec<UnitView>) -> bool {
+    use bota_proto::limits::{MAX_EFFECTS_PER_UNIT, MAX_QUEUED_ORDERS, MAX_VIEW_UNITS};
+    for unit in units.iter_mut() {
+        unit.effects.truncate(MAX_EFFECTS_PER_UNIT);
+        unit.queue.truncate(MAX_QUEUED_ORDERS);
+    }
+    if units.len() <= MAX_VIEW_UNITS {
+        return false;
+    }
+    let rank = |unit: &UnitView| match unit.kind {
+        UnitKind::Hero | UnitKind::Courier => 0,
+        UnitKind::Tower | UnitKind::Ancient | UnitKind::Barracks | UnitKind::Fountain => 1,
+        _ if Some(unit.team) == viewer => 2,
+        _ => 3,
+    };
+    units.sort_by_key(|unit| (rank(unit), unit.id));
+    units.truncate(MAX_VIEW_UNITS);
+    units.sort_by_key(|unit| unit.id);
+    true
 }
 
 fn wear_sheet(illusion: &mut UnitView, hero: UnitView) {

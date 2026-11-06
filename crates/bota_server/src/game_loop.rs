@@ -1536,7 +1536,9 @@ impl Server {
                 continue;
             };
             let at = sight(self.sight_of(watcher.id).1);
-            conn.send_tick(held.frames[at].clone(), held.tick, held.events[at].clone());
+            if let Some(frame) = &held.frames[at] {
+                conn.send_tick(frame.clone(), held.tick, held.events[at].clone());
+            }
             if at == 0 && !held.orders.is_empty() {
                 conn.send(&ServerMsg::Orders {
                     tick: held.tick,
@@ -1578,7 +1580,9 @@ impl Server {
             let frame = snapshot_frame(side_view(world, line, handles, team));
             (team, frame, side_events(events, handles, team, world.tick))
         });
-        replay.record_snapshot(&full_view, &full_frame);
+        if let Some(frame) = &full_frame {
+            replay.record_snapshot(&full_view, frame);
+        }
         // A connection that has not said Hello is told nothing, a referee no
         // tick, and a late spectator only what the delayed feed shows it.
         let watching = |id: PlayerId| {
@@ -1592,9 +1596,12 @@ impl Server {
             let (eyes, viewing) = self.sight_of(conn.id);
             // Seats never sit on the jungle's side.
             let side = sides.iter().find(|(team, ..)| Some(*team) == viewing);
-            match side {
-                Some((_, frame, told)) => conn.send_tick(frame.clone(), world.tick, told.clone()),
-                None => conn.send_tick(full_frame.clone(), world.tick, full_events.clone()),
+            let (frame, told) = match side {
+                Some((_, frame, told)) => (frame, told),
+                None => (&full_frame, &full_events),
+            };
+            if let Some(frame) = frame {
+                conn.send_tick(frame.clone(), world.tick, told.clone());
             }
             if let (Some(eyes), Some(team)) = (eyes.filter(|_| locked(conn.id)), viewing) {
                 let told = seat_orders(taken, eyes, (handles, team), world.tick);
@@ -1860,19 +1867,37 @@ fn disguise_level_ups(
     (told, runs)
 }
 
-/// A snapshot as a frame ready to queue, and the view back for whoever reads it too.
-fn snapshot_frame_and_view(view: WorldView) -> (Vec<u8>, WorldView) {
+/// A snapshot as a frame ready to queue, and the view back for whoever reads it too; no frame
+/// when the view does not encode (see [`snapshot_frame`]).
+fn snapshot_frame_and_view(view: WorldView) -> (Option<Vec<u8>>, WorldView) {
     let message = ServerMsg::Snapshot { view };
-    let frame = encode_frame_to_vec(&message).expect("a view always encodes");
+    let frame = encoded_snapshot(&message);
     let ServerMsg::Snapshot { view } = message else {
         unreachable!("a snapshot was built");
     };
     (frame, view)
 }
 
-/// A snapshot as a frame ready to queue.
-fn snapshot_frame(view: WorldView) -> Vec<u8> {
-    encode_frame_to_vec(&ServerMsg::Snapshot { view }).expect("a view always encodes")
+/// A snapshot as a frame ready to queue. None, told on stderr as an error, when the view does
+/// not encode: within every bound of the protocol, a view may still be larger than a frame.
+/// The tick then goes out without it, rather than the match ending.
+fn snapshot_frame(view: WorldView) -> Option<Vec<u8>> {
+    encoded_snapshot(&ServerMsg::Snapshot { view })
+}
+
+fn encoded_snapshot(message: &ServerMsg) -> Option<Vec<u8>> {
+    let ServerMsg::Snapshot { view } = message else {
+        unreachable!("a snapshot is encoded");
+    };
+    encode_frame_to_vec(message)
+        .inspect_err(|error| {
+            let viewer = view.viewer.map_or("everything".to_owned(), |team| format!("{team:?}"));
+            eprintln!(
+                "bota_server: ERROR: the snapshot of tick {} for {viewer} does not encode ({error}); it is not sent",
+                view.tick
+            );
+        })
+        .ok()
 }
 
 /// The kinds of the events a side may see. No side sees all of them; a
@@ -1933,7 +1958,49 @@ fn told_as(kind: &mut EventKind, event: &Event, mine: Team) {
 
 #[cfg(test)]
 mod tests {
-    use super::draw_secrets;
+    use bota_proto::limits::{MAX_EFFECTS_PER_UNIT, MAX_PAYLOAD_LEN, MAX_VIEW_UNITS};
+    use bota_proto::{EffectId, EffectView, EntityId, ServerMsg, payload_len};
+
+    use super::{draw_secrets, snapshot_frame};
+    use crate::game::tests::support::match_hero;
+
+    /// A view within every bound of the protocol that still does not fit a frame: the server
+    /// leaves its snapshot out of the tick rather than stopping.
+    #[test]
+    fn a_view_too_large_to_encode_is_not_sent_and_the_server_goes_on() {
+        let (world, _) = match_hero();
+        let mut view = world.view_full();
+        let mut unit = view.units[0].clone();
+        unit.effects = vec![
+            EffectView {
+                id: EffectId::SHADOWRAZE,
+                ticks_left: Some(u32::MAX),
+                stacks: Some(u32::MAX),
+                caster: Some(EntityId {
+                    idx: u32::MAX,
+                    generation: u32::MAX,
+                }),
+                inflictor: None,
+                ticks_total: Some(u32::MAX),
+            };
+            MAX_EFFECTS_PER_UNIT
+        ];
+        view.units = (0..MAX_VIEW_UNITS as u32)
+            .map(|idx| {
+                let mut unit = unit.clone();
+                unit.id = EntityId { idx, generation: 1 };
+                unit
+            })
+            .collect();
+        let message = ServerMsg::Snapshot { view };
+        assert!(payload_len(&message).expect("a size") > MAX_PAYLOAD_LEN);
+        let ServerMsg::Snapshot { view } = message else {
+            unreachable!("a snapshot was built");
+        };
+        let sent = std::panic::catch_unwind(move || snapshot_frame(view));
+        assert!(sent.is_ok(), "a view too large to encode stops the server");
+        assert_eq!(sent.ok().flatten(), None, "a frame past the bound is sent");
+    }
 
     #[test]
     fn an_unseeded_match_draws_a_fresh_key_and_keeps_the_label_given() {

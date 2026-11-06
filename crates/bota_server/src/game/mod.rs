@@ -40,4 +40,4 @@ pub use vision::*;
 pub use world::*;
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

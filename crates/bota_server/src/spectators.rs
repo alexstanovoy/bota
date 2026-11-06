@@ -75,7 +75,8 @@ impl fmt::Display for Spectators {
 pub struct HeldTick {
     pub tick: u32,
     /// The snapshot frames: everything, Radiant's and Dire's (see [`sight`]).
-    pub frames: [Vec<u8>; 3],
+    /// None for one that did not encode.
+    pub frames: [Option<Vec<u8>>; 3],
     /// The events each of the three may know.
     pub events: [Vec<EventKind>; 3],
     /// Every order taken on the tick, told with the whole map.
