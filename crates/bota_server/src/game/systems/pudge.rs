@@ -167,8 +167,10 @@ impl World {
         true
     }
 
-    /// Whether a dismember still has something to hold: its mark stands and
-    /// is within reach. The hold shown on it follows it.
+    /// Whether a dismember still has something to hold: its mark stands, is
+    /// within reach, still wears this dismember's hold and has not turned
+    /// invulnerable (a Glyph makes a creep so). The hold shown on it follows
+    /// it.
     pub fn dismember_holds(&mut self, caster: Entity, target: Target) -> bool {
         let Some(on) = self.dismember_mark(target) else {
             return false;
@@ -178,7 +180,13 @@ impl World {
                 matches!(m.kind, ModifierKind::Dismembered { .. }) && m.source == Some(caster)
             })
         });
+        // What turns invulnerable (a Glyph makes a creep so) breaks the hold.
+        let untouchable = self
+            .stats
+            .get(on)
+            .is_some_and(|stats| stats.invulnerable || stats.glyph);
         if !held
+            || untouchable
             || !self.alive(on)
             || !self.within_reach(caster, on, rules::units(rules::DISMEMBER_RANGE))
         {

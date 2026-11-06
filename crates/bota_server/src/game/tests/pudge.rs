@@ -1274,6 +1274,45 @@ fn a_dismember_heals_by_each_bites_full_damage_not_by_what_resistance_leaves() {
     );
 }
 
+/// A dismember ends the moment what it eats turns invulnerable, a creep its side's Glyph
+/// fortifies (Liquipedia, *Pudge*: invulnerability "interrupts the channeling").
+#[test]
+fn a_dismember_lets_go_of_a_creep_its_glyph_fortifies() {
+    let (mut world, pudge, creep) = pudge_and_a_mark(150);
+    set_level(&mut world, pudge, 3, 1);
+    world.fill_pools(pudge);
+    dismember(&mut world, creep);
+    assert!(world.is_channelling(pudge), "it takes hold");
+    world.put_modifier(
+        creep,
+        Modifier::new(ModifierKind::Fortified, None, None, Some(150)),
+    );
+    run(&mut world, 2);
+    assert!(
+        !world.is_channelling(pudge),
+        "and lets go once it is fortified"
+    );
+}
+
+/// A dismember ends when its hold is taken off what it eats (Valve 2019-08-08: "Fixed
+/// Dismember continuing to channel when the target had broken out of the ability").
+#[test]
+fn a_dismember_ends_when_its_hold_is_taken_off() {
+    let (mut world, pudge, mark) = pudge_and_a_mark(150);
+    set_level(&mut world, pudge, 3, 1);
+    world.fill_pools(pudge);
+    dismember(&mut world, mark);
+    assert!(world.is_channelling(pudge), "it takes hold");
+    let any = ModifierKind::Dismembered {
+        level: 0,
+        bites: 0,
+        channel_ms: 0,
+    };
+    world.take_modifier(mark, any, Some(pudge));
+    run(&mut world, 2);
+    assert!(!world.is_channelling(pudge), "and the channel ends with it");
+}
+
 #[test]
 fn a_meat_shield_takes_its_block_off_every_blow_for_four_seconds() {
     let (mut world, pudge, _mark) = pudge_and_a_mark(2000);
