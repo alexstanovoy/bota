@@ -241,3 +241,10 @@ What the main suites cover:
   `--features websocket` they also run over `ws://` and `wss://` (test certificate in `bota_server/tests/tls`).
 
 The `phase-profile` feature of `bota_server` times the regions of a tick.
+
+## Matchmaking integration
+
+The game-specific rulesets and local launch guide live beside `bota_radovid`:
+[matchmaking.md](crates/bota_radovid/matchmaking.md) and
+[radovid.example.toml](crates/bota_radovid/radovid.example.toml). Protocol 14 requires rebuilt control clients;
+this is independent of the game's own wire fingerprint.

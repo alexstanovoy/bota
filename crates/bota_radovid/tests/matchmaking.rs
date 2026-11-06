@@ -233,3 +233,14 @@ fn a_block_another_test_process_has_taken_is_left_to_it() {
     let (first, _ours) = common::free_ports_from(block);
     assert_ne!(first, common::first_port(block));
 }
+
+#[test]
+fn the_shipped_matchmaking_rulesets_fit_lobbies_and_bound_practice() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("radovid.example.toml");
+    let config = radovid::config::Config::load(&path).expect("shipped matchmaking example");
+    assert_eq!(config.lobby_teams, [5, 5]);
+    assert_eq!(config.rulesets.iter().map(|rules| rules.id.as_str()).collect::<Vec<_>>(), ["full", "solo_mid", "demo"]);
+    let practice = config.rulesets.iter().find(|rules| rules.id == "demo").expect("practice");
+    assert!(practice.instant_solo);
+    assert_eq!(practice.max_duration_secs, 7200);
+}
