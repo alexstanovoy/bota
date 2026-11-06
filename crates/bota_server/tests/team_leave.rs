@@ -5,8 +5,7 @@
 //! the leaver's client, decides when the match ends.
 
 use std::net::TcpListener;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread;
 use std::time::Duration;
 
@@ -65,10 +64,13 @@ fn opts(reserved: Vec<ReservedSeat>) -> ServerOpts {
     }
 }
 
-/// A link that leaves the match for good once it has acknowledged `leave_at`.
+/// A link that leaves the match for good once it has acknowledged `leave_at`, and `go` has said
+/// to: a seat that is still empty when its teammate's leave is heard does not count as held by
+/// anyone, which is a different scenario from the one under test.
 struct Leaving {
     link: Link,
     leave_at: Option<u32>,
+    go: Option<Receiver<()>>,
 }
 
 impl Transport for Leaving {
@@ -82,6 +84,10 @@ impl Transport for Leaving {
             && *tick >= at
         {
             self.leave_at = None;
+            if let Some(go) = self.go.take() {
+                go.recv_timeout(HANG_GUARD)
+                    .expect("the teammate's seat never came back");
+            }
             self.link.send(&ClientMsg::LeaveGame)?;
         }
         Ok(())
@@ -104,6 +110,7 @@ fn player(
     key: u8,
     name: &'static str,
     leave_at: Option<u32>,
+    go: Option<Receiver<()>>,
 ) -> thread::JoinHandle<(Team, u32)> {
     thread::spawn(move || {
         let mut link = Link::connect(&address, Duration::from_secs(60)).expect("connected");
@@ -114,10 +121,39 @@ fn player(
             Some(SeatKey([key; 32])),
         )
         .expect("a seat");
-        let mut leaving = Leaving { link, leave_at };
+        let mut leaving = Leaving { link, leave_at, go };
         let outcome = play(&mut leaving, seated, &mut (), |_| Vec::new()).expect("played");
         (outcome.winner, outcome.ticks)
     })
+}
+
+/// The friend: drops its connection at tick 30, then takes its seat back with its key, tells
+/// `back` and plays to the end.
+fn friend_dropping_then_back(address: &str, back: &Sender<()>) -> (Team, u32) {
+    let key = Some(SeatKey([2; 32]));
+    let mut first = Link::connect(address, Duration::from_secs(60)).expect("connected");
+    let seated = join(&mut first, "friend", HeroId::SHADOW_FIEND, key).expect("a seat");
+    let mut dropping = Dropping {
+        link: first,
+        drop_at: 30,
+    };
+    // Ends when the link drops itself: the connection goes with it.
+    let _ = play(&mut dropping, seated, &mut (), |_| Vec::new());
+    drop(dropping);
+    let started = std::time::Instant::now();
+    loop {
+        assert!(
+            started.elapsed() < HANG_GUARD,
+            "the friend's seat never came back"
+        );
+        let mut link = Link::connect(address, Duration::from_secs(60)).expect("connected");
+        if let Ok(seated) = join(&mut link, "friend", HeroId::SHADOW_FIEND, key) {
+            back.send(()).expect("the host waits for the friend");
+            let outcome = play(&mut link, seated, &mut (), |_| Vec::new()).expect("played");
+            return (outcome.winner, outcome.ticks);
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
 }
 
 #[test]
@@ -130,51 +166,19 @@ fn a_match_runs_on_for_a_teammate_after_a_seat_leaves_for_good() {
         seat(3, "enemy", Team::Dire),
     ];
     let server = thread::spawn(move || run(listener, opts(reserved)));
-    // The friend's seat is dropped once taken, then taken back with its key.
-    let back = Arc::new(AtomicU32::new(0));
-    let host = player(address.clone(), 1, "host", Some(60));
-    let enemy = player(address.clone(), 3, "enemy", Some(240));
+    // The friend's connection drops once the match is on, and its seat is taken back with the key
+    // before the host leaves: a drop in the lobby, or a leave heard while the seat is empty, are
+    // other scenarios.
+    let (back, host_may_leave) = channel();
+    let host = player(address.clone(), 1, "host", Some(60), Some(host_may_leave));
+    let enemy = player(address.clone(), 3, "enemy", Some(240), None);
     let friend = {
-        let (address, back) = (address.clone(), Arc::clone(&back));
-        thread::spawn(move || {
-            let mut first = Link::connect(&address, Duration::from_secs(60)).expect("connected");
-            join(
-                &mut first,
-                "friend",
-                HeroId::SHADOW_FIEND,
-                Some(SeatKey([2; 32])),
-            )
-            .expect("a seat");
-            drop(first);
-            let started = std::time::Instant::now();
-            loop {
-                assert!(
-                    started.elapsed() < HANG_GUARD,
-                    "the friend's seat never came back"
-                );
-                let mut link = Link::connect(&address, Duration::from_secs(60)).expect("connected");
-                if let Ok(seated) = join(
-                    &mut link,
-                    "friend",
-                    HeroId::SHADOW_FIEND,
-                    Some(SeatKey([2; 32])),
-                ) {
-                    back.store(1, Ordering::SeqCst);
-                    let outcome = play(&mut link, seated, &mut (), |_| Vec::new()).expect("played");
-                    return (outcome.winner, outcome.ticks);
-                }
-                thread::sleep(Duration::from_millis(100));
-            }
-        })
+        let address = address.clone();
+        thread::spawn(move || friend_dropping_then_back(&address, &back))
     };
     host.join().expect("the host played");
     let (friend_won, friend_ticks) = friend.join().expect("the friend played");
     let (enemy_won, _) = enemy.join().expect("the enemy played");
-    assert_eq!(
-        back.load(Ordering::SeqCst),
-        1,
-        "the friend took its seat again"
-    );
     assert!(
         friend_ticks > 240,
         "the match ran on after the host left: the friend saw tick {friend_ticks}"
