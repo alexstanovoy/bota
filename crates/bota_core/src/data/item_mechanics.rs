@@ -921,6 +921,23 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
         },
         ..from(&ITEM_VOODOO_MASK)
     },
+    // Faerie Fire: eaten at once by its holder alone (no target), for health; its damage while
+    // carried.
+    ItemDef {
+        name: "Faerie Fire",
+        carried: Carried {
+            damage: int(&ITEM_FAERIE_FIRE, "bonus_damage"),
+            ..NOTHING
+        },
+        aim: Some(Aim::Own),
+        spends: Spends::One,
+        immediate: true,
+        effect: UseSpec::Eat {
+            health: int(&ITEM_FAERIE_FIRE, "hp_restore"),
+            mana: 0,
+        },
+        ..from(&ITEM_FAERIE_FIRE)
+    },
 ];
 
 /// One kind of lotus, as its script gives it.

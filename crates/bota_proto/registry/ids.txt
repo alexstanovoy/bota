@@ -181,6 +181,7 @@ item 80 live item_shawl
 item 81 live item_cloak
 item 82 live item_lifesteal
 item 83 live item_voodoo_mask
+item 84 live item_faerie_fire
 
 effect 0 retired bota_haste
 effect 1 live modifier_flask_healing

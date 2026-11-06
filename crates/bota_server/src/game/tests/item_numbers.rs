@@ -599,3 +599,45 @@ fn a_voodoo_mask_heals_fifteen_percent_of_a_raze_on_a_hero_and_a_fifth_of_that_o
         "{healed} without a mask"
     );
 }
+
+/// A Faerie Fire bought through the shop adds its 2 damage while carried, and used, mends 85
+/// health at once and is gone (`item_faerie_fire`: `bonus_damage` 2, `hp_restore` 85).
+#[test]
+fn a_faerie_fire_adds_two_damage_and_eaten_mends_eighty_five_at_once() {
+    let bare = stats_after_buying(&[]);
+    let (mut world, hero) = out_of_fountain_after_buying(&[ItemId::FAERIE_FIRE]);
+    assert_eq!(
+        world.stats.get(hero).expect("derived").damage,
+        bare.damage + 2
+    );
+    world.health.get_mut(hero).expect("alive").hp = Fixed::from_int(200);
+    let regen = world.stats.get(hero).expect("derived").hp_regen;
+    let events = seat_order(
+        &mut world,
+        Order::Use {
+            slot: ItemSlot(0),
+            target: Target::None,
+        },
+    );
+    assert!(
+        events.iter().any(|event| matches!(
+            event.kind(),
+            EventKind::ItemUsed {
+                item: ItemId::FAERIE_FIRE,
+                ..
+            }
+        )),
+        "told as used"
+    );
+    assert_eq!(
+        world.health.get(hero).expect("alive").hp,
+        Fixed::from_int(285) + regen
+    );
+    assert_eq!(slot_of(&world, hero, 0), None, "and gone");
+    world.step();
+    assert_eq!(
+        world.stats.get(hero).expect("derived").damage,
+        bare.damage,
+        "with its damage"
+    );
+}

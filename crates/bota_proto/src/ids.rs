@@ -219,6 +219,8 @@ impl ItemId {
     pub const MORBID_MASK: ItemId = ItemId(82);
     /// Dota's `item_voodoo_mask`: spell lifesteal.
     pub const VOODOO_MASK: ItemId = ItemId(83);
+    /// Dota's `item_faerie_fire`: eaten at once for health; damage while carried.
+    pub const FAERIE_FIRE: ItemId = ItemId(84);
 }
 
 /// What did something: the ability or the item a unit used, as Dota's combat

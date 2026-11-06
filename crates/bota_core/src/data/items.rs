@@ -2012,3 +2012,27 @@ pub(crate) const ITEM_VOODOO_MASK: ItemData = ItemData {
     builds: &[],
     values: &[("spell_lifesteal", &[Dec::of("15")])],
 };
+
+pub(crate) const ITEM_FAERIE_FIRE: ItemData = ItemData {
+    id: ItemId(84),
+    key: "item_faerie_fire",
+    retired: false,
+    cost: 65,
+    behavior: B::IMMEDIATE.and(B::NO_TARGET),
+    cast_range: 0,
+    cast_point: Ms::secs("0"),
+    channel: Ms::secs("0"),
+    cooldown: Ms::secs("5"),
+    mana: 0,
+    health: 0,
+    charges: 1,
+    stack: 0,
+    stock: None,
+    purchasable: true,
+    secret_shop: false,
+    builds: &[],
+    values: &[
+        ("bonus_damage", &[Dec::of("2")]),
+        ("hp_restore", &[Dec::of("85")]),
+    ],
+};
