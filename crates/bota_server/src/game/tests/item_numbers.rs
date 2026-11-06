@@ -1,7 +1,10 @@
 //! The catalog at Dota 7.41f's numbers (`scripts/npc/items.txt`, client
-//! 6957): what the shop charges, what an item carries, and how it builds.
+//! 6972): what the shop charges, what an item carries, and how it builds.
 
-use bota_core::{ModifierKind, item_def, rules};
+use bota_core::{
+    ModifierKind, agility_armor, agility_attack_speed, attribute_regen,
+    intelligence_magic_resist_bp, item_def, primary_damage, rules,
+};
 
 use crate::game::{Entity, Stats, World, wire_id};
 use bota_proto::{
@@ -306,4 +309,121 @@ fn a_healing_salve_mends_thirty_a_second_for_thirteen_seconds() {
         (gained - own).to_int().abs_diff(390) <= 2,
         "390 mended: {gained} with {own} of its own"
     );
+}
+
+/// The hero's stats walked out of the fountain past its lingering mending, after its seat
+/// bought `item` (none: bought nothing) through the shop.
+fn out_of_fountain_after_buying(item: Option<ItemId>) -> Stats {
+    let (mut world, hero) = a_hero_with_gold(10_000);
+    match item {
+        Some(item) => {
+            let events = seat_order(&mut world, Order::Buy { item });
+            assert!(
+                events.iter().any(|event| matches!(
+                    event.kind(),
+                    EventKind::ItemBought { item: bought, .. } if bought == item
+                )),
+                "{item:?} is sold"
+            );
+            assert_eq!(slot_of(&world, hero, 0).map(|held| held.id), Some(item));
+        }
+        None => {
+            world.step();
+        }
+    }
+    world.transform.get_mut(hero).expect("standing").pos = Vec2::from_ints(9000, 9216);
+    run(&mut world, rules::FOUNTAIN_HEAL_LINGER_TICKS + 1);
+    *world.stats.get(hero).expect("derived")
+}
+
+/// The stat items of the shop whose values say something else than a bare stat: their tests
+/// are their own.
+const STAT_ITEMS_TESTED_APART: [ItemId; 5] = [
+    ItemId::BOOTS,
+    ItemId::QUARTERSTAFF,
+    ItemId::TALISMAN_OF_EVASION,
+    ItemId::JAVELIN,
+    ItemId::WIND_LACE,
+];
+
+/// Every basic item the shop sells that does nothing but carry stats, bought through the seat:
+/// the buyer gains what the item's values in the catalogue say, and nothing else. The values are
+/// the install's (`tools/import_items --check` holds `data/items.rs` to it); what is checked here
+/// is that each lands as the stat its Dota key names, mapped by this test apart from the rows of
+/// `data/item_mechanics.rs`, with what its attributes are worth. A value of such an item this
+/// test does not know fails it, so no value goes unread.
+#[test]
+fn every_stat_item_bought_adds_what_its_script_says_and_nothing_else() {
+    let bare = out_of_fountain_after_buying(None);
+    let per_tick = |per_second: bota_core::Dec| {
+        Fixed::from_ratio(per_second.0, 1000 * rules::TICKS_PER_SECOND as i32)
+    };
+    let mut checked = 0;
+    for (id, def) in bota_core::ITEMS.iter().enumerate() {
+        let item = ItemId(id as u16);
+        let stat_stick = !def.retired
+            && !def.unbuyable
+            && def.components.is_empty()
+            && def.aim.is_none()
+            && !def.values.is_empty();
+        if !stat_stick || STAT_ITEMS_TESTED_APART.contains(&item) {
+            continue;
+        }
+        let got = out_of_fountain_after_buying(Some(item));
+        let mut expected = bare;
+        let mut attributes = Attributes::ZERO;
+        for (key, levels) in def.values {
+            let [value] = levels else {
+                panic!("{}: {key} has levels", def.key);
+            };
+            let points = |value: bota_core::Dec| Fixed::from_ratio(value.0, 1000);
+            match *key {
+                "bonus_all_stats" => attributes += Attributes::all(value.int()),
+                "bonus_strength" => attributes.strength += points(*value),
+                "bonus_agility" => attributes.agility += points(*value),
+                "bonus_intellect" => attributes.intelligence += points(*value),
+                "bonus_damage" => expected.damage += value.int(),
+                "bonus_attack_speed" => expected.attack_speed += value.int(),
+                "bonus_armor" => expected.armor += points(*value),
+                "bonus_health" => expected.max_hp += points(*value),
+                "bonus_mana" => expected.max_mana += points(*value),
+                "bonus_health_regen" | "bonus_regen" => expected.hp_regen += per_tick(*value),
+                "bonus_mana_regen" => expected.mana_regen += per_tick(*value),
+                other => panic!("{}: a value this test does not know: {other}", def.key),
+            }
+        }
+        checked += 1;
+        add_worth_of_attributes(&mut expected, attributes);
+        assert!(
+            near(got.hp_regen, expected.hp_regen),
+            "{}: health regeneration",
+            def.key
+        );
+        assert!(
+            near(got.mana_regen, expected.mana_regen),
+            "{}: mana regeneration",
+            def.key
+        );
+        expected.hp_regen = got.hp_regen;
+        expected.mana_regen = got.mana_regen;
+        assert_eq!(got, expected, "{}", def.key);
+    }
+    assert_eq!(checked, 41, "the shop's stat items");
+}
+
+/// `stats` with `more` attributes and what they are worth: health, mana and their regeneration,
+/// armor and attack speed, primary damage and magic resistance. The worth itself is
+/// `every_attribute_pays_for_what_it_is_worth`'s.
+fn add_worth_of_attributes(stats: &mut Stats, more: Attributes) {
+    let (was, now) = (stats.attributes, stats.attributes + more);
+    stats.attributes = now;
+    stats.max_hp += Fixed::from_int(rules::HP_PER_STRENGTH) * more.strength;
+    stats.max_mana += Fixed::from_int(rules::MANA_PER_INTELLIGENCE) * more.intelligence;
+    let (regen_was, regen_now) = (attribute_regen(was), attribute_regen(now));
+    stats.hp_regen += regen_now.hp - regen_was.hp;
+    stats.mana_regen += regen_now.mana - regen_was.mana;
+    stats.armor += agility_armor(now) - agility_armor(was);
+    stats.attack_speed += agility_attack_speed(now) - agility_attack_speed(was);
+    stats.damage += primary_damage(now, stats.primary) - primary_damage(was, stats.primary);
+    stats.magic_resist_bp += intelligence_magic_resist_bp(now) - intelligence_magic_resist_bp(was);
 }

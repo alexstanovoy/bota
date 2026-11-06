@@ -145,8 +145,8 @@ mod tests {
         );
     }
 
-    /// The install has more secret-shop components than this catalogue registers. Pin its
-    /// intersection with our live ids, then compare both the importer and committed rows.
+    /// The install's secret-shop components, all sixteen of which this catalogue registers. Pin
+    /// their intersection with our live ids, then compare both the importer and committed rows.
     #[test]
     #[ignore = "needs a Dota 2 install"]
     fn registered_secret_items_match_the_installs_secret_shop_keys() {
@@ -159,8 +159,19 @@ mod tests {
             "item_demon_edge",
             "item_eagle",
             "item_energy_booster",
+            "item_hyperstone",
+            "item_mystic_staff",
+            "item_platemail",
+            "item_point_booster",
+            "item_reaver",
+            "item_relic",
+            "item_ring_of_health",
+            "item_ring_of_tarrasque",
             "item_talisman_of_evasion",
+            "item_tiara_of_selemene",
+            "item_ultimate_orb",
             "item_vitality_booster",
+            "item_void_stone",
         ]);
         let installed: BTreeSet<_> = entries
             .iter()

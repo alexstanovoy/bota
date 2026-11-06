@@ -159,6 +159,24 @@ item 58 live item_great_famango
 item 59 live item_greater_famango
 item 60 live item_cheese
 item 61 live item_royale_with_cheese
+item 62 live item_crown
+item 63 live item_diadem
+item 64 live item_splintmail
+item 65 live item_helm_of_iron_will
+item 66 live item_mithril_hammer
+item 67 live item_fluffy_hat
+item 68 live item_wizard_hat
+item 69 live item_ring_of_health
+item 70 live item_void_stone
+item 71 live item_platemail
+item 72 live item_ring_of_tarrasque
+item 73 live item_tiara_of_selemene
+item 74 live item_hyperstone
+item 75 live item_point_booster
+item 76 live item_relic
+item 77 live item_reaver
+item 78 live item_mystic_staff
+item 79 live item_ultimate_orb
 
 effect 0 retired bota_haste
 effect 1 live modifier_flask_healing

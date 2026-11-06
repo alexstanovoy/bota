@@ -738,6 +738,141 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
         },
         ..from(&ITEM_ROYALE_WITH_CHEESE)
     },
+    // The basic shop's stat items: what each adds and nothing else.
+    ItemDef {
+        name: "Crown",
+        carried: Carried {
+            attributes: Attributes::all(int(&ITEM_CROWN, "bonus_all_stats")),
+            ..NOTHING
+        },
+        ..from(&ITEM_CROWN)
+    },
+    ItemDef {
+        name: "Diadem",
+        carried: Carried {
+            attributes: Attributes::all(int(&ITEM_DIADEM, "bonus_all_stats")),
+            ..NOTHING
+        },
+        ..from(&ITEM_DIADEM)
+    },
+    ItemDef {
+        name: "Splintmail",
+        carried: Carried {
+            armor: armor(&ITEM_SPLINTMAIL, "bonus_armor"),
+            ..NOTHING
+        },
+        ..from(&ITEM_SPLINTMAIL)
+    },
+    ItemDef {
+        name: "Helm of Iron Will",
+        carried: Carried {
+            armor: armor(&ITEM_HELM_OF_IRON_WILL, "bonus_armor"),
+            hp_regen: regen(&ITEM_HELM_OF_IRON_WILL, "bonus_regen"),
+            ..NOTHING
+        },
+        ..from(&ITEM_HELM_OF_IRON_WILL)
+    },
+    ItemDef {
+        name: "Mithril Hammer",
+        ..damage(&ITEM_MITHRIL_HAMMER)
+    },
+    ItemDef {
+        name: "Fluffy Hat",
+        carried: Carried {
+            hp: int(&ITEM_FLUFFY_HAT, "bonus_health"),
+            ..NOTHING
+        },
+        ..from(&ITEM_FLUFFY_HAT)
+    },
+    ItemDef {
+        name: "Wizard Hat",
+        carried: Carried {
+            mana: int(&ITEM_WIZARD_HAT, "bonus_mana"),
+            ..NOTHING
+        },
+        ..from(&ITEM_WIZARD_HAT)
+    },
+    ItemDef {
+        name: "Ring of Health",
+        carried: Carried {
+            hp_regen: regen(&ITEM_RING_OF_HEALTH, "bonus_health_regen"),
+            ..NOTHING
+        },
+        ..from(&ITEM_RING_OF_HEALTH)
+    },
+    ItemDef {
+        name: "Void Stone",
+        carried: Carried {
+            mana_regen: regen(&ITEM_VOID_STONE, "bonus_mana_regen"),
+            ..NOTHING
+        },
+        ..from(&ITEM_VOID_STONE)
+    },
+    ItemDef {
+        name: "Platemail",
+        carried: Carried {
+            armor: armor(&ITEM_PLATEMAIL, "bonus_armor"),
+            ..NOTHING
+        },
+        ..from(&ITEM_PLATEMAIL)
+    },
+    ItemDef {
+        name: "Ring of Tarrasque",
+        carried: Carried {
+            hp_regen: regen(&ITEM_RING_OF_TARRASQUE, "bonus_health_regen"),
+            ..NOTHING
+        },
+        ..from(&ITEM_RING_OF_TARRASQUE)
+    },
+    ItemDef {
+        name: "Tiara of Selemene",
+        carried: Carried {
+            mana_regen: regen(&ITEM_TIARA_OF_SELEMENE, "bonus_mana_regen"),
+            ..NOTHING
+        },
+        ..from(&ITEM_TIARA_OF_SELEMENE)
+    },
+    ItemDef {
+        name: "Hyperstone",
+        carried: Carried {
+            attack_speed: int(&ITEM_HYPERSTONE, "bonus_attack_speed"),
+            ..NOTHING
+        },
+        ..from(&ITEM_HYPERSTONE)
+    },
+    ItemDef {
+        name: "Point Booster",
+        carried: Carried {
+            hp: int(&ITEM_POINT_BOOSTER, "bonus_health"),
+            mana: int(&ITEM_POINT_BOOSTER, "bonus_mana"),
+            ..NOTHING
+        },
+        ..from(&ITEM_POINT_BOOSTER)
+    },
+    ItemDef {
+        name: "Sacred Relic",
+        ..damage(&ITEM_RELIC)
+    },
+    ItemDef {
+        name: "Reaver",
+        ..attribute(&ITEM_REAVER, Attribute::Strength, "bonus_strength")
+    },
+    ItemDef {
+        name: "Mystic Staff",
+        ..attribute(
+            &ITEM_MYSTIC_STAFF,
+            Attribute::Intelligence,
+            "bonus_intellect",
+        )
+    },
+    ItemDef {
+        name: "Ultimate Orb",
+        carried: Carried {
+            attributes: Attributes::all(int(&ITEM_ULTIMATE_ORB, "bonus_all_stats")),
+            ..NOTHING
+        },
+        ..from(&ITEM_ULTIMATE_ORB)
+    },
 ];
 
 /// One kind of lotus, as its script gives it.
