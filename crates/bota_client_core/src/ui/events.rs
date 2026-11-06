@@ -30,13 +30,33 @@ impl App {
 
     /// Takes in one event, and keeps it for the front end.
     pub(crate) fn absorb_event(&mut self, event: EventKind) {
-        if self.told.len() < MAX_TOLD {
+        let before = if self.told.len() < MAX_TOLD {
+            let mut referenced = event.clone();
+            let mut before = Vec::new();
+            referenced.visit_ids(&mut |id| {
+                if before.iter().any(|unit: &UnitView| unit.id == *id) {
+                    return;
+                }
+                if let Some(unit) = self.prev_view().and_then(|view| view.unit(*id)) {
+                    before.push(unit.clone());
+                }
+            });
+            let before: std::sync::Arc<[UnitView]> = before.into();
+            self.before_told.push(before.clone());
             self.told.push(event.clone());
-        }
+            Some(before)
+        } else {
+            None
+        };
         let fed = self.feed.len();
+        let sounded = self.cues.len();
         self.take_in(event.clone());
         for line in &mut self.feed[fed..] {
             line.told = Some(event.clone());
+        }
+        for cue in &mut self.cues[sounded..] {
+            cue.told = Some(event.clone());
+            cue.before = before.clone();
         }
     }
 

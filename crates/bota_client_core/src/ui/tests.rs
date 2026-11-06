@@ -1237,6 +1237,62 @@ fn a_duel_app() -> (App, EntityId, EntityId) {
 }
 
 #[test]
+fn a_core_cue_keeps_the_event_that_determines_its_visibility() {
+    let (mut app, us, _) = a_duel_app();
+    let event = EventKind::AbilityCast {
+        caster: us,
+        ability: bota_proto::AbilityId::RAZE_NEAR,
+    };
+    app.handle(bota_proto::ServerMsg::Events {
+        tick: 10,
+        events: vec![event.clone()],
+    });
+    let cue = app
+        .cues
+        .iter()
+        .find(|cue| cue.kind == crate::ui::app::CueKind::Raze)
+        .expect("the cast's real cue");
+    assert_eq!(cue.told.as_ref(), Some(&event));
+}
+
+#[test]
+fn an_events_previous_unit_stays_at_its_origin_after_later_snapshots_arrive() {
+    let (mut app, us, _) = a_duel_app();
+    let mut before = app.view().unwrap().clone();
+    before.tick = 11;
+    let from = before.unit(us).unwrap().pos;
+    app.handle(bota_proto::ServerMsg::Snapshot {
+        view: before.clone(),
+    });
+    let mut after = before;
+    after.tick = 12;
+    let unit = after.units.iter_mut().find(|unit| unit.id == us).unwrap();
+    unit.pos = from + bota_proto::Vec2::from_ints(1, 0);
+    let to = unit.pos;
+    app.handle(bota_proto::ServerMsg::Snapshot {
+        view: after.clone(),
+    });
+    let event = EventKind::ItemUsed {
+        caster: Some(us),
+        item: bota_proto::ItemId::BLINK_DAGGER,
+        at: Some(to),
+    };
+    app.handle(bota_proto::ServerMsg::Events {
+        tick: 12,
+        events: vec![event.clone()],
+    });
+    for tick in [13, 14] {
+        after.tick = tick;
+        app.handle(bota_proto::ServerMsg::Snapshot {
+            view: after.clone(),
+        });
+    }
+    let index = app.told.iter().position(|told| *told == event).unwrap();
+    assert_eq!(app.prev_view().unwrap().unit(us).unwrap().pos, to);
+    assert_eq!(app.before_event(index, us).unwrap().pos, from);
+}
+
+#[test]
 fn a_hero_slain_in_the_fog_is_fed_by_its_seat_with_its_killer() {
     let (mut app, us, theirs) = a_duel_app();
     app.handle(bota_proto::ServerMsg::Events {

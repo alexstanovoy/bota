@@ -286,7 +286,7 @@ pub enum CueKind {
 
 /// A cue: what, how loud from 0 to 1, and where in the world it happens;
 /// absent for one that belongs to the watched hero itself.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Cue {
     pub kind: CueKind,
     /// Loudness before distance, 0 to 1.
@@ -298,6 +298,10 @@ pub struct Cue {
     pub hero: Option<bota_proto::HeroId>,
     /// The unit a hero's blow lands on.
     pub target: Option<EntityId>,
+    /// The event as this viewer was told it, for the front end's visibility policy.
+    pub told: Option<bota_proto::EventKind>,
+    /// Referenced units just before the event, shared with the event history.
+    pub before: Option<std::sync::Arc<[UnitView]>>,
 }
 
 /// Why an ally is no target of a click that attacks allies, which Dota's
@@ -482,6 +486,8 @@ pub struct App {
     /// sounds beyond the cues, as a teleport's end or where a grenade lands.
     /// Every frame's systems read them.
     pub told: Vec<EventKind>,
+    /// Referenced units before each event's tick, retained across a pump that reads many ticks.
+    pub(crate) before_told: Vec<std::sync::Arc<[UnitView]>>,
     /// Seconds before the next low-health cue may come.
     pub heartbeat: f32,
     /// The seat a replay is watched as, as if it were playing.
@@ -530,6 +536,7 @@ impl App {
             derived: Derived::default(),
             cues: Vec::new(),
             told: Vec::new(),
+            before_told: Vec::new(),
             heartbeat: 0.0,
             pov: None,
             quick_buy: None,
@@ -1034,6 +1041,7 @@ impl App {
     /// clock between snapshots on, and ages the transient effects.
     pub fn pump(&mut self, dt: f32) {
         self.told.clear();
+        self.before_told.clear();
         self.smooth.advance(dt);
         // A link marks itself closed after it has handed over its last message, so a link seen
         // closed before the poll has had everything polled out of it by the end of it. Seen
@@ -1058,6 +1066,14 @@ impl App {
                 self.quick_buy = None;
             }
         }
+    }
+
+    /// A unit before this event happened, rather than before the pump's last snapshot.
+    pub fn before_event(&self, event: usize, unit: EntityId) -> Option<&UnitView> {
+        self.before_told
+            .get(event)?
+            .iter()
+            .find(|before| before.id == unit)
     }
 
     /// Asks the front end for a cue, dropped when too many wait.
@@ -1106,6 +1122,8 @@ impl App {
                 at,
                 hero,
                 target,
+                told: None,
+                before: None,
             });
         }
     }
