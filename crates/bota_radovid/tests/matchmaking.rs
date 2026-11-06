@@ -223,3 +223,13 @@ fn a_finished_matchs_replay_is_served_only_by_a_service_that_keeps_replays() {
         }
     }
 }
+
+/// A block another test process has taken is left to it, though nobody listens on its ports
+/// yet: its service binds them only when it launches a match.
+#[test]
+fn a_block_another_test_process_has_taken_is_left_to_it() {
+    let block = 2_999;
+    let _other = common::take_block(common::first_port(block)).expect("the block is free");
+    let (first, _ours) = common::free_ports_from(block);
+    assert_ne!(first, common::first_port(block));
+}

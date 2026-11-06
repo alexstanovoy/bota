@@ -24,25 +24,47 @@ const PORTS: u16 = 4;
 const BLOCKS: u16 = 12_000 / PORTS;
 const BLOCKS_FROM: u16 = 20_000;
 
-/// The first port of a block of `PORTS` consecutive loopback ports nobody listens on. Test
-/// processes run at once (debug and release, several worktrees), and the service binds its
-/// game ports only when it launches a match: each process starts looking at a block its process
-/// id picks, and a service takes the next block it can bind whole, so processes meet rarely and
-/// never take a block that is in use.
-fn free_ports() -> u16 {
+/// A block of `PORTS` consecutive loopback ports for one service, held while it runs. Test
+/// processes run at once (debug and release, several worktrees, the parallel test runner), and
+/// a service binds its game ports only when it launches a match, so a free port says nothing
+/// about whether another process means to use it: each process takes the block's lock file
+/// first and keeps it until its service is stopped, so two processes never take one block.
+/// Each starts looking at a block its process id picks, so they rarely even meet.
+fn free_ports() -> (u16, std::fs::File) {
     let start = std::process::id() % u32::from(BLOCKS);
     let taken = u32::from(NEXT_PORTS.fetch_add(1, Ordering::Relaxed));
+    free_ports_from(start + taken)
+}
+
+/// The first block from `block` on (round the blocks) no other process has taken and nobody
+/// listens on, with its lock.
+pub fn free_ports_from(block: u32) -> (u16, std::fs::File) {
     for step in 0..u32::from(BLOCKS) {
-        let block = (start + taken + step) % u32::from(BLOCKS);
-        let first = BLOCKS_FROM + PORTS * u16::try_from(block).expect("a block");
+        let first = first_port((block + step) % u32::from(BLOCKS));
+        let Some(lock) = take_block(first) else {
+            continue;
+        };
         let held: Result<Vec<_>, _> = (first..first + PORTS)
             .map(|port| std::net::TcpListener::bind(("127.0.0.1", port)))
             .collect();
         if held.is_ok() {
-            return first;
+            return (first, lock);
         }
     }
     panic!("no block of {PORTS} free ports");
+}
+
+/// The lock of the block at `first`, unless another process (or another open of it here) holds
+/// it. The lock is the kernel's on the open file, so it goes when its holder does, crash or not.
+pub fn take_block(first: u16) -> Option<std::fs::File> {
+    let dir = std::env::temp_dir().join("bota-radovid-ports");
+    std::fs::create_dir_all(&dir).expect("the lock directory");
+    let file = std::fs::File::create(dir.join(format!("{first}.lock"))).expect("a lock file");
+    file.try_lock().ok().map(|()| file)
+}
+
+pub fn first_port(block: u32) -> u16 {
+    BLOCKS_FROM + PORTS * u16::try_from(block).expect("a block")
 }
 
 /// The game server binary, built once per test run with the WebSocket
@@ -88,6 +110,8 @@ pub struct Env {
     pub url: String,
     pub tls: Tls,
     dir: PathBuf,
+    /// The game ports' block, this process's until the service is stopped.
+    ports_lock: std::fs::File,
 }
 
 pub const RULESET: &str = "solo_mid";
@@ -112,7 +136,7 @@ pub fn start_with(replays: bool) -> Env {
         NEXT_DIR.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&dir).expect("test dir");
-    let first = free_ports();
+    let (first, ports_lock) = free_ports();
     let config = format!(
         r#"
 listen = "127.0.0.1:0"
@@ -176,6 +200,7 @@ artifact_args = ["--replay", "{{artifact}}"]
         runtime,
         service: Some(service),
         dir,
+        ports_lock,
     }
 }
 
