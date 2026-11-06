@@ -176,15 +176,24 @@ impl App {
     }
 
     /// The radius of the area one slot's use at a point takes in, in world units; zero for
-    /// one that takes in none. No ability aimed at a point takes in an area yet: an
-    /// ability's area joins its data when one does.
+    /// one that takes in none (a ward's is what it gives, a view of the item's data, no rule of
+    /// the match). No ability aimed at a point takes in an area yet: an ability's area joins its
+    /// data when one does.
     pub fn area_of(&self, slot: Slot) -> i32 {
         match slot {
             Slot::Ability(_) => 0,
             Slot::Item(at) => self
                 .item_in(at)
                 .and_then(|item| bota_core::item_def(item.id))
-                .and_then(bota_core::ItemDef::radius)
+                .and_then(|def| match def.effect {
+                    // The circle Dota draws at the cursor while a ward is aimed is what the ward
+                    // gives: true sight where it gives that, else its vision.
+                    bota_core::UseSpec::Ward { unit, .. } if unit.true_sight > 0 => {
+                        Some(unit.true_sight)
+                    }
+                    bota_core::UseSpec::Ward { unit, .. } => Some(unit.day_vision),
+                    _ => def.radius(),
+                })
                 .unwrap_or(0),
         }
     }
