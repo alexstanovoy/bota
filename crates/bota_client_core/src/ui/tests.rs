@@ -128,6 +128,8 @@ fn a_unit() -> UnitView {
         cast_rates: None,
         gathering: None,
         lit_for: None,
+        forced: None,
+        channel: None,
         seen_by: None,
         attack_range: Fixed::from_int(600),
         attack_time: 1700,
@@ -2634,4 +2636,85 @@ fn a_boss_roaring_out_of_sight_announces_globally_without_a_position_or_hidden_h
             .iter()
             .any(|line| matches!(line.kind, FeedKind::BossRoared { .. }))
     );
+}
+
+#[test]
+fn forced_height_interpolates_with_the_body_and_snaps_when_a_displacement_is_a_jump() {
+    use bota_proto::{ForcedPhase, ForcedView};
+    let mut old = a_unit();
+    old.pos = Vec2::from_ints(1000, 1000);
+    old.forced = Some(ForcedView {
+        ability: bota_core::NeutralAbility::GrabAndThrow.id(),
+        phase: ForcedPhase::Airborne,
+        height: Fixed::ZERO,
+    });
+    let mut new = old.clone();
+    new.pos = Vec2::from_ints(1100, 1000);
+    new.forced.as_mut().expect("motion").height = Fixed::from_int(100);
+    let prev = a_tick(1, vec![old], vec![]);
+    let next = a_tick(2, vec![new.clone()], vec![]);
+    let body = crate::ui::smooth::bodies(&next, Some(&prev), 0.5);
+    assert_eq!(body[0].x, 1050.0);
+    assert_eq!(body[0].height, 50.0);
+    new.pos = Vec2::from_ints(2000, 1000);
+    let jumped = a_tick(2, vec![new], vec![]);
+    let body = crate::ui::smooth::bodies(&jumped, Some(&prev), 0.5);
+    assert_eq!(body[0].x, 2000.0);
+    assert_eq!(body[0].height, 100.0);
+}
+
+#[test]
+fn forced_motion_and_channel_snapshots_reject_unknown_abilities_heights_and_incompatible_status() {
+    use bota_proto::{ChannelView, ForcedPhase, ForcedView};
+    let throw = bota_core::NeutralAbility::GrabAndThrow.id();
+    let body = a_unit();
+    for (phase, height, ability, stunned, accepted) in [
+        (ForcedPhase::Held, 0, throw, true, true),
+        (ForcedPhase::Held, 1, throw, true, false),
+        (ForcedPhase::Airborne, 100, throw, true, true),
+        (ForcedPhase::Airborne, 101, throw, true, false),
+        (ForcedPhase::Airborne, -1, throw, true, false),
+        (ForcedPhase::Airborne, 50, AbilityId::MEAT_HOOK, true, false),
+        (ForcedPhase::Airborne, 50, throw, false, false),
+    ] {
+        let mut app = a_started_app();
+        let mut body = body.clone();
+        body.forced = Some(ForcedView {
+            ability,
+            phase,
+            height: Fixed::from_int(height),
+        });
+        body.statuses.bits = if stunned { StatusFlags::STUNNED } else { 0 };
+        app.handle(snapshot_of(
+            1,
+            vec![body.clone()],
+            vec![a_seat(SlotId(0), Some(body.id))],
+        ));
+        assert_eq!(!app.lost, accepted, "phase={phase:?} height={height}");
+    }
+    let duration = bota_core::ability_def(throw).expect("Throw").duration;
+    for (ability, elapsed, channeling, accepted) in [
+        (throw, duration, true, true),
+        (throw, duration + 1, true, false),
+        (throw, 0, false, false),
+        (AbilityId::MEAT_HOOK, 0, true, false),
+    ] {
+        let mut app = a_started_app();
+        let mut body = body.clone();
+        body.channel = Some(ChannelView { ability, elapsed });
+        body.statuses.bits = if channeling {
+            StatusFlags::CHANNELLING
+        } else {
+            0
+        };
+        app.handle(snapshot_of(
+            1,
+            vec![body.clone()],
+            vec![a_seat(SlotId(0), Some(body.id))],
+        ));
+        assert_eq!(
+            !app.lost, accepted,
+            "channel ability={ability:?} elapsed={elapsed}"
+        );
+    }
 }

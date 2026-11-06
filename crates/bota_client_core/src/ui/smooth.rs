@@ -64,6 +64,8 @@ pub struct Body<'a> {
     pub y: f32,
     /// Drawn facing, radians counter-clockwise from the world X axis.
     pub facing: f32,
+    /// Forced elevation above the ordinary model, interpolated with the body.
+    pub height: f32,
 }
 
 /// A missile as drawn this frame, and where it was a tick ago.
@@ -115,6 +117,17 @@ pub fn bodies<'a>(view: &'a WorldView, prev: Option<&WorldView>, k: f32) -> Vec<
                         x,
                         y,
                         facing: turn(old.facing, unit.facing, k),
+                        height: {
+                            let old_height = old.forced.map_or(0.0, |f| f.height.to_f32());
+                            let height = unit.forced.map_or(0.0, |f| f.height.to_f32());
+                            let dx = to.0 - from.0;
+                            let dy = to.1 - from.1;
+                            if dx * dx + dy * dy > JUMP * JUMP {
+                                height
+                            } else {
+                                old_height + (height - old_height) * k.clamp(0.0, 1.0)
+                            }
+                        },
                     }
                 }
                 None => Body {
@@ -122,6 +135,7 @@ pub fn bodies<'a>(view: &'a WorldView, prev: Option<&WorldView>, k: f32) -> Vec<
                     x: to.0,
                     y: to.1,
                     facing: radians(unit.facing),
+                    height: unit.forced.map_or(0.0, |f| f.height.to_f32()),
                 },
             }
         })

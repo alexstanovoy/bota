@@ -75,6 +75,8 @@ impl World {
 
     pub fn phased(&self, entity: Entity) -> bool {
         self.stats.get(entity).is_some_and(|stats| stats.phased)
+            || self.push.get(entity).is_some_and(|push| push.carries())
+            || self.landing_hold.binary_search(&entity).is_ok()
     }
 
     /// Eases apart every pair of bodies whose hulls overlap.

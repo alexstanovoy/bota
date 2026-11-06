@@ -114,6 +114,8 @@ pub struct Stats {
     pub hides: bool,
     /// Whether it flies: closed ground is nothing to it.
     pub flies: bool,
+    pub tree_walking: bool,
+    pub forced_move_immune: bool,
     /// Whether it walks through the bodies in its way.
     pub phased: bool,
     /// Whether damage passes it by.

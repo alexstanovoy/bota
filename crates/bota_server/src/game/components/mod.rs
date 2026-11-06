@@ -1,3 +1,5 @@
+mod contacts;
+pub use contacts::*;
 mod abilities;
 mod action;
 mod ai;

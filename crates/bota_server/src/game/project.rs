@@ -588,6 +588,8 @@ impl World {
                     ticks: zone.ticks,
                 })
             }),
+            forced: self.forced_view(entity),
+            channel: self.channel_view(entity),
             true_sight_radius: stats.true_sight,
             statuses: StatusFlags {
                 bits: self.statuses_of(entity, stats),
@@ -698,6 +700,8 @@ fn wear_sheet(illusion: &mut UnitView, hero: UnitView) {
         statuses: illusion.statuses,
         effects: core::mem::take(&mut illusion.effects),
         cast: illusion.cast,
+        forced: illusion.forced,
+        channel: illusion.channel,
         queue: core::mem::take(&mut illusion.queue),
         ..hero
     };
@@ -786,10 +790,18 @@ impl World {
     /// one, and with what. One a Break disables shows a count of zero, as
     /// Dota's HUD shows a broken aura's icon.
     fn effects_on(&self, viewer: Option<Team>, entity: Entity) -> Vec<EffectView> {
-        self.modifiers
+        let journey = self
+            .lairs
+            .iter()
+            .find(|l| l.unit == Some(entity))
+            .and_then(|l| l.journey)
+            .map(|j| j.modifier(entity));
+        let mut effects: Vec<EffectView> = self
+            .modifiers
             .get(entity)
             .into_iter()
             .flat_map(|on_it| on_it.active())
+            .chain(journey.iter())
             .filter(|held| effect_def(held.kind.effect_id()).is_none_or(|def| !def.hidden))
             .map(|held| EffectView {
                 id: held.kind.effect_id(),
@@ -806,7 +818,55 @@ impl World {
                 inflictor: held.inflictor,
                 ticks_total: held.ticks_total,
             })
-            .collect()
+            .collect();
+        if let Some(push) = self.push.get(entity)
+            && let Some(effect) = push.effect
+        {
+            effects.push(EffectView {
+                id: effect,
+                ticks_left: None,
+                ticks_total: None,
+                stacks: None,
+                caster: Some(push.source)
+                    .filter(|by| self.carried(viewer, *by))
+                    .map(wire_id),
+                inflictor: Some(push.inflictor),
+            });
+        }
+        assert!(effects.len() <= bota_core::rules::MAX_EFFECTS_PER_UNIT);
+        effects
+    }
+
+    fn channel_view(&self, entity: Entity) -> Option<bota_proto::ChannelView> {
+        let ActionState::CastAbility {
+            slot,
+            phase: ActionPhase::During { progress },
+            ..
+        } = self.action.get(entity)?.state
+        else {
+            return None;
+        };
+        Some(bota_proto::ChannelView {
+            ability: self.ability_in(entity, slot),
+            elapsed: progress / bota_core::BEATS_PER_TICK,
+        })
+    }
+
+    fn forced_view(&self, entity: Entity) -> Option<bota_proto::ForcedView> {
+        let push = self.push.get(entity)?;
+        let Inflictor::Ability(ability) = push.inflictor else {
+            return None;
+        };
+        let phase = match push.phase {
+            crate::game::PushPhase::Ground => return None,
+            crate::game::PushPhase::Grip { .. } => bota_proto::ForcedPhase::Held,
+            crate::game::PushPhase::Arc { .. } => bota_proto::ForcedPhase::Airborne,
+        };
+        Some(bota_proto::ForcedView {
+            ability,
+            phase,
+            height: push.height(self.tick),
+        })
     }
 
     /// The cast point an entity stands in: the ability it casts, none for
@@ -874,6 +934,10 @@ impl World {
             bits |= held.kind.statuses();
         }
         for (set, flag) in [
+            (
+                self.push.get(entity).is_some_and(|p| p.carries()),
+                StatusFlags::STUNNED,
+            ),
             (stats.hides, StatusFlags::INVISIBLE),
             (stats.invulnerable, StatusFlags::INVULNERABLE),
             (stats.spell_immune, StatusFlags::MAGIC_IMMUNE),

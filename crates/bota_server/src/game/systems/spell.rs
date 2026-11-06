@@ -48,6 +48,7 @@ impl World {
             level,
         };
         let went = match act {
+            Act::Grab(spec) => self.start_grab(cast, spec, target),
             Act::Roar(spec) => self.start_roar(cast, spec),
             Act::Stomp { .. } => self.stomp(cast, act),
             Act::Bolt { .. } => self.bolt(cast, act, target),
@@ -229,7 +230,7 @@ impl World {
             && let Some(team) = self.lairs[index].last_killer
         {
             let objective = self.map.lairs[index].objective;
-            self.events.push(crate::game::Event {
+            self.events.push(crate::game::Event::Fact {
                 kind: bota_proto::EventKind::BossRoared { objective, team },
                 visible_to: crate::game::EventVisibility::Everyone,
                 gold_hidden_from: None,

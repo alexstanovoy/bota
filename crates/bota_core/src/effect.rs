@@ -308,6 +308,18 @@ const EFFECT_ROWS: &[EffectDef] = &[
         dispellable: true,
         ..debuff(89, "modifier_silence", "Silenced")
     },
+    debuff(90, "modifier_roshan_grab", "Grabbed"),
+    debuff(91, "modifier_roshan_grab_thrown", "Thrown"),
+    buff(92, "modifier_roshan_moving", "Moving"),
+    debuff(93, "modifier_knockback", "Knockback"),
+    EffectDef {
+        per_source: true,
+        ..hidden(
+            94,
+            "modifier_roshan_moving_knockback_timeout",
+            "ContactCooldown",
+        )
+    },
 ];
 
 /// How many effect ids the protocol has ever handed out, retired ones

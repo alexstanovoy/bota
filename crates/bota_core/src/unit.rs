@@ -110,6 +110,10 @@ pub struct UnitDef {
     pub hides: bool,
     /// Whether it flies: closed ground is nothing to it.
     pub flies: bool,
+    /// Trees are passable; terrain, structures and ground vision still apply.
+    pub tree_walking: bool,
+    /// Other units cannot carry this body with forced movement.
+    pub forced_move_immune: bool,
     /// Whether it only carries for another: what is in its bag is worth
     /// nothing to it.
     pub porter: bool,
@@ -201,6 +205,8 @@ pub(crate) const BARE_UNIT: UnitDef = UnitDef {
     true_sight: 0,
     hides: false,
     flies: false,
+    tree_walking: false,
+    forced_move_immune: false,
     porter: false,
     unbounded_pace: false,
     collision: 0,

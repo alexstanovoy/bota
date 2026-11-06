@@ -90,6 +90,11 @@ impl Clearance {
             .clone()
     }
 
+    /// The same terrain and its precomputed room, with no circles standing on it.
+    pub fn terrain_only(&self) -> Clearance {
+        Clearance::with_room(self.terrain.clone(), self.terrain_room.clone())
+    }
+
     /// The terrain alone.
     pub fn terrain(&self) -> &CellGrid {
         &self.terrain

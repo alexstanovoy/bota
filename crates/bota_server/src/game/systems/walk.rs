@@ -22,6 +22,18 @@ const TRACE_HEADINGS: u16 = 16;
 const TRACE_TURN_BRADS: u16 = 4096;
 
 impl World {
+    pub(crate) fn walking_field(&self, entity: Entity) -> &crate::game::Clearance {
+        if self
+            .stats
+            .get(entity)
+            .is_some_and(|stats| stats.tree_walking)
+        {
+            &self.tree_clearance
+        } else {
+            &self.clearance
+        }
+    }
+
     /// Turns and steps everything that has somewhere to be.
     pub fn walk_bodies(&mut self) {
         let _profile = self.scope(Phase::Walk);
@@ -68,6 +80,9 @@ impl World {
     /// walks at it. Only with nothing to fight does it walk where it was
     /// told.
     fn walk_goal(&self, entity: Entity) -> Goal {
+        if self.held(entity) {
+            return Goal::Stand;
+        }
         if self.feared(entity) {
             return self.flees_from(entity).map_or(Goal::Stand, Goal::Flee);
         }
@@ -453,7 +468,9 @@ impl World {
                 && self
                     .stood_in_the_way(entity, from, *to, collision)
                     .is_none()
-                && self.clearance.capsule_clear(from, *to, collision)
+                && self
+                    .walking_field(entity)
+                    .capsule_clear(from, *to, collision)
         }) else {
             return false;
         };
@@ -725,7 +742,9 @@ impl World {
             brads: aim.brads.wrapping_add(turn),
         };
         let next = point_ahead(leg.from, heading, leg.step);
-        (self.clearance.capsule_clear(leg.from, next, leg.collision)
+        (self
+            .walking_field(leg.entity)
+            .capsule_clear(leg.from, next, leg.collision)
             && self
                 .stood_in_the_way(leg.entity, leg.from, next, leg.collision)
                 .is_none())
@@ -792,7 +811,7 @@ impl World {
     ) -> (Vec<Vec2>, bool) {
         let _profile = self.scope(Phase::LocalPlan);
         let ob = Obstacles {
-            field: &self.clearance,
+            field: self.walking_field(leg.entity),
             extra: stationary,
         };
         let ask = LocalAsk {
@@ -909,7 +928,11 @@ impl World {
         }
         let kept = {
             let ob = Obstacles {
-                field: &self.clearance,
+                field: if self.stats.get(entity).is_some_and(|s| s.tree_walking) {
+                    &self.tree_clearance
+                } else {
+                    &self.clearance
+                },
                 extra: &round,
             };
             keeps_route(&ob, &mut route, from, dest, room)
@@ -918,7 +941,11 @@ impl World {
             round.clear();
         }
         let ob = Obstacles {
-            field: &self.clearance,
+            field: if self.stats.get(entity).is_some_and(|s| s.tree_walking) {
+                &self.tree_clearance
+            } else {
+                &self.clearance
+            },
             extra: &round,
         };
         let fresh = !kept || left || !extra.is_empty();

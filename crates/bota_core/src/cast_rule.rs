@@ -75,10 +75,15 @@ pub enum Within {
 /// What must hold of the caster.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Need {
+    Migrating,
     /// A real hero of the last killing side has drawn this boss's aggression.
-    PreviousKillerHero { radius: i32 },
+    PreviousKillerHero {
+        radius: i32,
+    },
     /// Below `pct` percent of its health.
-    HurtBelow { pct: i32 },
+    HurtBelow {
+        pct: i32,
+    },
     /// In an attack.
     Swinging,
     /// The unit it is set on is in its attack reach.
@@ -96,6 +101,8 @@ pub enum Need {
 /// What must hold of the unit a cast goes at.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mark {
+    /// A hero, including clones, excluding illusions.
+    RealHero,
     /// A hero, an illusion included.
     Hero,
     /// Within the spell's cast range of the caster.

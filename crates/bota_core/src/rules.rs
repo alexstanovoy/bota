@@ -1320,3 +1320,7 @@ pub const DENIED_XP_PCT: i32 = 50;
 pub const fn units(n: i32) -> Fixed {
     Fixed::from_int(n)
 }
+
+/// Stored gameplay modifiers, plus two projected movement-controller effects on the wire.
+pub const MAX_MODIFIERS_PER_UNIT: usize = bota_proto::game_limits::MAX_MODIFIERS_PER_UNIT;
+const _: () = assert!(MAX_EFFECTS_PER_UNIT >= MAX_MODIFIERS_PER_UNIT + 2);

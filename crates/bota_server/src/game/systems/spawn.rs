@@ -223,6 +223,8 @@ impl World {
                     && effect_def(held.kind.effect_id()).is_some_and(|def| def.kept_through_death)
             });
         }
+        self.push.remove(unit);
+        self.contacts.remove(unit);
         self.transform.remove(unit);
         self.hull.remove(unit);
         self.action.remove(unit);

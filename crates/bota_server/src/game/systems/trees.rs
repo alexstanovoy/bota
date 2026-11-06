@@ -30,6 +30,60 @@ impl World {
         });
     }
 
+    /// Fells a capsule of trees in one passability/vision update.
+    pub(crate) fn fell_trees_along(&mut self, from: Vec2, to: Vec2, radius: i32, by: Entity) {
+        let middle = Vec2 {
+            x: bota_proto::Fixed {
+                raw: ((i64::from(from.x.raw) + i64::from(to.x.raw)) / 2) as i32,
+            },
+            y: bota_proto::Fixed {
+                raw: ((i64::from(from.y.raw) + i64::from(to.y.raw)) / 2) as i32,
+            },
+        };
+        let pad = i64::from(rules::units(radius).raw);
+        let reach = pad
+            + (i64::from(to.x.raw) - i64::from(from.x.raw))
+                .abs()
+                .max((i64::from(to.y.raw) - i64::from(from.y.raw)).abs())
+                / 2
+            + 1;
+        let struck = |at| bota_core::segment_distance_squared(at, from, to) <= pad * pad;
+        let mut trees: Vec<(Tree, Vec2)> = self
+            .trees
+            .rooted_near(middle, reach)
+            .filter_map(|i| {
+                let at = self.trees.spots()[i];
+                struck(at).then_some((Tree::Rooted(i), at))
+            })
+            .collect();
+        trees.extend(
+            self.trees
+                .planted()
+                .iter()
+                .enumerate()
+                .rev()
+                .filter_map(|(i, tree)| struck(tree.at).then_some((Tree::Planted(i), tree.at))),
+        );
+        if trees.is_empty() {
+            return;
+        }
+        let side = self.team.get(by).copied().unwrap_or(Team::Neutral);
+        for (tree, at) in trees {
+            self.trees.fell(tree, self.tick);
+            self.events.push(Event::Fact {
+                kind: EventKind::TreeFelled {
+                    at,
+                    by: Some(wire_id(by)),
+                },
+                visible_to: self.who_sees_spot(at, side),
+                gold_hidden_from: None,
+                source_told_to: self.who_may_name(Some(by)),
+            });
+        }
+        self.lay_sight_block();
+        self.lay_passability();
+    }
+
     /// The forest's tick: the map's trees whose time is up grow back where
     /// no unit stands within [`rules::TREE_REGROW_CLEAR`], and the trees put
     /// up whose time is up go, each told to the sides that see its spot.

@@ -34,21 +34,21 @@ const TICK_RATE: usize = 30;
 /// absent on a hero. The absent vision grant adds its one-byte option tag,
 /// raising the prior budget including absent cast rates to 282 bytes. Item lifetime tags add four
 /// bytes to this inventory; an active 300-second Aegis countdown adds two more.
-/// Four physical item level bytes raise that budget to 290.
+/// Four physical item level bytes raise that budget to 290. The absent forced-movement
+/// and ability-channel option tags add two bytes; transport burst limits are unchanged.
 #[test]
-fn a_hero_with_an_active_item_lifetime_stays_under_292_bytes() {
+fn a_hero_with_an_active_item_lifetime_stays_under_294_bytes() {
     let mut hero = hero_unit();
     hero.items[0].as_mut().expect("fixture item").expires_in = Some(300 * TICK_RATE as u32);
     let len = encoded_len(&hero);
-    assert!(len <= 292, "hero unit grew to {len} bytes");
+    assert!(len <= 294, "hero unit grew to {len} bytes");
 }
 
-/// The absent pair of cast rates adds its one-byte option tag: 83 to 84 bytes;
-/// the absent gathering another, to 85, and the absent lit side another, to 86.
+/// Absent cast rates, gathering, lit-side, forced-motion and channel tags bring this budget to 88 bytes.
 #[test]
 fn a_creep_stays_under_86_bytes() {
     let len = encoded_len(&creep_unit(1));
-    assert!(len <= 86, "creep unit grew to {len} bytes");
+    assert!(len <= 88, "creep unit grew to {len} bytes");
 }
 
 #[test]
@@ -165,4 +165,21 @@ fn an_empty_view_costs_almost_nothing() {
     // The clock shift's absence is its one byte, and the runes' list its
     // length's, and the pools' list its.
     assert!(len <= 23, "an empty snapshot cost {len} bytes");
+}
+
+#[test]
+fn a_hero_with_active_motion_channel_and_item_lifetime_stays_under_301_bytes() {
+    let mut hero = hero_unit();
+    hero.items[0].as_mut().expect("item").expires_in = Some(300 * TICK_RATE as u32);
+    hero.forced = Some(crate::ForcedView {
+        ability: crate::AbilityId(86),
+        phase: crate::ForcedPhase::Airborne,
+        height: crate::Fixed::from_int(100),
+    });
+    hero.channel = Some(crate::ChannelView {
+        ability: crate::AbilityId::DISMEMBER,
+        elapsed: 80,
+    });
+    let len = encoded_len(&hero);
+    assert!(len <= 301, "active hero unit grew to {len} bytes");
 }

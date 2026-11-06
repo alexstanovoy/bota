@@ -337,6 +337,48 @@ fn units(roster: &[Pick], cheats: bool, view: &WorldView) -> Result<(), SessionE
         check_limit("UnitView.items", unit.items.len(), HERO_ITEM_SLOTS)?;
         check_limit("UnitView.effects", unit.effects.len(), MAX_EFFECTS_PER_UNIT)?;
         check_limit("UnitView.queue", unit.queue.len(), rules::MAX_QUEUED_ORDERS)?;
+        if let Some(channel) = unit.channel
+            && (bota_core::ability_def(channel.ability)
+                .is_none_or(|d| d.duration == 0 || channel.elapsed > d.duration)
+                || unit.statuses.bits & StatusFlags::CHANNELLING == 0)
+        {
+            return Err(SessionError::ChannelOutOfRange(unit.id));
+        }
+        if let Some(forced) = unit.forced {
+            let maximum = match (
+                bota_core::NeutralAbility::of(forced.ability).map(bota_core::NeutralAbility::spell),
+                forced.phase,
+            ) {
+                (
+                    Some(bota_core::Spell::Cast {
+                        act: bota_core::Act::Grab(_),
+                        ..
+                    }),
+                    bota_proto::ForcedPhase::Held,
+                ) => Some(0),
+                (
+                    Some(bota_core::Spell::Cast {
+                        act: bota_core::Act::Grab(spec),
+                        ..
+                    }),
+                    bota_proto::ForcedPhase::Airborne,
+                ) => Some(spec.height),
+                (
+                    Some(bota_core::Spell::Intrinsic {
+                        moving: Some(spec), ..
+                    }),
+                    bota_proto::ForcedPhase::Airborne,
+                ) => Some(spec.contact.height),
+                _ => None,
+            };
+            if maximum.is_none_or(|max| {
+                forced.height < bota_proto::Fixed::ZERO
+                    || forced.height > bota_proto::Fixed::from_int(max)
+            }) || unit.statuses.bits & StatusFlags::STUNNED == 0
+            {
+                return Err(SessionError::ForcedOutOfRange(unit.id));
+            }
+        }
         // A hero a cheat created has a seat of its own, told among the players.
         let created = |slot| cheats && view.player(slot).is_some();
         if let Some(slot) = unit.owner

@@ -12,7 +12,9 @@ pub const MAX_SEATS: usize = 10;
 /// At most one bounty, assist share and flagbearer bonus per seat.
 pub const MAX_DEATH_GOLD_AWARDS: usize = 3 * MAX_SEATS;
 pub const MAX_ABILITY_SLOTS: usize = 8;
-pub const MAX_EFFECTS_PER_UNIT: usize = 128;
+/// Physical modifier storage is independent of the projected movement-controller rows.
+pub const MAX_MODIFIERS_PER_UNIT: usize = 128;
+pub const MAX_EFFECTS_PER_UNIT: usize = MAX_MODIFIERS_PER_UNIT + 2;
 pub const MAX_VIEW_UNITS: usize = 4_096;
 pub const MAX_PROJECTILES: usize = 4_096;
 pub const MAX_SNAPSHOT_LOOT: usize = 4_096;

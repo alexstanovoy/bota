@@ -25,6 +25,8 @@ use crate::{GoldRange, HomeDef, LairDef, NeutralKind, UnitDef, rules};
 /// from inside a pit [LIQ Roshan], and he is ancient [U:12100].
 pub const ROSHAN: UnitDef = UnitDef {
     kind: UnitKind::Roshan,
+    tree_walking: true,
+    forced_move_immune: true,
     base_level: U.first("Level").int() as u8,
     max_hp: U.first("StatusHealth").int(),
     hp_regen: Fixed::from_ratio(
@@ -96,6 +98,7 @@ pub const ROSHAN_LAIR: LairDef = LairDef {
     move_after: 15 * 60,
     respawn: [8 * 60, 11 * 60],
     drops: &ROSHAN_DROPS,
+    moving: Some(crate::NeutralAbility::StrengthOfTheImmortal),
 };
 
 const _: () = assert!(U.first("MovementTurnRate").int() == 1);
@@ -146,5 +149,36 @@ pub(crate) const ROSHAN_ARMOR_AURA: crate::Aura = crate::Aura {
     modifier: crate::AuraModifier::ArmorGrowth {
         hundredths_per_step: 40,
         effect: bota_proto::EffectId(79),
+    },
+};
+
+/// The script supplies movement bonuses and the interruption budget; contact geometry is
+/// current On The Move mechanics, with damage from 7.33 and per-victim downtime from 7.38.
+pub const ROSHAN_MIGRATION: crate::Migration = crate::Migration {
+    effect: bota_proto::EffectId(92),
+    interrupts: &[
+        crate::NeutralAbility::RoshanSlam,
+        crate::NeutralAbility::GrabAndThrow,
+    ],
+    max_stops: crate::data::ROSHAN_GRAB.first("max_interrupt_count").int() as u8,
+    speed_per_stop: crate::data::ROSHAN_INHERENT_BUFFS
+        .first("move_pits_bonus_speed_per_interrupt")
+        .int(),
+    max_speed_bonus: crate::data::ROSHAN_INHERENT_BUFFS
+        .first("move_pits_max_bonus_speed")
+        .int(),
+    slow_resist_pct: crate::data::ROSHAN_INHERENT_BUFFS
+        .first("move_pits_slow_resistance")
+        .int(),
+    contact: crate::Contact {
+        radius: 100,
+        damage: 200,
+        distance: 150,
+        duration: 18,
+        height: 50,
+        cooldown: 60,
+        tree_radius: 100,
+        effect: bota_proto::EffectId(93),
+        timeout_effect: bota_proto::EffectId(94),
     },
 };

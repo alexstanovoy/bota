@@ -92,6 +92,7 @@ pub enum NeutralAbility {
     Bash,
     RoshanSlam,
     RevengeRoar,
+    GrabAndThrow,
 }
 
 impl NeutralAbility {
@@ -343,6 +344,7 @@ pub enum Throe {
 /// What a cast does once it goes off.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Act {
+    Grab(&'static Grab),
     Roar(&'static Roar),
     /// Every enemy within `radius` of the caster takes `damage` of `kind`
     /// and is stunned, or wears the spell's modifier, for `hero_ms` on a hero
@@ -440,6 +442,23 @@ pub enum Act {
     },
 }
 
+/// A channeled grip followed by an airborne throw and a landing effect.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Grab {
+    pub duration: u32,
+    pub contact_after: u32,
+    pub distance: i32,
+    pub flight: u32,
+    pub height: i32,
+    pub damage: i32,
+    pub damage_per_throw: i32,
+    pub health_growth: crate::DamageGrowth,
+    pub stun: u32,
+    pub grabbed_effect: EffectId,
+    pub thrown_effect: EffectId,
+    pub contact_ability: NeutralAbility,
+}
+
 /// A delayed area pulse, with a temporary incoming-damage aura.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Roar {
@@ -519,6 +538,7 @@ pub enum Spell {
         buff: Buff,
         effect: EffectId,
         aura: Option<Aura>,
+        moving: Option<&'static crate::Migration>,
     },
     /// Absorbs an enemy unit-target spell while ready, with intrinsic self stats.
     Block {
@@ -1813,9 +1833,11 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
         AbilityDef {
             max_level: 1,
             hidden: true,
+            pierces: crate::Pierces::Yes,
             ..passive("StrengthOfTheImmortal")
         },
         Spell::Intrinsic {
+            moving: Some(&crate::ROSHAN_MIGRATION),
             buff: Buff::of(Stat::IllusionAttackReductionPct, all(80)),
             effect: EffectId(80),
             aura: None,
@@ -1831,6 +1853,7 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
             ..passive("Devotion")
         },
         Spell::Intrinsic {
+            moving: None,
             buff: Buff::of(
                 Stat::SlowResistPct,
                 all(crate::data::ROSHAN_DEVOTION.first("slow_resistance").int()),
@@ -1963,6 +1986,46 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
             shared: None,
         },
     ),
+    entry(
+        AbilityId(86),
+        crate::data::ROSHAN_GRAB.key,
+        N::GrabAndThrow,
+        AbilityDef {
+            max_level: 1,
+            pierces: crate::Pierces::Yes,
+            block: crate::BlockTiming::Cast,
+            duration: crate::data::ROSHAN_GRAB
+                .first("channel_time")
+                .secs()
+                .ticks(),
+            targets: crate::TargetFilter::of(&[bota_proto::UnitKind::Hero], false),
+            ..cast(
+                "Throw",
+                Aim::Unit,
+                true,
+                &[0],
+                &[crate::data::ROSHAN_GRAB
+                    .first("AbilityCooldown")
+                    .secs()
+                    .ticks()],
+                crate::data::ROSHAN_GRAB.first("AbilityCastRange").int(),
+                crate::data::ROSHAN_GRAB.first("AbilityCastPoint").0 as u32,
+                530,
+            )
+        },
+        Spell::Cast {
+            when: When::Think(CastRule {
+                among: Among::Foes(Within::Radius(
+                    crate::data::ROSHAN_GRAB.first("cast_range").int(),
+                )),
+                needs: &[Need::Migrating],
+                marks: &[Mark::RealHero],
+                pick: Pick::Nearest,
+            }),
+            act: Act::Grab(&ROSHAN_THROW),
+            shared: None,
+        },
+    ),
 ];
 
 /// The bubble the Marshmages put up: one modifier whichever of them cast
@@ -2031,3 +2094,45 @@ pub fn ability_cast_view_ticks(id: AbilityId) -> u32 {
     };
     ordinary.max(delayed)
 }
+
+pub const fn migration_of(ability: NeutralAbility) -> Option<&'static crate::Migration> {
+    match *ability.spell() {
+        Spell::Intrinsic { moving, .. } => moving,
+        _ => None,
+    }
+}
+const ROSHAN_THROW: Grab = Grab {
+    duration: crate::data::ROSHAN_GRAB
+        .first("channel_time")
+        .secs()
+        .ticks(),
+    contact_after: crate::data::ROSHAN_GRAB.first("interval").secs().ticks(),
+    distance: crate::data::ROSHAN_GRAB
+        .first("max_knockback_distance")
+        .int(),
+    flight: crate::data::ROSHAN_GRAB
+        .first("knockback_duration")
+        .secs()
+        .ticks(),
+    height: crate::data::ROSHAN_GRAB.first("knockback_height").int(),
+    damage: crate::data::ROSHAN_GRAB.first("damage").int(),
+    damage_per_throw: crate::data::ROSHAN_GRAB.first("damage_per_combo").int(),
+    health_growth: crate::DamageGrowth {
+        clock: crate::GrowthClock {
+            first_after_horn: 0,
+            period: 60 * rules::TICKS_PER_SECOND,
+            cap: u32::MAX,
+        },
+        per_step: all(crate::data::ROSHAN_GRAB
+            .first("damage_growth_curr_hp_pct")
+            .0
+            / 10),
+    },
+    stun: crate::data::ROSHAN_GRAB
+        .first("stun_duration")
+        .secs()
+        .ticks(),
+    grabbed_effect: EffectId(90),
+    thrown_effect: EffectId(91),
+    contact_ability: N::StrengthOfTheImmortal,
+};

@@ -125,7 +125,12 @@ impl World {
             self.kill_by_hp_removal(hook.owner, caught);
             return;
         }
-        hook.caught = Some(caught);
+        hook.caught = (!self.stats.get(caught).is_some_and(|s| s.forced_move_immune))
+            .then_some(caught);
+        if hook.caught.is_some() && self.push.get(caught).is_some_and(|push| push.carries()) {
+            self.push.remove(caught);
+            self.forget_walk(caught);
+        }
         if !enemy {
             return;
         }
@@ -137,6 +142,12 @@ impl World {
             hook.damage_amp_bp,
             Some(Inflictor::Ability(AbilityId::MEAT_HOOK)),
         );
+    }
+
+    pub(crate) fn held_by_hook(&self, on: Entity) -> bool {
+        self.entities
+            .iter()
+            .any(|e| self.hook.get(e).is_some_and(|h| h.caught == Some(on)))
     }
 
     /// What a hook catches where it now flies.

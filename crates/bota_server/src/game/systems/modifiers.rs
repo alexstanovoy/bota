@@ -90,6 +90,8 @@ impl World {
 
     pub fn held(&self, entity: Entity) -> bool {
         self.controlled(entity, bota_core::Control::Stun)
+            || self.push.get(entity).is_some_and(|push| push.carries())
+            || self.landing_hold.binary_search(&entity).is_ok()
     }
 
     /// Whether an entity is rooted: it cannot walk, nor turn to walk, but

@@ -78,13 +78,7 @@ limits! {
     MAX_SEATS: usize = crate::game_limits::MAX_SEATS;
     /// Most ability slots on any unit.
     MAX_ABILITY_SLOTS: usize = crate::game_limits::MAX_ABILITY_SLOTS;
-    /// Most modifiers one unit carries at once, hidden and shown. What a hero
-    /// in a five-a-side fight bears (its own buffs, its allies' auras, its
-    /// enemies' debuffs) is a few dozen. A unit that carries this many takes
-    /// a fresh modifier by dropping the one with the least time left, or not
-    /// at all when every one it carries is untimed. The effects a view lists
-    /// on a unit therefore never exceed it, and a client may refuse a view
-    /// that does.
+    /// Stored modifiers plus projected movement-controller effects.
     MAX_EFFECTS_PER_UNIT: usize = crate::game_limits::MAX_EFFECTS_PER_UNIT;
     /// Most units one view lists.
     MAX_VIEW_UNITS: usize = crate::game_limits::MAX_VIEW_UNITS;

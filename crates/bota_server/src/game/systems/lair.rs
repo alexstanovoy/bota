@@ -17,6 +17,7 @@ impl World {
                 respawn_at: 0,
                 home: def.day,
                 travelling: false,
+                journey: None,
             });
         }
     }
@@ -38,6 +39,7 @@ impl World {
                 if home != self.lairs[index].home {
                     self.lairs[index].home = home;
                     self.lairs[index].travelling = true;
+                    self.begin_journey(unit, def.moving);
                     if let Some(held) = self.camp_home.get_mut(unit) {
                         held.home = home;
                     }
@@ -48,10 +50,13 @@ impl World {
                     self.target.remove(unit);
                     self.set_order(unit, UnitOrder::Move { pos: home });
                 }
-                if self.pos(unit).is_some_and(|at| {
-                    at.within(home, rules::units(def.neutral.neutral().home.back))
-                }) {
+                if self.lairs[index].travelling
+                    && self.pos(unit).is_some_and(|at| {
+                        at.within(home, rules::units(def.neutral.neutral().home.back))
+                    })
+                {
                     self.lairs[index].travelling = false;
+                    self.end_journey(unit);
                 }
             } else if clock >= self.lairs[index].respawn_at {
                 self.reclaim_lair_items(def);
@@ -59,6 +64,7 @@ impl World {
                 self.lairs[index].unit = Some(unit);
                 self.lairs[index].home = home;
                 self.lairs[index].travelling = false;
+                self.lairs[index].journey = None;
             }
         }
     }
@@ -116,6 +122,7 @@ impl World {
         let delay = def.respawn[0] + random.below(def.respawn[1] - def.respawn[0] + 1);
         self.lairs[index].unit = None;
         self.lairs[index].travelling = false;
+        self.lairs[index].journey = None;
         self.lairs[index].falls = falls;
         self.lairs[index].respawn_at = self.clock().saturating_add(delay * rules::TICKS_PER_SECOND);
     }

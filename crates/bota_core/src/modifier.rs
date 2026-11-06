@@ -16,6 +16,13 @@ pub enum Control {
 /// One kind of modifier, with what there is of it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ModifierKind {
+    /// The intrinsic policy and progress of a journey between a boss's homes.
+    Journey {
+        ability: NeutralAbility,
+        stops: u8,
+        throws: u8,
+    },
+
     /// Health mends faster.
     Mending {
         /// Points a tick, rounded up to the raw unit so a whole drink gives
@@ -327,6 +334,10 @@ impl ModifierKind {
     /// The number the wire names this kind of modifier with.
     pub const fn effect_id(self) -> EffectId {
         match self {
+            ModifierKind::Journey { ability, .. } => match crate::migration_of(ability) {
+                Some(policy) => policy.effect,
+                None => panic!("journey without movement policy"),
+            },
             ModifierKind::DelayedSpell { ability, .. } => match *ability.spell() {
                 Spell::Cast {
                     act: Act::Roar(spec),
@@ -475,6 +486,7 @@ impl ModifierKind {
     /// The count the wire shows beside it, for a kind that keeps one.
     pub const fn stacks(self) -> Option<u32> {
         match self {
+            ModifierKind::Journey { stops, .. } => Some(stops as u32),
             ModifierKind::Shadowraze { stacks } => Some(stacks as u32),
             ModifierKind::MeatShield { amount } => Some(amount as u32),
             ModifierKind::FleshHeap { count }

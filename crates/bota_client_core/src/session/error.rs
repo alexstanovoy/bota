@@ -15,7 +15,10 @@ use crate::match_static::RawExtent;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SessionError {
     /// A manual restoration report was negative or outside the accepted pool bound.
-    RestorationReport { channel: &'static str, amount: i32 },
+    RestorationReport {
+        channel: &'static str,
+        amount: i32,
+    },
     /// A bounded vector exceeded its contract.
     LimitExceeded {
         field: &'static str,
@@ -31,7 +34,10 @@ pub enum SessionError {
     /// Match metadata did not contain the own seat.
     MissingOwnPick(u8),
     /// Own seat did not pick the hero the client plays.
-    WrongOwnHero { actual: HeroId, expected: HeroId },
+    WrongOwnHero {
+        actual: HeroId,
+        expected: HeroId,
+    },
     /// Own seat had no playable team.
     InvalidOwnTeam(Team),
     /// Match metadata contained a repeated slot.
@@ -41,16 +47,26 @@ pub enum SessionError {
     /// Terrain axis was outside the supported interval.
     TerrainAxis(u32),
     /// Terrain run lengths did not cover the terrain grid.
-    TerrainCoverage { actual: u64, expected: u64 },
+    TerrainCoverage {
+        actual: u64,
+        expected: u64,
+    },
     /// A terrain run had zero length.
     ZeroTerrainRun(usize),
     /// A rule set names a kind there is none of.
-    UnknownRuleKinds { field: &'static str, bits: u16 },
+    UnknownRuleKinds {
+        field: &'static str,
+        bits: u16,
+    },
     /// The shop repeats an item, names a part it does not sell, or builds an
     /// item from itself.
     InvalidShop(&'static str),
     /// An opaque cell was outside the terrain grid.
-    OpaqueCellOutOfRange { x: u16, y: u16, cells: u32 },
+    OpaqueCellOutOfRange {
+        x: u16,
+        y: u16,
+        cells: u32,
+    },
     /// A geometry input was outside its allowed fixed-point extent.
     PositionOutOfMap {
         field: &'static str,
@@ -62,10 +78,15 @@ pub enum SessionError {
     /// Snapshot viewer was absent or belonged to a different team.
     WrongViewer(Option<Team>, Team),
     /// Snapshot tick did not strictly increase.
-    SnapshotTick { incoming: u32, current: u32 },
+    SnapshotTick {
+        incoming: u32,
+        current: u32,
+    },
     /// A snapshot's skipped ticks were not strictly increasing between the last snapshot or
     /// events and itself.
-    SkippedTicks { incoming: u32 },
+    SkippedTicks {
+        incoming: u32,
+    },
     /// Snapshot omitted the own scoreboard row.
     MissingOwnPlayer(u8),
     /// Own gold was hidden in a seat-specific snapshot.
@@ -82,7 +103,10 @@ pub enum SessionError {
         visible: EntityId,
     },
     /// More than one visible courier claimed the own seat.
-    AmbiguousOwnCourier { first: EntityId, second: EntityId },
+    AmbiguousOwnCourier {
+        first: EntityId,
+        second: EntityId,
+    },
     /// A full entity handle occurred more than once in visible units.
     DuplicateUnit(EntityId),
     /// A full entity handle occurred more than once in visible projectiles.
@@ -116,7 +140,10 @@ pub enum SessionError {
     /// A scoreboard row did not occur in the match roster.
     UnknownRosterPlayer(u8),
     /// A unit was owned by a seat the match roster does not have.
-    UnknownUnitOwner { unit: EntityId, slot: u8 },
+    UnknownUnitOwner {
+        unit: EntityId,
+        slot: u8,
+    },
     /// Teleports named a seat with no scoreboard row, or one seat twice.
     InvalidTeleports,
     /// A scoreboard row had a team different from the match roster.
@@ -150,22 +177,36 @@ pub enum SessionError {
     /// This unit's cast was shown without the casting status or the other way
     /// round, named no ability with a cast point, or went off past it.
     CastOutOfRange(EntityId),
+    ForcedOutOfRange(EntityId),
+    ChannelOutOfRange(EntityId),
     /// A tree index did not refer to static match trees.
     InvalidFelledTree(u32),
     /// Position displacement did not fit the wire vector type.
     PositionDeltaOverflow(EntityId),
     /// Event batch ticks did not strictly increase.
-    EventTickNotIncreasing { incoming: u32, previous: u32 },
+    EventTickNotIncreasing {
+        incoming: u32,
+        previous: u32,
+    },
     /// An order was recorded with a sequence not above the last one.
-    OrderSequence { incoming: u32, previous: u32 },
+    OrderSequence {
+        incoming: u32,
+        previous: u32,
+    },
     /// Every order sequence number was used.
     SequenceExhausted,
     /// An order was issued before any snapshot.
     NoSnapshot,
     /// The server's match start disagreed with its welcome on the tick rate.
-    TickRateMismatch { start: u16, welcome: u16 },
+    TickRateMismatch {
+        start: u16,
+        welcome: u16,
+    },
     /// The server's match start disagreed with its welcome on the tick mode.
-    ModeMismatch { start: TickMode, welcome: TickMode },
+    ModeMismatch {
+        start: TickMode,
+        welcome: TickMode,
+    },
     /// The match start named no pick for the assigned seat.
     NoPickForSeat(u8),
     /// The assigned seat picked a hero other than the one the client plays.
@@ -455,6 +496,16 @@ impl SessionError {
             Self::EffectOutOfRange(id) => write!(
                 f,
                 "an effect on {} has more time left than its full length",
+                Id(*id)
+            ),
+            Self::ChannelOutOfRange(id) => write!(
+                f,
+                "the ability channel of {} is outside its declared duration or lacks its channel status",
+                Id(*id)
+            ),
+            Self::ForcedOutOfRange(id) => write!(
+                f,
+                "the forced movement of {} is outside its declared ability or lacks its disable",
                 Id(*id)
             ),
             Self::CastOutOfRange(id) => write!(

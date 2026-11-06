@@ -275,6 +275,7 @@ name = "game_movement"
 about = "walking: routes, the short pather, turning, the ground and the forest, orders and their queue"
 paths = [
     "crates/bota_server/src/game/systems/walk.rs",
+    "crates/bota_server/src/game/systems/forced.rs",
     "crates/bota_server/src/game/systems/ground.rs",
     "crates/bota_server/src/game/systems/queue.rs",
     "crates/bota_server/src/game/path.rs",
@@ -509,6 +510,8 @@ about = "the map's objectives: runes, Lotus Pools, Outposts, Watchers, Shrines"
 paths = [
     "crates/bota_server/src/game/systems/lotus.rs",
     "crates/bota_server/src/game/systems/lair.rs",
+    "crates/bota_server/src/game/systems/migration.rs",
+    "crates/bota_server/src/game/components/contacts.rs",
     "crates/bota_server/src/game/components/lair.rs",
     "crates/bota_server/src/game/tests/roshan.rs",
     "crates/bota_server/src/game/tests/roshan_loot.rs",
@@ -526,6 +529,8 @@ tests = [{ crate = "bota_server", target = "lib", filters = [
     "game::tests::roshan_loot::",
     "game::tests::objectives::",
 ] }]
+
+also_paths = ["crates/bota_server/src/game/systems/forced.rs"]
 
 [[group]]
 name = "game_match"

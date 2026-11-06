@@ -1814,6 +1814,7 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
             A::RoshanSlam,
             A::Bash,
             A::SpellBlock,
+            A::GrabAndThrow,
             A::StrengthOfTheImmortal,
             A::Devotion,
         ],

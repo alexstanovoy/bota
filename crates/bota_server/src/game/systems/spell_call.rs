@@ -111,6 +111,11 @@ impl World {
         let Some(on) = self.unit_aimed_at(target) else {
             return false;
         };
+        if self.stats.get(on).is_some_and(|s| s.forced_move_immune)
+            || self.push.get(on).is_some_and(|p| p.carries())
+        {
+            return true;
+        }
         let (Some(from), Some(at)) = (self.pos(cast.caster), self.pos(on)) else {
             return false;
         };
@@ -123,6 +128,13 @@ impl World {
         self.push.insert(
             on,
             Push {
+                effect: None,
+                phase: crate::game::PushPhase::Ground,
+                team: self
+                    .team
+                    .get(cast.caster)
+                    .copied()
+                    .unwrap_or(bota_proto::Team::Neutral),
                 source: cast.caster,
                 inflictor: Inflictor::Ability(cast.ability.id()),
                 aim,

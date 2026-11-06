@@ -39,6 +39,8 @@ pub struct Planted {
 pub struct Forest {
     /// Where each of the map's trees stands, by index.
     spots: Arc<[Vec2]>,
+    /// Immutable x-sorted indexes for bounded queries around forced movement.
+    root_order: Arc<[u32]>,
     /// The tick each of the map's trees comes back. Zero for one standing.
     back: Vec<u32>,
     /// Every one of the map's trees that is down, by index, ascending.
@@ -64,7 +66,10 @@ impl Forest {
     /// A map's forest with every tree of it standing, as both sides know.
     pub fn of(map: &bota_core::MapDef, terrain: &crate::game::MapTerrain) -> Forest {
         let spots: Arc<[Vec2]> = crate::game::tree_positions(map, terrain).into();
+        let mut order: Vec<u32> = (0..spots.len() as u32).collect();
+        order.sort_unstable_by_key(|i| (spots[*i as usize].x.raw, spots[*i as usize].y.raw, *i));
         Forest {
+            root_order: order.into(),
             back: vec![0; spots.len()],
             spots,
             down: Vec::new(),
@@ -118,6 +123,23 @@ impl Forest {
                 known.planted.push(tree.at);
             }
         }
+    }
+
+    /// Standing rooted trees in a square; the caller checks its precise shape.
+    pub fn rooted_near(&self, at: Vec2, reach: i64) -> impl Iterator<Item = usize> + '_ {
+        let x = i64::from(at.x.raw);
+        let y = i64::from(at.y.raw);
+        let first = self
+            .root_order
+            .partition_point(|i| i64::from(self.spots[*i as usize].x.raw) < x - reach);
+        self.root_order[first..]
+            .iter()
+            .copied()
+            .take_while(move |i| i64::from(self.spots[*i as usize].x.raw) <= x + reach)
+            .map(|i| i as usize)
+            .filter(move |i| {
+                (i64::from(self.spots[*i].y.raw) - y).abs() <= reach && self.rooted_stands(*i)
+            })
     }
 
     pub fn rooted_stands(&self, index: usize) -> bool {
@@ -268,6 +290,7 @@ impl StateHash for Forest {
     fn state_hash(&self, fnv: &mut Fnv) {
         let Forest {
             spots: _,
+            root_order: _,
             back,
             down,
             planted,
@@ -289,6 +312,7 @@ impl crate::engine::Specimen for Forest {
     fn high() -> Self {
         Forest {
             spots: Arc::default(),
+            root_order: Arc::default(),
             back: crate::engine::Specimen::high(),
             down: crate::engine::Specimen::high(),
             planted: crate::engine::Specimen::high(),

@@ -368,8 +368,12 @@ pub struct UnitView {
     pub gathering: Option<GatheringView>,
     /// The side a neutral map objective is lit for while it is (a Watcher a hero of that side
     /// lit), which Dota shows everyone who sees it by its colours, as it does an Outpost's
-    /// [`team`](Self::team). Absent for anything else. Last on the wire.
+    /// [`team`](Self::team). Absent for anything else.
     pub lit_for: Option<Team>,
+    /// The visible phase and elevation of forced movement, with no controller handle.
+    pub forced: Option<ForcedView>,
+    /// A visible ability channel, independent of incidental passive activations.
+    pub channel: Option<ChannelView>,
 }
 
 /// A countdown a side runs by standing near a map objective.
@@ -381,6 +385,26 @@ pub struct GatheringView {
     pub progress: u32,
     /// Ticks it runs to its end.
     pub ticks: u32,
+
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ForcedPhase {
+    Held,
+    Airborne,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ForcedView {
+    pub ability: AbilityId,
+    pub phase: ForcedPhase,
+    pub height: Fixed,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ChannelView {
+    pub ability: AbilityId,
+    pub elapsed: u32,
 }
 
 /// A cast in its cast point.

@@ -726,3 +726,14 @@ field EventKind::ItemPlaced 2 at: Vec2
 variant EventKind 25 BossRoared {}
 field EventKind::BossRoared 0 objective: ObjectiveKind
 field EventKind::BossRoared 1 team: Team
+
+field UnitView 46 forced: Option<ForcedView>
+variant ForcedPhase 0 Held
+variant ForcedPhase 1 Airborne
+field ForcedView 0 ability: AbilityId
+field ForcedView 1 phase: ForcedPhase
+field ForcedView 2 height: Fixed
+
+field UnitView 47 channel: Option<ChannelView>
+field ChannelView 0 ability: AbilityId
+field ChannelView 1 elapsed: u32

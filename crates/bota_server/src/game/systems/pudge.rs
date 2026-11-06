@@ -106,6 +106,11 @@ impl World {
     /// Pulls what a dismember holds towards its holder, no nearer than
     /// [`rules::DISMEMBER_PULL_LIMIT`] between their centers.
     fn dismember_pulls(&mut self, caster: Entity, on: Entity) {
+        if self.stats.get(on).is_some_and(|s| s.forced_move_immune)
+            || self.push.get(on).is_some_and(|p| p.carries())
+        {
+            return;
+        }
         let (Some(me), Some(them)) = (self.pos(caster), self.pos(on)) else {
             return;
         };

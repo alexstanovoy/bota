@@ -7,6 +7,11 @@ use bota_proto::{DamageKind, EffectId, Fixed, IdSpace, RegisteredId, registered}
 /// the match below until it is listed here as well.
 fn every_modifier() -> Vec<ModifierKind> {
     let mut every = vec![
+        ModifierKind::Journey {
+            ability: bota_core::NeutralAbility::StrengthOfTheImmortal,
+            stops: 0,
+            throws: 0,
+        },
         ModifierKind::DelayedSpell {
             ability: bota_core::NeutralAbility::RevengeRoar,
             level: 1,
@@ -171,7 +176,8 @@ fn every_modifier() -> Vec<ModifierKind> {
             | ModifierKind::BottleRegeneration { .. }
             | ModifierKind::Laid { .. }
             | ModifierKind::Spell { .. } => {}
-            ModifierKind::DelayedSpell { .. }
+            ModifierKind::Journey { .. }
+            | ModifierKind::DelayedSpell { .. }
             | ModifierKind::AuraEmitter { .. }
             | ModifierKind::Control { .. }
             | ModifierKind::BonusArmor { .. }
@@ -197,7 +203,8 @@ fn every_effect_is_shown_under_its_registered_id() {
     let mut shown: Vec<(u16, String)> = every_modifier()
         .iter()
         .map(|kind| match kind {
-            ModifierKind::DelayedSpell { .. }
+            ModifierKind::Journey { .. }
+            | ModifierKind::DelayedSpell { .. }
             | ModifierKind::AuraEmitter { .. }
             | ModifierKind::Control { .. } => (
                 kind.effect_id().0,
@@ -231,6 +238,29 @@ fn every_effect_is_shown_under_its_registered_id() {
         };
         let def = effect_def(effect).expect("a spell's effect is live");
         shown.push((effect.0, def.name.to_string()));
+    }
+    for entry in NEUTRAL_ABILITIES {
+        let mut ids = Vec::new();
+        if let bota_core::Spell::Cast {
+            act: bota_core::Act::Grab(spec),
+            ..
+        } = *entry.ability.spell()
+        {
+            ids.extend([spec.grabbed_effect, spec.thrown_effect]);
+        }
+        if let Some(policy) = bota_core::migration_of(entry.ability) {
+            ids.extend([
+                policy.effect,
+                policy.contact.effect,
+                policy.contact.timeout_effect,
+            ]);
+        }
+        for id in ids {
+            shown.push((
+                id.0,
+                effect_def(id).expect("movement effect").name.to_owned(),
+            ));
+        }
     }
     let registry: Vec<RegisteredId> = registered(IdSpace::Effect).collect();
     for (id, name) in &shown {

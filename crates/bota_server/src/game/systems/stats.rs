@@ -19,6 +19,7 @@ use super::grenade::grenade_of;
 /// What working out stats reads and writes.
 pub struct StatsCx<'a> {
     pub entities: &'a EntityAllocator,
+    pub lairs: &'a [crate::game::Lair],
     pub def: &'a Table<Def>,
     pub level: &'a Table<Level>,
     /// Upgrade intervals a creep spawned after.
@@ -53,6 +54,7 @@ pub struct StatsCx<'a> {
 pub fn derive_stats(cx: StatsCx<'_>) {
     let StatsCx {
         entities,
+        lairs,
         def,
         level,
         upgrades,
@@ -108,11 +110,17 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         // Every percent change of the pace and of the main attack damage is
         // summed and taken once, and flat bonus damage is added after, as
         // Dota works movement speed and attack damage out.
+        let journey = lairs
+            .iter()
+            .find(|l| l.unit == Some(entity))
+            .and_then(|l| l.journey)
+            .map(|j| j.modifier(entity));
         let working = || {
             modifiers
                 .get(entity)
                 .into_iter()
                 .flat_map(|on_it| on_it.active())
+                .chain(journey.iter())
                 .filter(|held| !disabled_in(modifiers, held))
         };
         let slow_keep = resistance_keep(working(), Stat::SlowResistPct);
@@ -164,7 +172,8 @@ pub fn derive_stats(cx: StatsCx<'_>) {
                 now.move_speed,
                 sums.pace.pct_bp,
                 pace_scale_bp,
-                kind.unbounded_pace,
+                kind.unbounded_pace
+                    || working().any(|m| matches!(m.kind, ModifierKind::Journey { .. })),
                 now.slow_resist_bp,
             ),
         };
@@ -534,6 +543,13 @@ fn add_modifiers<'a>(
                 let radius = if wearer.night { night } else { day };
                 now.vision_grant = Some((side, Fixed::from_int(radius)));
             }
+            ModifierKind::Journey { ability, stops, .. } => {
+                if let Some(policy) = bota_core::migration_of(ability) {
+                    now.move_speed += Fixed::from_int(
+                        (i32::from(stops) * policy.speed_per_stop).min(policy.max_speed_bonus),
+                    );
+                }
+            }
             ModifierKind::DelayedSpell { .. }
             | ModifierKind::AuraEmitter { .. }
             | ModifierKind::Control { .. }
@@ -769,6 +785,8 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32, night: bool) -> Stats {
         true_sight: Fixed::from_int(kind.true_sight),
         hides: kind.hides,
         flies: kind.flies,
+        tree_walking: kind.tree_walking,
+        forced_move_immune: kind.forced_move_immune,
         phased: false,
         invulnerable: kind.invulnerable,
         spell_immune: kind.spell_immune,
@@ -835,14 +853,19 @@ fn resistance_keep<'a>(working: impl Iterator<Item = &'a Modifier>, stat: Stat) 
     let mut values = [0u8; rules::MAX_EFFECTS_PER_UNIT];
     let mut count = 0;
     for held in working.take(rules::MAX_EFFECTS_PER_UNIT) {
-        if let ModifierKind::Spell { ability, level, .. } = held.kind
-            && let Some(buff) = spell_buff(ability)
-        {
-            let pct = buff.get(stat, level).clamp(0, 100) as u8;
-            if pct > 0 {
-                values[count] = pct;
-                count += 1;
+        let pct = match held.kind {
+            ModifierKind::Spell { ability, level, .. } => {
+                spell_buff(ability).map_or(0, |buff| buff.get(stat, level))
             }
+            ModifierKind::Journey { ability, .. } if stat == Stat::SlowResistPct => {
+                bota_core::migration_of(ability).map_or(0, |p| p.slow_resist_pct)
+            }
+            _ => 0,
+        }
+        .clamp(0, 100) as u8;
+        if pct > 0 {
+            values[count] = pct;
+            count += 1;
         }
     }
     values[..count].sort_unstable();

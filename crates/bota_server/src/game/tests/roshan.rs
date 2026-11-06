@@ -1003,7 +1003,7 @@ fn roshan_slams_a_crowd_with_a_hero_and_deals_double_damage_to_creeps() {
     let mut hits = Vec::new();
     for _ in 0..90 {
         for event in world.step() {
-            match event.kind {
+            match event.kind() {
                 EventKind::AbilityCast { ability, .. }
                     if ability_def(ability).is_some_and(|d| d.key == "roshan_slam") =>
                 {
@@ -1103,7 +1103,7 @@ fn roshans_bash_is_a_conditional_physical_attack_bonus_blocked_once_and_disabled
                 amount,
                 kind,
                 ..
-            } = event.kind
+            } = event.kind()
                 && hit == crate::game::wire_id(target)
             {
                 assert_eq!(kind, DamageKind::Physical);
@@ -1145,7 +1145,7 @@ fn roshans_bash_is_a_conditional_physical_attack_bonus_blocked_once_and_disabled
                 target: hit,
                 amount,
                 ..
-            } = event.kind
+            } = event.kind()
                 && hit == crate::game::wire_id(target)
             {
                 assert_eq!(amount, 65);
@@ -1218,7 +1218,7 @@ fn roshan_roars_while_stunned_and_silenced_then_disarms_and_amplifies_after_wind
                 amount,
                 kind: DamageKind::Magical,
                 ..
-            } = event.kind
+            } = event.kind()
                 && target == crate::game::wire_id(hero)
             {
                 hits.push((tick, amount));
@@ -1265,7 +1265,7 @@ fn roshan_never_procs_bash_on_a_banner_or_other_ward() {
         world.health.get_mut(banner).expect("banner").hp = hp;
         for event in world.step() {
             assert!(
-                !matches!(event.kind,EventKind::AbilityCast{ability,..} if ability==NeutralAbility::Bash.id()),
+                !matches!(event.kind(),EventKind::AbilityCast{ability,..} if ability==NeutralAbility::Bash.id()),
                 "wards must not roll Bash"
             );
         }
@@ -1325,7 +1325,7 @@ fn roshan_only_roars_below_85_percent_at_a_real_hero_from_the_previous_killing_s
         let mut message = false;
         for _ in 0..3 {
             for event in world.step() {
-                match event.kind {
+                match event.kind() {
                     EventKind::AbilityCast { ability, .. }
                         if ability == NeutralAbility::RevengeRoar.id() =>
                     {
@@ -1466,7 +1466,7 @@ fn roshan_does_not_slam_two_foes_or_a_crowd_without_a_hero() {
         for _ in 0..100 {
             for event in world.step() {
                 assert!(
-                    !matches!(event.kind,EventKind::AbilityCast{ability,..} if ability==NeutralAbility::RoshanSlam.id())
+                    !matches!(event.kind(),EventKind::AbilityCast{ability,..} if ability==NeutralAbility::RoshanSlam.id())
                 );
             }
         }
@@ -1603,4 +1603,1132 @@ fn an_illusion_rune_cleanses_slam_but_preserves_the_heros_beneficial_haste() {
             .any(|m| m.kind.effect_id() == bota_proto::EffectId(83))
     );
     assert!(world.wears(hero, ModifierKind::Hastened { pct: 20 }));
+}
+
+#[test]
+fn roshan_physics_walks_through_trees_without_flying_or_destroying_them() {
+    use crate::game::UnitOrder;
+    use bota_core::{HERO, ROSHAN, rules};
+    use bota_proto::{Team, Vec2};
+    for (def, reaches) in [(&ROSHAN, true), (&HERO, false)] {
+        let mut world = World::new();
+        world.creeps_halted = true;
+        let from = Vec2::from_ints(5000, 5000);
+        let to = Vec2::from_ints(5400, 5000);
+        let walker = world.spawn_unit(def, Team::Neutral, from);
+        for y in (-384..=384).step_by(48) {
+            world.trees.plant(Vec2::from_ints(5200, 5000 + y), 5000);
+        }
+        world.lay_passability();
+        world.settle();
+        let trees = world.trees.planted().len();
+        world.set_order(walker, UnitOrder::Move { pos: to });
+        run(&mut world, 60);
+        assert_eq!(
+            world
+                .pos(walker)
+                .expect("walker")
+                .within(to, rules::units(30)),
+            reaches,
+            "{} tree path",
+            def.kind as u8
+        );
+        assert!(!world.stats.get(walker).expect("stats").flies);
+        assert_eq!(world.trees.planted().len(), trees);
+    }
+}
+
+#[test]
+fn a_hook_passes_through_roshan_without_damage_drag_or_stun() {
+    use crate::game::UnitOrder;
+    use bota_core::ROSHAN;
+    use bota_proto::{HeroId, Target, Team, Vec2};
+    let mut world = World::new();
+    world.creeps_halted = true;
+    let caster = seated_hero(&mut world, Vec2::from_ints(5000, 5000), HeroId::PUDGE);
+    let at = Vec2::from_ints(5600, 5000);
+    let boss = world.spawn_unit(&ROSHAN, Team::Dire, at);
+    world.set_order(boss, UnitOrder::Stand);
+    world.settle();
+    let hp = world.health.get(boss).expect("boss").hp;
+    assert!(world.cast_hook(caster, 0, Target::Pos(at)));
+    for _ in 0..60 {
+        world.step();
+        assert_eq!(world.pos(boss), Some(at));
+        assert!(!world.held(boss));
+    }
+    assert_eq!(world.health.get(boss).expect("boss").hp, hp,
+        "Valve's Meat Hook notes explicitly include Roshan among pass-through units");
+}
+
+fn migrating_boss_on_open_ground() -> (World, crate::game::Entity, crate::game::Entity) {
+    use crate::game::{Lair, UnitOrder};
+    use bota_core::{LairDef, MAPS, MapDef, NeutralKind, ROSHAN_LAIR, rules};
+    use bota_proto::{HeroId, ObjectiveKind, ObjectiveSet, Vec2};
+    const LAIR: LairDef = LairDef {
+        day: Vec2::from_ints(5000, 5000),
+        night: Vec2::from_ints(8000, 5000),
+        ..ROSHAN_LAIR
+    };
+    const MAP: MapDef = MapDef {
+        lairs: &[LAIR],
+        boss_zones: &[],
+        no_wards: &[],
+        ..MAPS[1]
+    };
+    let mut world = World::new();
+    world.map = &MAP;
+    world.creeps_halted = true;
+    world.immortal_heroes = true;
+    world.objectives = ObjectiveSet::of(ObjectiveKind::Roshan);
+    let boss = world.spawn_neutral_home(NeutralKind::Roshan, LAIR.day, None, 0);
+    world.lairs.push(Lair {
+        unit: Some(boss),
+        falls: 0,
+        last_killer: None,
+        respawn_at: 0,
+        home: LAIR.day,
+        travelling: false,
+        journey: None,
+    });
+    let hero = seated_hero(
+        &mut world,
+        LAIR.day + Vec2::from_ints(200, 100),
+        HeroId::PUDGE,
+    );
+    world.set_order(hero, UnitOrder::Stand);
+    world.clock_shift.game = world.schedule().horn + 15 * 60 * rules::TICKS_PER_SECOND;
+    world.settle();
+    (world, boss, hero)
+}
+
+#[test]
+fn migrating_roshan_grabs_then_throws_a_hero_and_applies_magic_before_pure_landing_damage() {
+    use bota_core::{ModifierKind, ability_def};
+    use bota_proto::{DamageKind, EventKind};
+    let (mut world, boss, hero) = migrating_boss_on_open_ground();
+    assert!(
+        world
+            .abilities
+            .get(boss)
+            .expect("book")
+            .slots
+            .iter()
+            .any(|s| ability_def(s.id).is_some_and(|d| d.key == "roshan_grab_and_throw")),
+        "Throw belongs to the imported NPC book"
+    );
+    let start = world.pos(hero).expect("hero");
+    let mut grabbed = false;
+    let mut magic = false;
+    let mut pure = false;
+    for _ in 0..110 {
+        for event in world.step() {
+            if let EventKind::Damaged { target, kind, .. } = event.kind()
+                && target == crate::game::wire_id(hero)
+            {
+                match kind {
+                    DamageKind::Magical => magic = true,
+                    DamageKind::Pure => {
+                        assert!(magic);
+                        pure = true;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        grabbed |= world.is_channelling(boss) && world.held(hero);
+        if pure {
+            assert!(
+                world.pos(hero).expect("landing").distance_squared(start)
+                    > bota_core::rules::units(1490).squared_raw()
+            );
+            let stun = world
+                .modifiers
+                .get(hero)
+                .expect("effects")
+                .active()
+                .find(|m| m.kind == ModifierKind::Stunned)
+                .expect("landing stun");
+            assert_eq!(stun.ticks_total, Some(30));
+            break;
+        }
+    }
+    assert!(grabbed);
+    assert!(magic);
+    assert!(pure);
+}
+
+#[test]
+fn migration_silenced_attempts_consume_five_shared_stops_then_speed_caps_at_570_and_resets_on_arrival()
+ {
+    use crate::game::{Modifier, UnitOrder};
+    use bota_core::{MELEE_CREEP, ModifierKind, NeutralAbility, rules};
+    use bota_proto::{EffectId, EventKind, Fixed, Team, Vec2};
+    const CREEP: bota_core::UnitDef = bota_core::UnitDef {
+        max_hp: 10000,
+        hp_regen: Fixed::ZERO,
+        damage: 0,
+        move_speed: 0,
+        ..MELEE_CREEP
+    };
+    let (mut world, boss, hero) = migrating_boss_on_open_ground();
+    let at = world.pos(boss).expect("boss");
+    let a = world.spawn_unit(&CREEP, Team::Radiant, at + Vec2::from_ints(160, -160));
+    let b = world.spawn_unit(&CREEP, Team::Radiant, at + Vec2::from_ints(-160, 160));
+    world.set_order(a, UnitOrder::Stand);
+    world.set_order(b, UnitOrder::Stand);
+    world.put_modifier(
+        boss,
+        Modifier::new(
+            ModifierKind::Control {
+                control: bota_core::Control::Silence,
+                effect: EffectId(89),
+            },
+            Some(hero),
+            None,
+            Some(1000),
+        ),
+    );
+    for _ in 0..40 {
+        for event in world.step() {
+            assert!(
+                !matches!(event.kind(),EventKind::AbilityCast{ability,..} if [NeutralAbility::RoshanSlam.id(),NeutralAbility::GrabAndThrow.id()].contains(&ability)),
+                "silenced attempts never cast"
+            );
+        }
+        if world.journey(boss).is_some_and(|(_, stops, _)| stops == 5) {
+            break;
+        }
+    }
+    assert_eq!(
+        world
+            .journey(boss)
+            .map(|(_, stops, throws)| (stops, throws)),
+        Some((5, 0))
+    );
+    world.step();
+    assert_eq!(
+        world.stats.get(boss).expect("stats").move_speed,
+        Fixed::from_int(570)
+    );
+    assert_eq!(world.stats.get(boss).expect("stats").slow_resist_bp, 4375);
+    let before = world.pos(boss).expect("boss");
+    run(&mut world, 10);
+    assert!(
+        world.pos(boss).expect("moving").distance_squared(before) > rules::units(100).squared_raw()
+    );
+    assert_eq!(world.journey(boss).map(|(_, stops, _)| stops), Some(5));
+    let home = world.camp_home.get(boss).expect("home").home;
+    world.transform.get_mut(boss).expect("boss").pos = home;
+    world.step();
+    assert!(!world.migrating(boss));
+    assert_eq!(world.journey(boss), None);
+    assert_eq!(
+        world.stats.get(boss).expect("stats").move_speed,
+        Fixed::from_int(270)
+    );
+    assert_eq!(world.stats.get(boss).expect("stats").slow_resist_bp, 2500);
+}
+
+#[test]
+fn migration_contact_pierces_immunity_has_a_two_second_victim_cooldown_and_cuts_only_trees_along_the_push()
+ {
+    use crate::game::UnitOrder;
+    use bota_core::{MELEE_CREEP, rules};
+    use bota_proto::{DamageKind, EventKind, Fixed, Team, Vec2};
+    const CREEP: bota_core::UnitDef = bota_core::UnitDef {
+        max_hp: 5000,
+        hp_regen: Fixed::ZERO,
+        damage: 0,
+        move_speed: 0,
+        spell_immune: true,
+        magic_resist_pct: 0,
+        ..MELEE_CREEP
+    };
+    let (mut world, boss, hero) = migrating_boss_on_open_ground();
+    world.transform.get_mut(hero).expect("hero").pos = Vec2::from_ints(5000, 6500);
+    let origin = Vec2::from_ints(5000, 5000);
+    let victim = world.spawn_unit(&CREEP, Team::Radiant, origin + Vec2::from_ints(50, 0));
+    world.set_order(victim, UnitOrder::Stand);
+    let near = origin + Vec2::from_ints(125, 0);
+    let far = origin + Vec2::from_ints(0, 200);
+    world.trees.plant(near, 5000);
+    world.trees.plant(far, 5000);
+    world.lay_passability();
+    world.settle();
+    let mut hits = Vec::new();
+    for tick in 1..=65 {
+        world.transform.get_mut(boss).expect("boss").pos = origin;
+        if !world.push.contains(victim) {
+            world.transform.get_mut(victim).expect("victim").pos = origin + Vec2::from_ints(50, 0);
+        }
+        for event in world.step() {
+            if let EventKind::Damaged {
+                target,
+                kind,
+                amount,
+                ..
+            } = event.kind()
+                && target == crate::game::wire_id(victim)
+            {
+                assert_eq!(kind, DamageKind::Magical);
+                assert_eq!(amount, 200);
+                hits.push(tick);
+            }
+        }
+    }
+    assert_eq!(hits, vec![1, 61]);
+    assert!(world.trees.nearest(near, rules::units(1)).is_none());
+    assert!(world.trees.nearest(far, rules::units(1)).is_some());
+}
+
+#[test]
+fn migration_grab_cancellation_before_contact_and_between_contact_and_launch_releases_position_and_facing()
+ {
+    use crate::game::{PushPhase, UnitOrder};
+    use bota_proto::{DamageKind, EventKind, Vec2};
+    for age in [5, 24] {
+        let (mut world, boss, hero) = migrating_boss_on_open_ground();
+        for _ in 0..50 {
+            if world
+                .push
+                .get(hero)
+                .is_some_and(|p| matches!(p.phase, PushPhase::Grip { .. }))
+            {
+                break;
+            }
+            world.step();
+        }
+        let start = world.tick;
+        let from = world.pos(hero).expect("hero");
+        assert!(
+            world
+                .push
+                .get(hero)
+                .is_some_and(|p| matches!(p.phase, PushPhase::Grip { .. }))
+        );
+        let mut magic = 0;
+        while world.tick < start + age {
+            for e in world.step() {
+                if matches!(e.kind(),EventKind::Damaged{target,kind:DamageKind::Magical,..} if target==crate::game::wire_id(hero))
+                {
+                    magic += 1;
+                }
+            }
+        }
+        world.cancel_action(boss);
+        assert!(!world.push.contains(hero));
+        assert!(!world.held(hero));
+        assert_eq!(magic, usize::from(age >= 23));
+        let old_facing = world.transform.get(hero).expect("hero").facing;
+        world.set_order(
+            hero,
+            UnitOrder::Move {
+                pos: from + Vec2::from_ints(-300, 300),
+            },
+        );
+        // End the journey so no new grab can obscure the recovery assertion.
+        world.lairs[0].travelling = false;
+        world.end_journey(boss);
+        world.neutral_ai.get_mut(boss).expect("mind").going_home = false;
+        world.set_order(boss, UnitOrder::Stand);
+        let mut pure = 0;
+        for _ in 0..45 {
+            for e in world.step() {
+                if matches!(e.kind(),EventKind::Damaged{target,kind:DamageKind::Pure,..} if target==crate::game::wire_id(hero))
+                {
+                    pure += 1;
+                }
+            }
+        }
+        assert_eq!(pure, 0);
+        assert!(
+            world.pos(hero).expect("released").distance_squared(from)
+                > bota_core::rules::units(100).squared_raw()
+        );
+        assert_ne!(
+            world.transform.get(hero).expect("turning again").facing,
+            old_facing
+        );
+    }
+}
+
+#[test]
+fn migration_a_hook_rescuing_a_grabbed_ally_takes_movement_ownership_and_cancels_the_grip() {
+    use bota_proto::{HeroId, SlotId, Target, Team, Vec2};
+    let (mut world, boss, hero) = migrating_boss_on_open_ground();
+    let caster = world.spawn_hero(
+        Team::Radiant,
+        Vec2::from_ints(5200, 5700),
+        SlotId(1),
+        HeroId::PUDGE,
+    );
+    let mut seat = crate::game::Seat::new(
+        SlotId(1),
+        Team::Radiant,
+        HeroId::PUDGE,
+        0,
+        bota_core::rules::STASH_SLOTS,
+    );
+    seat.unit = Some(caster);
+    world.seats.push(seat);
+    for _ in 0..50 {
+        if world.push.contains(hero) {
+            break;
+        }
+        world.step();
+    }
+    assert!(world.is_channelling(boss));
+    assert!(world.cast_hook(caster, 0, Target::Pos(world.pos(hero).expect("hero"))));
+    let mut caught = false;
+    for _ in 0..30 {
+        world.step();
+        if world
+            .entities
+            .iter()
+            .any(|e| world.hook.get(e).is_some_and(|h| h.caught == Some(hero)))
+        {
+            caught = true;
+            break;
+        }
+    }
+    assert!(caught);
+    assert!(!world.push.contains(hero));
+    assert!(!world.is_channelling(boss));
+}
+
+#[test]
+fn migration_contact_cooldown_survives_a_victim_at_the_modifier_capacity() {
+    use crate::game::{Modifier, UnitOrder};
+    use bota_core::{MELEE_CREEP, ModifierKind, rules};
+    use bota_proto::{DamageKind, EffectId, EventKind, Fixed, Team, Vec2};
+    const CREEP: bota_core::UnitDef = bota_core::UnitDef {
+        max_hp: 5000,
+        hp_regen: Fixed::ZERO,
+        damage: 0,
+        move_speed: 0,
+        magic_resist_pct: 0,
+        ..MELEE_CREEP
+    };
+    let (mut world, boss, hero) = migrating_boss_on_open_ground();
+    world.transform.get_mut(hero).expect("hero").pos = Vec2::from_ints(5000, 6500);
+    let origin = Vec2::from_ints(5000, 5000);
+    let victim = world.spawn_unit(&CREEP, Team::Radiant, origin + Vec2::from_ints(50, 0));
+    world.set_order(victim, UnitOrder::Stand);
+    // Fill the bounded modifier store with independent untimed sources. A controller's
+    // own cooldown must not disappear when that unrelated store cannot admit another row.
+    for _ in 0..rules::MAX_MODIFIERS_PER_UNIT {
+        let source = world.spawn();
+        world.put_modifier(
+            victim,
+            Modifier::new(
+                ModifierKind::BonusArmor {
+                    armor: Fixed::ZERO,
+                    effect: EffectId::FORTIFIED,
+                },
+                Some(source),
+                None,
+                None,
+            ),
+        );
+    }
+    assert_eq!(
+        world.modifiers.get(victim).expect("effects").0.len(),
+        rules::MAX_MODIFIERS_PER_UNIT
+    );
+    world.settle();
+    let mut hits = Vec::new();
+    for tick in 1..=65 {
+        world.transform.get_mut(boss).expect("boss").pos = origin;
+        if !world.push.contains(victim) {
+            world.transform.get_mut(victim).expect("victim").pos = origin + Vec2::from_ints(50, 0);
+        }
+        for event in world.step() {
+            if matches!(event.kind(),EventKind::Damaged{target,kind:DamageKind::Magical,..} if target==crate::game::wire_id(victim))
+            {
+                hits.push(tick);
+            }
+        }
+    }
+    assert_eq!(hits, vec![1, 61]);
+}
+
+#[test]
+fn migration_caster_death_releases_a_grip_but_does_not_cancel_a_launched_throw() {
+    use crate::game::{PushPhase, UnitOrder};
+    use bota_proto::{DamageKind, EventKind, Vec2};
+    for age in [5, 23, 30] {
+        let (mut world, boss, hero) = migrating_boss_on_open_ground();
+        for _ in 0..50 {
+            if world.push.contains(hero) {
+                break;
+            }
+            world.step();
+        }
+        assert!(world.push.contains(hero));
+        run(&mut world, age);
+        let airborne = world
+            .push
+            .get(hero)
+            .is_some_and(|p| matches!(p.phase, PushPhase::Arc { .. }));
+        assert_eq!(airborne, age >= 26);
+        world.push_hit(Some(hero), boss, 100000, DamageKind::Pure, None);
+        world.step();
+        world.step();
+        assert!(!world.alive(boss));
+        if !airborne {
+            assert!(!world.push.contains(hero));
+            assert!(!world.held(hero));
+        }
+        let from = world.pos(hero).expect("hero");
+        let mut pure = 0;
+        world.set_order(
+            hero,
+            UnitOrder::Move {
+                pos: from + Vec2::from_ints(-300, 300),
+            },
+        );
+        for _ in 0..85 {
+            for e in world.step() {
+                if matches!(e.kind(),EventKind::Damaged{target,kind:DamageKind::Pure,..} if target==crate::game::wire_id(hero))
+                {
+                    pure += 1;
+                }
+            }
+        }
+        assert_eq!(pure, usize::from(airborne));
+        assert!(!world.push.contains(hero));
+        assert!(!world.held(hero));
+        assert!(
+            world
+                .pos(hero)
+                .expect("moving again")
+                .distance_squared(from)
+                > bota_core::rules::units(100).squared_raw()
+        );
+    }
+}
+
+#[test]
+fn migration_victim_death_and_aegis_reincarnation_clear_the_grip_and_airborne_state() {
+    use crate::game::PushPhase;
+    use bota_proto::{DamageKind, ItemId, Team};
+    for aegis in [false, true] {
+        for age in [5, 30] {
+            let (mut world, boss, hero) = migrating_boss_on_open_ground();
+            world.immortal_heroes = false;
+            if aegis {
+                hand_item(&mut world, hero, ItemId::AEGIS, 1);
+            }
+            for _ in 0..50 {
+                if world.push.contains(hero) {
+                    break;
+                }
+                world.step();
+            }
+            run(&mut world, age);
+            assert!(world.push.contains(hero));
+            assert_eq!(
+                world
+                    .push
+                    .get(hero)
+                    .is_some_and(|p| matches!(p.phase, PushPhase::Arc { .. })),
+                age >= 26
+            );
+            world.push_hit(None, hero, 100000, DamageKind::Pure, None);
+            world.step();
+            assert!(!world.alive(hero));
+            assert!(!world.push.contains(hero));
+            let death_at = world.seats[0].reincarnating_at;
+            run(&mut world, 2);
+            assert!(!world.is_channelling(boss));
+            if aegis {
+                let at = death_at.expect("Aegis delay");
+                run(&mut world, 150);
+                assert!(world.alive(hero));
+                assert_eq!(world.pos(hero), Some(at));
+                assert!(!world.push.contains(hero));
+                assert!(!world.held(hero));
+                assert_eq!(
+                    world
+                        .view(Team::Radiant)
+                        .unit(crate::game::wire_id(hero))
+                        .expect("risen hero")
+                        .forced,
+                    None
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn migration_grip_and_flight_ignore_status_resistance_but_landing_stun_is_shortened() {
+    use crate::game::{AppliedModifier, AppliedModifiers, AppliedOrigin, PushPhase};
+    use bota_proto::ModifierSpec;
+    let (mut world, boss, hero) = migrating_boss_on_open_ground();
+    let mut applied = AppliedModifiers::default();
+    applied.push(AppliedModifier {
+        spec: ModifierSpec {
+            status_resist: 5000,
+            ..ModifierSpec::NOMINAL
+        },
+        ticks_left: None,
+        origin: AppliedOrigin::Setup,
+    });
+    world.applied.insert(hero, applied);
+    world.settle();
+    for _ in 0..50 {
+        if world.push.contains(hero) {
+            break;
+        }
+        world.step();
+    }
+    let bota_core::Spell::Cast {
+        act: bota_core::Act::Grab(spec),
+        ..
+    } = *bota_core::NeutralAbility::GrabAndThrow.spell()
+    else {
+        panic!("Throw data");
+    };
+    for _ in 0..spec.duration - 1 {
+        world.step();
+        assert!(
+            world
+                .push
+                .get(hero)
+                .is_some_and(|p| matches!(p.phase, PushPhase::Grip { .. }))
+        );
+    }
+    world.step();
+    assert!(
+        world
+            .push
+            .get(hero)
+            .is_some_and(|p| matches!(p.phase, PushPhase::Arc { .. }))
+    );
+    assert_eq!(world.journey(boss).map(|(_, _, n)| n), Some(1));
+    for _ in 0..23 {
+        world.step();
+        assert!(world.push.contains(hero));
+    }
+    world.step();
+    assert!(!world.push.contains(hero));
+    let stun = world
+        .modifiers
+        .get(hero)
+        .expect("effects")
+        .active()
+        .find(|m| m.kind == bota_core::ModifierKind::Stunned)
+        .expect("landing stun");
+    assert_eq!(stun.ticks_total, Some(15));
+}
+
+#[test]
+fn migration_throw_is_absorbed_at_cast_point_and_a_blocked_attempt_only_consumes_a_stop() {
+    use crate::game::AbilityState;
+    use bota_core::NeutralAbility;
+    use bota_proto::EventKind;
+    let (mut world, boss, hero) = migrating_boss_on_open_ground();
+    world
+        .abilities
+        .get_mut(hero)
+        .expect("book")
+        .slots
+        .push(AbilityState {
+            id: NeutralAbility::SpellBlock.id(),
+            level: 1,
+            cooldown: 0,
+        });
+    let mut blocked = false;
+    for _ in 0..50 {
+        for event in world.step() {
+            if matches!(event.kind(),EventKind::AbilityCast{caster,ability} if caster==crate::game::wire_id(hero)&&ability==NeutralAbility::SpellBlock.id())
+            {
+                blocked = true;
+            }
+        }
+        if blocked {
+            break;
+        }
+    }
+    assert!(blocked);
+    assert!(!world.push.contains(hero));
+    assert!(!world.is_channelling(boss));
+    assert_eq!(
+        world
+            .journey(boss)
+            .map(|(_, stops, throws)| (stops, throws)),
+        Some((1, 0))
+    );
+    assert!(
+        world
+            .abilities
+            .get(boss)
+            .expect("book")
+            .slots
+            .iter()
+            .any(|s| s.id == NeutralAbility::GrabAndThrow.id() && s.cooldown > 0)
+    );
+}
+
+#[test]
+fn migration_landing_uses_current_health_and_the_game_clock_without_changing_flight_duration() {
+    use crate::game::PushPhase;
+    use bota_proto::{DamageKind, EventKind, Fixed};
+    for (minutes, expected) in [(10, 222), (20, 242), (40, 282)] {
+        let (mut world, _boss, hero) = migrating_boss_on_open_ground();
+        for _ in 0..80 {
+            if world
+                .push
+                .get(hero)
+                .is_some_and(|p| matches!(p.phase, PushPhase::Arc { .. }))
+            {
+                break;
+            }
+            world.step();
+        }
+        assert!(
+            world
+                .push
+                .get(hero)
+                .is_some_and(|p| matches!(p.phase, PushPhase::Arc { .. }))
+        );
+        let launched = world.tick;
+        world.clock_shift.game =
+            world.schedule().horn + minutes * 60 * bota_core::rules::TICKS_PER_SECOND - world.tick;
+        let mut damage = None;
+        for age in 1..=24 {
+            world.health.get_mut(hero).expect("hero").hp = Fixed::from_int(400);
+            for event in world.step() {
+                if let EventKind::Damaged {
+                    target,
+                    kind: DamageKind::Pure,
+                    amount,
+                    ..
+                } = event.kind()
+                    && target == crate::game::wire_id(hero)
+                {
+                    damage = Some(amount);
+                    assert_eq!(age, 24);
+                }
+            }
+        }
+        assert_eq!(world.tick - launched, 24);
+        assert_eq!(damage, Some(expected));
+    }
+}
+
+#[test]
+fn migration_artificial_daytime_changes_do_not_reverse_the_natural_destination() {
+    let (mut world, boss, _hero) = migrating_boss_on_open_ground();
+    world.step();
+    let target = world.lairs[0].home;
+    assert!(world.time_of_day().night);
+    world.clock_shift.day = world.time_of_day().ticks_left;
+    assert!(!world.time_of_day().night);
+    for _ in 0..100 {
+        world.step();
+        assert_eq!(world.lairs[0].home, target);
+        assert_eq!(world.camp_home.get(boss).expect("home").home, target);
+    }
+}
+
+#[test]
+fn migration_slam_and_throw_share_the_stop_budget_but_only_launches_increase_throw_damage() {
+    use crate::game::{PushPhase, UnitOrder};
+    use bota_core::{MELEE_CREEP, NeutralAbility};
+    use bota_proto::{EventKind, Fixed, Team, Vec2};
+    const CREEP: bota_core::UnitDef = bota_core::UnitDef {
+        max_hp: 10000,
+        hp_regen: Fixed::ZERO,
+        damage: 0,
+        move_speed: 0,
+        ..MELEE_CREEP
+    };
+    let (mut world, boss, hero) = migrating_boss_on_open_ground();
+    let at = world.pos(boss).expect("boss");
+    let a = world.spawn_unit(&CREEP, Team::Radiant, at + Vec2::from_ints(160, -160));
+    let b = world.spawn_unit(&CREEP, Team::Radiant, at + Vec2::from_ints(-160, 160));
+    world.set_order(a, UnitOrder::Stand);
+    world.set_order(b, UnitOrder::Stand);
+    let mut slam = false;
+    for _ in 0..60 {
+        for e in world.step() {
+            if matches!(e.kind(),EventKind::AbilityCast{ability,..} if ability==NeutralAbility::RoshanSlam.id())
+            {
+                slam = true;
+            }
+        }
+        if slam {
+            break;
+        }
+    }
+    assert!(slam);
+    assert_eq!(
+        world
+            .journey(boss)
+            .map(|(_, stops, throws)| (stops, throws)),
+        Some((1, 0))
+    );
+    world.despawn(a);
+    world.despawn(b);
+    let mut launched = false;
+    for _ in 0..120 {
+        world.step();
+        if let Some(push) = world.push.get(hero)
+            && let PushPhase::Arc {
+                landing: Some(landing),
+                ..
+            } = push.phase
+        {
+            assert_eq!(
+                landing.damage, 200,
+                "a prior Slam is not a prior successful throw"
+            );
+            launched = true;
+            break;
+        }
+    }
+    assert!(launched);
+    assert_eq!(
+        world
+            .journey(boss)
+            .map(|(_, stops, throws)| (stops, throws)),
+        Some((2, 1))
+    );
+}
+
+#[test]
+fn migration_a_passive_spell_block_during_grab_does_not_replace_the_visible_channel() {
+    use bota_core::NeutralAbility;
+    use bota_proto::{AbilitySlot, HeroId, SlotId, Target, Team, Vec2};
+    let (mut world, boss, hero) = migrating_boss_on_open_ground();
+    for _ in 0..50 {
+        if world.push.contains(hero) {
+            break;
+        }
+        world.step();
+    }
+    let at = world.pos(boss).expect("boss");
+    let caster = world.spawn_hero(
+        Team::Radiant,
+        at + Vec2::from_ints(-150, 0),
+        SlotId(1),
+        HeroId::PUDGE,
+    );
+    let mut seat = crate::game::Seat::new(
+        SlotId(1),
+        Team::Radiant,
+        HeroId::PUDGE,
+        0,
+        bota_core::rules::STASH_SLOTS,
+    );
+    seat.unit = Some(caster);
+    world.seats.push(seat);
+    set_level(&mut world, caster, 3, 1);
+    world.settle();
+    assert!(world.begin_ability(
+        caster,
+        AbilitySlot(3),
+        Target::Unit(crate::game::wire_id(boss))
+    ));
+    let view = world.view(Team::Radiant);
+    let channel = view
+        .unit(crate::game::wire_id(boss))
+        .expect("visible boss")
+        .channel
+        .expect("grabbing");
+    assert_eq!(channel.ability, NeutralAbility::GrabAndThrow.id());
+    assert!(world.push.contains(hero));
+    assert!(
+        world
+            .abilities
+            .get(boss)
+            .expect("book")
+            .slots
+            .iter()
+            .any(|s| s.id == NeutralAbility::SpellBlock.id() && s.cooldown > 0)
+    );
+}
+
+#[test]
+fn migration_disables_on_the_tick_before_release_cancel_instead_of_launching() {
+    use crate::game::Modifier;
+    use bota_core::{Act, Control, ModifierKind, NeutralAbility, Spell};
+    use bota_proto::EffectId;
+    for disable in [
+        ModifierKind::Stunned,
+        ModifierKind::Feared,
+        ModifierKind::Control {
+            control: Control::Silence,
+            effect: EffectId(89),
+        },
+    ] {
+        let (mut world, boss, hero) = migrating_boss_on_open_ground();
+        for _ in 0..50 {
+            if world.push.contains(hero) {
+                break;
+            }
+            world.step();
+        }
+        let Spell::Cast {
+            act: Act::Grab(spec),
+            ..
+        } = *NeutralAbility::GrabAndThrow.spell()
+        else {
+            panic!("Throw");
+        };
+        run(&mut world, spec.duration - 1);
+        assert!(world.is_channelling(boss));
+        world.put_modifier(boss, Modifier::new(disable, Some(hero), None, Some(30)));
+        world.step();
+        assert!(
+            !world.push.contains(hero),
+            "a new disable must be read before motion advances: {disable:?}"
+        );
+        assert_eq!(world.journey(boss).map(|(_, _, throws)| throws), Some(0));
+        assert!(!world.is_channelling(boss));
+    }
+}
+
+#[test]
+fn migration_simultaneous_landings_keep_every_victim_still_in_both_tick_orders() {
+    use crate::game::{Landing, Push, PushPhase, UnitOrder};
+    use bota_core::{HERO, ROSHAN};
+    use bota_proto::{DamageKind, Fixed, Inflictor, Team, Vec2};
+    for backwards in [false, true] {
+        let mut world = World::new();
+        world.creeps_halted = true;
+        world.backwards = backwards;
+        let source = world.spawn_unit(&ROSHAN, Team::Neutral, Vec2::from_ints(5000, 4000));
+        let mut victims = Vec::new();
+        for x in [5200, 5300] {
+            let at = Vec2::from_ints(x - 100, 5000);
+            let aim = Vec2::from_ints(x, 5000);
+            let victim = world.spawn_unit(&HERO, Team::Radiant, at);
+            world.set_order(
+                victim,
+                UnitOrder::Move {
+                    pos: Vec2::from_ints(6000, 5000),
+                },
+            );
+            world.push.insert(
+                victim,
+                Push {
+                    source,
+                    inflictor: Inflictor::Ability(bota_core::NeutralAbility::GrabAndThrow.id()),
+                    team: Team::Neutral,
+                    aim,
+                    speed: Fixed::ZERO,
+                    clear: at,
+                    effect: None,
+                    phase: PushPhase::Arc {
+                        from: at,
+                        started: world.tick,
+                        duration: 1,
+                        height: 0,
+                        tree_radius: 0,
+                        landing: Some(Landing {
+                            damage: 0,
+                            health_growth: None,
+                            level: 1,
+                            kind: DamageKind::Pure,
+                            stun: 30,
+                            damage_amp_bp: 10000,
+                        }),
+                    },
+                },
+            );
+            victims.push((victim, aim));
+        }
+        world.settle();
+        world.step();
+        for (victim, aim) in victims {
+            assert_eq!(
+                world.pos(victim),
+                Some(aim),
+                "landing under backwards={backwards}"
+            );
+            assert!(world.held(victim));
+        }
+    }
+}
+
+#[test]
+fn migration_fear_cannot_move_or_turn_a_carried_hero_and_resumes_after_the_landing_stun() {
+    use crate::game::{Modifier, PushPhase, UnitOrder};
+    use bota_core::{Act, HERO, ModifierKind, NeutralAbility, Spell, rules};
+    use bota_proto::{Fixed, Team, Vec2};
+    const SCARE: bota_core::UnitDef = bota_core::UnitDef {
+        damage: 0,
+        move_speed: 0,
+        ..HERO
+    };
+    for airborne in [false, true] {
+        let (mut world, boss, hero) = migrating_boss_on_open_ground();
+        for _ in 0..50 {
+            if world.push.contains(hero) {
+                break;
+            }
+            world.step();
+        }
+        let Spell::Cast {
+            act: Act::Grab(spec),
+            ..
+        } = *NeutralAbility::GrabAndThrow.spell()
+        else {
+            panic!("Throw");
+        };
+        if airborne {
+            run(&mut world, spec.duration);
+        }
+        assert_eq!(
+            world
+                .push
+                .get(hero)
+                .is_some_and(|p| matches!(p.phase, PushPhase::Arc { .. })),
+            airborne
+        );
+        let before = world.pos(hero).expect("hero");
+        let facing = world.transform.get(hero).expect("hero").facing;
+        let scare = world.spawn_unit(&SCARE, Team::Dire, before + Vec2::from_ints(1000, 500));
+        world.put_modifier(
+            hero,
+            Modifier::new(ModifierKind::Feared, Some(scare), None, Some(300)),
+        );
+        world.step();
+        let after = world.pos(hero).expect("carried");
+        if airborne {
+            let moved = after.distance_squared(before);
+            assert!(
+                moved >= rules::units(60).squared_raw() && moved <= rules::units(65).squared_raw(),
+                "only the arc advances the position"
+            );
+        } else {
+            assert_eq!(after, before);
+        }
+        assert_eq!(
+            world.transform.get(hero).expect("held facing").facing,
+            facing
+        );
+        if !airborne {
+            world.cancel_action(boss);
+            world.lairs[0].travelling = false;
+            world.end_journey(boss);
+            world.set_order(boss, UnitOrder::Stand);
+        } else {
+            for _ in 0..30 {
+                if !world.push.contains(hero) {
+                    break;
+                }
+                world.step();
+            }
+            assert!(!world.push.contains(hero));
+            let landed = world.pos(hero).expect("landed");
+            for _ in 0..29 {
+                world.step();
+                assert_eq!(world.pos(hero), Some(landed));
+            }
+        }
+        let released = world.pos(hero).expect("released");
+        for _ in 0..12 {
+            world.step();
+            if world
+                .pos(hero)
+                .expect("fear resumes")
+                .distance_squared(released)
+                > Fixed::from_int(1).squared_raw()
+            {
+                break;
+            }
+        }
+        assert!(
+            world
+                .pos(hero)
+                .expect("fear resumes")
+                .distance_squared(released)
+                > Fixed::from_int(1).squared_raw(),
+            "fear can turn and resume its walk after the disable"
+        );
+    }
+}
+
+#[test]
+fn migration_begins_with_its_full_controller_when_the_boss_modifier_store_is_full() {
+    use crate::game::{Modifier, UnitOrder};
+    use bota_core::{ModifierKind, rules};
+    use bota_proto::{EffectId, Fixed, Vec2};
+    let mut world = match_with_roshan();
+    let boss = world.lairs[0].unit.expect("boss");
+    for _ in 0..rules::MAX_MODIFIERS_PER_UNIT {
+        let source = world.spawn();
+        world.put_modifier(
+            boss,
+            Modifier::new(
+                ModifierKind::BonusArmor {
+                    armor: Fixed::ZERO,
+                    effect: EffectId::FORTIFIED,
+                },
+                Some(source),
+                None,
+                None,
+            ),
+        );
+    }
+    assert_eq!(
+        world.modifiers.get(boss).expect("full").0.len(),
+        rules::MAX_MODIFIERS_PER_UNIT
+    );
+    world.clock_shift.game = world.schedule().horn + 15 * 60 * rules::TICKS_PER_SECOND - world.tick;
+    world.step();
+    assert!(world.migrating(boss));
+    assert_eq!(
+        world
+            .journey(boss)
+            .map(|(_, stops, throws)| (stops, throws)),
+        Some((0, 0))
+    );
+    world.note_journey_stop(boss, bota_core::NeutralAbility::GrabAndThrow.id());
+    world.settle();
+    assert_eq!(
+        world.stats.get(boss).expect("moving stats").move_speed,
+        Fixed::from_int(340)
+    );
+    let at = world.pos(boss).expect("boss");
+    world.set_order(
+        boss,
+        UnitOrder::Move {
+            pos: at + Vec2::from_ints(100, 0),
+        },
+    );
+    assert!(
+        world
+            .view_full()
+            .units
+            .iter()
+            .find(|u| u.id == crate::game::wire_id(boss))
+            .expect("shown boss")
+            .effects
+            .iter()
+            .any(|e| e.id == EffectId(92))
+    );
+}
+
+#[test]
+fn migration_a_stale_previous_killer_provoker_cannot_trigger_roar_during_a_pit_transition() {
+    use bota_proto::{EventKind, Fixed};
+    let (mut world, boss, hero) = migrating_boss_on_open_ground();
+    world.lairs[0].last_killer = world.team.get(hero).copied();
+    world.neutral_ai.get_mut(boss).expect("mind").roused_by = Some(hero);
+    let max = world.stats.get(boss).expect("stats").max_hp;
+    world.health.get_mut(boss).expect("pool").hp = Fixed { raw: max.raw / 2 };
+    let mut roared = false;
+    for _ in 0..60 {
+        for event in world.step() {
+            roared |= matches!(event.kind(), EventKind::BossRoared { .. });
+        }
+    }
+    assert!(world.migrating(boss));
+    assert!(!roared);
 }

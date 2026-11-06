@@ -253,6 +253,16 @@ impl StateHash for ModifierKind {
             }
             ModifierKind::RuneInvisibility => fnv.u8(47),
             ModifierKind::RuneShield { left } => hash_tagged(fnv, 48, &[left]),
+            ModifierKind::Journey {
+                ability,
+                stops,
+                throws,
+            } => {
+                fnv.u8(55);
+                ability.id().0.state_hash(fnv);
+                stops.state_hash(fnv);
+                throws.state_hash(fnv);
+            }
             ModifierKind::Control { control, effect } => {
                 fnv.u8(52);
                 control.state_hash(fnv);

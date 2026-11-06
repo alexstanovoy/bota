@@ -342,3 +342,9 @@ effect 89 live modifier_roshan_revengeroar_aura
 effect 90 live modifier_roshan_revengeroar_disarm
 effect 91 live modifier_roshan_revengeroar
 effect 92 live modifier_silence
+ability 86 live roshan_grab_and_throw
+effect 93 live modifier_roshan_grab
+effect 94 live modifier_roshan_grab_thrown
+effect 95 live modifier_roshan_moving
+effect 96 live modifier_knockback
+effect 97 live modifier_roshan_moving_knockback_timeout

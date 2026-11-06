@@ -13,6 +13,8 @@ pub struct LairDef {
     /// Delay after a death, inclusive, in seconds.
     pub respawn: [u32; 2],
     pub drops: &'static [LairDrop],
+    /// The intrinsic ability describing this boss's journey between homes.
+    pub moving: Option<crate::NeutralAbility>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -22,4 +24,29 @@ pub struct LairDrop {
     pub reclaimed: bool,
     /// Drop levels advance with each qualifying fall, capped here.
     pub max_level: u8,
+}
+
+/// A boss's movement between homes, including the casts that interrupt it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Migration {
+    pub effect: bota_proto::EffectId,
+    pub interrupts: &'static [crate::NeutralAbility],
+    pub max_stops: u8,
+    pub speed_per_stop: i32,
+    pub max_speed_bonus: i32,
+    pub slow_resist_pct: i32,
+    pub contact: Contact,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Contact {
+    pub radius: i32,
+    pub damage: i32,
+    pub distance: i32,
+    pub duration: u32,
+    pub height: i32,
+    pub cooldown: u32,
+    pub tree_radius: i32,
+    pub effect: bota_proto::EffectId,
+    pub timeout_effect: bota_proto::EffectId,
 }

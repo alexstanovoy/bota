@@ -650,10 +650,10 @@ fn a_view_listing_more_effects_than_the_bound_is_refused() {
 /// units lay an aura on it, and the client takes what is told.
 #[test]
 fn a_unit_wears_no_more_effects_than_the_contract_bounds_and_the_client_folds_them() {
-    let (folded, held, told) = crowded_hero(rules::MAX_EFFECTS_PER_UNIT + 40);
+    let (folded, held, told) = crowded_hero(rules::MAX_MODIFIERS_PER_UNIT + 40);
     assert_eq!(folded, Ok(()));
-    assert_eq!(held, rules::MAX_EFFECTS_PER_UNIT);
-    assert_eq!(told, rules::MAX_EFFECTS_PER_UNIT);
+    assert_eq!(held, rules::MAX_MODIFIERS_PER_UNIT);
+    assert_eq!(told, rules::MAX_MODIFIERS_PER_UNIT);
 }
 
 /// An observer whose `prepare` reshapes the snapshot the way a client may.

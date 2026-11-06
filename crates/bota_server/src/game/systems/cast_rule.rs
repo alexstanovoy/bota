@@ -80,6 +80,7 @@ impl World {
     fn need_holds(&self, seen: &Seen, need: Need) -> bool {
         let caster = seen.caster;
         match need {
+            Need::Migrating => self.migrating(caster),
             Need::HurtBelow { pct } => self.below_pct(caster, pct),
             Need::PreviousKillerHero { radius } => {
                 let previous = self
@@ -127,6 +128,12 @@ impl World {
     /// Whether a mark holds of a unit a cast may go at.
     fn marked(&self, seen: &Seen, unit: Entity, mark: Mark) -> bool {
         match mark {
+            Mark::RealHero => {
+                self.is_hero(unit)
+                    && !self.wears_illusion(unit)
+                    && !self.push.contains(unit)
+                    && !self.held_by_hook(unit)
+            }
             Mark::Hero => self.is_hero(unit),
             Mark::InCastRange => {
                 let range = rules::units(seen.ability.entry().def.range);

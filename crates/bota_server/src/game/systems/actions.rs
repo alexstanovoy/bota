@@ -766,7 +766,11 @@ impl World {
     fn call_during(&mut self, entity: Entity, what: PendingCast) -> bool {
         match what {
             PendingCast::Ability { slot, target } => {
-                let Some(hooks) = ability_hooks(self.ability_in(entity, slot)) else {
+                let id = self.ability_in(entity, slot);
+                if let Some(ability) = bota_core::NeutralAbility::of(id) {
+                    return self.spell_channel_holds(entity, ability, target);
+                }
+                let Some(hooks) = ability_hooks(id) else {
                     return false;
                 };
                 (hooks.on_during)(self, entity, target)
@@ -785,7 +789,10 @@ impl World {
     fn call_cancel(&mut self, entity: Entity, what: PendingCast) {
         match what {
             PendingCast::Ability { slot, target } => {
-                if let Some(hooks) = ability_hooks(self.ability_in(entity, slot)) {
+                let id = self.ability_in(entity, slot);
+                if let Some(ability) = bota_core::NeutralAbility::of(id) {
+                    self.cancel_spell_channel(entity, ability, target);
+                } else if let Some(hooks) = ability_hooks(id) {
                     (hooks.on_cancel)(self, entity, target);
                 }
             }
@@ -802,7 +809,10 @@ impl World {
     fn call_complete(&mut self, entity: Entity, what: PendingCast) {
         match what {
             PendingCast::Ability { slot, target } => {
-                if let Some(hooks) = ability_hooks(self.ability_in(entity, slot)) {
+                let id = self.ability_in(entity, slot);
+                if let Some(ability) = bota_core::NeutralAbility::of(id) {
+                    self.cancel_spell_channel(entity, ability, target);
+                } else if let Some(hooks) = ability_hooks(id) {
                     (hooks.on_complete)(self, entity, target);
                 }
             }

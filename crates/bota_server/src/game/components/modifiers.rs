@@ -80,6 +80,9 @@ pub fn disabled_in(modifiers: &Table<Modifiers>, held: &Modifier) -> bool {
 /// stacking aura or a strike.
 fn replaces(fresh: &Modifier, held: &Modifier) -> bool {
     match (held.kind, fresh.kind) {
+        (ModifierKind::Journey { ability: had, .. }, ModifierKind::Journey { ability, .. }) => {
+            had == ability
+        }
         (
             ModifierKind::DelayedSpell { ability: had, .. },
             ModifierKind::DelayedSpell { ability, .. },
@@ -174,11 +177,11 @@ impl Modifiers {
     }
 
     /// Adds a modifier to a unit that may be full
-    /// ([`rules::MAX_EFFECTS_PER_UNIT`]): the modifier with the least time
+    /// ([`rules::MAX_MODIFIERS_PER_UNIT`]): the modifier with the least time
     /// left, one that ran out first of all, makes room for it. A unit
     /// carrying nothing but untimed ones takes no more.
     fn admit(&mut self, modifier: Modifier) {
-        if self.0.len() >= rules::MAX_EFFECTS_PER_UNIT {
+        if self.0.len() >= rules::MAX_MODIFIERS_PER_UNIT {
             let soonest = self
                 .0
                 .iter()

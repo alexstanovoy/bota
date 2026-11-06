@@ -140,6 +140,8 @@ world_tables! {
         pub chain: crate::game::Chain;
         /// The push each entity being carried is under.
         pub push: crate::game::Push;
+        /// Non-evictable per-source contact clocks.
+        pub contacts:crate::game::Contacts;
         /// The Blood Grenade each entity that is one is flying.
         pub grenade: crate::game::Grenade;
         /// The feast of souls each entity that cast one has on it.
@@ -229,6 +231,8 @@ world_tables! {
         /// The ground as bodies meet it: what stands where, and the room a body
         /// has anywhere.
         pub clearance: crate::game::Clearance = crate::game::Clearance::open();
+        /// The same ground with structures, excluding trees for tree-walking bodies.
+        pub tree_clearance:crate::game::Clearance=crate::game::Clearance::open();
         /// The scratch routes are searched in.
         pub planner: crate::game::Planner = crate::game::Planner::new();
         /// The height of the ground everywhere.
@@ -264,6 +268,8 @@ world_tables! {
         pub(crate) aura_scratch: AuraScratch = AuraScratch::default();
         /// Reused room sleeping neutrals look for what wakes them in.
         pub(crate) jungle_spots: Spots<Entity> = Spots::default();
+        /// A landing stays still until the damage phase applies its damage-first disable.
+        pub(crate) landing_hold:Vec<Entity>=Vec::new();
         /// Where every body stood at the start of this tick's walking.
         pub bodies: crate::game::BodyIndex = crate::game::BodyIndex::empty();
         /// The scratch local plans are searched in.
@@ -538,6 +544,7 @@ impl World {
         world.glyphs = [Glyph::fresh(map.schedule()); 2];
         world.terrain = terrain;
         world.clearance = crate::game::Clearance::of_map(map);
+        world.tree_clearance = world.clearance.terrain_only();
         world.ground = crate::game::Ground::of(terrain);
         world.trees = Forest::of(map, terrain);
         world.lay_sight_block();
@@ -621,6 +628,7 @@ impl World {
             };
             circles.push((at.pos, hull.collision));
         }
+        self.tree_clearance.set_circles(circles.clone());
         let tree_radius = bota_core::rules::units(bota_core::rules::TREE_RADIUS);
         circles.extend(self.standing_trees().map(|at| (at, tree_radius)));
         self.clearance.set_circles(circles);
@@ -784,6 +792,7 @@ impl World {
     pub(crate) fn refresh_stats(&mut self) {
         let night = self.time_of_day().night;
         derive_stats(StatsCx {
+            lairs: &self.lairs,
             entities: &self.entities,
             def: &self.def,
             level: &self.level,
@@ -891,6 +900,7 @@ impl World {
     /// Where everything means to go, the steps taken there, and bodies
     /// eased apart.
     fn step_movement(&mut self) {
+        self.landing_hold.clear();
         let intent = self.scope(Phase::MovementIntent);
         self.tick_jungle();
         self.tick_neutral_spells();
@@ -970,6 +980,7 @@ impl World {
             .collect();
         self.avenge(&fallen);
         self.bury(fallen, events);
+        self.landing_hold.clear();
         events.append(&mut self.events);
     }
 

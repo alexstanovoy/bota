@@ -165,3 +165,48 @@ their physical cooldown now. Interrupted Grab position/facing (7.38c), Banner pa
 cleanup, and remaining loot/pit bug-fix cases belong to their corresponding player paths.
 The separate Block of Cheese shield is not a Roshan drop and is not modeled here; its
 historical shield fixes must not be mistaken for standard Cheese's restoration behavior.
+
+## Pit migration and Grab and Throw
+
+Valve [7.38](https://www.dota2.com/patches/7.38) replaces Twin Gate travel with walking,
+adds Grab and Throw, permits five shared Slam/Grab interruptions, and counts failed attempts
+while silenced. The installed `roshan_grab_and_throw` and `roshan_inherent_buffs` rows supply
+cast/channel timing, flight, damage, interruption count, speed increments/cap and movement
+slow resistance. Permanent tree walking and forced-movement immunity follow the current
+[Roshan mechanics](https://liquipedia.net/dota2/Roshan); tree walking does not destroy trees
+or grant flying vision. [Valve's Meat Hook notes](https://www.dota2.com/datafeed/herodata?language=english&hero_id=14)
+explicitly include Roshan among the units the Hook passes through. It neither damages nor
+drags him; the Roshan-specific regression preserves that rule from the current base.
+
+The natural journey owns its five-stop budget and launched-throw count separately. Each
+attempt adds 70 speed, capped at 300 extra; the extra 25% slow resistance combines with
+Devotion to 43.75%. Arrival clears these temporary bonuses. Artificial sky changes do not
+reverse a natural journey. Moving contact deals 200 magical damage, knocks a victim 150
+units over 0.6 seconds, cuts trees within 100 of that path, and has an independent two-second
+cooldown per victim. This clock is separate from dispellable/evictable modifiers.
+
+Grab has a 0.25-second cast point, 0.84-second channel, contact at 0.75 seconds, and a
+1,500-unit, 0.8-second flight with a one-second landing stun. Existing tick quantization
+maps these to 8/25/23/24 ticks. Contact uses the movement damage; landing deals pure damage:
+200 plus 100 per earlier launched throw and a growing current-health term. The current
+mechanics table gives 5.5% at ten minutes and 10.5% at twenty: this implementation uses
+0.5% at the horn plus 0.5% per minute. Valve's original wording does not settle that initial
+increment; this is the best-evidenced table/script reading, not an independently verified
+engine boundary. Status resistance shortens the landing stun, not the grip or flight.
+
+A cancelled grip releases immediately; a launched flight survives its caster's death or
+cancellation. Victim death, including Aegis absence, removes forced motion. Hook can rescue
+a carried ally; fear and ordinary movement resume after the carry and landing stun. The
+priority between overlapping movement controllers is an explicit implementation choice
+where first-party precedence is unspecified. Separate wire fields describe forced motion
+and the active channel, so an intervening passive Spell Block event cannot replace the
+Grab animation. Neither field exposes a hidden source handle.
+
+Valve [7.38c](https://store.steampowered.com/news/app/570/view/536597739399545003) fixes heroes
+getting their position or model angle stuck when Grab is interrupted. The migration tests
+exercise cancellation before/between contact and launch, both deaths, Aegis, last-tick
+disables, simultaneous landings, Hook rescue and movement/facing recovery. Headless player
+paths additionally observe the model's release, flight height and resumed facing. The
+passive-block-during-channel regression protects the distinct animation state. The legacy
+Twin Gate/Night Stalker fix has no current gate sequence to reproduce; artificial daytime
+is tested against the current walking journey instead.

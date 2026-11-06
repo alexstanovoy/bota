@@ -22,6 +22,7 @@ impl World {
         self.tick_chains();
         self.tick_pushes();
         self.tick_purges();
+        self.tick_journey_contacts();
         let entities = self.take_entity_snapshot();
         for caster in entities.iter().copied() {
             if self.neutral.get(caster).is_none() {
@@ -29,6 +30,10 @@ impl World {
             }
             if let Some((slot, target)) = self.wanted_cast(caster) {
                 let slot = AbilitySlot(slot as u8);
+                let id = self.ability_in(caster, slot);
+                if self.migrating(caster) {
+                    self.note_journey_stop(caster, id);
+                }
                 let pending = PendingCast::Ability { slot, target };
                 let immediate = self
                     .abilities
@@ -78,6 +83,7 @@ impl World {
         let held = self
             .target_of(caster)
             .or_else(|| self.neutral_ai.get(caster).and_then(|ai| ai.roused_by))
+            .or_else(|| self.migrating(caster).then_some(caster))
             .filter(|held| self.alive(*held))?;
         let book = self.abilities.get(caster)?;
         for (slot, state) in book.slots.iter().enumerate() {
@@ -92,10 +98,14 @@ impl World {
                 continue;
             };
             let def = &ability.entry().def;
-            let enabled =
-                self.free_to_cast(caster) || (def.cast_while_stunned && self.alive(caster));
+            let journey = self.journey_can_cast(caster, ability);
+            let enabled = if self.migrating(caster) {
+                journey
+            } else {
+                self.free_to_cast(caster) || (def.cast_while_stunned && self.alive(caster))
+            };
             if !enabled
-                || (self.silenced(caster) && !def.cast_while_silenced)
+                || (self.silenced(caster) && !def.cast_while_silenced && !journey)
                 || !self.castable(caster, state)
             {
                 continue;

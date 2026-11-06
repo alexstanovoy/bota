@@ -89,6 +89,17 @@ impl World {
                 self.push.remove(on);
                 continue;
             };
+            match push.phase {
+                crate::game::PushPhase::Grip { .. } => {
+                    self.tick_grip(on, push);
+                    continue;
+                }
+                crate::game::PushPhase::Arc { .. } => {
+                    self.tick_arc(on, push);
+                    continue;
+                }
+                crate::game::PushPhase::Ground => {}
+            }
             let next = move_towards(at, push.aim, per_tick(push.speed));
             let open = self.clearance.walkable(next);
             let to = if open { next } else { at };

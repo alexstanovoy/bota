@@ -117,3 +117,26 @@ pub const ROSHAN_REVENGEROAR: ScriptData = ScriptData {
         ("windup_time", &[Dec(500)]),
     ],
 };
+pub const ROSHAN_GRAB: ScriptData = ScriptData {
+    key: "roshan_grab_and_throw",
+    values: &[
+        ("AnimationIgnoresModelScale", &[Dec(1000)]),
+        ("AbilityCastPoint", &[Dec(250)]),
+        ("AbilityCastRange", &[Dec(400000)]),
+        ("AbilityCooldown", &[Dec(1000)]),
+        ("AbilityManaCost", &[Dec(0)]),
+        ("interval", &[Dec(750)]),
+        ("ministun", &[Dec(200)]),
+        ("cast_range", &[Dec(300000)]),
+        ("animation_rate", &[Dec(1500)]),
+        ("damage", &[Dec(200000)]),
+        ("damage_per_combo", &[Dec(100000)]),
+        ("damage_growth_curr_hp_pct", &[Dec(500)]),
+        ("channel_time", &[Dec(840)]),
+        ("max_knockback_distance", &[Dec(1500000)]),
+        ("knockback_duration", &[Dec(800)]),
+        ("knockback_height", &[Dec(100000)]),
+        ("stun_duration", &[Dec(1000)]),
+        ("max_interrupt_count", &[Dec(5000)]),
+    ],
+};
