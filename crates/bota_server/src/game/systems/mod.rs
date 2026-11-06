@@ -50,6 +50,7 @@ mod target;
 mod teleport;
 mod throe;
 mod trees;
+mod twin_gate;
 mod visibility;
 mod walk;
 mod ward;

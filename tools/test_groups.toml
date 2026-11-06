@@ -526,7 +526,7 @@ tests = [{ crate = "bota_server", target = "lib", filters = [
 
 [[group]]
 name = "game_objectives"
-about = "the map's objectives: runes, Lotus Pools, Outposts, Watchers, Shrines"
+about = "the map's objectives: runes, Lotus Pools, Outposts, Watchers, Shrines, Twin Gates"
 paths = [
     "crates/bota_server/src/game/systems/lotus.rs",
     "crates/bota_server/src/game/systems/lair.rs",
@@ -535,12 +535,14 @@ paths = [
     "crates/bota_server/src/game/components/lair.rs",
     "crates/bota_server/src/game/tests/roshan.rs",
     "crates/bota_server/src/game/tests/roshan_loot.rs",
+    "crates/bota_server/src/game/systems/twin_gate.rs",
     "crates/bota_server/src/game/systems/objective.rs",
     "crates/bota_server/src/game/systems/shrine.rs",
     "crates/bota_server/src/game/components/objective.rs",
     "crates/bota_server/src/game/tests/runes.rs",
     "crates/bota_server/src/game/tests/lotus.rs",
     "crates/bota_server/src/game/tests/objectives.rs",
+    "crates/bota_server/src/game/tests/twin_gates.rs",
 ]
 tests = [{ crate = "bota_server", target = "lib", filters = [
     "game::tests::runes::",
@@ -548,6 +550,7 @@ tests = [{ crate = "bota_server", target = "lib", filters = [
     "game::tests::roshan::",
     "game::tests::roshan_loot::",
     "game::tests::objectives::",
+    "game::tests::twin_gates::",
 ] }]
 
 also_paths = ["crates/bota_server/src/game/systems/forced.rs"]
@@ -636,6 +639,7 @@ paths = [
     "crates/bota_server/tests/secret_shop.rs",
     "crates/bota_server/tests/flagbearer_gold.rs",
     "crates/bota_server/tests/ordered_inventory.rs",
+    "crates/bota_server/tests/twin_gates.rs",
 ]
 tests = [
     { crate = "bota_server", target = "test:solo" },
@@ -649,6 +653,7 @@ tests = [
     { crate = "bota_server", target = "test:secret_shop" },
     { crate = "bota_server", target = "test:flagbearer_gold" },
     { crate = "bota_server", target = "test:ordered_inventory" },
+    { crate = "bota_server", target = "test:twin_gates" },
 ]
 # Whole matches play every system: any change to the simulation's code runs them too (a change to its tests does not).
 also_paths = [

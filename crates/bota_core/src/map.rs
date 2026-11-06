@@ -9,7 +9,7 @@ use bota_proto::{HeroId, MapId, ObjectiveKind, ObjectiveSet, RuneSet, Vec2};
 
 use crate::{
     CampDef, CampKind, DOTA_RUNE_SPOTS, OutpostDef, Protection, RuneSpot, SIMULATED_OBJECTIVES,
-    SIMULATED_RUNES, camp, objective, rules,
+    SIMULATED_RUNES, TwinGateDef, camp, objective, rules,
 };
 
 /// Full Dota geometry with mid-only waves and bounded hero/tower play.
@@ -135,6 +135,8 @@ pub struct MapDef {
     pub shrines: &'static [Vec2],
     /// Where the Lotus Pools stand.
     pub lotus_pools: &'static [Vec2],
+    /// The Twin Gates: none, or two, each carrying to the other.
+    pub twin_gates: &'static [TwinGateDef],
     /// The objectives a match on this map stands up unless its host says
     /// otherwise.
     pub default_objectives: ObjectiveSet,
@@ -218,6 +220,7 @@ const DOTA: MapDef = MapDef {
     watchers: &objective::DOTA_WATCHERS,
     shrines: &objective::DOTA_SHRINES,
     lotus_pools: &crate::DOTA_LOTUS_POOLS,
+    twin_gates: &objective::DOTA_TWIN_GATES,
     default_objectives: SIMULATED_OBJECTIVES,
     default_runes: SIMULATED_RUNES,
     rune_spots: &DOTA_RUNE_SPOTS,
@@ -262,6 +265,7 @@ const DEMO: MapDef = MapDef {
     watchers: &[],
     shrines: &[],
     lotus_pools: &[],
+    twin_gates: &[],
     default_objectives: ObjectiveSet::NONE,
     default_runes: RuneSet::NONE,
     rune_spots: &[],
@@ -332,6 +336,9 @@ impl MapDef {
         while at < self.lairs.len() {
             held = held.with(self.lairs[at].objective);
             at += 1;
+        }
+        if !self.twin_gates.is_empty() {
+            held = held.with(ObjectiveKind::TwinGates);
         }
         held
     }

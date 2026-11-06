@@ -427,7 +427,8 @@ impl Tracks {
             | EventKind::BossFell { .. }
             | EventKind::ItemDestroyed { .. }
             | EventKind::ItemPlaced { .. }
-            | EventKind::ItemTaken { .. } => {}
+            | EventKind::ItemTaken { .. }
+            | EventKind::GateWarped { .. } => {}
         }
     }
 

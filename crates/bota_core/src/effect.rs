@@ -38,6 +38,11 @@ pub struct EffectDef {
     /// Whether whatever wears it is gone when it runs out, as Dota's
     /// `modifier_kill` and `modifier_illusion` end their units.
     pub ends_its_wearer: bool,
+    /// Whether another side is told of it only while it sees where its
+    /// wearer stands: what a building both sides always know of shows
+    /// through the fog, but not this, as Dota draws a particle in the fog
+    /// only for whoever sees its spot.
+    pub sighted_only: bool,
 }
 
 const fn buff(id: u16, key: &'static str, name: &'static str) -> EffectDef {
@@ -54,6 +59,7 @@ const fn buff(id: u16, key: &'static str, name: &'static str) -> EffectDef {
         per_source: false,
         own_side_only: false,
         ends_its_wearer: false,
+        sighted_only: false,
     }
 }
 
@@ -321,6 +327,17 @@ const EFFECT_ROWS: &[EffectDef] = &[
         )
     },
     fleeting(98, "modifier_ghost_state", "Ethereal"),
+    // Both gates glow while a warp is channelled through either [Liquipedia
+    // and the Dota 2 Wiki, Twin Gate: "the other Twin Gate plays its
+    // channeling animation and channeling sounds as well"]; each glow is seen
+    // by whoever sees that gate: "Twin Gates are always visible through the
+    // Fog of War, though enemies cannot see when a Twin Gate gets used without
+    // having vision over them" [Liquipedia, Buildings/Neutral Buildings]. A
+    // side watching the exit sees it glow, not who channels.
+    EffectDef {
+        sighted_only: true,
+        ..buff(99, "modifier_twin_gate_fx", "TwinGateActive")
+    },
 ];
 
 /// How many effect ids the protocol has ever handed out, retired ones

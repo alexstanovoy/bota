@@ -42,7 +42,7 @@ const INERT: AbilityHooks = AbilityHooks {
 };
 
 /// The hooks of every hero's and courier's ability, each by its id.
-const HOOKS: [(AbilityId, AbilityHooks); 20] = [
+const HOOKS: [(AbilityId, AbilityHooks); 21] = [
     (
         AbilityId::MEAT_HOOK,
         AbilityHooks {
@@ -100,6 +100,15 @@ const HOOKS: [(AbilityId, AbilityHooks); 20] = [
             on_cast: World::lamp_begins,
             on_complete: World::lamp_completes,
             ..INERT
+        },
+    ),
+    (
+        AbilityId::TWIN_GATE_WARP,
+        AbilityHooks {
+            on_cast: World::warp_begins,
+            on_during: World::warp_goes_on,
+            on_cancel: World::warp_breaks_off,
+            on_complete: World::warp_completes,
         },
     ),
     (

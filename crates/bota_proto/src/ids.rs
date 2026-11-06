@@ -113,6 +113,10 @@ impl AbilityId {
     /// Watcher for its side, or puts out one the other side lit. Never shown
     /// in a view: an attack order at a Watcher casts it.
     pub const LAMP_USE: AbilityId = AbilityId(79);
+    /// Every unit's hidden `twin_gate_portal_warp`: a channel at a Twin Gate
+    /// that carries its caster to the other gate. Never shown in a view: an
+    /// attack or move order at a Twin Gate casts it.
+    pub const TWIN_GATE_WARP: AbilityId = AbilityId(87);
 }
 
 /// Selects one purchasable item.
@@ -432,6 +436,10 @@ impl EffectId {
     /// A Ghost Scepter's Ghost Form (`modifier_ghost_state`): ethereal, no
     /// attack in or out and no physical damage, more magic taken.
     pub const GHOST_FORM: EffectId = EffectId(98);
+    /// Dota's `modifier_twin_gate_fx`: a Twin Gate glows and hums while a
+    /// unit channels a warp through it, at either end. Told to a side only
+    /// while it sees where the gate stands.
+    pub const TWIN_GATE_ACTIVE: EffectId = EffectId(99);
 }
 
 /// An index into a unit's ability slots, as listed in
@@ -527,4 +535,7 @@ pub enum UnitKind {
     Roshan,
     /// A planted Roshan banner.
     Banner,
+    /// A Twin Gate (`npc_dota_unit_twin_gate`): an invulnerable portal any
+    /// unit channels at to be carried to the other gate.
+    TwinGate,
 }

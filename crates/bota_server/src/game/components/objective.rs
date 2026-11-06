@@ -1,9 +1,11 @@
 //! What the map's objectives keep: an Outpost's home side and a capture
-//! under way at it, and the standing-zone countdown a Shrine runs.
+//! under way at it, the standing-zone countdown a Shrine runs, a Twin Gate's
+//! pair and a warp under way through it.
 
-use bota_proto::{Fixed, LotusTier, Team};
+use bota_proto::{Fixed, LotusTier, Team, Vec2};
 
 use crate::engine::state_hash;
+use crate::game::Entity;
 
 /// An Outpost of the map.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -54,6 +56,26 @@ pub struct Zone {
     pub progress: u32,
 }
 
+/// A Twin Gate of the map: the gate it carries to and where a unit carried
+/// to it comes out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TwinGate {
+    /// The other gate of the pair.
+    pub partner: Entity,
+    /// Where a unit carried to this gate lands, before open ground is looked
+    /// for round it.
+    pub exit: Vec2,
+}
+
+/// A warp under way: present on a unit while it channels at a Twin Gate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Warp {
+    /// The gate it channels at.
+    pub gate: Entity,
+    /// Mana the channel cost, given back if it is broken off.
+    pub paid: i32,
+}
+
 state_hash!(LotusTier as u8: LotusTier::Healing, LotusTier::Great);
 state_hash!(LotusPool {
     tier,
@@ -63,6 +85,8 @@ state_hash!(LotusPool {
 });
 state_hash!(Outpost { home });
 state_hash!(Capture { team, progress });
+state_hash!(TwinGate { partner, exit });
+state_hash!(Warp { gate, paid });
 state_hash!(Zone {
     radius,
     ticks,

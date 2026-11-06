@@ -75,6 +75,9 @@ impl World {
                 );
             }
         }
+        if objectives.has(ObjectiveKind::TwinGates) {
+            self.stand_up_twin_gates(map.twin_gates);
+        }
     }
 
     /// The hidden abilities the match's objectives call for, which every
@@ -84,6 +87,15 @@ impl World {
             .iter()
             .filter_map(objective_unit)
             .filter_map(|kind| kind_def(kind).interact)
+    }
+
+    /// The hidden abilities of the match's objectives that every unit a
+    /// seat drives holds, not its hero alone: a courier warps through a Twin
+    /// Gate (Liquipedia, *Twin Gate*: "an innate ability for all units"),
+    /// but captures nothing.
+    pub(crate) fn every_units_interactions(&self) -> impl Iterator<Item = AbilityId> + '_ {
+        self.interactions()
+            .filter(|id| ability_def(*id).is_some_and(|def| def.every_unit))
     }
 
     /// Whether an ability may be aimed at a unit by its filter: the unit's

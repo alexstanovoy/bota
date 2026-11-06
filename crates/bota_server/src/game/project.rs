@@ -531,6 +531,18 @@ impl World {
         unit.queue.clear();
         unit.effects
             .retain(|effect| effect_def(effect.id).is_none_or(|def| !def.own_side_only));
+        // What shows on a building both sides always know of only shows to
+        // a side that sees its spot, when it is of the kind that does.
+        if let Some(team) = viewer
+            && unit
+                .effects
+                .iter()
+                .any(|effect| effect_def(effect.id).is_some_and(|def| def.sighted_only))
+            && !self.can_see_point(team, unit.pos)
+        {
+            unit.effects
+                .retain(|effect| effect_def(effect.id).is_none_or(|def| !def.sighted_only));
+        }
         if let Some(illusion) = self.illusion.get(entity)
             && let Some(hero) = self.project_unit(viewer, illusion.of)
         {

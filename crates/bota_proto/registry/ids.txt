@@ -352,3 +352,6 @@ effect 95 live modifier_roshan_moving
 effect 96 live modifier_knockback
 effect 97 live modifier_roshan_moving_knockback_timeout
 effect 98 live modifier_ghost_state
+
+ability 87 live twin_gate_portal_warp
+effect 99 live modifier_twin_gate_fx

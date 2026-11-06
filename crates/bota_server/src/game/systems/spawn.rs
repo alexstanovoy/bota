@@ -524,6 +524,12 @@ impl World {
             talents: bota_proto::Talents::default(),
             attribute_bonus: 0,
         };
+        book.slots
+            .extend(self.every_units_interactions().map(|id| AbilityState {
+                id,
+                level: 0,
+                cooldown: 0,
+            }));
         book.grant(1);
         self.abilities.insert(entity, book);
         self.level.insert(entity, Level(1));

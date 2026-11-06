@@ -126,18 +126,22 @@ pub enum ObjectiveKind {
     Shrines,
     /// The Lotus Pools: healing lotuses a hero plucks by standing in a pool.
     LotusPools,
+    /// The Twin Gates: two portals at the map's corners that carry a unit
+    /// channelling at one to the other.
+    TwinGates,
 }
 
 impl ObjectiveKind {
     /// Every kind, in variant order: bit `n` of an [`ObjectiveSet`] is
     /// `ALL[n]`.
-    pub const ALL: [ObjectiveKind; 6] = [
+    pub const ALL: [ObjectiveKind; 7] = [
         ObjectiveKind::Roshan,
         ObjectiveKind::Tormentor,
         ObjectiveKind::Watchers,
         ObjectiveKind::Outposts,
         ObjectiveKind::Shrines,
         ObjectiveKind::LotusPools,
+        ObjectiveKind::TwinGates,
     ];
 
     /// What a host calls it.
@@ -149,6 +153,7 @@ impl ObjectiveKind {
             ObjectiveKind::Outposts => "outposts",
             ObjectiveKind::Shrines => "shrines",
             ObjectiveKind::LotusPools => "lotus_pools",
+            ObjectiveKind::TwinGates => "twin_gates",
         }
     }
 }

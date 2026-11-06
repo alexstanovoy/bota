@@ -22,8 +22,8 @@ lockstep, no reproducible matches, no fair view of the map. bota gives you that:
 - **The full Dota map**, up to five a side, and **Solo Mid**, Dota's 1v1 mid-only ruleset: a side loses on its second
   death or its first lost tower.
 - **The map's life:** lane creeps and waves, every neutral camp with its abilities, towers and buildings, day and
-  night, couriers, the Glyph, town portal scrolls, wards, runes and the Bottle, Watchers, Outposts, Shrines of Wisdom
-  and Lotus Pools.
+  night, couriers, the Glyph, town portal scrolls, wards, runes and the Bottle, Watchers, Outposts, Shrines of Wisdom,
+  Lotus Pools and the Twin Gates.
 - **The shop:** consumables, basic components, boots, the early builds and a few later items, with Dota's stock
   limits.
 - **Replays, spectators and chat**, with keyed seats and safe network defaults (loopback only unless you ask, TLS for

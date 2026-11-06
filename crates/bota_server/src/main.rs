@@ -208,8 +208,8 @@ struct Args {
     #[arg(long)]
     immortal_heroes: bool,
     /// Which of the map's objectives stand: all, none, or names separated by commas (roshan,
-    /// tormentor, watchers, outposts, shrines). The map's default when absent; one the map does
-    /// not play is refused.
+    /// tormentor, watchers, outposts, shrines, lotus_pools, twin_gates). The map's default when
+    /// absent; one the map does not play is refused.
     #[arg(long, value_parser = bota_proto::ObjectiveSet::parse)]
     objectives: Option<bota_proto::ObjectiveSet>,
     /// Which kinds of rune spawn: all, none, or names separated by commas (water, bounty, haste,

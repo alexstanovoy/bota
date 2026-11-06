@@ -169,7 +169,7 @@ const fn objective(kind: UnitKind, name: &'static str, takes_scrolls: bool) -> K
 }
 
 /// Every kind of unit, indexed by its wire variant.
-pub const UNIT_KINDS: [KindDef; 19] = [
+pub const UNIT_KINDS: [KindDef; 20] = [
     KindDef {
         kind: UnitKind::Hero,
         attack_class: AttackClass::Hero,
@@ -288,6 +288,13 @@ pub const UNIT_KINDS: [KindDef; 19] = [
         surely_struck: true,
         ..PLAIN
     },
+    // A click on a Twin Gate channels the warp [LIQ Twin Gate: "Right-click
+    // the Twin Gate to initiate channeling"].
+    KindDef {
+        interact: Some(AbilityId::TWIN_GATE_WARP),
+        npc: Some("npc_dota_unit_twin_gate"),
+        ..objective(UnitKind::TwinGate, "Twin Gate", false)
+    },
 ];
 
 const _: () = {
@@ -320,7 +327,8 @@ const fn row(kind: UnitKind) -> usize {
         | UnitKind::Shrine
         | UnitKind::LotusPool
         | UnitKind::Roshan
-        | UnitKind::Banner => kind as usize,
+        | UnitKind::Banner
+        | UnitKind::TwinGate => kind as usize,
     }
 }
 

@@ -149,7 +149,11 @@ fn told_as(kind: &mut EventKind, event: &Event, mine: Team) {
         EventKind::Captured { by, .. } | EventKind::ShrineActivated { by, .. } if hide_dealer => {
             *by = None
         }
-        EventKind::LotusPlucked { unit, .. } if hide_dealer => *unit = None,
+        EventKind::LotusPlucked { unit, .. } | EventKind::GateWarped { unit, .. }
+            if hide_dealer =>
+        {
+            *unit = None
+        }
         EventKind::Died {
             killer,
             bounty,

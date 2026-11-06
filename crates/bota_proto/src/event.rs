@@ -331,6 +331,17 @@ pub enum EventKind {
         /// Absent when that side does not see the target.
         target: Option<EntityId>,
     },
+    /// A unit's warp through a Twin Gate ran its whole channel and carried
+    /// it to the other gate. Told to a side that sees either gate or the
+    /// unit where it arrives.
+    GateWarped {
+        /// The gate the channel was made at.
+        from: EntityId,
+        /// The gate it came out of.
+        to: EntityId,
+        /// The unit; `None` to a side that does not see it arrive.
+        unit: Option<EntityId>,
+    },
 }
 
 /// The seats a [`EventKind::Died`] names as assisting, in seat order.

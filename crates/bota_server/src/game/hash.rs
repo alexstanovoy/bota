@@ -292,6 +292,7 @@ impl StateHash for ModifierKind {
                 hp_per_tick,
                 mana_per_tick,
             } => hash_tagged(fnv, 49, &[hp_per_tick, mana_per_tick]),
+            ModifierKind::TwinGateActive => fnv.u8(57),
         }
     }
 }

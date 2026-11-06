@@ -216,6 +216,10 @@ world_tables! {
         pub exposure: Exposure;
         /// Missiles in flight.
         pub projectile: Projectile;
+        /// Each Twin Gate's pair and exit.
+        pub gate: crate::game::TwinGate;
+        /// The warp each unit channelling at a Twin Gate has under way.
+        pub warp: crate::game::Warp;
     }
 
     derived {

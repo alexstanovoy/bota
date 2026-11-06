@@ -755,3 +755,9 @@ field OrderSettlement 0 connection: Option<PlayerId>
 field OrderSettlement 1 sequence: u32
 field OrderSettlement 2 seen: Option<u32>
 field OrderSettlement 3 tick: u32
+variant EventKind 27 GateWarped {}
+field EventKind::GateWarped 0 from: EntityId
+field EventKind::GateWarped 1 to: EntityId
+field EventKind::GateWarped 2 unit: Option<EntityId>
+variant ObjectiveKind 6 TwinGates
+variant UnitKind 19 TwinGate

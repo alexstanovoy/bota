@@ -115,6 +115,7 @@ fn every_modifier() -> Vec<ModifierKind> {
             mana_per_tick: 1,
         },
         ModifierKind::Ethereal { pct: 30 },
+        ModifierKind::TwinGateActive,
     ];
     // What every item that lays something lays.
     every.extend(
@@ -177,6 +178,7 @@ fn every_modifier() -> Vec<ModifierKind> {
             | ModifierKind::BottleRegeneration { .. }
             | ModifierKind::Laid { .. }
             | ModifierKind::Ethereal { .. }
+            | ModifierKind::TwinGateActive
             | ModifierKind::Spell { .. } => {}
             ModifierKind::Journey { .. }
             | ModifierKind::DelayedSpell { .. }

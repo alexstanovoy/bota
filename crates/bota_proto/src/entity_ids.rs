@@ -52,6 +52,11 @@ impl EventKind {
                 visit(pool);
                 unit.iter_mut().for_each(visit);
             }
+            EventKind::GateWarped { from, to, unit } => {
+                visit(from);
+                visit(to);
+                unit.iter_mut().for_each(visit);
+            }
             EventKind::BossRoared { .. }
             | EventKind::ItemPlaced { .. }
             | EventKind::BossFell { .. }

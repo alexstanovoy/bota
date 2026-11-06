@@ -149,6 +149,16 @@ pub struct AbilityDef {
     pub block: BlockTiming,
     /// Which units it may be aimed at.
     pub targets: TargetFilter,
+    /// Whether a rooted caster may not cast it: Dota's
+    /// `DOTA_ABILITY_BEHAVIOR_ROOT_DISABLES`.
+    pub root_disables: bool,
+    /// Whether a caster with no mana at all casts it for nothing, as Dota's
+    /// Twin Gates let "units without mana" through free (7.35).
+    pub free_without_mana: bool,
+    /// Whether every unit a seat drives holds it, its courier too, and not
+    /// its hero alone: one of the [`hidden`](Self::hidden) abilities of the
+    /// map's objectives that Dota gives every unit.
+    pub every_unit: bool,
 }
 
 /// Nothing at all, so an entry names only what sets it apart.
@@ -181,6 +191,9 @@ pub(crate) const BARE_ABILITY: AbilityDef = AbilityDef {
     hidden: false,
     block: BlockTiming::Never,
     targets: TargetFilter::ANY,
+    root_disables: false,
+    free_without_mana: false,
+    every_unit: false,
 };
 
 /// A courier's ability: one level, cast for no mana, held from its owner's
@@ -241,6 +254,7 @@ const HERO_ABILITIES: &[AbilityDef] = &[
     pudge::MEAT_SHIELD,
     objective::CAPTURE,
     objective::LAMP_USE,
+    objective::TWIN_GATE_WARP,
     // Burst and Shield are Dota's DOTA_ABILITY_BEHAVIOR_IMMEDIATE
     // (`courier_burst`, `courier_shield`): they break off nothing.
     AbilityDef {

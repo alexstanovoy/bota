@@ -1,7 +1,7 @@
 //! Applied stat changes: their countdown and the rates they leave.
 
-use bota_core::{ability_cooldown, ability_mana_cost, item_def, rules};
-use bota_proto::{AbilityId, DamageKind, ItemId};
+use bota_core::{ability_cooldown, ability_def, ability_mana_cost, item_def, rules};
+use bota_proto::{AbilityId, DamageKind, Fixed, ItemId};
 
 use crate::game::{Entity, MAX_COMBINED_MODIFIER_SCALE, Stats, World};
 
@@ -53,6 +53,13 @@ impl World {
 
     /// Mana one cast of an ability costs an entity, after its mana cost rate.
     pub fn ability_mana_cost(&self, entity: Entity, id: AbilityId, level: u8) -> i32 {
+        let pool_less = self
+            .stats
+            .get(entity)
+            .is_none_or(|stats| stats.max_mana <= Fixed::ZERO);
+        if pool_less && ability_def(id).is_some_and(|def| def.free_without_mana) {
+            return 0;
+        }
         self.cost_after_rate(entity, ability_mana_cost(id, level))
     }
 

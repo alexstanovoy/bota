@@ -306,6 +306,9 @@ pub enum ModifierKind {
         /// Percent added to the share of magic damage let through.
         pct: i32,
     },
+    /// A Twin Gate a warp is channelled through, at either end
+    /// (`modifier_twin_gate_fx`): it glows and hums while it lasts.
+    TwinGateActive,
     /// What a neutral's spell left, at the level it was cast at. `amount`
     /// is the spell's own count: the blows a Steal Weapon has counted, the
     /// magical damage a bubble has left to soak.
@@ -418,6 +421,7 @@ impl ModifierKind {
                 None => panic!("an item that lays nothing laid a modifier"),
             },
             ModifierKind::Ethereal { .. } => EffectId::GHOST_FORM,
+            ModifierKind::TwinGateActive => EffectId::TWIN_GATE_ACTIVE,
         }
     }
 

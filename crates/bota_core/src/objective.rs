@@ -1,16 +1,17 @@
 //! The map's objectives a match stands up when its rules ask for them
-//! ([`ObjectiveSet`]): the Outposts, the Watchers and the Shrines of Wisdom
-//! of Dota 7.41f, as numbers, places and units.
+//! ([`ObjectiveSet`]): the Outposts, the Watchers, the Shrines of Wisdom and
+//! the Twin Gates of Dota 7.41f, as numbers, places and units.
 //!
 //! Sources, tagged where each number is used: `[U:n]` and `[A:n]` the lines
 //! of the game's `scripts/npc/npc_units.txt` and `npc_abilities.txt` (client
-//! 6966, 7.41f); `[ENT:n]` the entity blocks of the map's
+//! 6966, 7.41f; unchanged in 6972); `[ENT:n]` the entity blocks of the map's
 //! `maps/dota/entities/default_ents.vents` (7.41f), shifted by half the map
-//! like every landmark; `[BIN]` a server convar default of the 6966 build;
-//! `[PN v]` Valve's patch notes of version `v`; `[LIQ page]` Liquipedia's
-//! article (read 2026-10-24).
+//! like every landmark; `[BIN]` a server convar default or code constant of
+//! the 6966 build (6972 for the Twin Gates); `[PN v]` Valve's patch notes of
+//! version `v`; `[LIQ page]` Liquipedia's article (read 2026-10-24, the Twin
+//! Gate's 2026-11-06); `[FAN page]` the Dota 2 Wiki's.
 
-use bota_proto::{AbilityId, Aim, ObjectiveKind, ObjectiveSet, Team, UnitKind, Vec2};
+use bota_proto::{AbilityId, Aim, Angle, Fixed, ObjectiveKind, ObjectiveSet, Team, UnitKind, Vec2};
 
 use crate::ability::BARE_ABILITY;
 use crate::unit::BARE_UNIT;
@@ -21,7 +22,8 @@ pub const SIMULATED_OBJECTIVES: ObjectiveSet = ObjectiveSet::of(ObjectiveKind::W
     .with(ObjectiveKind::Outposts)
     .with(ObjectiveKind::Shrines)
     .with(ObjectiveKind::LotusPools)
-    .with(ObjectiveKind::Roshan);
+    .with(ObjectiveKind::Roshan)
+    .with(ObjectiveKind::TwinGates);
 
 /// The kind of unit an objective stands as, for those that stand as one.
 pub const fn objective_unit(objective: ObjectiveKind) -> Option<UnitKind> {
@@ -32,6 +34,7 @@ pub const fn objective_unit(objective: ObjectiveKind) -> Option<UnitKind> {
         ObjectiveKind::LotusPools => Some(UnitKind::LotusPool),
         ObjectiveKind::Roshan => Some(UnitKind::Roshan),
         ObjectiveKind::Tormentor => None,
+        ObjectiveKind::TwinGates => Some(UnitKind::TwinGate),
     }
 }
 
@@ -271,3 +274,135 @@ pub const fn shrine_xp(activation: u32) -> i32 {
     let later = activation.saturating_sub(1);
     SHRINE_XP_FIRST + SHRINE_XP_STEP * later as i32
 }
+
+// Twin Gates (`npc_dota_unit_twin_gate`) and `twin_gate_portal_warp`
+// [U:20700-20788, A:255-282].
+
+/// Twin Gate health [U:20774]; it is invulnerable all the same [LIQ
+/// Buildings/Neutral Buildings: "permanently invulnerable"].
+pub const TWIN_GATE_HP: i32 = 450;
+/// How far a Twin Gate sees round it, by day and by night [U:20786-20787],
+/// for the neutral team it stands for: no side sees through it ("enemies
+/// cannot see when a Twin Gate gets used without having vision over them"
+/// [LIQ Buildings/Neutral Buildings]).
+pub const TWIN_GATE_VISION: i32 = 500;
+/// How near a unit must stand to channel a warp: `AbilityCastRange` 200
+/// [A:273].
+pub const WARP_RANGE: i32 = 200;
+/// Ticks a warp channels: `AbilityChannelTime` 4.0 [A:267]; 3 s at 7.33,
+/// "Increased channel time for Twin Gates by 1 second" [PN 7.33b].
+pub const WARP_CHANNEL_TICKS: u32 = 4 * rules::TICKS_PER_SECOND;
+/// Mana a warp costs: `AbilityManaCost` 30 [A:268]; "Twin Gate mana cost
+/// decreased from 75 to 30" [PN 7.40]. Given back when the channel is broken
+/// off [PN 7.40: "Twin Gates now refund the mana cost if the teleporting
+/// channel was interrupted"]; free to a unit with no mana at all [PN 7.35:
+/// "Units without mana can use Twin Gates for free"].
+pub const WARP_MANA: i32 = 30;
+/// Where a warp lands: the other gate's centre moved 140 along the map's
+/// y axis, south, the way both gates face (yaw 270 and 267.6 [ENT:193962,
+/// ENT:194065]). The server's `twin_gate_portal_warp` adds -140.0 to the
+/// other gate's origin's y (+140.0 to its x for the Templar gates of
+/// another mode only) and finds clear space for the unit there [BIN]; the
+/// unit is then turned to face away from the gate it came out of [BIN].
+pub const WARP_EXIT_SOUTH: i32 = 140;
+
+/// One Twin Gate of a map: where it stands, which way it faces and where a
+/// unit that warps to it comes out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TwinGateDef {
+    /// Where it stands.
+    pub at: Vec2,
+    /// The way it faces.
+    pub facing: Angle,
+    /// Where a unit carried to it lands, before open ground is looked for
+    /// round it: [`WARP_EXIT_SOUTH`] south of `at`.
+    pub exit: Vec2,
+    /// The side whose look it takes on: Dota draws `npc_dota_portal1`, the
+    /// north-western gate, in the Dire's colours and the other in the
+    /// Radiant's [BIN: `modifier_twin_gate_fx` picks
+    /// `team_portal_dire_ambient.vpcf` for `npc_dota_portal1`]; it belongs
+    /// to neither [LIQ Buildings/Neutral Buildings].
+    pub look: Team,
+}
+
+/// A Twin Gate at a world spot given in hundredths of a unit, already
+/// shifted by half the map, facing `yaw` in hundredths of a degree.
+const fn twin_gate(
+    x_hundredths: i32,
+    y_hundredths: i32,
+    yaw_hundredths: i32,
+    look: Team,
+) -> TwinGateDef {
+    let at = Vec2 {
+        x: Fixed::from_ratio(x_hundredths, 100),
+        y: Fixed::from_ratio(y_hundredths, 100),
+    };
+    TwinGateDef {
+        at,
+        facing: Angle {
+            brads: ((yaw_hundredths as i64 * 65536 + 18_000) / 36_000) as u16,
+        },
+        exit: Vec2 {
+            x: at.x,
+            y: Fixed::from_ratio(y_hundredths - WARP_EXIT_SOUTH * 100, 100),
+        },
+        look,
+    }
+}
+
+/// The Dota map's two Twin Gates, at the map's north-western and
+/// south-eastern corners [PN 7.38, PN 7.41]; each carries to the other.
+pub const DOTA_TWIN_GATES: [TwinGateDef; 2] = [
+    // "npc_dota_portal1" (-6457.690918, 7599.036621), yaw 270.000061
+    // [ENT:193962].
+    twin_gate(275_831, 1_681_504, 27_000, Team::Dire),
+    // "npc_dota_portal2" (6425.52832, -7313.782715), yaw 267.599823
+    // [ENT:194065].
+    twin_gate(1_564_153, 190_222, 26_760, Team::Radiant),
+];
+
+/// A Twin Gate: an invulnerable building of the neutral team on the filler
+/// hull, with no attack and no mana [U:20700-20788; LIQ Twin Gate].
+pub const TWIN_GATE: UnitDef = UnitDef {
+    kind: UnitKind::TwinGate,
+    max_hp: TWIN_GATE_HP,
+    day_vision: TWIN_GATE_VISION,
+    night_vision: TWIN_GATE_VISION,
+    collision: rules::FILLER_COLLISION,
+    bound: rules::FILLER_BOUND,
+    invulnerable: true,
+    ..BARE_UNIT
+};
+
+/// Every unit's hidden `twin_gate_portal_warp` [A:255-282]: a channel at a
+/// Twin Gate from [`WARP_RANGE`] that carries its caster to the other gate.
+/// No cooldown, at any time of the match: the ability has no
+/// `AbilityCooldown` and nothing in the patch notes or the server's convars
+/// opens the gates later. `IGNORE_SILENCE`; `ROOT_DISABLES`, and since 7.41e
+/// a root breaks it off too [PN 7.41e: "Channeling the Twin Gate can now be
+/// interrupted by root"]; damage does not, as it breaks off no channel. Any
+/// unit holds it, a courier too ("This is an innate ability for all units";
+/// "can be initiated by any unit, except for illusions that cannot cast
+/// abilities" [LIQ Twin Gate; FAN Twin Gate]); an illusion casts nothing, so
+/// none warps. `IGNORE_SILENCE` asks nothing of the simulation yet: it has no
+/// silence.
+pub const TWIN_GATE_WARP: AbilityDef = AbilityDef {
+    id: AbilityId::TWIN_GATE_WARP,
+    key: "twin_gate_portal_warp",
+    name: "Warp",
+    aim: Aim::Unit,
+    max_level: 1,
+    passive: false,
+    mana: &[WARP_MANA],
+    cooldown: &[0],
+    range: WARP_RANGE,
+    duration: WARP_CHANNEL_TICKS,
+    pierces: Pierces::Yes,
+    granted_at: Some(1),
+    hidden: true,
+    root_disables: true,
+    free_without_mana: true,
+    every_unit: true,
+    targets: TargetFilter::of(&[UnitKind::TwinGate], false),
+    ..BARE_ABILITY
+};

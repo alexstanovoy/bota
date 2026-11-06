@@ -600,7 +600,8 @@ fn add_modifiers<'a>(
             | ModifierKind::RuneArcane
             | ModifierKind::RuneRegeneration { .. }
             | ModifierKind::RuneShield { .. }
-            | ModifierKind::BottleRegeneration { .. } => {}
+            | ModifierKind::BottleRegeneration { .. }
+            | ModifierKind::TwinGateActive => {}
         }
     }
 }

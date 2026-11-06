@@ -333,6 +333,11 @@ const NAMED: &[(IdSpace, u16, &str)] = &[
         EffectId::BOTTLE_REGENERATION.0,
         "modifier_bottle_regeneration",
     ),
+    (
+        IdSpace::Effect,
+        EffectId::TWIN_GATE_ACTIVE.0,
+        "modifier_twin_gate_fx",
+    ),
     (IdSpace::Item, ItemId::BOTTLE.0, "item_bottle"),
     (IdSpace::Item, ItemId::HEALING_LOTUS.0, "item_famango"),
     (
@@ -420,6 +425,11 @@ const NAMED: &[(IdSpace, u16, &str)] = &[
     ),
     (IdSpace::Ability, AbilityId::CAPTURE.0, "ability_capture"),
     (IdSpace::Ability, AbilityId::LAMP_USE.0, "ability_lamp_use"),
+    (
+        IdSpace::Ability,
+        AbilityId::TWIN_GATE_WARP.0,
+        "twin_gate_portal_warp",
+    ),
     (IdSpace::Item, ItemId::BOOTS.0, "item_boots"),
     (IdSpace::Item, ItemId::CLARITY.0, "item_clarity"),
     (IdSpace::Item, ItemId::HEALING_SALVE.0, "item_flask"),

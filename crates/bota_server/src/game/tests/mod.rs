@@ -64,6 +64,7 @@ mod towers;
 mod town_portal;
 mod tree_gaps;
 mod turning;
+mod twin_gates;
 mod view_bounds;
 mod vision;
 mod ward_stacks;
