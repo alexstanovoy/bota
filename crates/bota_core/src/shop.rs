@@ -134,6 +134,14 @@ const _: () = {
     }
 };
 
+/// Every base and secret shop grants the backpack exemption.
+pub fn at_any_shop(map: &MapDef, pos: Vec2, bound: Fixed) -> bool {
+    map.fountains
+        .iter()
+        .any(|shop| pos.within(*shop, crate::rules::units(crate::rules::SHOP_RANGE)))
+        || at_secret_shop(map, pos, bound)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

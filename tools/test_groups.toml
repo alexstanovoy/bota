@@ -399,6 +399,7 @@ paths = [
     "crates/bota_server/src/game/components/grenade.rs",
     "crates/bota_server/src/game/config/item.rs",
     "crates/bota_server/src/game/tests/items.rs",
+    "crates/bota_server/src/game/tests/backpack_grace.rs",
     "crates/bota_server/src/game/tests/item_numbers.rs",
     "crates/bota_server/src/game/tests/aoe.rs",
     "crates/bota_server/src/game/tests/ghost.rs",
@@ -424,6 +425,7 @@ paths = [
 ]
 tests = [{ crate = "bota_server", target = "lib", filters = [
     "game::tests::items::",
+    "game::tests::backpack_grace::",
     "game::tests::item_numbers::",
     "game::tests::aoe::",
     "game::tests::ghost::",

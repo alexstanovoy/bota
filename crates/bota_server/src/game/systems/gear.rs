@@ -166,6 +166,14 @@ fn build_by_charges(
         let Some(landing) = joins.or(freed).or_else(free) else {
             continue;
         };
+        let mut backpack = pool[lowest / POOL_STRIDE].slots[lowest % POOL_STRIDE]
+            .expect("a consumed part")
+            .backpack;
+        for (at, _) in taken.iter() {
+            if let Some(part) = pool[at / POOL_STRIDE].slots[at % POOL_STRIDE] {
+                backpack.inherit_build(part.backpack);
+            }
+        }
         for (at, count) in taken.iter() {
             let cell = &mut pool[at / POOL_STRIDE].slots[at % POOL_STRIDE];
             if let Some(stack) = cell {
@@ -177,9 +185,14 @@ fn build_by_charges(
         }
         let cell = &mut pool[landing / POOL_STRIDE].slots[landing % POOL_STRIDE];
         match cell {
-            Some(stack) => stack.charges += 1,
+            Some(stack) => {
+                stack.charges += 1;
+                stack.backpack.inherit(backpack);
+            }
             None => {
-                *cell = Some(ItemStack::granted(built, owner, tick, 1));
+                let mut stack = ItemStack::granted(built, owner, tick, 1);
+                stack.backpack = backpack;
+                *cell = Some(stack);
             }
         }
         return true;
@@ -244,6 +257,15 @@ fn assemble_once(owner: SlotId, tick: u32, pool: &mut [&mut Inventory]) -> bool 
             .map(|(_, stack)| stack.charges)
             .sum::<u8>()
             .min(def.cast_charges);
+        let mut backpack = held
+            .iter()
+            .find(|(at, _)| *at == landing)
+            .expect("a consumed part lands the build")
+            .1
+            .backpack;
+        for (_, part) in held.iter().filter(|(at, _)| spent.contains(*at)) {
+            backpack.inherit_build(part.backpack);
+        }
         let built = ItemStack {
             level: 1,
             id: ItemId(index as u16),
@@ -269,6 +291,7 @@ fn assemble_once(owner: SlotId, tick: u32, pool: &mut [&mut Inventory]) -> bool 
             },
             life: 0,
             rune: None,
+            backpack,
         };
         for at in spent.iter() {
             pool[at / POOL_STRIDE].slots[at % POOL_STRIDE] = None;
@@ -321,10 +344,30 @@ pub fn carried_bonus(inventory: &Inventory, ranged: bool) -> Carried {
 }
 
 impl World {
-    /// Runs down every ability and item cooldown and every mute, a dead
-    /// hero's too (Dota's keep running while it lies dead), every seat's
-    /// item waits, and every timed modifier, dropping the modifiers and waits
-    /// that run out.
+    /// Reconcile residence independently of how a stack arrived (purchase,
+    /// courier, ground pickup, assembly or a swap). A later order in the same
+    /// tick sees the first entry too.
+    pub(crate) fn track_backpack(&mut self, unit: Entity) {
+        let hero = self
+            .seats
+            .iter()
+            .find(|seat| seat.unit == Some(unit))
+            .map(|seat| seat.slot);
+        let Some(bag) = self.inventory.get_mut(unit) else {
+            return;
+        };
+        for (slot, stack) in bag.slots.iter_mut().enumerate() {
+            let Some(stack) = stack else { continue };
+            if let Some(hero) = hero.filter(|_| in_backpack(slot)) {
+                stack.backpack.enter(hero, self.tick);
+            } else {
+                stack.backpack.leave();
+            }
+        }
+    }
+
+    /// Runs down ability and item cooldowns, inactivity, and timed modifiers,
+    /// including the waits of dead heroes.
     pub fn tick_gear(&mut self) {
         for seat in self.seats.iter_mut() {
             seat.item_clocks.retain_mut(|(_, left)| {
@@ -337,6 +380,7 @@ impl World {
         let mut expired = Vec::new();
         let mut delayed = Vec::new();
         for entity in self.entities.iter() {
+            let at_shop = self.at_any_shop(entity);
             if let Some(book) = self.abilities.get_mut(entity) {
                 for slot in book.slots.iter_mut() {
                     slot.cooldown = slot.cooldown.saturating_sub(1);
@@ -358,7 +402,11 @@ impl World {
                     if !paused {
                         stack.cooldown = stack.cooldown.saturating_sub(1);
                     }
-                    stack.mute = stack.mute.saturating_sub(1);
+                    stack.mute = if at_shop {
+                        0
+                    } else {
+                        stack.mute.saturating_sub(1)
+                    };
                 }
                 bag.lapse_with(|stack| expired.push((entity, stack)));
             }
@@ -425,6 +473,7 @@ impl World {
                 .into_iter()
                 .flatten()
             {
+                self.track_backpack(carrier);
                 if let Some(bag) = self.inventory.get_mut(carrier) {
                     bag.combine_wards();
                 }
@@ -1105,7 +1154,10 @@ impl World {
     /// Slots run the unit's own bag first, then the seat's stash. The stash
     /// takes part only while that unit stands in its own shop, a courier as
     /// much as a hero. A stack coming out of the backpack into the inventory
-    /// is muted for [`rules::BACKPACK_MUTE_TICKS`].
+    /// is muted for [`rules::BACKPACK_MUTE_TICKS`] unless the carrier is at
+    /// any shop. A shop landing
+    /// clears any residual inactivity too (Dota's shop exemption).
+    /// Source: https://www.dota2.com/700/gameplay/
     pub fn move_item(&mut self, slot: SlotId, unit: Entity, from: usize, to: usize) -> bool {
         let Some(seat) = self.seats.iter().position(|s| s.slot == slot) else {
             return false;
@@ -1116,11 +1168,18 @@ impl World {
         {
             return false;
         }
+        self.track_backpack(unit);
         if !in_stash(from) && !in_stash(to) {
-            return self
-                .inventory
-                .get_mut(unit)
-                .is_some_and(|bag| bag.swap_slots(from, to));
+            let backpack_mute = if self.at_any_shop(unit) {
+                0
+            } else {
+                rules::BACKPACK_MUTE_TICKS
+            };
+            let changed = self.inventory.get_mut(unit).is_some_and(|bag| {
+                bag.swap_slots_with_backpack_mute(from, to, backpack_mute, self.tick)
+            });
+            self.track_backpack(unit);
+            return changed;
         }
         if in_town_portal(to) {
             return self.stow_scroll(unit, seat, from);
@@ -1137,22 +1196,17 @@ impl World {
         {
             target.touched = true;
             moved.touched = true;
-            if in_backpack(from) && in_inventory(to) {
-                target.mute = target.mute.max(rules::BACKPACK_MUTE_TICKS);
-            }
             self.put_slot(unit, seat, to, Some(target));
             self.put_slot(unit, seat, from, (moved.charges > 0).then_some(moved));
+            self.track_backpack(unit);
             return true;
         }
         self.put_slot(unit, seat, to, Some(moved));
         self.put_slot(unit, seat, from, displaced);
-        for (origin, landed) in [(from, to), (to, from)] {
-            let mute = in_backpack(origin) && in_inventory(landed);
+        self.track_backpack(unit);
+        for landed in [from, to] {
             if let Some(stack) = self.slot_mut(unit, seat, landed) {
                 stack.touched = true;
-                if mute {
-                    stack.mute = stack.mute.max(rules::BACKPACK_MUTE_TICKS);
-                }
             }
         }
         true
@@ -1240,11 +1294,14 @@ impl World {
         };
         assert!(moved.is_scroll());
         moved.touched = true;
+        let residence = moved.backpack;
+        moved.backpack.leave();
         let taken = self
             .inventory
             .get_mut(unit)
             .is_some_and(|bag| bag.receive(moved));
         if !taken {
+            moved.backpack = residence;
             self.put_slot(unit, seat, from, Some(moved));
         }
         taken
@@ -1431,7 +1488,12 @@ impl World {
     }
 
     /// Lays a stack in one slot, over whatever was there.
-    fn put_slot(&mut self, unit: Entity, seat: usize, slot: usize, stack: Option<ItemStack>) {
+    fn put_slot(&mut self, unit: Entity, seat: usize, slot: usize, mut stack: Option<ItemStack>) {
+        if !in_backpack(slot)
+            && let Some(stack) = &mut stack
+        {
+            stack.backpack.leave();
+        }
         if let Some(held) = self.slot_of(unit, seat, slot) {
             *held = stack;
         }

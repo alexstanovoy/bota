@@ -1171,6 +1171,8 @@ pub const BURN_PERIOD_TICKS: u32 = 3;
 pub const UPHILL_MISS: crate::Odds = crate::Odds::percent(25);
 /// Ticks an item stays muted after leaving the backpack for the inventory.
 pub const BACKPACK_MUTE_TICKS: u32 = 180;
+/// First entry only: 7.38b extends the 7.38 grace to five seconds.
+pub const BACKPACK_GRACE_TICKS: u32 = 5 * TICKS_PER_SECOND;
 /// How close to the home fountain the shop, the stash and selling work.
 pub const SHOP_RANGE: i32 = 1000;
 /// Percent of what a creep-penalized lifesteal heals off a unit that is no hero (an illusion
@@ -1325,3 +1327,8 @@ pub const fn units(n: i32) -> Fixed {
 /// Stored gameplay modifiers, plus two projected movement-controller effects on the wire.
 pub const MAX_MODIFIERS_PER_UNIT: usize = bota_proto::game_limits::MAX_MODIFIERS_PER_UNIT;
 const _: () = assert!(MAX_EFFECTS_PER_UNIT >= MAX_MODIFIERS_PER_UNIT + 2);
+
+const _: () = {
+    assert!(TOWN_PORTAL_SLOT < u16::BITS as usize);
+    assert!(BACKPACK_GRACE_TICKS <= u8::MAX as u32);
+};

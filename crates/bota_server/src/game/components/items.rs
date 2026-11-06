@@ -5,6 +5,68 @@ use bota_proto::{Attribute, ItemId, SlotId};
 
 use crate::engine::state_hash;
 
+/// Per-item, per-hero first-entry grace (7.38, extended to five seconds in 7.38b).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct BackpackHistory {
+    seen: [u64; 4],
+    holder: Option<SlotId>,
+    until: u32,
+}
+
+impl BackpackHistory {
+    pub fn used(&self, hero: SlotId) -> bool {
+        self.seen[usize::from(hero.0) / 64] & (1_u64 << (hero.0 % 64)) != 0
+    }
+
+    pub fn enter(&mut self, hero: SlotId, now: u32) {
+        if self.holder == Some(hero) {
+            return;
+        }
+        self.until = if self.used(hero) {
+            0
+        } else {
+            now.saturating_add(rules::BACKPACK_GRACE_TICKS)
+        };
+        self.seen[usize::from(hero.0) / 64] |= 1_u64 << (hero.0 % 64);
+        self.holder = Some(hero);
+    }
+
+    /// Keep consumed grants when stacks merge or contribute to a build.
+    pub fn inherit(&mut self, source: Self) {
+        for (seen, other) in self.seen.iter_mut().zip(source.seen) {
+            *seen |= other;
+        }
+    }
+
+    /// A new build cannot extend a used ingredient's current grace.
+    pub fn inherit_build(&mut self, source: Self) {
+        if let Some(hero) = self.holder.filter(|hero| source.used(*hero)) {
+            let until = if source.holder == Some(hero) {
+                source.until
+            } else {
+                0
+            };
+            self.until = self.until.min(until);
+        }
+        self.inherit(source);
+    }
+
+    pub fn leave(&mut self) {
+        self.holder = None;
+        self.until = 0;
+    }
+
+    pub fn left(&self, now: u32) -> u32 {
+        self.until.saturating_sub(now)
+    }
+}
+
+state_hash!(BackpackHistory {
+    seen,
+    holder,
+    until
+});
+
 /// One item in a slot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ItemStack {
@@ -51,6 +113,7 @@ pub struct ItemStack {
     pub life: u32,
     /// The rune a Bottle holds. None for any other item.
     pub rune: Option<crate::game::HeldRune>,
+    pub backpack: BackpackHistory,
 }
 
 impl ItemStack {
@@ -76,6 +139,7 @@ impl ItemStack {
             disassemble_until: 0,
             life: def.lifetime,
             rune: None,
+            backpack: BackpackHistory::default(),
         })
     }
 
@@ -109,6 +173,7 @@ impl ItemStack {
             disassemble_until: 0,
             life: item_def(id).map_or(0, |def| def.lifetime.max(def.pickup_lifetime)),
             rune: None,
+            backpack: BackpackHistory::default(),
         }
     }
 
@@ -259,6 +324,9 @@ impl ItemStack {
         if self.id != ItemId::WARD_DISPENSER {
             self.sentry_active = source.sentry_active;
         }
+        if self.id != merged.id {
+            self.backpack.inherit_build(source.backpack);
+        }
         self.id = merged.id;
         self.charges = merged.charges;
         self.sentries = merged.sentries;
@@ -273,6 +341,7 @@ impl ItemStack {
         self.bought_tick = self.bought_tick.min(source.bought_tick);
         self.cooldown = self.cooldown.max(source.cooldown);
         self.mute = self.mute.max(source.mute);
+        self.backpack.inherit(source.backpack);
         self.touched |= source.touched;
         self.locked |= source.locked;
     }
@@ -425,10 +494,23 @@ impl Inventory {
     /// Swaps what two of its own slots hold, as an order to swap them does: a
     /// stack moved onto a like one merges into it as far as it fits, a scroll
     /// moved to the town portal slot merges there whole or not at all, and a
-    /// stack brought out of the backpack waits
-    /// [`rules::BACKPACK_MUTE_TICKS`] before it may be used. False when
-    /// nothing moved.
+    /// stack brought out of the backpack waits [`rules::BACKPACK_MUTE_TICKS`]
+    /// before granting bonuses or being used. This bag-only entry assumes
+    /// no shop exemption; the world supplies that context in `move_item`.
+    /// False when nothing moved.
     pub fn swap_slots(&mut self, from: usize, to: usize) -> bool {
+        self.swap_slots_with_backpack_mute(from, to, rules::BACKPACK_MUTE_TICKS, 0)
+    }
+
+    /// The world supplies zero beside either shop, clearing any
+    /// residual inactivity on a stack landing from the backpack.
+    pub(crate) fn swap_slots_with_backpack_mute(
+        &mut self,
+        from: usize,
+        to: usize,
+        backpack_mute: u32,
+        now: u32,
+    ) -> bool {
         let Some(mut moved) = self.slot(from).copied().flatten() else {
             return false;
         };
@@ -443,25 +525,34 @@ impl Inventory {
             *self.slot_mut(from).expect("a slot") = None;
             return self.receive(moved);
         }
-        let mute = |stack: &mut ItemStack, origin: usize, landed: usize| {
+        let mute = |stack: &mut ItemStack, origin: usize, landed: usize, grace: bool| {
             stack.touched = true;
             if in_backpack(origin) && in_inventory(landed) {
-                stack.mute = stack.mute.max(rules::BACKPACK_MUTE_TICKS);
+                stack.mute = if backpack_mute == 0 {
+                    0
+                } else if grace {
+                    stack.mute
+                } else {
+                    stack.mute.max(backpack_mute)
+                };
+                stack.backpack.leave();
             }
         };
+        let moved_grace = moved.backpack.left(now) > 0;
         if let Some(mut target) = displaced
             && target.merge_from(&mut moved, !self.stash)
         {
             moved.touched = true;
-            mute(&mut target, from, to);
+            mute(&mut target, from, to, moved_grace);
             *self.slot_mut(to).expect("a slot") = Some(target);
             *self.slot_mut(from).expect("a slot") = (moved.charges > 0).then_some(moved);
             return true;
         }
         let mut displaced = displaced;
-        mute(&mut moved, from, to);
+        mute(&mut moved, from, to, moved_grace);
         if let Some(stack) = displaced.as_mut() {
-            mute(stack, to, from);
+            let grace = stack.backpack.left(now) > 0;
+            mute(stack, to, from, grace);
         }
         *self.slot_mut(to).expect("a slot") = Some(moved);
         *self.slot_mut(from).expect("a slot") = displaced;
@@ -556,7 +647,8 @@ state_hash!(ItemStack {
     locked,
     disassemble_until,
     life,
-    rune
+    rune,
+    backpack
 });
 state_hash!(Inventory {
     slots,

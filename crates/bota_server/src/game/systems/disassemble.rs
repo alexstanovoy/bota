@@ -86,6 +86,7 @@ impl World {
         {
             return false;
         }
+        self.track_backpack(unit);
         let Some(built) = self.stack_at(unit, &self.seats[seat], at) else {
             return false;
         };
@@ -160,6 +161,7 @@ impl World {
             disassemble_until: 0,
             life: 0,
             rune: None,
+            backpack: built.backpack,
         }
     }
 

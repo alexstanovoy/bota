@@ -652,3 +652,8 @@
 //! [`ServerMsg::Heard`]: crate::ServerMsg::Heard
 //! [`ServerMsg::SayRefused`]: crate::ServerMsg::SayRefused
 //! [`ServerMsg::Orders`]: crate::ServerMsg::Orders
+
+//! [`PlayerView::backpack`](crate::PlayerView::backpack) tells only its own
+//! side which current item stacks have visited this hero's backpack and
+//! the grace left in its three backpack slots. Opponents get `None`, including
+//! while the hero is unseen. A view of everything carries this for every hero.

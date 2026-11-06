@@ -897,6 +897,17 @@ impl App {
         })
     }
 
+    /// Whether the hero is beside either shop, for the backpack exemption.
+    pub fn at_any_shop(&self) -> bool {
+        self.session()
+            .and_then(|session| {
+                session
+                    .own_hero()
+                    .map(|hero| bota_core::at_any_shop(session.map(), hero.pos, hero.bound))
+            })
+            .unwrap_or(false)
+    }
+
     /// The seat the bottom panel falls back to: our own, else the first one.
     pub fn default_slot(&self) -> Option<SlotId> {
         self.my_slot

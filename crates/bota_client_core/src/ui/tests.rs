@@ -382,6 +382,7 @@ fn a_player() -> PlayerView {
             denies: 0,
         }),
         seen_at: Some(0),
+        backpack: None,
     }
 }
 

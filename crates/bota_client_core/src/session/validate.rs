@@ -121,7 +121,9 @@ fn withheld(view: &WorldView) -> Result<(), SessionError> {
         .players
         .iter()
         .filter(|player| player.team != team)
-        .any(|player| player.creep_score.is_some() || player.gold.is_some())
+        .any(|player| {
+            player.creep_score.is_some() || player.gold.is_some() || player.backpack.is_some()
+        })
         || view
             .glyphs
             .iter()

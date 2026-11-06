@@ -573,6 +573,19 @@ pub struct PlayerView {
     /// side the tick its hero was last seen, absent when it never was (the
     /// level is then one and the experience zero).
     pub seen_at: Option<u32>,
+    /// This hero's item-instance backpack history, in bag then stash slot
+    /// order. Own side only; absent for opponents. Appended on the wire.
+    pub backpack: Option<BackpackView>,
+}
+
+/// Compact own-side information for predicting first-entry backpack grace.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct BackpackView {
+    /// Bits of the hero's bag and stash slots whose current stacks have
+    /// already visited this hero's backpack. Empty slots have no bit set.
+    pub used: u16,
+    /// Grace ticks left in each backpack slot, or zero when not in grace.
+    pub grace_left: [u8; crate::limits::BACKPACK_SLOTS],
 }
 
 /// A seat's creep score.

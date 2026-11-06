@@ -267,6 +267,7 @@ pub fn player_view(slot: u8) -> PlayerView {
             denies: 7,
         }),
         seen_at: Some(1500),
+        backpack: None,
     }
 }
 

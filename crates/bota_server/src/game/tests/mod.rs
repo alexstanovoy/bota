@@ -6,6 +6,7 @@ mod attack_launched;
 mod attacks;
 mod auras;
 mod backdoor;
+mod backpack_grace;
 mod bottle;
 mod bounty;
 mod buildings;

@@ -794,6 +794,11 @@ impl World {
     /// Stats worked out afresh, pools following their maxima, and the
     /// structures guarded.
     pub(crate) fn refresh_stats(&mut self) {
+        for seat in 0..self.seats.len() {
+            if let Some(hero) = self.seats[seat].unit {
+                self.track_backpack(hero);
+            }
+        }
         self.derive_stats_of(None);
         self.guard_structures();
         self.guard_cheated_heroes();

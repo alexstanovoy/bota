@@ -678,6 +678,7 @@ pub(crate) fn fresh_stack(item: ItemId, charges: u8) -> ItemStack {
         disassemble_until: 0,
         life: 0,
         rune: None,
+        backpack: Default::default(),
     }
 }
 
@@ -824,6 +825,7 @@ pub(crate) fn a_stack_of(item: ItemId, owner: u8) -> ItemStack {
         disassemble_until: 0,
         life: 0,
         rune: None,
+        backpack: Default::default(),
     }
 }
 

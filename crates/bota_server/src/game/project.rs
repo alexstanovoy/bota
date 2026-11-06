@@ -203,7 +203,32 @@ impl World {
                 denies: seat.denies,
             }),
             seen_at: shown.at,
+            backpack: own.then(|| self.backpack_view(seat)).flatten(),
         }
+    }
+
+    /// History follows item instances; the wire names their current slots
+    /// compactly instead of adding bytes to every public item record.
+    fn backpack_view(&self, seat: &Seat) -> Option<bota_proto::BackpackView> {
+        let bag = self.inventory.get(seat.unit?)?;
+        let mut view = bota_proto::BackpackView::default();
+        for (slot, stack) in bag
+            .slots
+            .iter()
+            .chain(&seat.stash.slots)
+            .take(rules::TOWN_PORTAL_SLOT)
+            .enumerate()
+        {
+            let Some(stack) = stack else { continue };
+            if stack.backpack.used(seat.slot) {
+                view.used |= 1 << slot;
+            }
+            if crate::game::in_backpack(slot) {
+                view.grace_left[slot - rules::INVENTORY_SLOTS] =
+                    stack.backpack.left(self.tick) as u8;
+            }
+        }
+        Some(view)
     }
 
     /// What a dead hero carries and has learned, for its own side's HUD.

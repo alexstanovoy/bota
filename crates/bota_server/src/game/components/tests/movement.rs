@@ -110,8 +110,13 @@ fn matching_sale_marks_merge_and_remain_marked() {
 #[test]
 fn backpack_merge_mutes_whole_destination_until_exact_boundary() {
     let (mut world, hero) = fixture();
+    world.transform.get_mut(hero).expect("standing").pos = AWAY;
+    world.settle();
     put(&mut world, hero, 0, mango(1));
     put(&mut world, hero, rules::INVENTORY_SLOTS, mango(2));
+    // Pin the ordinary six-second penalty after first-entry grace expires.
+    world.track_backpack(hero);
+    world.tick += rules::BACKPACK_GRACE_TICKS;
     assert!(world.move_item(OWNER, hero, rules::INVENTORY_SLOTS, 0));
     assert_eq!(held(&world, hero, 0).charges, 3);
     assert_eq!(held(&world, hero, 0).mute, rules::BACKPACK_MUTE_TICKS);
@@ -139,8 +144,13 @@ fn backpack_merge_mutes_whole_destination_until_exact_boundary() {
 #[test]
 fn partial_backpack_merge_does_not_mute_unmoved_remainder() {
     let (mut world, hero) = fixture();
+    world.transform.get_mut(hero).expect("standing").pos = AWAY;
+    world.settle();
     put(&mut world, hero, 0, mango(2));
     put(&mut world, hero, rules::INVENTORY_SLOTS, mango(3));
+    // Pin the ordinary six-second penalty after first-entry grace expires.
+    world.track_backpack(hero);
+    world.tick += rules::BACKPACK_GRACE_TICKS;
     assert!(world.move_item(OWNER, hero, rules::INVENTORY_SLOTS, 0));
     assert_eq!(held(&world, hero, 0).charges, 3);
     assert_eq!(held(&world, hero, 0).mute, rules::BACKPACK_MUTE_TICKS);
@@ -207,4 +217,19 @@ fn charges_change_hash_and_repeated_use_is_deterministic() {
         assert!(second.use_item(other, 0, Target::None, &mut Vec::new()));
         assert_eq!(first.hash(), second.hash());
     }
+}
+
+#[test]
+fn a_stack_merge_during_first_entry_grace_adds_no_backpack_inactivity() {
+    let (mut world, hero) = fixture();
+    world.transform.get_mut(hero).expect("standing").pos = AWAY;
+    put(&mut world, hero, 0, mango(1));
+    put(&mut world, hero, rules::INVENTORY_SLOTS, mango(1));
+    assert!(world.move_item(OWNER, hero, rules::INVENTORY_SLOTS, 0));
+    assert_eq!(held(&world, hero, 0).charges, 2);
+    assert_eq!(
+        held(&world, hero, 0).mute,
+        0,
+        "first-entry grace applies to merging charges too"
+    );
 }

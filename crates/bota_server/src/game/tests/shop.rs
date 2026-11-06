@@ -89,19 +89,13 @@ fn the_backpack_takes_from_the_stash_too() {
         Some(Fixed::from_int(SHADOW_FIEND.move_speed)),
         "carried inert, it adds nothing"
     );
-    // Out of the pocket into the inventory, it waits before it works.
+    // At the shop, taking it out adds no inactivity timer.
     assert!(world.move_item(SlotId(0), hero, pocket, 0));
     world.step();
     assert_eq!(
         world.stats.get(hero).map(|s| s.move_speed),
-        Some(Fixed::from_int(SHADOW_FIEND.move_speed)),
-        "just out of the pocket it is still inert"
-    );
-    run(&mut world, rules::BACKPACK_MUTE_TICKS);
-    assert_eq!(
-        world.stats.get(hero).map(|s| s.move_speed),
         Some(Fixed::from_int(SHADOW_FIEND.move_speed + 45)),
-        "and works once the wait is out"
+        "the shop exemption restores its stats immediately"
     );
 }
 
@@ -115,6 +109,10 @@ fn a_backpack_swap_projects_mute_until_the_exact_boundary() {
     );
     world.inventory.get_mut(hero).expect("has a bag").slots[0] =
         Some(a_stack_of(ItemId::IRON_BRANCH, 0));
+    world.transform.get_mut(hero).expect("standing").pos = Vec2::from_ints(8000, 8000);
+    world.settle();
+    // This fixture tests ordinary inactivity after the first-entry grace.
+    world.tick += rules::BACKPACK_GRACE_TICKS;
     assert!(
         world.move_item(SlotId(0), hero, pocket, 0),
         "the backpack item swaps into the inventory"
@@ -136,6 +134,55 @@ fn a_backpack_swap_projects_mute_until_the_exact_boundary() {
     assert_eq!(projected(&world).mute_left, 1, "one tick remains");
     world.step();
     assert_eq!(projected(&world).mute_left, 0, "the boundary is ready");
+}
+
+#[test]
+fn a_shop_backpack_landing_clears_residual_lane_inactivity() {
+    let (mut world, hero, boots) = a_hero_at_the_shop();
+    let pocket = rules::INVENTORY_SLOTS;
+    assert!(world.move_item(SlotId(0), hero, BAG_SLOTS, pocket));
+    world.transform.get_mut(hero).expect("standing").pos = Vec2::from_ints(8000, 8000);
+    world.settle();
+    // This fixture tests ordinary inactivity after the first-entry grace.
+    world.tick += rules::BACKPACK_GRACE_TICKS;
+    advance_validated(
+        &mut world,
+        None,
+        Order::Swap {
+            from: ItemSlot(pocket as u8),
+            to: ItemSlot(0),
+        },
+    );
+    assert!(slot_of(&world, hero, 0).expect("boots").mute > 0);
+    advance_validated(
+        &mut world,
+        None,
+        Order::Swap {
+            from: ItemSlot(0),
+            to: ItemSlot(pocket as u8),
+        },
+    );
+    assert!(slot_of(&world, hero, pocket).expect("boots").mute > 0);
+    world.transform.get_mut(hero).expect("standing").pos = fountain_pos(world.map, Team::Radiant);
+    world.settle();
+    advance_validated(
+        &mut world,
+        None,
+        Order::Swap {
+            from: ItemSlot(pocket as u8),
+            to: ItemSlot(1),
+        },
+    );
+    let landed = shown(&world, Some(Team::Radiant), hero).items[1].expect("boots");
+    assert_eq!(landed.id, boots);
+    assert_eq!(
+        landed.mute_left, 0,
+        "a shop landing clears an existing timer"
+    );
+    assert_eq!(
+        world.stats.get(hero).expect("stats").move_speed,
+        Fixed::from_int(SHADOW_FIEND.move_speed + 45)
+    );
 }
 
 #[test]
@@ -423,6 +470,7 @@ fn an_enemy_may_take_what_lies_on_the_ground_but_never_sell_it() {
 #[test]
 fn what_was_muted_stays_muted_across_the_ground() {
     let (mut world, hero) = a_hero_with_gold(0);
+    world.transform.get_mut(hero).expect("standing").pos = Vec2::from_ints(8000, 8000);
     world.inventory.get_mut(hero).expect("has a bag").slots[0] = Some(ItemStack {
         mute: 100,
         ..a_stack_of(ItemId::BOOTS, 0)

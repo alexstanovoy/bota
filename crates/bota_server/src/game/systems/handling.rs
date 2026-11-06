@@ -173,28 +173,30 @@ impl World {
         if !self.walk_into_reach(unit, at, rules::GIVE_ITEM_RANGE) {
             return false;
         }
-        let Some(stack) = self.take_from_bag(unit, slot) else {
+        self.track_backpack(unit);
+        let Some(mut stack) = self.held_in_bag(unit, slot) else {
             return true;
         };
-        let handed = self.as_received_by(
-            to,
-            ItemStack {
-                touched: true,
-                ..stack
-            },
-        );
-        let taken = self
+        stack.touched = true;
+        stack.backpack.leave();
+        let handed = self.as_received_by(to, stack);
+        if self
             .inventory
-            .get_mut(to)
-            .is_some_and(|bag| bag.receive(handed));
-        if !taken
-            && let Some(held) = self
-                .inventory
-                .get_mut(unit)
-                .and_then(|bag| bag.slot_mut(slot))
+            .get(to)
+            .is_none_or(|bag| bag.receiving_slot(&handed).is_none())
         {
-            *held = Some(stack);
+            return true;
         }
+        // Nothing changes in the recipient between checking room and receipt.
+        // A refused give must not end the sender's current backpack residence.
+        self.take_from_bag(unit, slot)
+            .expect("the preflight item still occupies its slot");
+        assert!(
+            self.inventory
+                .get_mut(to)
+                .expect("the preflight recipient has a bag")
+                .receive(handed)
+        );
         true
     }
 
@@ -339,7 +341,8 @@ impl World {
     }
 
     /// Stands a ground item up holding a stack.
-    pub fn lay_loot(&mut self, stack: ItemStack, pos: Vec2) -> Entity {
+    pub fn lay_loot(&mut self, mut stack: ItemStack, pos: Vec2) -> Entity {
+        stack.backpack.leave();
         let def = if bota_core::item_def(stack.id).is_none_or(|def| def.limits.killable) {
             &bota_core::GROUND_ITEM
         } else {
@@ -366,6 +369,9 @@ impl World {
     }
 
     pub(crate) fn take_from_bag(&mut self, unit: Entity, slot: usize) -> Option<ItemStack> {
-        self.inventory.get_mut(unit)?.slot_mut(slot)?.take()
+        self.track_backpack(unit);
+        let mut stack = self.inventory.get_mut(unit)?.slot_mut(slot)?.take()?;
+        stack.backpack.leave();
+        Some(stack)
     }
 }

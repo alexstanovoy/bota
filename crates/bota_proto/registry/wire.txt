@@ -745,3 +745,8 @@ field LairView 2 alive_known_by: SeenBy
 variant EventKind 26 AttackLaunched {}
 field EventKind::AttackLaunched 0 attacker: EntityId
 field EventKind::AttackLaunched 1 target: Option<EntityId>
+
+field PlayerView 17 backpack: Option<BackpackView>
+field BackpackView 0 used: u16
+field BackpackView 1 grace_left: [u8; 3]
+
