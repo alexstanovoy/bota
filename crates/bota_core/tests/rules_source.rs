@@ -182,6 +182,45 @@ fn review_private_item_data_helpers_do_not_change_rules_but_exports_are_guarded(
 }
 
 #[test]
+fn private_item_data_rejects_implementation_and_linkage_escapes() {
+    for (source, reason) in [
+        ("impl Rule { fn decide() -> u8 { 2 } }", "impl"),
+        (
+            "const _: () = { impl Rule { fn decide() -> u8 { 2 } } };",
+            "impl",
+        ),
+        ("macro_rules! escaped { () => { 2 }; }", "macro"),
+        (
+            "#[macro_export] macro_rules! escaped { () => { 2 }; }",
+            "macro",
+        ),
+        ("unsafe extern \"C\" { fn imported(); }", "extern"),
+        ("extern \"C\" fn exported() {}", "extern"),
+        ("include!(\"elsewhere.rs\");", "macro"),
+    ] {
+        let sources = Sources::new();
+        sources.write("crates/bota_core/src/data/item_mechanics.rs", source);
+        let error = rules_source::identity(&sources.0)
+            .err()
+            .expect("item data cannot define global behavior");
+        assert!(error.contains("item_mechanics.rs"), "{error}");
+        assert!(error.contains(reason), "{error}");
+    }
+}
+
+#[test]
+fn all_item_data_sources_are_validated_and_watched_without_entering_the_hash() {
+    let sources = Sources::new();
+    let initial = sources.identity();
+    let path = "crates/bota_core/src/data/extra.rs";
+    sources.write(path, "const fn helper() -> u8 { 1 }");
+    let identity = rules_source::identity(&sources.0).unwrap();
+    assert!(identity.files.contains(path));
+    assert!(!identity.modules.contains(path));
+    assert_eq!(identity.digest, initial);
+}
+
+#[test]
 fn review_production_path_attributes_are_refused_and_test_paths_are_ignored() {
     let sources = Sources::new();
     sources.write(
@@ -365,7 +404,7 @@ fn escaping_or_dynamic_includes_are_refused_before_reading_them() {
     );
     assert_eq!(
         rules_source::identity(&sources.0).err().as_deref(),
-        Some("rule include escapes the repository")
+        Some("crates/bota_core/src/rules.rs: rule include escapes the repository")
     );
     sources.write(
         "crates/bota_core/src/rules.rs",
@@ -401,6 +440,45 @@ fn the_build_uses_the_same_identity_as_the_source_contract() {
     assert_eq!(
         rules_source::identity(&root).unwrap().digest,
         bota_core::RULES_IDENTITY
+    );
+}
+
+#[test]
+fn the_real_simulation_tree_has_no_raw_source_fallbacks() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let identity = rules_source::identity(&root).unwrap();
+    assert!(
+        identity.raw_sources.is_empty(),
+        "update the pinned parser before merging unsupported syntax: {:?}",
+        identity.raw_sources
+    );
+}
+
+#[test]
+fn parse_fallbacks_are_observable_to_the_source_gate() {
+    let sources = Sources::new();
+    sources.write("crates/bota_core/src/rules.rs", "pub const VALUE: u8 = ;");
+    assert!(
+        rules_source::identity(&sources.0)
+            .unwrap()
+            .raw_sources
+            .contains("crates/bota_core/src/rules.rs")
+    );
+}
+
+#[test]
+fn wire_view_impls_cannot_hide_new_simulation_helpers() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    rules_source::validate_wire_view(&root).unwrap();
+    let sources = Sources::new();
+    sources.write(
+        "crates/bota_proto/src/view.rs",
+        "struct ClockShift; impl ClockShift { fn decide() -> u8 { 1 } }",
+    );
+    assert!(
+        rules_source::validate_wire_view(&sources.0)
+            .unwrap_err()
+            .contains("simulation helper")
     );
 }
 

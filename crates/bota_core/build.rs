@@ -11,6 +11,12 @@ fn main() {
         .expect("the repository root");
     println!("cargo:rerun-if-changed=rules_source.rs");
     let identity = rules_source::identity(&root).expect("contained, valid rule sources");
+    if !identity.raw_sources.is_empty() {
+        println!(
+            "cargo:warning={} raw-source fallbacks; the source contract must pass before merge",
+            identity.raw_sources.len()
+        );
+    }
     for path in &identity.files {
         println!("cargo:rerun-if-changed={}", root.join(path).display());
     }
@@ -21,15 +27,6 @@ fn main() {
     let identifiers = rules_source::item_identifiers(&root, &identity.modules)
         .expect("literal item identifier declarations");
     write_generated(&output.join("item_identity.rs"), &identifiers);
-    write_generated(
-        &output.join("rules_modules.txt"),
-        &identity
-            .modules
-            .iter()
-            .cloned()
-            .collect::<Vec<_>>()
-            .join("\n"),
-    );
 }
 
 fn write_generated(output: &Path, contents: &str) {

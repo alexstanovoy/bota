@@ -51,6 +51,7 @@ pub struct Identity {
     pub digest: u64,
     pub files: BTreeSet<String>,
     pub modules: BTreeSet<String>,
+    pub raw_sources: BTreeSet<String>,
 }
 
 struct Input {
@@ -86,12 +87,19 @@ pub fn identity(root: &Path) -> Result<Identity, String> {
         })
         .collect();
     let mut inputs = BTreeMap::new();
-    let mut files = BTreeSet::from([DATA_BOUNDARY.to_string()]);
+    let mut files = BTreeSet::new();
     let mut modules = BTreeSet::new();
     let mut total = 0;
-    if let Some(raw) = data_boundary(root)? {
-        inputs.insert((DATA_BOUNDARY.to_string(), true), (true, raw));
-    }
+    let mut data_entries = 0;
+    validate_data_sources(
+        root,
+        Path::new("crates/bota_core/src/data"),
+        0,
+        &mut data_entries,
+        &mut files,
+        &mut inputs,
+        &mut total,
+    )?;
     while let Some(input) = pending.pop() {
         let name = portable(&input.path)?;
         if name.starts_with("crates/bota_core/src/data/") {
@@ -159,8 +167,12 @@ pub fn identity(root: &Path) -> Result<Identity, String> {
         inputs.insert((name, input.rust), (raw, contents));
     }
     let mut hash = Sha256::new();
+    let mut raw_sources = BTreeSet::new();
     frame(&mut hash, b"bota-rules/source-v2");
     for ((name, rust), (raw, bytes)) in inputs {
+        if rust && raw {
+            raw_sources.insert(name.clone());
+        }
         if bytes.is_empty() {
             continue;
         }
@@ -182,6 +194,7 @@ pub fn identity(root: &Path) -> Result<Identity, String> {
         digest: u64::from_le_bytes(bytes[..8].try_into().expect("eight digest bytes")),
         files,
         modules,
+        raw_sources,
     })
 }
 
@@ -205,22 +218,7 @@ fn warning(name: &str, message: &str) {
     );
 }
 
-fn data_boundary(root: &Path) -> Result<Option<Vec<u8>>, String> {
-    let bytes = read(root, Path::new(DATA_BOUNDARY))?;
-    let bytes = normalize_crlf(&bytes);
-    let file = match std::str::from_utf8(&bytes)
-        .ok()
-        .and_then(|source| syn::parse_file(source).ok())
-    {
-        Some(file) => file,
-        None => {
-            warning(
-                DATA_BOUNDARY,
-                "cannot parse the item-data fence; hashing raw source so rustc can report the error",
-            );
-            return Ok(Some(bytes));
-        }
-    };
+fn data_boundary(file: &syn::File) -> Result<(), String> {
     let mut rows = 0;
     for item in file
         .items
@@ -250,7 +248,157 @@ fn data_boundary(root: &Path) -> Result<Option<Vec<u8>>, String> {
             "{DATA_BOUNDARY}: expected exactly one ITEM_ROWS re-export"
         ));
     }
-    Ok(None)
+    Ok(())
+}
+
+type Inputs = BTreeMap<(String, bool), (bool, Vec<u8>)>;
+
+fn validate_data_sources(
+    root: &Path,
+    directory: &Path,
+    depth: usize,
+    entries_seen: &mut usize,
+    files: &mut BTreeSet<String>,
+    raw: &mut Inputs,
+    total: &mut usize,
+) -> Result<(), String> {
+    let name = portable(directory)?;
+    if depth > MAX_DEPTH {
+        return Err(format!(
+            "{name}: item data exceeds directory depth {MAX_DEPTH}"
+        ));
+    }
+    let path = input_path(root, directory)?
+        .ok_or_else(|| format!("{name}: item-data directory not found"))?;
+    let entries = std::fs::read_dir(path).map_err(|error| format!("{name}: {error}"))?;
+    for entry in entries {
+        *entries_seen += 1;
+        if *entries_seen > MAX_FILES || files.len() >= MAX_FILES {
+            return Err(format!("{name}: too many item-data files"));
+        }
+        let entry = entry.map_err(|error| format!("{name}: {error}"))?;
+        let relative = directory.join(entry.file_name());
+        let name = portable(&relative)?;
+        let kind = entry
+            .file_type()
+            .map_err(|error| format!("{name}: {error}"))?;
+        if kind.is_symlink() {
+            return Err(format!("{name}: item data must not be symlinked"));
+        }
+        if kind.is_dir() {
+            validate_data_sources(root, &relative, depth + 1, entries_seen, files, raw, total)?;
+            continue;
+        }
+        if relative
+            .extension()
+            .is_none_or(|extension| extension != "rs")
+        {
+            continue;
+        }
+        files.insert(name.clone());
+        let bytes = normalize_crlf(&read(root, &relative)?);
+        *total += bytes.len();
+        if *total > MAX_TOTAL_BYTES {
+            return Err(format!("{name}: rule inputs exceed 64 MiB"));
+        }
+        let mut syntax = match std::str::from_utf8(&bytes)
+            .ok()
+            .and_then(|source| syn::parse_file(source).ok())
+        {
+            Some(file) => file,
+            None => {
+                warning(
+                    &name,
+                    "cannot parse item data; hashing tagged raw source so rustc can report the error",
+                );
+                raw.insert((name, true), (true, bytes));
+                continue;
+            }
+        };
+        let mut fence = DataFence { error: None };
+        fence.visit_file_mut(&mut syntax);
+        if let Some(error) = fence.error {
+            return Err(format!("{name}: {error}"));
+        }
+        if name == DATA_BOUNDARY {
+            data_boundary(&syntax)?;
+        }
+    }
+    if depth == 0 && !files.contains(DATA_BOUNDARY) {
+        return Err(format!("{DATA_BOUNDARY}: item-data fence not found"));
+    }
+    Ok(())
+}
+
+struct DataFence {
+    error: Option<String>,
+}
+
+impl VisitMut for DataFence {
+    fn visit_item_impl_mut(&mut self, _: &mut syn::ItemImpl) {
+        self.error = Some("impl blocks are forbidden in private item data".into());
+    }
+    fn visit_item_extern_crate_mut(&mut self, _: &mut syn::ItemExternCrate) {
+        self.error = Some("extern declarations are forbidden in private item data".into());
+    }
+    fn visit_abi_mut(&mut self, _: &mut syn::Abi) {
+        self.error = Some("extern declarations are forbidden in private item data".into());
+    }
+    fn visit_attribute_mut(&mut self, attribute: &mut syn::Attribute) {
+        if path_is(attribute.path(), "macro_export") {
+            self.error = Some("macro exports are forbidden in private item data".into());
+        }
+        visit_mut::visit_attribute_mut(self, attribute);
+    }
+    fn visit_macro_mut(&mut self, item: &mut syn::Macro) {
+        if ![
+            "assert",
+            "assert_eq",
+            "assert_ne",
+            "debug_assert",
+            "debug_assert_eq",
+            "debug_assert_ne",
+            "matches",
+            "panic",
+            "unreachable",
+        ]
+        .iter()
+        .any(|name| path_is(&item.path, name))
+        {
+            self.error = Some(
+                "macro declarations and non-builtin macros are forbidden in private item data"
+                    .into(),
+            );
+            return;
+        }
+        if let Some(keyword) = escaping_tokens(item.tokens.clone(), 0) {
+            self.error = Some(format!("{keyword} inside item-data macros is forbidden"));
+        }
+    }
+}
+
+fn escaping_tokens(tokens: TokenStream, depth: usize) -> Option<String> {
+    if depth > 128 {
+        return Some("deep macro nesting".into());
+    }
+    for token in tokens {
+        match token {
+            TokenTree::Ident(name)
+                if ["impl", "extern", "macro_rules", "macro_export"]
+                    .iter()
+                    .any(|keyword| name == keyword) =>
+            {
+                return Some(name.to_string());
+            }
+            TokenTree::Group(group) => {
+                if let Some(keyword) = escaping_tokens(group.stream(), depth + 1) {
+                    return Some(keyword);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 pub fn item_identifiers(root: &Path, modules: &BTreeSet<String>) -> Result<String, String> {
@@ -506,21 +654,66 @@ fn portable(path: &Path) -> Result<String, String> {
 
 fn contained(source: &Path, include: &str) -> Result<PathBuf, String> {
     if include.contains('\\') {
-        return Err("rule includes must use portable relative paths".into());
+        return Err(format!(
+            "{}: rule includes must use portable relative paths",
+            source.display()
+        ));
     }
     let mut relative = source
         .parent()
-        .ok_or("a source has a parent")?
+        .ok_or_else(|| format!("{}: a source has a parent", source.display()))?
         .to_path_buf();
     for part in Path::new(include).components() {
         match part {
             Component::Normal(name) => relative.push(name),
             Component::CurDir => {}
             Component::ParentDir if relative.pop() => {}
-            _ => return Err("rule include escapes the repository".into()),
+            _ => {
+                return Err(format!(
+                    "{}: rule include escapes the repository",
+                    source.display()
+                ));
+            }
         }
     }
     Ok(relative)
+}
+
+#[cfg(test)]
+pub fn validate_wire_view(root: &Path) -> Result<(), String> {
+    let name = "crates/bota_proto/src/view.rs";
+    let bytes = read(root, Path::new(name))?;
+    let source = String::from_utf8(bytes).map_err(|error| format!("{name}: {error}"))?;
+    let mut syntax = syn::parse_file(&source).map_err(|error| format!("{name}: {error}"))?;
+    struct ViewFence(Option<String>);
+    impl VisitMut for ViewFence {
+        fn visit_item_mut(&mut self, item: &mut syn::Item) {
+            if !test_only(item_attributes(item)) {
+                visit_mut::visit_item_mut(self, item);
+            }
+        }
+        fn visit_item_impl_mut(&mut self, item: &mut syn::ItemImpl) {
+            let methods: &[&str] = match &*item.self_ty {
+                syn::Type::Path(ty) if path_is(&ty.path, "SeenBy") => &["by"],
+                syn::Type::Path(ty) if path_is(&ty.path, "WorldView") => {
+                    &["game_tick", "day_tick", "unit", "player"]
+                }
+                _ => {
+                    self.0 = Some("manual impl belongs in a simulation helper module".into());
+                    return;
+                }
+            };
+            if item.trait_.is_some() || item.items.iter().any(|item| !matches!(item, syn::ImplItem::Fn(function) if methods.contains(&function.sig.ident.to_string().as_str()))) {
+                self.0 = Some("wire view impl may contain only its existing client-read helpers".into());
+            }
+            visit_mut::visit_item_impl_mut(self, item);
+        }
+    }
+    let mut fence = ViewFence(None);
+    fence.visit_file_mut(&mut syntax);
+    fence
+        .0
+        .map_or(Ok(()), |error| Err(format!("{name}: {error}")))
 }
 
 #[cfg(test)]

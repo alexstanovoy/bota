@@ -142,10 +142,14 @@ and sorts imports. Tuple commas, literal contents, macro punctuation and matcher
 macro fragments are retained conservatively instead of guessing where an item ends. Other production refactors
 can change the identity: this is a source contract, not a proof of semantic equivalence. If parsing fails, the build
 warns and hashes CRLF-normalized raw source under a separate tag, leaving rustc to report the actual source error.
+The real-tree source test requires zero fallback inputs, so new syntax must be supported by the pinned parser
+before it can pass the gate.
 
-The whole private `bota_core/src/data/` directory belongs to `Catalogue` prefix agreement. Its `mod.rs` is checked
-to re-export only `ITEM_ROWS`; another export fails the build. Adding a data helper and an item row preserves the
-identity and older catalogue prefixes. Each row also binds its associated `ItemId` names and literal numeric values,
+The whole private `bota_core/src/data/` directory belongs to `Catalogue` prefix agreement. Its Rust sources are
+parsed and watched as validation inputs, without entering the rules hash. Its `mod.rs` must re-export only
+`ITEM_ROWS`. Impl blocks, extern code, macro declarations/exports and non-builtin macros are refused, including
+nested declarations; use ordinary private constant/function factories. Adding a data helper and an item row
+preserves the identity and older catalogue prefixes. Each row also binds its associated `ItemId` names and literal numeric values,
 found at every AST depth: changing an existing binding cannot bypass agreement, and a constant for an appended id
 leaves older prefixes unchanged. Keep these declarations as literal `ItemId(u16)` values. Match metadata keeps the
 frozen `rules_version: u32` header field, zero for content identities, and appends `MetaRecord::RulesIdentity { identity }`.
@@ -157,11 +161,13 @@ hash-collision limitation and neither is authentication. Compiler/dependency beh
 
 The build script reads bounded, regular, repository-contained inputs, follows no symlinks, performs no network
 requests and launches no processes. Dynamic includes are refused. It writes only in Cargo's output directory and
-only if output changes. Cargo watches each traced file individually, the private data export fence, and the build
+only if output changes. Cargo watches each traced file individually, the private data validation files, and the build
 helper itself. Editing a test file under `bota_server/src/**/tests` does not rerun the identity builder. Changes to
 an inline test in a traced production file can rerun it while preserving the identity. There are no directory
 watches: adding a production module changes its watched parent declaration; deleting a traced file invalidates its
-watch. A complete repository checkout is required, including the server rule sources even for client builds.
+watch. A gate-only fence also keeps new manual view impls (such as `ClockShift` behavior) out of the wire view
+module; its existing client read helpers stay wire-only, with no extra build watches. A complete repository
+checkout is required, including the server rule sources even for client builds.
 Packaging individual crates for crates.io is not supported by this build arrangement; publication policy is separate.
 
 ## Determinism

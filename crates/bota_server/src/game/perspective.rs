@@ -168,4 +168,3 @@ fn told_as(kind: &mut EventKind, event: &Event, mine: Team) {
         _ => {}
     }
 }
-
