@@ -202,14 +202,12 @@ fn a_compressed_part_unpacking_past_its_bound_is_refused() {
     assert!(pings * ping.len() <= MAX_UNPACKED_PART_LEN);
 }
 
-/// How long hostile input may take: the work is linear in the bytes, so four
-/// megabytes of pings take milliseconds in a release build and a fraction of
-/// a second in a debug one. A reader that moves its whole buffer for every
-/// frame takes some thirteen seconds (measured before it was fixed).
-const HOSTILE_INPUT_BUDGET: std::time::Duration = std::time::Duration::from_secs(2);
-
+/// Hostile input costs what its bytes do: the bytes a reader moves are held
+/// to the bytes pushed. A reader that moved its whole buffer for every frame
+/// moved some 1.6 TB for these four megabytes of pings (it took thirteen
+/// seconds before it was fixed). Counted, not timed: the tests run at any load.
 #[test]
-fn a_push_of_tiny_frames_is_read_in_time_linear_in_its_bytes() {
+fn a_push_of_tiny_frames_is_read_with_work_linear_in_its_bytes() {
     let ping = encode_frame_to_vec(&ServerMsg::Ping).unwrap();
     let wire: Vec<u8> = ping
         .iter()
@@ -218,7 +216,6 @@ fn a_push_of_tiny_frames_is_read_in_time_linear_in_its_bytes() {
         .take(ping.len() * 800_000)
         .collect();
     let mut reader = FrameReader::new();
-    let started = std::time::Instant::now();
     reader.push(&wire);
     let mut pings = 0;
     while let Some(ServerMsg::Ping) = reader.next_message().unwrap() {
@@ -227,9 +224,39 @@ fn a_push_of_tiny_frames_is_read_in_time_linear_in_its_bytes() {
     assert_eq!(pings, 800_000);
     assert!(reader.is_empty());
     assert!(
-        started.elapsed() < HOSTILE_INPUT_BUDGET,
-        "{:?}",
-        started.elapsed()
+        reader.moved <= wire.len(),
+        "{} bytes moved for {} pushed",
+        reader.moved,
+        wire.len()
+    );
+}
+
+/// The same when the pings arrive in pieces that split frames, taken as
+/// they come: what is kept is moved, never more often than bytes are taken.
+#[test]
+fn pieces_of_tiny_frames_are_read_with_work_linear_in_their_bytes() {
+    let ping = encode_frame_to_vec(&ServerMsg::Ping).unwrap();
+    let wire: Vec<u8> = ping
+        .iter()
+        .copied()
+        .cycle()
+        .take(ping.len() * 200_000)
+        .collect();
+    let mut reader = FrameReader::new();
+    let mut pings = 0;
+    for piece in wire.chunks(ping.len() * 3 + 2) {
+        reader.push(piece);
+        while let Some(ServerMsg::Ping) = reader.next_message().unwrap() {
+            pings += 1;
+        }
+    }
+    assert_eq!(pings, 200_000);
+    assert!(reader.is_empty());
+    assert!(
+        reader.moved <= wire.len(),
+        "{} bytes moved for {} pushed",
+        reader.moved,
+        wire.len()
     );
 }
 
@@ -247,9 +274,10 @@ fn sync_flushed(plain: &[u8]) -> Vec<u8> {
     out
 }
 
-/// A few KiB of DEFLATE that unpack to the most a part may hold, as pings.
+/// A few KiB of DEFLATE that unpack to the most a part may hold, as pings:
+/// unpacked with work linear in the bytes, counted like the reader's.
 #[test]
-fn a_compressed_part_of_pings_unpacks_in_time_linear_in_its_bytes() {
+fn a_compressed_part_of_pings_unpacks_with_work_linear_in_its_bytes() {
     let ping = encode_frame_to_vec(&ServerMsg::Ping).unwrap();
     let plain: Vec<u8> = ping
         .iter()
@@ -259,17 +287,19 @@ fn a_compressed_part_of_pings_unpacks_in_time_linear_in_its_bytes() {
         .collect();
     let part = sync_flushed(&plain);
     let mut unpacker = Unpacker::new();
-    let started = std::time::Instant::now();
     assert_eq!(unpacker.take(ServerMsg::Compressed(part)), Ok(None));
     let mut pings = 0;
     while let Some(ServerMsg::Ping) = unpacker.next_message().unwrap() {
         pings += 1;
     }
     assert_eq!(pings, plain.len() / ping.len());
+    // one inflate buffer for the part, not one zeroed for every ping
+    assert_eq!(unpacker.zeroed, crate::unpack::STEP);
+    let moved = unpacker.moved();
     assert!(
-        started.elapsed() < HOSTILE_INPUT_BUDGET,
-        "{:?}",
-        started.elapsed()
+        moved <= plain.len(),
+        "{moved} bytes moved for {} unpacked",
+        plain.len()
     );
 }
 

@@ -115,6 +115,11 @@ pub struct FrameReader {
     /// Taking a frame only moves this, so a push of many small frames costs
     /// what its bytes do.
     start: usize,
+    /// Bytes moved to the front of `buf`, all told: the tests hold it to the
+    /// bytes pushed, which a reader that shifts its buffer for every frame
+    /// exceeds many times over.
+    #[cfg(test)]
+    pub(crate) moved: usize,
 }
 
 impl FrameReader {
@@ -138,6 +143,10 @@ impl FrameReader {
             self.buf.clear();
             self.start = 0;
         } else if self.start >= self.buf.len() - self.start {
+            #[cfg(test)]
+            {
+                self.moved += self.buf.len() - self.start;
+            }
             self.buf.drain(..self.start);
             self.start = 0;
         }

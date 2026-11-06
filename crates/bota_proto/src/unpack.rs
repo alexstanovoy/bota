@@ -14,7 +14,7 @@ pub const MAX_UNPACKED_PART_LEN: usize = 2 * (LEN_PREFIX + MAX_PAYLOAD_LEN);
 
 /// Bytes unpacked at a time: what is unpacked waits only while no whole
 /// frame is, so a part never takes more memory than a frame and this.
-const STEP: usize = 16 * 1024;
+pub(crate) const STEP: usize = 16 * 1024;
 
 /// The server messages of one connection, compressed parts unpacked in the
 /// order they came.
@@ -37,12 +37,22 @@ pub struct Unpacker {
     /// for.
     pending: bool,
     frames: FrameReader,
+    /// Bytes of inflate buffer zeroed, all told: one buffer for the whole
+    /// stream, not one for every message.
+    #[cfg(test)]
+    pub(crate) zeroed: usize,
 }
 
 impl Unpacker {
     /// An unpacker that has seen no part yet.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Bytes its frame reader moved, all told (see [`FrameReader`]'s count).
+    #[cfg(test)]
+    pub(crate) fn moved(&self) -> usize {
+        self.frames.moved
     }
 
     /// Takes in the next message off the wire: a plain one is handed back,
@@ -63,6 +73,10 @@ impl Unpacker {
         if self.state.is_none() {
             self.state = Some(InflateState::new_boxed(DataFormat::Raw));
             self.step = vec![0; STEP];
+            #[cfg(test)]
+            {
+                self.zeroed += STEP;
+            }
         }
         self.part = part;
         self.used = 0;
