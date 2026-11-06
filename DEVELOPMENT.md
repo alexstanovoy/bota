@@ -43,8 +43,9 @@ the WebSocket path and `Origin` are not checked.
 Connections that have not said Hello yet are bounded per source, so that one host cannot keep the players out: TLS and
 WebSocket handshakes under way and connections without a Hello, 16 each per IPv4 address, 16 per IPv6 /64 and 64 per
 IPv6 /48; and connections without a Hello take a quarter of `--max-connections` at most, a newcomer past it (or past
-`--max-connections`) taking the place of the oldest stranger of the source holding the most. A connection that said
-Hello is never let go for room and has no bound per source: players behind one address all play. Behind a reverse
+`--max-connections`) taking the place of the oldest stranger of the source holding the most. A peer let go (refused
+at its Hello, say) is read on for a while and counts meanwhile as a stranger of its source, the first to be cut short
+for a newcomer. A connection that said Hello is never let go for room and has no bound per source: players behind one address all play. Behind a reverse
 proxy every peer counts as the proxy's address: `X-Forwarded-For`, which any peer could forge, is not read.
 
 ### Launcher contract

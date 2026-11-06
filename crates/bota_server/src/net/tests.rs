@@ -748,12 +748,11 @@ fn at_the_match_end_a_peer_is_read_on_until_it_hangs_up() {
     );
 }
 
-/// A peer refused at its Hello still counts towards `max_connections` while its connection is
-/// read on, so refused peers that talk on and dial again cannot hold more than the bound. The
-/// test holds the linger: the refused peer keeps its place for as long as the test says, then is
-/// cut off, and its place goes to the next.
+/// A peer refused at its Hello is read on for a while, and counts meanwhile towards
+/// `max_connections` as a stranger of its source: a newcomer that needs its place cuts it short.
+/// The test holds the linger, so only the newcomer can end it.
 #[test]
-fn a_refused_peer_that_talks_on_holds_its_place_until_its_linger_runs_out() {
+fn a_refused_peer_that_talks_on_is_cut_short_for_a_newcomer() {
     let mut opts = realtime(15);
     opts.max_connections = Some(1);
     let switch = crate::net::LingerSwitch::default();
@@ -773,27 +772,19 @@ fn a_refused_peer_that_talks_on_holds_its_place_until_its_linger_runs_out() {
     ));
     refused.recv_until(|msg| matches!(msg, ServerMsg::WireMismatch { .. }).then_some(()));
     refused.send(&ClientMsg::Pong);
-    let mut again = TcpStream::connect(addr).expect("connect");
-    again
-        .set_read_timeout(Some(HANG_GUARD))
-        .expect("set timeout");
-    let mut buf = [0u8; 64];
-    assert!(
-        matches!(again.read(&mut buf), Ok(0) | Err(_)),
-        "a second connection was taken while the refused one is read on"
-    );
-    switch.fire();
-    // Cut off, the refused peer's words meet a closed connection.
+    let (_seated, slot) = hello_as_bot(admitted(addr), "newcomer");
+    assert_eq!(slot, Some(SlotId(0)), "the newcomer took the place");
+    // Cut short, the refused peer's words meet a closed connection.
     let pong = encode_frame_to_vec(&ClientMsg::Pong).expect("encode");
     let started = Instant::now();
     while refused.stream.write_all(&pong).is_ok() {
         assert!(
             started.elapsed() < HANG_GUARD,
-            "the server reads on past the linger"
+            "the server reads the refused peer on"
         );
         thread::sleep(Duration::from_millis(20));
     }
-    admitted(addr);
+    drop(switch);
 }
 
 /// Order delays are options like any other: a library caller's that do not fit the seats are

@@ -286,6 +286,7 @@ fn run_inner(
         rx,
         tx,
         conns: Vec::new(),
+        parting: Vec::new(),
         live: LiveConnections::default(),
         #[cfg(not(test))]
         linger: Linger::SERVED,
@@ -488,6 +489,9 @@ struct Server {
     /// Cloned into every connection's reader thread; keeps `rx` open.
     tx: Sender<NetEvent>,
     conns: Vec<Connection>,
+    /// Connections let go that are still read on (see [`Linger`]): strangers of their source,
+    /// the first to be cut short for a newcomer. One leaves once its reader has ended.
+    parting: Vec<Connection>,
     /// Connections that still hold threads, those let go among them.
     live: LiveConnections,
     /// How long a peer let go is read on.
@@ -588,6 +592,7 @@ impl Server {
     fn drop_conn(&mut self, id: PlayerId) {
         if let Some(conn) = self.forget(id) {
             conn.close();
+            self.parting.push(conn);
         }
     }
 
@@ -641,6 +646,8 @@ impl Server {
                 (id, false)
             }
         };
+        // A connection let go is read on no more: it is not parting any longer.
+        self.parting.retain(|c| c.id != id);
         // A connection already refused or dropped was told of then; one that
         // never said hello is nobody's business.
         if self.conn(id).is_some() {
@@ -691,17 +698,13 @@ impl Server {
     /// the stream is let go.
     fn adopt(&mut self, stream: Box<dyn FrameStream>) {
         if let Some(peer) = stream.peer() {
-            let strangers = self
-                .conns
-                .iter()
-                .filter(|c| !self.greeted(c.id))
-                .filter_map(|c| c.peer);
+            let strangers = self.strangers().filter_map(|c| c.peer);
             if crate::net::over_bound(peer, strangers) {
                 return;
             }
         }
         if let Some(most) = self.opts.max_connections {
-            let strangers = self.conns.iter().filter(|c| !self.greeted(c.id)).count();
+            let strangers = self.strangers().count();
             let full = self.conns.len().max(self.live.count()) >= most;
             let crowded = strangers >= (most / STRANGERS_SHARE_DIVISOR).max(1);
             if (full || crowded) && !self.make_room(most) {
@@ -731,20 +734,32 @@ impl Server {
     /// connection let go still holds threads for a moment, so the live ones may pass `most` by
     /// those, never by more than `most` again.
     fn make_room(&mut self, most: usize) -> bool {
-        let strangers: Vec<&Connection> =
-            self.conns.iter().filter(|c| !self.greeted(c.id)).collect();
+        let strangers: Vec<&Connection> = self.strangers().collect();
         let source = |c: &Connection| c.peer.map(crate::net::source);
         let held =
             |of: Option<crate::net::Group>| strangers.iter().filter(|c| source(c) == of).count();
+        let parting = |c: &Connection| self.parting.iter().any(|p| p.id == c.id);
         let oldest = strangers
             .iter()
-            .max_by_key(|c| (held(source(c)), std::cmp::Reverse(c.opened)))
+            .max_by_key(|c| (parting(c), held(source(c)), std::cmp::Reverse(c.opened)))
             .map(|c| c.id);
         let Some(oldest) = oldest else {
             return false;
         };
-        self.lose_conn(oldest);
+        match self.parting.iter().position(|c| c.id == oldest) {
+            Some(at) => self.parting.remove(at).abort(),
+            None => self.lose_conn(oldest),
+        }
         self.conns.len() < most && self.live.count() < most.saturating_mul(2)
+    }
+
+    /// The connections that are no one's: those that have not said Hello, and those let go
+    /// that are still read on.
+    fn strangers(&self) -> impl Iterator<Item = &Connection> + Clone {
+        self.conns
+            .iter()
+            .filter(|c| !self.greeted(c.id))
+            .chain(&self.parting)
     }
 
     /// What a Hello may have: with reserved seats no seat without the key for

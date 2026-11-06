@@ -177,3 +177,81 @@ fn ten_players_from_one_address_all_join_at_once() {
     assert_eq!(slots.len(), 10, "every player has a seat of its own");
     assert!(slots.iter().all(Option::is_some));
 }
+
+/// Threads that each dial `addr`, say Hello as a client of another wire, read the refusal and
+/// then talk on, so that the server reads them on until their linger runs out, and dial again,
+/// until the returned flag is raised.
+fn refused_flood(addr: SocketAddr, threads: usize) -> Arc<AtomicBool> {
+    let stop = Arc::new(AtomicBool::new(false));
+    let hello = encode_frame_to_vec(&ClientMsg::hello(
+        Role::Bot,
+        "old build",
+        None,
+        !bota_core::WIRE_FINGERPRINT,
+    ))
+    .expect("encode");
+    let pong = encode_frame_to_vec(&ClientMsg::Pong).expect("encode");
+    for _ in 0..threads {
+        let (stop, hello, pong) = (Arc::clone(&stop), hello.clone(), pong.clone());
+        thread::spawn(move || {
+            while !stop.load(Ordering::Relaxed) {
+                let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_secs(1))
+                else {
+                    continue;
+                };
+                let _ = stream.set_read_timeout(Some(Duration::from_millis(100)));
+                if stream.write_all(&hello).is_err() {
+                    continue;
+                }
+                // Whatever the server says, the refusal and its hang-up among it, the peer talks
+                // on until its words meet a closed connection.
+                let mut buf = [0u8; 4096];
+                while !stop.load(Ordering::Relaxed) && stream.write_all(&pong).is_ok() {
+                    if let Ok(0) = stream.read(&mut buf) {
+                        thread::sleep(Duration::from_millis(100));
+                    }
+                }
+            }
+        });
+    }
+    stop
+}
+
+/// A peer refused at its Hello is read on for a while, and counts meanwhile as a stranger of its
+/// source: one source redialling with Hellos the server refuses cannot hold every place, and a
+/// fair client from elsewhere still joins.
+#[test]
+fn a_source_redialling_with_refused_hellos_cannot_keep_a_fair_client_out() {
+    let mut opts = realtime(34);
+    opts.max_connections = Some(64);
+    let (tcp, _) = start_on_both_families(opts);
+    let stop = refused_flood(SocketAddr::from(([127, 0, 0, 1], tcp)), 200);
+    // Let the refused peers pile up before the fair client comes.
+    thread::sleep(Duration::from_secs(2));
+    let far: SocketAddr = format!("[::1]:{tcp}").parse().expect("an address");
+    let mut fair = TestClient::connect(far);
+    fair.stream
+        .set_read_timeout(Some(FAIR_GUARD))
+        .expect("set timeout");
+    fair.send(&ClientMsg::hello(
+        Role::Bot,
+        "fair",
+        None,
+        bota_core::WIRE_FINGERPRINT,
+    ));
+    let mut buf = [0u8; 65536];
+    let welcomed = loop {
+        if let Ok(Some(msg)) = fair.reader.next_message() {
+            if let ServerMsg::Welcome { slot, .. } = msg {
+                break slot.is_some();
+            }
+            continue;
+        }
+        match fair.stream.read(&mut buf) {
+            Ok(n @ 1..) => fair.reader.push(&buf[..n]),
+            _ => break false,
+        }
+    };
+    stop.store(true, Ordering::Relaxed);
+    assert!(welcomed, "the fair client was not seated");
+}
