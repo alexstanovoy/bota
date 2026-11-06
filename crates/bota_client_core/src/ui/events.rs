@@ -350,9 +350,12 @@ impl App {
             if let Some(hero) = thrower.filter(|unit| unit.kind == UnitKind::Hero) {
                 let gain = if Some(hero.id) == ears { 0.7 } else { 0.4 };
                 launched.push((hero.clone(), gain));
+                if launched.len() == 4 {
+                    break;
+                }
             }
         }
-        for (hero, gain) in launched.into_iter().take(4) {
+        for (hero, gain) in launched {
             let at = (hero.pos.x.to_f32(), hero.pos.y.to_f32());
             let next = self.cues.len();
             self.cue_of(hero.hero, CueKind::Attack, gain, Some(at));

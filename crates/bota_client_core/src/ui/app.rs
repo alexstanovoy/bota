@@ -286,8 +286,9 @@ pub enum CueKind {
     QuickBuyFull,
 }
 
-/// A cue: what, how loud from 0 to 1, and where in the world it happens;
-/// absent for one that belongs to the watched hero itself.
+/// A cue's kind, gain and optional world position. A positional event retains `told`
+/// and its before-state; a projectile attack retains its `thrower` as seen at launch.
+/// Front ends use that evidence to admit the position independently of a public announcement.
 /// Cloned rather than copied because visibility context owns shared unit history.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Cue {
