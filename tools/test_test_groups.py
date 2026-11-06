@@ -331,9 +331,29 @@ class Running(unittest.TestCase):
         target = test_groups.Target(build, "lib", (), (), ())
         run = test_groups.invocation(CRATES, listed, target, {"game_determinism"}, {})
         self.assertEqual(run.expected, 1)
-        for name in names[:2]:
-            self.assertIn(name, run.command)
-        self.assertNotIn(names[2], run.command)
+        skipped = [run.command[i + 1] for i, word in enumerate(run.command[:-1]) if word == "--skip"]
+        self.assertCountEqual(skipped, names[:2])
+        self.assertNotIn(names[2], skipped)
+
+    def test_manual_recorders_skip_only_exact_full_names_in_real_libtest(self):
+        source = self.scratch / "contracts.rs"
+        binary = self.scratch / "contracts"
+        source.write_text('''mod game { mod tests { mod determinism {
+            #[test] #[ignore] fn print_pins() { panic!("manual recorder executed"); }
+            #[test] #[ignore] fn print_blind_pins() { panic!("manual recorder executed"); }
+            #[test] fn print_pins_preserves_the_purchase_contract() {}
+            #[test] fn ordinary_contract() {}
+        } } }''')
+        subprocess.run(["rustc", "--edition", "2024", "--test", "-O", str(source), "-o", str(binary)],
+                       capture_output=True, text=True, check=True)
+        names = ["game::tests::determinism::" + name for name in (
+            "print_pins", "print_blind_pins", "print_pins_preserves_the_purchase_contract", "ordinary_contract")]
+        listed = test_groups.Listed({"lib": names}, {"lib": source}, executables={"lib": binary})
+        target = test_groups.Target(Partition.BUILD, "lib", ("game::tests::determinism::",), (), ())
+        run = test_groups.invocation(CRATES, listed, target, {"game_determinism"}, {})
+        passed, out = self.run_pool(run)
+        self.assertTrue(passed, out)
+        self.assertIn("2 passed; 0 failed; 0 ignored", out)
 
     def test_output_that_is_not_utf8_is_told_and_counted(self):
         code = "import sys; sys.stdout.buffer.write(b'\\xff\\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured\\n')"

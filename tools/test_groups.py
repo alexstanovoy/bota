@@ -791,7 +791,9 @@ def invocation(crates: dict[str, Crate], listed: Listed, target: Target, owners:
     crate = crates[build.crate]
     # as `cargo test` runs a test binary: from its crate's directory, told where that is
     env |= {"CARGO_MANIFEST_DIR": str(ROOT / crate.directory), "CARGO_PKG_NAME": crate.name}
-    command = [str(listed.executables[target.name]), *target.filters, *target.args, *skips]
+    # Libtest applies --exact to both filters and --skip. Expand the already selected
+    # names so substring group filters retain their meaning without suppressing name prefixes.
+    command = [str(listed.executables[target.name]), "--exact", *selected, *target.args, *skips]
     return Invocation(key, command, ROOT / crate.directory, env, expected, owners)
 
 
