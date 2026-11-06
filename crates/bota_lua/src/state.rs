@@ -68,11 +68,13 @@ pub(crate) struct State {
     pub ability_methods: Option<TableId>,
     pub abilities: Vec<(super::api::abilities::Identity, TableId)>,
     pub bots: Vec<BotState>,
+    pub selecting: bool,
+    pub picks: Vec<Option<HeroId>>,
 }
 
 impl State {
     pub fn new(team: Team, seats: &[BotSeat]) -> Self {
-        Self { team, seats: seats.to_vec(), current_slot: seats[0].slot, snapshot: None, orders: Vec::with_capacity(MAX_ORDERS), units: Vec::new(), unit_methods: None, ability_methods: None, abilities: Vec::new(), bots: (0..seats.len()).map(|_| BotState::default()).collect() }
+        Self { team, seats: seats.to_vec(), current_slot: seats[0].slot, snapshot: None, orders: Vec::with_capacity(MAX_ORDERS), units: Vec::new(), unit_methods: None, ability_methods: None, abilities: Vec::new(), bots: (0..seats.len()).map(|_| BotState::default()).collect(), selecting: false, picks: vec![None; seats.len()] }
     }
 
     pub fn bot_index(&self) -> usize { self.seats.iter().position(|seat| seat.slot == self.current_slot).expect("active slot belongs to the team") }

@@ -37,6 +37,9 @@ pub struct ScriptFailure {
 #[derive(Debug, Default)]
 pub struct TeamTurn { pub bots: Vec<BotTurn>, pub failures: Vec<ScriptFailure> }
 
+#[derive(Debug)]
+pub struct SelectionTurn { pub seats: Vec<BotSeat>, pub complete: bool, pub failures: Vec<ScriptFailure> }
+
 #[derive(Default)]
 struct Schedule { active: Option<usize>, evaluated: Option<u32>, fuel_exhaustions: u64, last_warning: Option<u32> }
 
@@ -51,6 +54,7 @@ pub struct LuaTeam {
     limits: Limits,
     source_bytes: usize,
     last_tick: Option<u32>,
+    last_selection_tick: Option<u32>,
     set_environment: Value,
     get_environment: Value,
     modules: Option<Arc<crate::modules::Sources>>,
@@ -70,7 +74,7 @@ impl LuaTeam {
         let get_environment = lua.global("getfenv")?;
         lua.pin(set_environment)?;
         lua.pin(get_environment)?;
-        Ok(Self { lua, state, scripts: Vec::new(), schedules: (0..seats.len()).map(|_| Schedule::default()).collect(), diagnostics: Vec::new(), limits, source_bytes: 0, last_tick: None, set_environment, get_environment, modules: None, module_root: None })
+        Ok(Self { lua, state, scripts: Vec::new(), schedules: (0..seats.len()).map(|_| Schedule::default()).collect(), diagnostics: Vec::new(), limits, source_bytes: 0, last_tick: None, last_selection_tick: None, set_environment, get_environment, modules: None, module_root: None })
     }
 
     /// A trusted, bounded loader. Native packs are preloaded so loading cannot block a think.
@@ -166,6 +170,57 @@ impl LuaTeam {
             result.bots.push(BotTurn { slot: seat.slot, orders });
         }
         Ok(result)
+    }
+
+    /// Runs one selection frame; unknown heroes use the configured fallback and foreign seats are ignored.
+    pub fn select_heroes(&mut self, tick: u32) -> Result<SelectionTurn, BindingError> {
+        if self.last_tick.is_some() || self.last_selection_tick.is_some_and(|last| tick <= last) { return Err(BindingError::Configuration("an increasing selection tick before the match is required")); }
+        self.last_selection_tick = Some(tick);
+        self.lua.begin_tick();
+        let index = self.scripts.iter().position(|script| script.kind == ScriptKind::HeroSelection);
+        self.state.borrow_mut().selecting = true;
+        let ended = index.map_or(Ok(Vec::new()), |index| self.call_hook(index, "Think", &[]));
+        self.state.borrow_mut().selecting = false;
+        let mut failures = Vec::new();
+        if let Err(error) = ended { let slot = self.state.borrow().seats[0].slot; failures.push(self.failure(0, slot, tick, error)); }
+        let state = self.state.borrow();
+        let complete = index.is_none() || state.picks.iter().all(Option::is_some);
+        let seats = state.seats.iter().enumerate().map(|(index, seat)| BotSeat { slot: seat.slot, hero: state.picks[index].unwrap_or(seat.hero) }).collect();
+        Ok(SelectionTurn { seats, complete, failures })
+    }
+
+    pub(crate) fn finish_selection(&mut self) -> Vec<BotSeat> {
+        let mut state = self.state.borrow_mut();
+        for index in 0..state.seats.len() { state.seats[index].hero = state.picks[index].unwrap_or(state.seats[index].hero); }
+        for schedule in &mut self.schedules { schedule.last_warning = None; }
+        state.seats.clone()
+    }
+
+    pub(crate) fn prepare_selection(&mut self) -> Result<(), BindingError> {
+        let slot = self.state.borrow().seats[0].slot;
+        self.add_pack_file(slot, ScriptKind::HeroSelection, "hero_selection")?;
+        Ok(())
+    }
+
+    /// Loads each hero override, falling back to its generic override.
+    pub fn load_pack(&mut self) -> Result<(), BindingError> {
+        let seats = self.state.borrow().seats.clone();
+        self.add_pack_file(seats[0].slot, ScriptKind::TeamDesires, "team_desires")?;
+        for seat in seats {
+            let hero = bota_core::hero_def(seat.hero).expect("registered hero").key.strip_prefix("npc_dota_hero_").expect("hero key prefix");
+            for (prefix, kind) in [("bot", ScriptKind::Takeover), ("ability_item_usage", ScriptKind::AbilityItemUsage), ("item_purchase", ScriptKind::ItemPurchase)] {
+                if !self.add_pack_file(seat.slot, kind, &format!("{prefix}_{hero}"))? { self.add_pack_file(seat.slot, kind, &format!("{prefix}_generic"))?; }
+            }
+        }
+        Ok(())
+    }
+
+    fn add_pack_file(&mut self, slot: SlotId, kind: ScriptKind, stem: &str) -> Result<bool, BindingError> {
+        let modules = self.modules.clone().ok_or(BindingError::Configuration("a module bank is required"))?;
+        let name = format!("bots/{stem}");
+        let Some(source) = modules.get(&name) else { return Ok(false); };
+        self.add_script(slot, kind, &name, source)?;
+        Ok(true)
     }
 
     fn initialize(&mut self, index: usize) -> Result<(), Error> {

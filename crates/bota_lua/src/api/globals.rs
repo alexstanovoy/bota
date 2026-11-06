@@ -30,12 +30,18 @@ pub(super) fn install(lua: &mut Lua, state: Shared, _vectors: Vectors) -> Result
                 "GetSelectedHeroName" => {
                     let slot = integer(vm, args, 0)?;
                     let hero = state.snapshot.as_ref().and_then(|snapshot| snapshot.players.iter().find(|player| i64::from(player.slot.0) == slot).map(|player| player.hero))
-                        .or_else(|| state.seats.iter().find(|seat| i64::from(seat.slot.0) == slot).map(|seat| seat.hero));
+                        .or_else(|| state.seats.iter().position(|seat| i64::from(seat.slot.0) == slot).map(|index| state.picks[index].unwrap_or(state.seats[index].hero)));
                     vm.new_string(hero.and_then(bota_core::hero_def).map_or("", |hero| hero.key).as_bytes())?
                 }
                 "SelectHero" => {
-                    integer(vm, args, 0)?;
-                    string(vm, args, 1)?;
+                    let slot = integer(vm, args, 0)?;
+                    let name = string(vm, args, 1)?;
+                    let hero = std::str::from_utf8(name).ok().and_then(bota_core::hero_by_key);
+                    if state.selecting {
+                        if let Some(index) = state.seats.iter().position(|seat| i64::from(seat.slot.0) == slot) {
+                            if state.picks[index].is_none() { state.picks[index] = Some(hero.unwrap_or(state.seats[index].hero)); }
+                        }
+                    }
                     return Ok(0);
                 }
                 "GetTeamMember" => {
