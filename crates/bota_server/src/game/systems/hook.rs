@@ -175,8 +175,8 @@ impl World {
     ///
     /// The nearest living unit within its radius of the hook, edge counted,
     /// other than the one who threw it. A structure or a ward is never
-    /// caught, nor a spell-immune courier (Meat Hook pierces spell immunity,
-    /// but not a courier's).
+    /// caught, nor an invulnerable unit, nor a spell-immune courier (Meat
+    /// Hook pierces spell immunity, but not a courier's).
     fn caught_at(&self, hook: Entity, owner: Entity, at: Vec2, radius: Fixed) -> Option<Entity> {
         let mut best: Option<(i64, Entity)> = None;
         for other in self.entities.iter() {
@@ -211,11 +211,12 @@ impl World {
         if kind_def(kind).fixed || self.def.get(unit).is_some_and(|def| def.0.ancient) {
             return false;
         }
-        if kind_def(kind).creep
-            && self
-                .stats
-                .get(unit)
-                .is_some_and(|stats| stats.invulnerable || stats.glyph)
+        // Nothing invulnerable is latched onto (Dota 7.03), and a Glyph makes
+        // a creep so.
+        if self
+            .stats
+            .get(unit)
+            .is_some_and(|stats| stats.invulnerable || (kind_def(kind).creep && stats.glyph))
         {
             return false;
         }

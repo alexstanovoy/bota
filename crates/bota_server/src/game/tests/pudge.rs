@@ -864,6 +864,31 @@ fn a_hook_kills_an_enemy_illusion_outright() {
     assert!(!world.alive(illusion), "the illusion it caught is dead");
 }
 
+/// A hook passes an invulnerable unit by, a hero as much as a creep (Valve 7.03: "Can no
+/// longer latch on invulnerable units"): a hero risen in its fountain stays where it is.
+#[test]
+fn a_hook_passes_an_invulnerable_hero_by() {
+    let (mut world, pudge, hero) = pudge_and_a_hero_mark(600);
+    world.put_modifier(
+        hero,
+        Modifier::new(ModifierKind::FountainInvulnerable, None, None, None),
+    );
+    world.step();
+    assert!(
+        world.stats.get(hero).expect("settled").invulnerable,
+        "the hero is invulnerable"
+    );
+    let at = world.pos(hero).expect("standing");
+    let home = world.pos(pudge).expect("Pudge stands");
+    cast(&mut world, 0, Target::Pos(home + Vec2::from_ints(600, 0)));
+    until_the_hook_flies(&mut world);
+    for _ in 0..rules::TICKS_PER_SECOND * 2 {
+        assert!(!hook_holds(&world), "the hook never holds it");
+        world.step();
+    }
+    assert_eq!(world.pos(hero), Some(at), "and it stands where it stood");
+}
+
 /// Whether a flying hook holds something.
 fn hook_holds(world: &World) -> bool {
     world
