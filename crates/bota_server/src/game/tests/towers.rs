@@ -44,6 +44,7 @@ fn every_tier_stands_and_shoots_as_in_seven_forty_one() {
         );
         world.set_target(tower, on);
         let mut shots = Vec::new();
+        let mut shot_ticks = Vec::new();
         let mut before = world.health.get(on).expect("standing").hp;
         let mut first = None;
         while first.is_none_or(|at| world.tick < at + 900) {
@@ -52,12 +53,19 @@ fn every_tier_stands_and_shoots_as_in_seven_forty_one() {
             if now < before {
                 first.get_or_insert(world.tick);
                 shots.push((before - now).to_int());
+                shot_ticks.push(world.tick);
             }
             before = now;
             assert!(world.tick < 2_000, "tier {tier}: the tower shoots");
         }
         // The shot landing on the first tick counted opens the window.
         let in_window = shots.len() - 1;
+        for pair in shot_ticks.windows(2) {
+            assert!(
+                (24..=25).contains(&(pair[1] - pair[0])),
+                "tier {tier}: 0.9 BAT / 110 AS requires 24 or 25 ticks, got {pair:?}"
+            );
+        }
         assert!(
             (36..=37).contains(&in_window),
             "tier {tier}: {in_window} shots in 30 seconds"
