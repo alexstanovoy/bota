@@ -3,7 +3,7 @@ use bota_core::{Catalogue, MAP2_ID, map_of};
 use bota_proto::{HeroId, Pick, ServerMsg, SlotId, Team, TickMode};
 use bota_server::{game::{MatchConfig, OrderDelay}, local::LocalMatch};
 
-pub fn local(teams: &[Team]) -> (LocalMatch, Vec<ClientSession>) {
+pub fn opening(teams: &[Team]) -> (LocalMatch, Vec<Vec<ServerMsg>>) {
     let map = map_of(MAP2_ID);
     let config = MatchConfig {
         match_id: 7, master_key: [7; 32], stream: 1,
@@ -14,6 +14,12 @@ pub fn local(teams: &[Team]) -> (LocalMatch, Vec<ClientSession>) {
         runes: map.default_runes, catalogue: Catalogue::FULL, economy_events: Vec::new(),
     };
     let (local, opening) = LocalMatch::new(&config, &[OrderDelay::NONE]).expect("match");
+    (local, opening)
+}
+
+#[allow(dead_code, reason = "shared fixture also used by the transport driver test")]
+pub fn local(teams: &[Team]) -> (LocalMatch, Vec<ClientSession>) {
+    let (local, opening) = opening(teams);
     let sessions = opening.into_iter().enumerate().map(|(slot, stream)| {
         let ServerMsg::MatchStart { info } = &stream[0] else { panic!("start") };
         let mut session = ClientSession::seat(MatchStatic::new(info).expect("statics"), SlotId(slot as u8), Some(HeroId::SHADOW_FIEND), SessionOptions { ack: AckPolicy::Never, ..SessionOptions::default() }).expect("session");

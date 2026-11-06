@@ -26,3 +26,8 @@ native = ["dep:rustix", "dep:getrandom"]
 
 [lints]
 workspace = true
+
+[[bin]]
+name = "bota_botscript"
+path = "src/bin/bota_botscript.rs"
+required-features = ["native"]

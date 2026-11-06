@@ -2,6 +2,8 @@
 
 use std::path::Path;
 mod worker;
+mod play;
+pub use play::{TeamOutcome, play_team};
 pub use worker::{NativeConfig, NativeError, NativeTeam};
 
 use crate::{BindingError, Limits, ModuleBank};
