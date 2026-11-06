@@ -21,6 +21,16 @@ pub const MAX_MESSAGES_BEFORE_MATCH_START: usize = 4096;
 /// the welcome and the pick for a seat); after it every message goes to
 /// [`ClientSession::ingest`].
 ///
+/// Before the start, each `Welcome` marks a logical connection boundary. Identical scenery
+/// may repeat across that boundary; a duplicate without an intervening welcome is refused.
+/// The stream has no physical socket ids, so it cannot distinguish a reconnect from a server
+/// repeating the welcome on one socket. The opening-message budget therefore spans all
+/// welcomes, rather than allowing an untrusted server to renew it indefinitely.
+///
+/// A seated client's original tick rate and mode remain anchored in `Seated`: reconnects
+/// replace its connection/seat ids, not the match clock. `MatchStart` must still agree with
+/// those original terms. A watching seat takes its authoritative timing from `MatchStart`.
+///
 /// A `Welcome` after the start means the client connected again: it must
 /// name the same seat, the next message must be the same match's start, and
 /// that start resumes the session ([`Ingested::Resumed`]).
@@ -29,6 +39,7 @@ pub struct Seat {
     seated: Option<Seated>,
     options: SessionOptions,
     session: Option<ClientSession>,
+    /// Match-lifetime opening budget, deliberately retained across welcomes.
     before_start: usize,
     /// A fresh connection was welcomed and its match start is due.
     resuming: bool,
