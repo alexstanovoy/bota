@@ -11,7 +11,8 @@
 REV defaults to origin/main (main where there is no origin). `check` lists the tests of the crates the change can touch
 (every crate with --all) by building their test targets in each build the groups use and with all their features; a crate
 outside the change keeps the tests and the groups it had at the merge-base, which passed, and so does a build beyond a
-crate's plain one that no running group uses and no changed file names a feature of (see check_tests). `run` runs the test binaries
+crate's plain one that no running group uses, no changed file names a feature of and no changed Rust file needs (see
+check_tests, builds_to_list, beyond_plain and check_feature_files). `run` runs the test binaries
 the listing built directly, side by side and the longest of the last run first (target/test-groups-history.json), and
 checks that each ran exactly as many tests as its groups select, so this selection and libtest's own cannot drift apart.
 `plan` prints four lines: `groups NAME...`, `crates NAME...` (the workspace crates to lint), `fuzz 0|1` and `scope`
@@ -24,9 +25,11 @@ import json
 import math
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import tomllib
@@ -392,12 +395,15 @@ def list_build(crates: dict[str, Crate], build: Build) -> Listed:
 
 
 def dep_info(path: Path, crate: Crate) -> set[str]:
-    """The files of `crate` a binary was built from, as rustc's dep-info (the `.d` beside it) names them."""
+    """The files of `crate` a binary was built from, as rustc's dep-info (the `.d` beside it) names them; the proof that
+    rests on them fails rather than pass on nothing when the `.d` cannot be read."""
     try:
         first = path.read_text().splitlines()[0]
-    except (OSError, IndexError):
-        return set()
-    names = first.split(": ", 1)[1].replace("\\ ", "\0").split() if ": " in first else []
+    except (OSError, IndexError) as error:
+        raise Failure(f"{path}: rustc's dep-info cannot be read ({error!r}), so which files the build holds is unknown") from error
+    if ": " not in first:
+        raise Failure(f"{path}: not rustc's dep-info (no `target: sources` line)")
+    names = first.split(": ", 1)[1].replace("\\ ", "\0").split()
     found = {(ROOT / name.replace("\0", " ")).resolve() for name in names}
     return {str(p.relative_to(ROOT)) for p in found if p.is_relative_to(ROOT / crate.directory)}
 
@@ -459,6 +465,7 @@ def check(crates: dict[str, Crate], groups: list[Group], router: Router, paths: 
     problems += [f"{path}: no group and no route names it (tools/test_groups.toml)" for path in every_file if router.route(path) is None]
     problems += check_harnesses(crates, groups, every_file)
     problems += check_markers(router, every_file)
+    problems += check_negated_features(crates, groups, every_file)
     scope = set(crates) if paths is None else set()
     for path in paths or []:
         routed = router.route(path)
@@ -486,6 +493,29 @@ def check_markers(router: Router, every_file: list[str]) -> list[str]:
         found = [m for m in markers if m in (ROOT / path).read_text(errors="replace")]
         if found:
             problems.append(f"{path}: holds tests ({', '.join(found)}) but a change to it runs no group, so none runs them")
+    return problems
+
+
+NEGATED_FEATURE = re.compile(r'#\[cfg\(.*not\(\s*feature\s*=\s*"([^"]+)"\s*\)')
+
+
+def check_negated_features(crates: dict[str, Crate], groups: list[Group], every_file: list[str]) -> list[str]:
+    """A test gated on a feature being off, where every build the groups use turns it on, is built by none of them: such a
+    gate (on the test itself, or on a test module) is refused."""
+    problems = []
+    for crate in crates.values():
+        builds = [s.build for g in groups for s in g.selectors if s.build.crate == crate.name]
+        always = set.intersection(*(set(b.features) for b in builds)) if builds else set()
+        for path in (f for f in every_file if f.startswith(crate.directory + "/") and f.endswith(".rs")):
+            lines = (ROOT / path).read_text(errors="replace").splitlines() if (ROOT / path).is_file() else []
+            for number, line in enumerate(lines):
+                found = NEGATED_FEATURE.search(line)
+                if not found or found.group(1) not in always:
+                    continue
+                gated = "test" in line.split("not(", 1)[0] or any("#[test]" in after for after in lines[number + 1 : number + 4])
+                if gated:
+                    problems.append(f"{path}:{number + 1}: a test gated on feature {found.group(1)} being off, which every "
+                                    f"build of {crate.name} the groups use turns on: none runs it")
     return problems
 
 
@@ -545,15 +575,30 @@ def check_tests(crates: dict[str, Crate], groups: list[Group], router: Router, s
     change to the file it is written in runs that group.
 
     A change (`paths`) lists a crate's other builds (more features, another profile) only when they can hold new tests: a
-    group that uses one runs, or a changed file names one of its extra features. That is enough because of what the full
-    check proves: every file only such a build compiles routes to a group that uses it, and a test only that build holds is
-    either in such a file or gated in its own file, which then names the feature."""
+    group that uses one runs, a changed file names one of its extra features, or a changed Rust file is not in the plain
+    build (builds_to_list, beyond_plain). That is enough because of what check_feature_files proves on every listed build:
+    every file only such a build compiles routes to a group that uses it, and a test only that build holds is either in
+    such a file or gated in its own file, which then names the feature."""
+    candidates = builds_to_list(crates, groups, router, scope, None)
     ordered = sorted(builds_to_list(crates, groups, router, scope, paths), key=str)
     listings = {build: list_build(crates, build) for build in ordered}
-    problems = assess(groups, router, listings)
-    if paths is None:
-        problems += check_feature_files(crates, groups, router, listings)
-    return problems
+    if paths is not None:
+        outside = beyond_plain(crates, listings, paths)
+        listings |= {b: list_build(crates, b) for b in sorted(candidates - set(listings), key=str) if b.crate in outside}
+    return assess(groups, router, listings) + check_feature_files(crates, groups, router, listings)
+
+
+def beyond_plain(crates: dict[str, Crate], listings: dict[Build, Listed], paths: list[str]) -> set[str]:
+    """The crates with a changed Rust file their plain build does not compile: only another build can say what it holds."""
+    found = set()
+    for build, listed in listings.items():
+        crate = crates.get(build.crate)
+        if crate is None or build != plain_build(crate):
+            continue
+        inside = (p for p in paths if p.startswith(crate.directory + "/") and p.endswith(".rs") and (ROOT / p).is_file())
+        if any(path not in listed.sources for path in inside):
+            found.add(crate.name)
+    return found
 
 
 def builds_to_list(crates: dict[str, Crate], groups: list[Group], router: Router, scope: set[str], paths: list[str] | None) -> set[Build]:
@@ -583,9 +628,13 @@ def check_feature_files(crates: dict[str, Crate], groups: list[Group], router: R
     """What lets a change skip a crate's other builds: every file only such a build compiles routes to a group using it."""
     problems = []
     for build, listed in listings.items():
-        if build.profile == UNITTEST or build.crate not in crates or plain_build(crates[build.crate]) not in listings:
+        if build.profile == UNITTEST or build.crate not in crates:
             continue
-        only = listed.sources - listings[plain_build(crates[build.crate])].sources
+        plain = plain_build(crates[build.crate])
+        if plain not in listings:
+            raise Failure(f"{build.crate}: its plain build ({','.join(plain.features)}, {plain.profile}) was not listed, so "
+                          f"what only {','.join(build.features)} ({build.profile}) compiles is unknown")
+        only = listed.sources - listings[plain].sources
         users = {g.name for g in groups if any(s.build == build for s in g.selectors)}
         for path in sorted(only):
             routed = router.route(path)
@@ -635,7 +684,9 @@ def unused_filters(group: Group, selector: Selector, hits: list[tuple[str, str]]
 # RUST_TEST_THREADS (heavy.sh caps it: a test thread may play a game, and games take memory), and starts when the share
 # has room for the CPUs it used last time (its CPU time over its wall time, in the run's history; its threads before it
 # has one). So the one large binary (bota_server's unit tests) takes most of the share, and the many small ones that
-# mostly wait on sockets and clocks run beside it.
+# mostly wait on sockets and clocks run beside it. The share is what the run may use, not what the machine has free: other
+# jobs beside it are not counted (under heavy.sh without HEAVY_CPUS there is no quota), and a binary may use more than it
+# used last time, up to its threads, until the next run's history says so.
 # A hang guard: a test binary or command still running after this long is stopped and fails its groups.
 TIMEOUT_SECONDS = 1800
 
@@ -700,7 +751,8 @@ def invocations(crates: dict[str, Crate], chosen: list[Group], places: dict[str,
             continue
         if "*" in targets:  # the whole crate
             filters, owners = targets.pop("*")
-            assert filters is None, "load_group refuses filters without a target"
+            if filters is not None:
+                raise Failure("filters without a target reached the runner (load_group refuses them)")
             targets = {t: (None, owners | targets.get(t, (None, set()))[1]) for t in listed.tests}
         for name, (filters, owners) in sorted(targets.items()):
             target = Target(build, name, tuple(sorted(filters or ())), args, env)
@@ -731,13 +783,22 @@ def target_directory() -> str:
 def run(crates: dict[str, Crate], chosen: list[Group], record: Path | None, share: int | None) -> bool:
     """Runs the chosen groups: their `before` commands one after another, then their test binaries, doc tests and commands
     side by side within the CPU share (`share`, else cpu_share()), the longest of the last run first, stopping at the first
-    failure; `record` gets the groups of the first failure."""
-    began = time.monotonic()
+    failure; `record` gets the groups of the first failure. Its output files are its own and go with it."""
     places = {"target_dir": target_directory()}
+    (Path(places["target_dir"]) / "test-groups-logs").mkdir(parents=True, exist_ok=True)
+    logs = Path(tempfile.mkdtemp(prefix=f"{os.getpid()}-", dir=Path(places["target_dir"]) / "test-groups-logs"))
+    try:
+        return run_logged(crates, chosen, record, share, places, logs)
+    finally:
+        shutil.rmtree(logs, ignore_errors=True)
+
+
+def run_logged(crates: dict[str, Crate], chosen: list[Group], record: Path | None, share: int | None,
+               places: dict[str, str], logs: Path) -> bool:
+    began = time.monotonic()
     share = share or cpu_share()
     inherited = os.environ.get("RUST_TEST_THREADS", "")
     cap = min(share, int(inherited)) if inherited.isdigit() and int(inherited) > 0 else share
-    logs = Path(places["target_dir"]) / "test-groups-logs"
     befores: dict[tuple[str, ...], str] = {}  # each command once, for the first group that asks for it
     for group in chosen:
         for selector in group.selectors:
@@ -758,7 +819,7 @@ def run(crates: dict[str, Crate], chosen: list[Group], record: Path | None, shar
     runs.sort(key=lambda each: -history.get(each.key, {}).get("seconds", float("inf")))
     pool = Pool(share, record, logs)
     passed = pool.run(runs)
-    history_file.write_text(json.dumps(history | pool.history, indent=1, sort_keys=True))
+    write_history(history_file, history | pool.history)
     if passed:
         names = " ".join(g.name for g in chosen)
         print(f"test-groups: {len(chosen)} groups passed in {time.monotonic() - began:.0f} s ({share} CPUs, at most {cap} test threads a binary): {names}")
@@ -766,12 +827,33 @@ def run(crates: dict[str, Crate], chosen: list[Group], record: Path | None, shar
 
 
 def read_history(path: Path) -> dict[str, dict[str, float]]:
-    """What the last runs of each invocation took: its wall `seconds` and the `cores` it used (an empty history at first)."""
+    """What the last runs of each invocation took: its wall `seconds` and the `cores` it used. A file that cannot be read,
+    and an entry that is not two finite, non-negative numbers, are as no history (a first run)."""
+    def refuse(constant: str) -> float:
+        raise ValueError(f"{constant} in the history")
+
     try:
-        entries = json.loads(path.read_text())
+        entries = json.loads(path.read_text(), parse_constant=refuse)
     except (OSError, ValueError):
         return {}
-    return {key: entry for key, entry in entries.items() if isinstance(entry, dict)}
+    if not isinstance(entries, dict):
+        return {}
+
+    def sound(entry: object) -> bool:
+        fields = ("seconds", "cores")
+        return isinstance(entry, dict) and all(
+            isinstance(entry.get(f), (int, float)) and not isinstance(entry.get(f), bool) and math.isfinite(entry[f]) and entry[f] >= 0
+            for f in fields
+        )
+
+    return {key: entry for key, entry in entries.items() if isinstance(key, str) and sound(entry)}
+
+
+def write_history(path: Path, history: dict[str, dict[str, float]]) -> None:
+    """The history, replaced whole: a run that stops or another run beside it never leaves half a file."""
+    fresh = path.with_name(f"{path.name}.{os.getpid()}")
+    fresh.write_text(json.dumps(history, indent=1, sort_keys=True))
+    os.replace(fresh, path)
 
 
 def cost_of(entry: dict[str, float] | None, threads: int) -> int:

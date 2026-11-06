@@ -176,6 +176,77 @@ class FeatureBuilds(unittest.TestCase):
                                     "compiles it, but a change to it runs no group of that build (server_profile)"])
 
 
+class Proofs(unittest.TestCase):
+    """The feature-build proof fails closed, and runs on a change as it does in full."""
+
+    def scratch_root(self, files):
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        for name, text in files.items():
+            (Path(scratch.name) / name).parent.mkdir(parents=True, exist_ok=True)
+            (Path(scratch.name) / name).write_text(text)
+        root = test_groups.ROOT
+        test_groups.ROOT = Path(scratch.name)
+        self.addCleanup(setattr, test_groups, "ROOT", root)
+        return Path(scratch.name)
+
+    def test_dep_info_names_the_crates_files(self):
+        root = self.scratch_root({"t.d": f"{SERVER}/../target/x: {SERVER}/lib.rs {SERVER}/net/mod.rs crates/bota_core/src/lib.rs\n"})
+        self.assertEqual(test_groups.dep_info(root / "t.d", CRATES["bota_server"]), {f"{SERVER}/lib.rs", f"{SERVER}/net/mod.rs"})
+
+    def test_a_missing_or_malformed_dep_info_fails_the_proof(self):
+        root = self.scratch_root({"bad.d": "no sources here\n", "empty.d": ""})
+        for name in ("missing.d", "bad.d", "empty.d"):
+            with self.assertRaises(test_groups.Failure, msg=name):
+                test_groups.dep_info(root / name, CRATES["bota_server"])
+
+    def test_an_extra_build_without_its_plain_build_fails_the_proof(self):
+        profiled = next(s.build for g in GROUPS if g.name == "server_profile" for s in g.selectors)
+        with self.assertRaisesRegex(test_groups.Failure, "its plain build"):
+            test_groups.check_feature_files(CRATES, GROUPS, ROUTER, {profiled: test_groups.Listed({}, {}, sources=set())})
+
+    def test_a_change_the_plain_build_does_not_compile_is_proved_on_the_other_builds(self):
+        plain = test_groups.plain_build(CRATES["bota_server"])
+        walk = f"{SERVER}/game/systems/walk.rs"
+        listed = []
+
+        def fake_listing(crates, build):
+            listed.append(build)
+            sources = {f"{SERVER}/lib.rs"} | ({walk} if build != plain else set())
+            return test_groups.Listed({}, {}, sources=sources)
+
+        original = test_groups.list_build
+        test_groups.list_build = fake_listing
+        self.addCleanup(setattr, test_groups, "list_build", original)
+        problems = test_groups.check_tests(CRATES, GROUPS, ROUTER, {"bota_server"}, [walk])
+        self.assertIn(("phase-profile", "websocket"), {b.features for b in listed})
+        self.assertTrue(any(p.startswith(f"{walk}: only the bota_server build with phase-profile") for p in problems), problems)
+
+    def test_a_history_of_values_that_are_no_count_is_as_none(self):
+        root = self.scratch_root({"h.json": '{"text": {"seconds": "4", "cores": 1}, "less": {"seconds": -1, "cores": 1}, '
+                                            '"flag": {"seconds": true, "cores": 1}, "list": [1], "fine": {"seconds": 2.5, "cores": 0.5}}'})
+        self.assertEqual(test_groups.read_history(root / "h.json"), {"fine": {"seconds": 2.5, "cores": 0.5}})
+        for text in ('{"a": {"seconds": NaN, "cores": 1}}', '{"a": {"seconds": 1, "cores": Infinity}}', "[1, 2", "[1, 2]"):
+            (root / "broken.json").write_text(text)
+            self.assertEqual(test_groups.read_history(root / "broken.json"), {}, text)
+
+    def test_the_history_is_replaced_whole(self):
+        root = self.scratch_root({})
+        test_groups.write_history(root / "h.json", {"a": {"seconds": 1.0, "cores": 2.0}})
+        self.assertEqual(test_groups.read_history(root / "h.json"), {"a": {"seconds": 1.0, "cores": 2.0}})
+        self.assertEqual(sorted(p.name for p in root.iterdir()), ["h.json"])
+
+    def test_a_test_gated_on_a_feature_every_build_turns_on_is_refused(self):
+        self.scratch_root({
+            f"{SERVER}/net/a.rs": '#[cfg(all(test, not(feature = "websocket")))]\nmod tests {}\n',
+            f"{SERVER}/net/b.rs": '#[cfg(not(feature = "websocket"))]\n#[test]\nfn plain() {}\n',
+            f"{SERVER}/net/c.rs": '#[cfg(not(feature = "websocket"))]\nfn production() {}\n',
+            f"{SERVER}/net/d.rs": '#[cfg(not(feature = "phase-profile"))]\n#[test]\nfn most_builds_run_it() {}\n',
+        })
+        problems = test_groups.check_negated_features(CRATES, GROUPS, [f"{SERVER}/net/{n}.rs" for n in "abcd"])
+        self.assertEqual([p.split(":")[0] for p in problems], [f"{SERVER}/net/a.rs", f"{SERVER}/net/b.rs"])
+
+
 class Running(unittest.TestCase):
     def setUp(self):
         scratch = tempfile.TemporaryDirectory()
