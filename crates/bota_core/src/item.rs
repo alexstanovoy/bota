@@ -446,8 +446,24 @@ pub struct OnAttack {
     pub ticks: u32,
     /// Armor it takes off: Dota's Corruption.
     pub armor: Fixed,
+    /// Magical damage it removes from the struck's health every second it
+    /// is worn, the first a second after it is laid: Dota's Poison Attack, an
+    /// HP removal that sets off nothing that answers to damage and never takes
+    /// the last point.
+    pub dps: i32,
+    /// What it lands on.
+    pub affects: Affects,
     /// Whether it goes through spell immunity: the item's `SpellImmunityType`.
     pub pierces_immunity: bool,
+}
+
+/// What an item's attack passive lands on, of what its carrier strikes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Affects {
+    /// Whatever is struck: allies, buildings, wards and couriers too.
+    Everything,
+    /// Enemy units alone: no ally, building, ward or courier.
+    EnemyUnits,
 }
 
 /// What a use of an item aimed at an allied unit does, where Dota lets it: the cast on a hero

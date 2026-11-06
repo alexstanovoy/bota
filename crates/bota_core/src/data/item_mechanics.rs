@@ -7,8 +7,8 @@ use bota_proto::{Aim, Attribute, Attributes, EffectId, Fixed, ItemId};
 
 use super::items::*;
 use crate::{
-    AllyUse, Carried, Dec, DisassembleRule, Dispel, Drink, Grenade, Immunity, ItemData, ItemDef,
-    LOTUS_TAKE_RANGE, Mend, NOTHING, OBSERVER_WARD, Odds, OnAttack, PLAIN, Pool, Recipe,
+    Affects, AllyUse, Carried, Dec, DisassembleRule, Dispel, Drink, Grenade, Immunity, ItemData,
+    ItemDef, LOTUS_TAKE_RANGE, Mend, NOTHING, OBSERVER_WARD, Odds, OnAttack, PLAIN, Pool, Recipe,
     SENTRY_WARD, Scroll, Spends, Stock, UseSpec, hundredths_per_second, points, points_with, rules,
 };
 
@@ -958,9 +958,29 @@ pub(crate) const ITEM_ROWS: &[ItemDef] = &[
             effect: EffectId::CORRUPTION,
             ticks: ticks(&ITEM_BLIGHT_STONE, "corruption_duration"),
             armor: armor_taken(&ITEM_BLIGHT_STONE, "corruption_armor"),
+            dps: 0,
+            // Liquipedia, Orb of Blight: it affects "Allied units", "Buildings", "Ward-type units".
+            affects: Affects::Everything,
             pierces_immunity: pierces_immunity(&ITEM_BLIGHT_STONE),
         }),
         ..from(&ITEM_BLIGHT_STONE)
+    },
+    // Orb of Venom: Poison Attack, at most once each `AbilityCooldown`, decided as the attack is
+    // let go (Dota 7.38: "Poison Attack now has a 9s cooldown").
+    ItemDef {
+        name: "Orb of Venom",
+        on_attack: Some(OnAttack {
+            effect: EffectId::POISON_ATTACK,
+            ticks: ticks(&ITEM_ORB_OF_VENOM, "poison_duration"),
+            armor: Fixed::ZERO,
+            dps: int(&ITEM_ORB_OF_VENOM, "damage"),
+            // Liquipedia, Orb of Venom: it does not affect "Buildings", "Ward-type units", "Ally
+            // units" (Dota 2012-06-11: "Fixed Poison Attack working on denies"; 2011-07-01: "Fixed
+            // ability affecting buildings").
+            affects: Affects::EnemyUnits,
+            pierces_immunity: pierces_immunity(&ITEM_ORB_OF_VENOM),
+        }),
+        ..from(&ITEM_ORB_OF_VENOM)
     },
 ];
 
@@ -1006,6 +1026,10 @@ const _: () = {
     assert!(matches!(ITEM_BLIGHT_STONE.dispel, Dispel::Basic));
     assert!(crate::EFFECTS[EffectId::CORRUPTION.0 as usize].dispellable);
     assert!(ITEM_BLIGHT_STONE.first("corruption_armor").0 < 0);
+    assert!(matches!(ITEM_ORB_OF_VENOM.dispel, Dispel::Basic));
+    assert!(crate::EFFECTS[EffectId::POISON_ATTACK.0 as usize].dispellable);
+    // The server beats a laid poison once a second.
+    assert!(ITEM_ORB_OF_VENOM.first("tick_interval").0 == 1000);
 };
 
 // A Bottle is bought full: the charges it is bought with are all it holds, and the server fills

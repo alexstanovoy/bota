@@ -75,6 +75,8 @@ fn replaces(fresh: &Modifier, held: &Modifier) -> bool {
             spell_effect(had) == spell_effect(ability)
                 && (!ability.per_source() || held.source == fresh.source)
         }
+        // What one item lays freshens its own; another item's stays.
+        (ModifierKind::Laid { item: had, .. }, ModifierKind::Laid { item, .. }) => had == item,
         // Each Regeneration Rune taken is an instance of its own
         // [LIQ Runes].
         (ModifierKind::RuneRegeneration { .. }, ModifierKind::RuneRegeneration { .. }) => false,

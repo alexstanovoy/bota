@@ -3,7 +3,7 @@
 use bota_core::{
     ModifierKind, Stat, breaks_regen, dismember_bite_tick, item_def, rules, spell_buff,
 };
-use bota_proto::{AbilityId, DamageKind, Fixed, Inflictor, Team};
+use bota_proto::{AbilityId, DamageKind, Fixed, Inflictor, ItemId, Team};
 
 use crate::game::{Landed, Modifier, Stats, Table, World, cooldown_after, disabled_in};
 
@@ -163,6 +163,31 @@ impl World {
     /// Their time runs down in [`World::tick_gear`].
     ///
     /// A burn that is not lethal stops one short of the last point.
+    /// The beat of what an item laid that removes health: its `dps`, a
+    /// magical HP removal, every whole second since it was laid, never the
+    /// last point (Dota 7.07: Poison Attack "is no longer lethal and is now
+    /// flagged as HP Removal").
+    fn laid_beat(&mut self, on: Entity, modifier: Modifier, item: ItemId, since: u32) {
+        let Some(laid) = item_def(item).and_then(|def| def.on_attack) else {
+            return;
+        };
+        let since_then = self.tick.saturating_sub(since);
+        if laid.dps <= 0 || since_then == 0 || !since_then.is_multiple_of(rules::TICKS_PER_SECOND) {
+            return;
+        }
+        let left = self.health.get(on).map_or(0, |health| health.hp.to_int());
+        let amount = laid.dps.min(left - 1);
+        if amount > 0 {
+            self.push_removal(
+                modifier.source,
+                on,
+                amount,
+                DamageKind::Magical,
+                modifier.inflictor,
+            );
+        }
+    }
+
     pub fn tick_modifiers(&mut self) {
         let on_beat = self.tick.is_multiple_of(rules::BURN_PERIOD_TICKS);
         let entities = self.take_entity_snapshot();
@@ -227,6 +252,9 @@ impl World {
                         {
                             self.dismember_bites(holder, entity, usize::from(level));
                         }
+                    }
+                    ModifierKind::Laid { item, since } => {
+                        self.laid_beat(entity, modifier, item, since)
                     }
                     ModifierKind::BloodGrenade { since } => {
                         let Some(spec) = grenade_of(modifier.inflictor) else {
@@ -305,7 +333,7 @@ impl World {
     /// item that answers to one: the blows [`breaks_regen`] names. A drink
     /// that does not break and an item with no break cooldown are left alone.
     pub fn break_on_blows(&mut self, felt: &[Landed]) {
-        for blow in felt {
+        for blow in felt.iter().filter(|blow| !blow.removal) {
             let breaks = blow.source.is_some_and(|from| {
                 self.kind.get(from).is_some_and(|&kind| {
                     let side = self.team.get(from).copied().unwrap_or(Team::Neutral);

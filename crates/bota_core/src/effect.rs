@@ -248,6 +248,7 @@ const EFFECT_ROWS: &[EffectDef] = &[
     buff(76, "modifier_rune_shield", "RuneShield"),
     fleeting(77, "modifier_bottle_regeneration", "BottleRegeneration"),
     dispellable_debuff(78, "modifier_blight_stone_buff", "Corruption"),
+    dispellable_debuff(79, "modifier_item_orb_of_venom_slow", "PoisonAttack"),
 ];
 
 /// How many effect ids the protocol has ever handed out, retired ones

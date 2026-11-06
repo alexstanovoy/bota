@@ -2232,3 +2232,30 @@ pub(crate) const ITEM_BLIGHT_STONE: ItemData = ItemData {
         ("corruption_duration", &[Dec::of("3")]),
     ],
 };
+
+pub(crate) const ITEM_ORB_OF_VENOM: ItemData = ItemData {
+    id: ItemId(86),
+    key: "item_orb_of_venom",
+    retired: false,
+    cost: 350,
+    behavior: B::PASSIVE.and(B::DONT_PROC_OTHER_ABILITIES),
+    cast_range: 0,
+    cast_point: Ms::secs("0"),
+    channel: Ms::secs("0"),
+    cooldown: Ms::secs("9"),
+    mana: 0,
+    health: 0,
+    charges: 0,
+    stack: 0,
+    stock: None,
+    purchasable: true,
+    secret_shop: false,
+    dispel: Dispel::Basic,
+    immunity: Immunity::Unstated,
+    builds: &[],
+    values: &[
+        ("damage", &[Dec::of("12")]),
+        ("tick_interval", &[Dec::of("1")]),
+        ("poison_duration", &[Dec::of("3")]),
+    ],
+};

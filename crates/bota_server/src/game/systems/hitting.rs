@@ -44,6 +44,9 @@ pub struct Landed {
     pub attack: bool,
     /// Whether a spell dealt it, see [`Hit::spell`].
     pub spell: bool,
+    /// Whether it removed health rather than dealt damage, see
+    /// [`Hit::removal`].
+    pub removal: bool,
     /// What lifesteal heals a share of: the blow after armor and resistance,
     /// before what the target alone takes off or adds (a block, a barrier,
     /// the more an illusion takes) and not cut to the health it had left
@@ -81,6 +84,8 @@ pub struct HitCx<'a> {
     pub evasion: &'a mut Vec<Option<PseudoRandom>>,
     /// Where an attack that was evaded is left for whatever answers to it.
     pub missed: &'a mut VecDeque<Missed>,
+    /// The tick the blows are felt on.
+    pub tick: u32,
 }
 
 /// Takes every waiting blow off the health it landed on.
@@ -105,6 +110,7 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         rng,
         evasion,
         missed,
+        tick,
     } = cx;
     while let Some(blow) = hits.pop_front() {
         let standing = health
@@ -147,7 +153,12 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         // What the attack lays is on before its own damage lands (Dota: "The attacks first apply
         // the debuff, then their own attack damage"): armor it takes off that the target's stats
         // do not hold yet counts against this blow.
-        let fresh_cut = lay(blow, &stat, modifiers.get_mut(blow.target));
+        let struck = Struck {
+            stat: &stat,
+            kind: kind.get(blow.target).copied(),
+            foe: blow.source.and_then(|by| team.get(by)) != Some(&side),
+        };
+        let fresh_cut = lay(blow, struck, modifiers.get_mut(blow.target), tick);
         let stat = Stats {
             armor: stat.armor - fresh_cut,
             ..stat
@@ -203,6 +214,7 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
             fatal,
             attack: blow.attack,
             spell: blow.spell,
+            removal: blow.removal,
             stolen,
             dealt,
         });
@@ -255,7 +267,7 @@ fn damage_taken<const AMPLIFIED: bool>(
 /// modifier freshened if it is on already; nothing that spell immunity keeps
 /// off, where the item's does not go through it. The armor taken off by what
 /// was not on before.
-fn lay(blow: Hit, stat: &Stats, on_it: Option<&mut Modifiers>) -> Fixed {
+fn lay(blow: Hit, struck: Struck<'_>, on_it: Option<&mut Modifiers>, tick: u32) -> Fixed {
     let Some(on_it) = on_it else {
         return Fixed::ZERO;
     };
@@ -264,21 +276,60 @@ fn lay(blow: Hit, stat: &Stats, on_it: Option<&mut Modifiers>) -> Fixed {
         let Some(laid) = bota_core::item_def(item).and_then(|def| def.on_attack) else {
             continue;
         };
-        if stat.spell_immune && !laid.pierces_immunity {
+        if !struck.takes(laid) {
             continue;
         }
-        let kind = ModifierKind::Laid { item };
-        if !on_it.active().any(|held| held.kind == kind) {
+        let worn = on_it.active().find_map(|held| match held.kind {
+            ModifierKind::Laid { item: had, since } if had == item => Some(since),
+            _ => None,
+        });
+        if worn.is_none() {
             fresh_cut += laid.armor;
         }
         on_it.put(Modifier::new(
-            kind,
+            ModifierKind::Laid {
+                item,
+                since: worn.unwrap_or(tick),
+            },
             blow.source,
             Some(Inflictor::Item(item)),
-            Some(laid.ticks),
+            // One that beats holds the tick of its last beat too, so that beat lands before it
+            // lifts: three beats in three seconds (Liquipedia, Orb of Venom: "resulting in 3
+            // instances").
+            Some(laid.ticks + u32::from(laid.dps > 0)),
         ));
     }
     fresh_cut
+}
+
+/// What a blow lands on, for what an attack lays.
+#[derive(Clone, Copy)]
+struct Struck<'a> {
+    stat: &'a Stats,
+    kind: Option<UnitKind>,
+    /// Whether it is of another side than the blow's dealer.
+    foe: bool,
+}
+
+impl Struck<'_> {
+    /// Whether what an attack passive lays lands on it: what spell immunity
+    /// keeps off unless it goes through, and only enemy units for one that
+    /// lands on them alone.
+    fn takes(self, laid: bota_core::OnAttack) -> bool {
+        if self.stat.spell_immune && !laid.pierces_immunity {
+            return false;
+        }
+        match laid.affects {
+            bota_core::Affects::Everything => true,
+            bota_core::Affects::EnemyUnits => {
+                self.foe
+                    && self.kind.is_some_and(|kind| {
+                        !kind_def(kind).structure
+                            && !matches!(kind, UnitKind::Ward | UnitKind::Courier)
+                    })
+            }
+        }
+    }
 }
 
 /// What is left of a blow's damage once the barriers on the target have

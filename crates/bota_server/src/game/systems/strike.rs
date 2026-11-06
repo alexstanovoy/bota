@@ -224,6 +224,7 @@ impl World {
             let on = blow.target;
             let target = self.kind.get(on).copied();
             if !spell
+                || blow.removal
                 || pct <= 0
                 || blow.amount <= 0
                 || !self.foes(by, on)

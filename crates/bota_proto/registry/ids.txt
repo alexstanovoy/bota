@@ -183,6 +183,7 @@ item 82 live item_lifesteal
 item 83 live item_voodoo_mask
 item 84 live item_faerie_fire
 item 85 live item_blight_stone
+item 86 live item_orb_of_venom
 
 effect 0 retired bota_haste
 effect 1 live modifier_flask_healing
@@ -263,6 +264,7 @@ effect 75 live modifier_rune_invis
 effect 76 live modifier_rune_shield
 effect 77 live modifier_bottle_regeneration
 effect 78 live modifier_blight_stone_buff
+effect 79 live modifier_item_orb_of_venom_slow
 
 neutral 0 live npc_dota_neutral_kobold
 neutral 1 live npc_dota_neutral_kobold_tunneler

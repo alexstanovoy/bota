@@ -428,7 +428,7 @@ fn add_modifiers<'a>(
             ModifierKind::ArmorBroken { armor } => {
                 now.armor -= armor;
             }
-            ModifierKind::Laid { item } => {
+            ModifierKind::Laid { item, .. } => {
                 if let Some(laid) = item_def(item).and_then(|def| def.on_attack) {
                     now.armor -= laid.armor;
                 }

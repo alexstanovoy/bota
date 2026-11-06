@@ -6,7 +6,7 @@ use bota_proto::{DamageKind, EffectId, Fixed, IdSpace, RegisteredId, registered}
 /// One modifier of every kind. A kind added to the enum fails to compile in
 /// the match below until it is listed here as well.
 fn every_modifier() -> Vec<ModifierKind> {
-    let every = vec![
+    let mut every = vec![
         ModifierKind::Mending {
             per_tick: Fixed::ZERO,
             breaks: false,
@@ -81,10 +81,17 @@ fn every_modifier() -> Vec<ModifierKind> {
             hp_per_tick: 1,
             mana_per_tick: 1,
         },
-        ModifierKind::Laid {
-            item: bota_proto::ItemId::BLIGHT_STONE,
-        },
     ];
+    // What every item that lays something lays.
+    every.extend(
+        bota_core::ITEMS
+            .iter()
+            .filter(|def| !def.retired && def.on_attack.is_some())
+            .map(|def| ModifierKind::Laid {
+                item: def.id,
+                since: 0,
+            }),
+    );
     for kind in &every {
         match kind {
             ModifierKind::Mending { .. }

@@ -456,6 +456,8 @@ pub(crate) const fn item_digest(def: &ItemDef) -> u64 {
             .u64(laid.effect.0 as u64)
             .u64(laid.ticks as u64)
             .fixed(laid.armor)
+            .int(laid.dps as i64)
+            .flag(matches!(laid.affects, crate::Affects::EnemyUnits))
             .flag(laid.pierces_immunity),
     };
     let fnv = if take_range == 0 {

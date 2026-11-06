@@ -91,6 +91,7 @@ fn land(shot: &Projectile, uphill: bool, hits: &mut VecDeque<Hit>) {
         uphill,
         effect: shot.effect,
         laid: shot.laid,
+        removal: false,
     });
     for &(damage, item) in &shot.pierced {
         hits.push_back(Hit {
@@ -107,6 +108,7 @@ fn land(shot: &Projectile, uphill: bool, hits: &mut VecDeque<Hit>) {
             uphill: false,
             effect: HitEffect::None,
             laid: crate::game::Laid::NONE,
+            removal: false,
         });
     }
 }

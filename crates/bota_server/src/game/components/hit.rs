@@ -42,6 +42,9 @@ pub struct Hit {
     /// The items whose passive the blow lays on the struck before its damage
     /// lands: an attack's, its own blow only.
     pub laid: Laid,
+    /// Whether it removes health rather than dealing damage (Dota's HP
+    /// Removal): it sets off nothing that answers to damage.
+    pub removal: bool,
 }
 
 /// The items whose passive an attack's blow lays on the struck (Dota's
@@ -142,7 +145,8 @@ state_hash!(Hit {
     pierces,
     uphill,
     effect,
-    laid
+    laid,
+    removal
 });
 state_hash!(Fear { line, most });
 

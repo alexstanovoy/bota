@@ -224,6 +224,9 @@ impl ItemId {
     /// Dota's `item_blight_stone` (public name Orb of Blight): its carrier's
     /// attacks corrupt armor.
     pub const BLIGHT_STONE: ItemId = ItemId(85);
+    /// Dota's `item_orb_of_venom`: its carrier's attacks poison, once each
+    /// cooldown.
+    pub const ORB_OF_VENOM: ItemId = ItemId(86);
 }
 
 /// What did something: the ability or the item a unit used, as Dota's combat
@@ -401,6 +404,9 @@ impl EffectId {
     /// An Orb of Blight's Lesser Corruption (`modifier_blight_stone_buff`):
     /// armor taken off by the attacks of whoever carries one.
     pub const CORRUPTION: EffectId = EffectId(78);
+    /// An Orb of Venom's Poison Attack (`modifier_item_orb_of_venom_slow`):
+    /// magical damage every second.
+    pub const POISON_ATTACK: EffectId = EffectId(79);
 }
 
 /// An index into a unit's ability slots, as listed in

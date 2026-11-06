@@ -278,6 +278,9 @@ pub enum ModifierKind {
     Laid {
         /// The item that laid it.
         item: ItemId,
+        /// The tick it was laid, kept when another blow freshens it: its
+        /// beats fall on every whole second since.
+        since: u32,
     },
     /// What a neutral's spell left, at the level it was cast at. `amount`
     /// is the spell's own count: the blows a Steal Weapon has counted, the
@@ -343,7 +346,7 @@ impl ModifierKind {
             ModifierKind::RuneInvisibility => EffectId::RUNE_INVISIBILITY,
             ModifierKind::RuneShield { .. } => EffectId::RUNE_SHIELD,
             ModifierKind::BottleRegeneration { .. } => EffectId::BOTTLE_REGENERATION,
-            ModifierKind::Laid { item } => match crate::ITEMS[item.0 as usize].on_attack {
+            ModifierKind::Laid { item, .. } => match crate::ITEMS[item.0 as usize].on_attack {
                 Some(laid) => laid.effect,
                 None => panic!("an item that lays nothing laid a modifier"),
             },
@@ -388,6 +391,10 @@ impl ModifierKind {
             ModifierKind::Rotting { .. } => StatusFlags::SLOWED | StatusFlags::DOT,
             ModifierKind::Feared => StatusFlags::FEARED,
             ModifierKind::BloodGrenade { .. } => StatusFlags::SLOWED | StatusFlags::DOT,
+            ModifierKind::Laid { item, .. } => match crate::ITEMS[item.0 as usize].on_attack {
+                Some(laid) if laid.dps > 0 => StatusFlags::DOT,
+                _ => 0,
+            },
             ModifierKind::Spell {
                 ability,
                 level,

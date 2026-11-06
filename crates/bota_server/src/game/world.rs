@@ -377,6 +377,37 @@ impl World {
             uphill: false,
             effect: crate::game::HitEffect::None,
             laid: crate::game::Laid::NONE,
+            removal: false,
+        });
+    }
+
+    /// Lays on the queue a removal of health (Dota's HP Removal) of `kind`:
+    /// mitigated as damage of that kind, setting off nothing that answers to
+    /// damage.
+    pub(crate) fn push_removal(
+        &mut self,
+        source: Option<Entity>,
+        target: Entity,
+        amount: i32,
+        kind: bota_proto::DamageKind,
+        inflictor: Option<Inflictor>,
+    ) {
+        let damage_amp_bp = self.outgoing_damage_amp_bp(source, kind);
+        self.hits.push_back(Hit {
+            source,
+            inflictor,
+            target,
+            amount,
+            kind,
+            damage_amp_bp,
+            attack: false,
+            spell: true,
+            striker: None,
+            pierces: false,
+            uphill: false,
+            effect: crate::game::HitEffect::None,
+            laid: crate::game::Laid::NONE,
+            removal: true,
         });
     }
 
@@ -404,6 +435,7 @@ impl World {
             uphill: false,
             effect: crate::game::HitEffect::None,
             laid: crate::game::Laid::NONE,
+            removal: false,
         });
     }
 
@@ -433,6 +465,7 @@ impl World {
             uphill: false,
             effect,
             laid: crate::game::Laid::NONE,
+            removal: false,
         });
     }
 
@@ -935,6 +968,7 @@ impl World {
             rng: &self.rng,
             evasion: &mut self.evasion,
             missed: &mut self.missed,
+            tick: self.tick,
         };
         if amplified {
             hitting_system::<true>(cx);

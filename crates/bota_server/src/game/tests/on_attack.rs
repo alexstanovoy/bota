@@ -57,6 +57,7 @@ fn swing_laying(by: Entity, on: Entity, item: ItemId) -> Hit {
         uphill: false,
         effect: HitEffect::None,
         laid,
+        removal: false,
     }
 }
 
@@ -65,13 +66,12 @@ type Put = fn(&mut World, Vec2) -> Entity;
 
 /// How many of `item`'s modifiers `unit` wears, and the time the one left has.
 fn laid_on(world: &World, unit: Entity, item: ItemId) -> (usize, Option<u32>) {
-    let kind = ModifierKind::Laid { item };
     let held: Vec<_> = world
         .modifiers
         .get(unit)
         .into_iter()
         .flat_map(|on_it| on_it.active())
-        .filter(|held| held.kind == kind)
+        .filter(|held| matches!(held.kind, ModifierKind::Laid { item: had, .. } if had == item))
         .collect();
     (held.len(), held.first().and_then(|held| held.ticks_left))
 }
@@ -239,4 +239,190 @@ fn an_illusion_lays_no_corruption() {
         }
     }
     panic!("the illusion never struck")
+}
+
+/// The Orb of Venom's numbers, as the catalogue holds them from `item_orb_of_venom`.
+fn poison() -> bota_core::OnAttack {
+    item_def(ItemId::ORB_OF_VENOM)
+        .and_then(|def| def.on_attack)
+        .expect("the Orb of Venom lays its poison")
+}
+
+/// The ticks from now on which `mark` loses health to the Orb of Venom, with what each took, over
+/// `ticks` ticks.
+fn poison_beats(world: &mut World, mark: Entity, ticks: u32) -> Vec<(u32, i32)> {
+    let mut beats = Vec::new();
+    for at in 1..=ticks {
+        for event in world.step() {
+            if let EventKind::Damaged {
+                target,
+                amount,
+                kind: DamageKind::Magical,
+                inflictor: Some(bota_proto::Inflictor::Item(ItemId::ORB_OF_VENOM)),
+                ..
+            } = event.kind()
+                && target == wire_id(mark)
+            {
+                beats.push((at, amount));
+            }
+        }
+    }
+    beats
+}
+
+/// An Orb of Venom bought through the shop poisons what its carrier's attack strikes: three
+/// beats of 12 magical damage a second apart, the first a second after the blow (`damage`,
+/// `tick_interval`, `poison_duration`; Liquipedia: "starting 1 second after the debuff is applied,
+/// resulting in 3 instances"), each cut by the struck's magic resistance.
+#[test]
+fn an_orb_of_venom_poisons_for_three_beats_of_twelve() {
+    let laid = poison();
+    assert_eq!(laid.dps, 12);
+    assert_eq!(laid.effect, EffectId::POISON_ATTACK);
+    let (mut world, hero, mark, _) = first_landing(&[ItemId::ORB_OF_VENOM], foe_hero);
+    world.set_order(hero, crate::game::UnitOrder::Stand);
+    assert_eq!(laid_on(&world, mark, ItemId::ORB_OF_VENOM).0, 1);
+    let resist = world.stats.get(mark).expect("derived").magic_resist_bp;
+    let each = mitigate(12, DamageKind::Magical, Fixed::ZERO, resist);
+    let second = rules::TICKS_PER_SECOND;
+    assert_eq!(
+        poison_beats(&mut world, mark, 4 * second),
+        vec![(second, each), (2 * second, each), (3 * second, each)]
+    );
+    assert_eq!(
+        laid_on(&world, mark, ItemId::ORB_OF_VENOM).0,
+        0,
+        "and it is gone"
+    );
+}
+
+/// The poison is laid at most once every 9 seconds (`AbilityCooldown`; Dota 7.38: "Poison Attack
+/// now has a 9s cooldown"), its wait started by the swing that lays it and shown on the item.
+#[test]
+fn an_orb_of_venom_poisons_once_each_cooldown() {
+    let (mut world, hero, mark, _) = first_landing(&[ItemId::ORB_OF_VENOM], foe_hero);
+    let wait = slot_of(&world, hero, 0).expect("carried").cooldown;
+    assert!(
+        wait > 9 * rules::TICKS_PER_SECOND - 30 && wait <= 9 * rules::TICKS_PER_SECOND,
+        "the wait runs: {wait}"
+    );
+    let laid_at = |world: &World| {
+        world.modifiers.get(mark).and_then(|on_it| {
+            on_it.active().find_map(|held| match held.kind {
+                ModifierKind::Laid { item, since } if item == ItemId::ORB_OF_VENOM => Some(since),
+                _ => None,
+            })
+        })
+    };
+    let first = laid_at(&world).expect("poisoned");
+    // The hero swings on; within the wait nothing is laid again.
+    run(&mut world, 4 * rules::TICKS_PER_SECOND);
+    assert_eq!(
+        laid_at(&world),
+        None,
+        "the poison ran out and was not laid again"
+    );
+    run(&mut world, wait);
+    let again = laid_at(&world).expect("poisoned again once the wait is over");
+    assert!(again >= first + 9 * rules::TICKS_PER_SECOND);
+}
+
+/// The poison lands on enemy units alone (Liquipedia, Orb of Venom: not "Buildings", "Ward-type
+/// units", "Ally units"; Dota 2012-06-11: "Fixed Poison Attack working on denies", 2011-07-01:
+/// "Fixed ability affecting buildings"), and spell immunity keeps it off (no `SpellImmunityType`;
+/// 7.20: "no longer pierces spell immunity"): a tower, a ward, an allied creep and a courier
+/// struck wear none.
+#[test]
+fn an_orb_of_venom_poisons_enemy_units_alone() {
+    let marks: [(&str, Put); 4] = [
+        ("a tower", |world, at| {
+            world.spawn_unit(bota_core::tower_def(1), Team::Dire, at)
+        }),
+        ("a ward", |world, at| {
+            world.spawn_unit(&bota_core::OBSERVER_WARD, Team::Dire, at)
+        }),
+        ("an allied creep", |world, at| {
+            world.spawn_unit(&bota_core::MELEE_CREEP, Team::Radiant, at)
+        }),
+        ("a courier", |world, at| {
+            world.spawn_unit(&bota_core::COURIER, Team::Dire, at)
+        }),
+    ];
+    for (case, mark) in marks {
+        let (mut world, hero) = out_of_fountain_after_buying(&[ItemId::ORB_OF_VENOM]);
+        let at = world.transform.get(hero).expect("standing").pos;
+        let mark = mark(&mut world, at + Vec2::from_ints(300, 0));
+        world.step();
+        world
+            .hits
+            .push_back(swing_laying(hero, mark, ItemId::ORB_OF_VENOM));
+        world.step();
+        assert_eq!(laid_on(&world, mark, ItemId::ORB_OF_VENOM).0, 0, "{case}");
+    }
+    let (mut world, hero) = out_of_fountain_after_buying(&[ItemId::ORB_OF_VENOM]);
+    let at = world.transform.get(hero).expect("standing").pos;
+    let creep = world.spawn_unit(
+        &bota_core::MELEE_CREEP,
+        Team::Dire,
+        at + Vec2::from_ints(300, 0),
+    );
+    world.step();
+    world
+        .hits
+        .push_back(swing_laying(hero, creep, ItemId::ORB_OF_VENOM));
+    world.step();
+    assert_eq!(
+        laid_on(&world, creep, ItemId::ORB_OF_VENOM).0,
+        1,
+        "an enemy creep"
+    );
+}
+
+/// The poison removes health, so nothing that answers to damage answers to it (Dota 7.07: "flagged
+/// as HP Removal"; Liquipedia: it "does not trigger any on-damage effects"): the struck's Healing
+/// Salve keeps mending, its carrier's Voodoo Mask heals nothing off it (Dota 7.38: no spell
+/// lifesteal off "Spells that remove Health instead of dealing direct damage"), and it never
+/// takes the last point.
+#[test]
+fn the_poison_removes_health_and_never_the_last_point() {
+    let (mut world, hero) =
+        out_of_fountain_after_buying(&[ItemId::ORB_OF_VENOM, ItemId::VOODOO_MASK]);
+    let at = world.transform.get(hero).expect("standing").pos;
+    // Out of reach of the hero's own attacks, which would put the salve out.
+    let mark = foe_hero(&mut world, at + Vec2::from_ints(1500, 0));
+    world.step();
+    world
+        .hits
+        .push_back(swing_laying(hero, mark, ItemId::ORB_OF_VENOM));
+    world.step();
+    hand_item(&mut world, mark, ItemId::HEALING_SALVE, 1);
+    assert!(world.use_item(mark, 0, bota_proto::Target::None, &mut Vec::new()));
+    world.health.get_mut(hero).expect("alive").hp = Fixed::from_int(200);
+    let beats = poison_beats(&mut world, mark, 2 * rules::TICKS_PER_SECOND);
+    assert_eq!(beats.len(), 2, "beats land");
+    assert!(
+        carries(
+            &world,
+            mark,
+            ModifierKind::Mending {
+                per_tick: Fixed::ZERO,
+                breaks: false,
+            }
+        ),
+        "the salve keeps mending"
+    );
+    let regen = world.stats.get(hero).expect("derived").hp_regen;
+    assert!(
+        world.health.get(hero).expect("alive").hp
+            <= Fixed::from_int(200) + regen * Fixed::from_int(2 * rules::TICKS_PER_SECOND as i32),
+        "no spell lifesteal off it"
+    );
+    assert_eq!(
+        laid_on(&world, mark, ItemId::ORB_OF_VENOM).0,
+        1,
+        "still poisoned"
+    );
+    world.health.get_mut(mark).expect("alive").hp = Fixed::from_int(5);
+    run(&mut world, 2 * rules::TICKS_PER_SECOND);
+    assert!(world.alive(mark), "never the last point");
 }

@@ -815,24 +815,49 @@ impl World {
     /// each once however many are carried. An illusion's swing lays nothing
     /// (Liquipedia, *Orb of Blight*, *Orb of Venom*, *Orb of Frost*: "This
     /// ability is not bestowed by Illusions").
-    fn laid_by(&self, attacker: Entity) -> Laid {
+    ///
+    /// An item with a cooldown lays its passive only while no stack of it
+    /// waits, and the swing that does starts the wait of the stack it came
+    /// from (Dota 7.38: "Poison Attack now has a 9s cooldown"; decided "upon
+    /// reaching the attack point, not upon landing").
+    fn laid_by(&mut self, attacker: Entity) -> Laid {
         let mut laid = Laid::NONE;
-        let Some(bag) = self
-            .inventory
-            .get(attacker)
-            .filter(|_| !self.wears_illusion(attacker))
-        else {
+        if self.wears_illusion(attacker) {
+            return laid;
+        }
+        let Some(bag) = self.inventory.get(attacker) else {
             return laid;
         };
-        for stack in bag
+        let carried: Vec<(usize, ItemId, u32)> = bag
             .slots
             .iter()
             .take(rules::INVENTORY_SLOTS)
-            .flatten()
-            .filter(|stack| stack.mute == 0)
-        {
-            if item_def(stack.id).is_some_and(|def| def.on_attack.is_some()) {
-                laid.add(stack.id);
+            .enumerate()
+            .filter_map(|(at, held)| held.map(|stack| (at, stack)))
+            .filter(|(_, stack)| stack.mute == 0)
+            .map(|(at, stack)| (at, stack.id, stack.cooldown))
+            .collect();
+        let mut waits = Vec::new();
+        for &(at, id, _) in &carried {
+            let Some(def) = item_def(id).filter(|def| def.on_attack.is_some()) else {
+                continue;
+            };
+            let waiting = carried
+                .iter()
+                .any(|&(_, other, cooldown)| other == id && cooldown > 0);
+            if waiting || laid.items().any(|had| had == id) {
+                continue;
+            }
+            laid.add(id);
+            if def.cooldown > 0 {
+                waits.push((at, self.item_cooldown(attacker, id)));
+            }
+        }
+        if let Some(bag) = self.inventory.get_mut(attacker) {
+            for (at, wait) in waits {
+                if let Some(Some(stack)) = bag.slots.get_mut(at) {
+                    stack.cooldown = wait;
+                }
             }
         }
         laid
@@ -876,6 +901,7 @@ impl World {
             uphill: false,
             effect: swing.effect,
             laid: swing.laid,
+            removal: false,
         });
         for (bonus, item) in swing.pierced {
             self.hits.push_back(Hit {
@@ -892,6 +918,7 @@ impl World {
                 uphill: false,
                 effect: HitEffect::None,
                 laid: crate::game::Laid::NONE,
+                removal: false,
             });
         }
     }
