@@ -139,6 +139,43 @@ class Partition(unittest.TestCase):
             test_groups.load_group(entry, CRATES)
 
 
+class FeatureBuilds(unittest.TestCase):
+    """Which builds a change lists, and the full check's proof that skipping the others is safe."""
+
+    SERVER_CRATES = {"bota_server", "bota_radovid"}
+
+    def listed(self, *paths):
+        builds = test_groups.builds_to_list(CRATES, GROUPS, ROUTER, self.SERVER_CRATES, list(paths))
+        return {b.features for b in builds if b.crate == "bota_server"}
+
+    def test_a_game_change_lists_only_the_plain_server_build(self):
+        self.assertEqual(self.listed(f"{SERVER}/game/systems/walk.rs"), {("websocket",)})
+
+    def test_a_change_to_the_profiler_lists_its_feature_build(self):
+        self.assertIn(("phase-profile", "websocket"), self.listed(f"{SERVER}/profile/tests.rs"))
+
+    def test_a_changed_file_that_names_the_feature_lists_its_build(self):
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        (Path(scratch.name) / f"{SERVER}/game/systems").mkdir(parents=True)
+        (Path(scratch.name) / f"{SERVER}/game/systems/walk.rs").write_text('#[cfg(feature = "phase-profile")]\n#[test]\nfn timed() {}\n')
+        root = test_groups.ROOT
+        test_groups.ROOT = Path(scratch.name)
+        self.addCleanup(setattr, test_groups, "ROOT", root)
+        self.assertIn(("phase-profile", "websocket"), self.listed(f"{SERVER}/game/systems/walk.rs"))
+
+    def test_a_file_only_a_feature_build_compiles_must_run_a_group_of_that_build(self):
+        plain = test_groups.plain_build(CRATES["bota_server"])
+        profiled = next(s.build for g in GROUPS if g.name == "server_profile" for s in g.selectors)
+        listings = {
+            plain: test_groups.Listed({}, {}, sources={f"{SERVER}/lib.rs"}),
+            profiled: test_groups.Listed({}, {}, sources={f"{SERVER}/lib.rs", f"{SERVER}/profile/record.rs", f"{SERVER}/game/systems/walk.rs"}),
+        }
+        problems = test_groups.check_feature_files(CRATES, GROUPS, ROUTER, listings)
+        self.assertEqual(problems, [f"{SERVER}/game/systems/walk.rs: only the bota_server build with phase-profile,websocket (test-release) "
+                                    "compiles it, but a change to it runs no group of that build (server_profile)"])
+
+
 class Running(unittest.TestCase):
     def setUp(self):
         scratch = tempfile.TemporaryDirectory()

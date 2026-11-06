@@ -10,7 +10,8 @@
 
 REV defaults to origin/main (main where there is no origin). `check` lists the tests of the crates the change can touch
 (every crate with --all) by building their test targets in each build the groups use and with all their features; a crate
-outside the change keeps the tests and the groups it had at the merge-base, which passed. `run` runs the test binaries
+outside the change keeps the tests and the groups it had at the merge-base, which passed, and so does a build beyond a
+crate's plain one that no running group uses and no changed file names a feature of (see check_tests). `run` runs the test binaries
 the listing built directly, side by side and the longest of the last run first (target/test-groups-history.json), and
 checks that each ran exactly as many tests as its groups select, so this selection and libtest's own cannot drift apart.
 `plan` prints four lines: `groups NAME...`, `crates NAME...` (the workspace crates to lint), `fuzz 0|1` and `scope`
@@ -97,6 +98,7 @@ class Listed:
     tests: dict[str, list[str]]
     roots: dict[str, Path]
     executables: dict[str, Path] = field(default_factory=dict)
+    sources: set[str] = field(default_factory=set)  # the crate's files its test binaries are built from (rustc's dep-info)
 
 
 def git(*args: str) -> str:
@@ -380,12 +382,24 @@ def list_build(crates: dict[str, Crate], build: Build) -> Listed:
         listed.tests[name] = tests_of(listing.stdout)
         listed.roots[name] = Path(target["src_path"])
         listed.executables[name] = Path(message["executable"])
+        listed.sources |= dep_info(Path(message["executable"]).with_suffix(".d"), crate)
     if has_doc:
         doc = subprocess.run(cargo_test(crates, build) + ["--doc", "--", "--list", "--format", "terse"], cwd=ROOT, capture_output=True, text=True)
         if doc.returncode != 0:
             raise Failure(f"listing the doc tests of {build} failed:\n{doc.stderr[-2000:]}")
         listed.tests["doc"] = tests_of(doc.stdout)
     return listed
+
+
+def dep_info(path: Path, crate: Crate) -> set[str]:
+    """The files of `crate` a binary was built from, as rustc's dep-info (the `.d` beside it) names them."""
+    try:
+        first = path.read_text().splitlines()[0]
+    except (OSError, IndexError):
+        return set()
+    names = first.split(": ", 1)[1].replace("\\ ", "\0").split() if ": " in first else []
+    found = {(ROOT / name.replace("\0", " ")).resolve() for name in names}
+    return {str(p.relative_to(ROOT)) for p in found if p.is_relative_to(ROOT / crate.directory)}
 
 
 def unittest_command(directory: str) -> list[str]:
@@ -438,6 +452,7 @@ def test_file(listed: Listed, target: str, name: str) -> Path:
 
 
 def check(crates: dict[str, Crate], groups: list[Group], router: Router, paths: list[str] | None) -> list[str]:
+    """The checks of the module header; `paths` None: everything, else the change's paths."""
     problems = check_names(groups, router)
     every_file = files()
     problems += check_patterns(groups, router, every_file)
@@ -453,7 +468,7 @@ def check(crates: dict[str, Crate], groups: list[Group], router: Router, paths: 
             break
         if crate is not None:
             scope |= router.above(crate.name)
-    return problems + check_tests(crates, groups, router, scope)
+    return problems + check_tests(crates, groups, router, scope, paths)
 
 
 # What a test is written with, in Rust and in Python: a file holding one must run some group.
@@ -520,12 +535,64 @@ def check_patterns(groups: list[Group], router: Router, every_file: list[str]) -
     return problems
 
 
-def check_tests(crates: dict[str, Crate], groups: list[Group], router: Router, scope: set[str]) -> list[str]:
+def plain_build(crate: Crate) -> Build:
+    """The build a crate's groups use unless they ask for more: its profile, its group features and its defaults."""
+    return Build(crate.name, crate.profile, feature_closure(crate.feature_table, crate.features + crate.defaults))
+
+
+def check_tests(crates: dict[str, Crate], groups: list[Group], router: Router, scope: set[str], paths: list[str] | None) -> list[str]:
     """Every test of the crates in `scope`, in every build a group uses and with all features, is in exactly one group, and a
-    change to the file it is written in runs that group."""
+    change to the file it is written in runs that group.
+
+    A change (`paths`) lists a crate's other builds (more features, another profile) only when they can hold new tests: a
+    group that uses one runs, or a changed file names one of its extra features. That is enough because of what the full
+    check proves: every file only such a build compiles routes to a group that uses it, and a test only that build holds is
+    either in such a file or gated in its own file, which then names the feature."""
+    ordered = sorted(builds_to_list(crates, groups, router, scope, paths), key=str)
+    listings = {build: list_build(crates, build) for build in ordered}
+    problems = assess(groups, router, listings)
+    if paths is None:
+        problems += check_feature_files(crates, groups, router, listings)
+    return problems
+
+
+def builds_to_list(crates: dict[str, Crate], groups: list[Group], router: Router, scope: set[str], paths: list[str] | None) -> set[Build]:
     builds = {s.build for g in groups for s in g.selectors if s.build.crate in scope or s.build.profile == UNITTEST}
     builds |= {Build(c, crates[c].profile, crates[c].all_features) for c in scope}
-    return assess(groups, router, {build: list_build(crates, build) for build in sorted(builds, key=str)})
+    if paths is None:
+        return builds
+    chosen = plan(router, paths)[0]
+    used = {s.build for g in groups if g.name in chosen for s in g.selectors}
+    return {b for b in builds if b.profile == UNITTEST or b == plain_build(crates[b.crate]) or b in used
+            or names_a_feature(crates[b.crate], b, paths)}
+
+
+def names_a_feature(crate: Crate, build: Build, paths: list[str]) -> bool:
+    """Whether a changed file of the crate names a feature `build` has beyond the crate's plain build."""
+    extra = set(build.features) - set(plain_build(crate).features)
+    for path in paths:
+        if not extra or not path.startswith(crate.directory + "/") or not (ROOT / path).is_file():
+            continue
+        text = (ROOT / path).read_text(errors="replace")
+        if any(f'"{feature}"' in text for feature in extra):
+            return True
+    return False
+
+
+def check_feature_files(crates: dict[str, Crate], groups: list[Group], router: Router, listings: dict[Build, Listed]) -> list[str]:
+    """What lets a change skip a crate's other builds: every file only such a build compiles routes to a group using it."""
+    problems = []
+    for build, listed in listings.items():
+        if build.profile == UNITTEST or build.crate not in crates or plain_build(crates[build.crate]) not in listings:
+            continue
+        only = listed.sources - listings[plain_build(crates[build.crate])].sources
+        users = {g.name for g in groups if any(s.build == build for s in g.selectors)}
+        for path in sorted(only):
+            routed = router.route(path)
+            if routed is None or users.isdisjoint(routed[0]):
+                problems.append(f"{path}: only the {build.crate} build with {','.join(build.features)} ({build.profile}) compiles it, "
+                                f"but a change to it runs no group of that build ({', '.join(sorted(users)) or 'none uses it'})")
+    return problems
 
 
 def assess(groups: list[Group], router: Router, listings: dict[Build, Listed]) -> list[str]:
