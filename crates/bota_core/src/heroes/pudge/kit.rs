@@ -9,7 +9,7 @@ use super::numbers::{
 };
 use crate::ability::BARE_ABILITY;
 use crate::unit::NO_GROWTH;
-use crate::{AbilityDef, Growth, HERO, HeroDef, Pierces, UnitDef, rules};
+use crate::{AbilityDef, Growth, HERO, HeroDef, Pierces, TargetFilter, UnitDef, rules};
 
 /// Pudge: heavy, slow, and swings by hand, at the numbers of the game's
 /// `scripts/npc/heroes/npc_dota_hero_pudge.txt` (client 6957): 45 to 51 base
@@ -134,5 +134,6 @@ pub const DISMEMBER: AbilityDef = AbilityDef {
     resisted_channel: true,
     // It holds a courier too, whose hits its bites take nothing of.
     pierces: Pierces::Yes,
+    targets: TargetFilter::ENEMY_HEROES_AND_BASIC,
     ..BARE_ABILITY
 };

@@ -2,9 +2,10 @@
 
 use bota_core::{ModifierKind, rules, tower_def};
 
-use crate::game::{Entity, Inventory, Modifier, World, wire_id};
+use crate::game::{Entity, Inventory, Modifier, Place, World, wire_id};
 use bota_proto::{
-    AbilityId, EffectId, Fixed, HeroId, Inflictor, SlotId, StatusFlags, Target, Team, Vec2,
+    AbilityId, AbilitySlot, EffectId, Fixed, HeroId, Inflictor, Order, RejectReason, SlotId,
+    StatusFlags, Target, Team, Vec2,
 };
 
 use super::support::*;
@@ -665,6 +666,73 @@ fn a_flesh_heap_outlives_the_death_of_the_one_carrying_it() {
         Some(bare + rules::FLESH_HEAP_STRENGTH_PER_STACK),
         "worth as much strength as it was before"
     );
+}
+
+/// Dismember takes `DOTA_UNIT_TARGET_HERO | DOTA_UNIT_TARGET_BASIC`
+/// (`npc_dota_hero_pudge.txt`): a tower that may be struck is no target.
+#[test]
+fn a_dismember_at_a_tower_is_refused_and_holds_nothing() {
+    let (mut world, pudge, tower) = pudge_and_a_tower(150);
+    set_level(&mut world, pudge, 3, 1);
+    world.fill_pools(pudge);
+    let at_the_tower = Order::Cast {
+        slot: AbilitySlot(3),
+        target: Target::Unit(wire_id(tower)),
+    };
+    assert_eq!(
+        world.validate_order(SlotId(0), None, &at_the_tower),
+        Err(RejectReason::WrongTargetKind),
+        "a building is not a unit Dismember takes"
+    );
+    cast(&mut world, 3, Target::Unit(wire_id(tower)));
+    run(&mut world, rules::DISMEMBER_CAST_POINT_MS / 30 + 5);
+    assert!(!world.is_channelling(pudge), "and nothing is held");
+}
+
+/// Rot burns and slows Dota's heroes and basic units: a building in it
+/// stands untouched.
+#[test]
+fn the_rot_leaves_a_tower_standing_in_it_untouched() {
+    let (mut world, pudge, tower) = pudge_and_a_tower(150);
+    set_level(&mut world, pudge, 1, 4);
+    // Only the rot may touch the tower: Pudge's own swings would.
+    world.put_modifier(
+        pudge,
+        Modifier::new(ModifierKind::Disarmed, None, None, None),
+    );
+    let full = world.health.get(tower).expect("standing").hp;
+    cast(&mut world, 1, Target::None);
+    run(&mut world, rules::TICKS_PER_SECOND);
+    assert!(
+        !carries(&world, tower, ModifierKind::Rotting { level: 3 }),
+        "the rot lays nothing on a building"
+    );
+    assert_eq!(
+        world.health.get(tower).expect("standing").hp,
+        full,
+        "nor burns it"
+    );
+}
+
+/// Pudge beside an enemy tier-1 tower, which may be struck, `apart` units
+/// off along x.
+fn pudge_and_a_tower(apart: i32) -> (World, Entity, Entity) {
+    let (mut world, pudge, creep) = pudge_and_a_mark(apart);
+    world.despawn(creep);
+    let at = world.pos(pudge).expect("Pudge stands") + Vec2::from_ints(apart, 0);
+    let tower = world.spawn_building(
+        tower_def(1),
+        Team::Dire,
+        at,
+        Place::Tower { lane: 1, tier: 1 },
+    );
+    world.settle();
+    world.step();
+    assert!(
+        !world.stats.get(tower).expect("settled").invulnerable,
+        "a first tower may be struck"
+    );
+    (world, pudge, tower)
 }
 
 /// A hero target exercises Hook's damage and pull instead of creep execution.

@@ -5,7 +5,7 @@
 use bota_proto::{AbilityId, Aim, UnitKind};
 
 use crate::heroes::{pudge, shadow_fiend};
-use crate::{Aura, NEUTRAL_ABILITIES, objective, rules};
+use crate::{Aura, NEUTRAL_ABILITIES, UNIT_KINDS, objective, rules};
 
 /// Whether an ability reaches an enemy that is spell immune: its
 /// `SpellImmunityType` in Dota's ability files, and the extra protection
@@ -38,6 +38,24 @@ impl TargetFilter {
     pub const ANY: TargetFilter = TargetFilter {
         kinds: 0,
         own_side: true,
+    };
+
+    /// Dota's `DOTA_UNIT_TARGET_HERO | DOTA_UNIT_TARGET_BASIC` of the other
+    /// side: the kinds [`KindDef::struck_by_area_spells`](crate::KindDef)
+    /// names, so never a building or a ward.
+    pub const ENEMY_HEROES_AND_BASIC: TargetFilter = {
+        let mut bits = 0;
+        let mut at = 0;
+        while at < UNIT_KINDS.len() {
+            if UNIT_KINDS[at].struck_by_area_spells {
+                bits |= 1 << UNIT_KINDS[at].kind as u32;
+            }
+            at += 1;
+        }
+        TargetFilter {
+            kinds: bits,
+            own_side: false,
+        }
     };
 
     /// Units of these kinds, of the caster's own side too when `own_side`.

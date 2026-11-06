@@ -1,6 +1,8 @@
 //! The rot, the dismember, the meat shield and what the flesh heap keeps.
 
-use bota_core::{ModifierKind, dismember_bite_damage, hero_def, move_towards, per_tick, rules};
+use bota_core::{
+    ModifierKind, ability_def, dismember_bite_damage, hero_def, move_towards, per_tick, rules,
+};
 use bota_proto::{AbilityId, DamageKind, Fixed, Inflictor, Target};
 
 use crate::game::{HitEffect, Modifier, World};
@@ -57,6 +59,7 @@ impl World {
             return false;
         };
         if !self.hostile(caster, on)
+            || !ability_def(AbilityId::DISMEMBER).is_some_and(|def| self.aimable(caster, def, on))
             || !self.spell_reaches(AbilityId::DISMEMBER, on)
             || !self.within_reach(caster, on, rules::units(rules::DISMEMBER_RANGE))
         {

@@ -1,7 +1,7 @@
 //! What is on a unit: putting it on, doing its work each tick, taking it off.
 
 use bota_core::{
-    ModifierKind, Stat, breaks_regen, dismember_bite_tick, item_def, rules, spell_buff,
+    ModifierKind, Stat, breaks_regen, dismember_bite_tick, item_def, kind_def, rules, spell_buff,
 };
 use bota_proto::{AbilityId, DamageKind, Fixed, Inflictor, ItemId, Team};
 
@@ -349,6 +349,14 @@ impl World {
         let reach = self.widened_of(owner, rules::ROT_RADIUS);
         for other in self.entities.iter().collect::<Vec<_>>() {
             if other == owner || !self.alive(other) || self.hull.get(other).is_none() {
+                continue;
+            }
+            // Dota's heroes and basic units: never a building or a ward.
+            if !self
+                .kind
+                .get(other)
+                .is_some_and(|&kind| kind_def(kind).struck_by_area_spells)
+            {
                 continue;
             }
             if !self.pos(other).is_some_and(|pos| pos.within(at, reach)) {
