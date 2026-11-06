@@ -36,7 +36,7 @@ fn two_bots_queue_accept_play_and_are_rated() {
     let limits = alpha.client.limits(None).expect("limits");
     assert_eq!(
         (limits.games_per_account, limits.decline_cooldown_ms),
-        (8, 120_000)
+        (AccountGameLimit::Unlimited, 120_000)
     );
     let rulesets: Vec<_> = alpha.client.rulesets().map(|r| r.id.clone()).collect();
     assert_eq!(rulesets, [solo()]);
