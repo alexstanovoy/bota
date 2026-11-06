@@ -34,6 +34,8 @@ pub(crate) fn install(lua: &mut Lua, state: Shared, vectors: Vectors) -> Result<
     for (name, value) in [("TEAM_RADIANT", 2), ("TEAM_DIRE", 3), ("TEAM_NEUTRAL", 4), ("BOT_MODE_NONE", 0), ("BOT_MODE_ATTACK", 2), ("LANE_TOP", 1), ("LANE_MID", 2), ("LANE_BOT", 3)] {
         lua.set_global(name, Value::Number(f64::from(value)))?;
     }
+    for (name,value) in [("DAMAGE_TYPE_PHYSICAL",1),("DAMAGE_TYPE_MAGICAL",2),("DAMAGE_TYPE_PURE",4),("DAMAGE_TYPE_ALL",7),("TOWER_TOP_1",0),("TOWER_TOP_2",1),("TOWER_TOP_3",2),("TOWER_MID_1",3),("TOWER_MID_2",4),("TOWER_MID_3",5),("TOWER_BOT_1",6),("TOWER_BOT_2",7),("TOWER_BOT_3",8),("TOWER_BASE_1",9),("TOWER_BASE_2",10)] { lua.set_global(name,Value::Number(f64::from(value)))?; }
+    for (name,value) in [("BOT_MODE_DESIRE_NONE",0.0),("BOT_MODE_DESIRE_VERYLOW",0.1),("BOT_MODE_DESIRE_LOW",0.25),("BOT_MODE_DESIRE_MODERATE",0.5),("BOT_MODE_DESIRE_HIGH",0.75),("BOT_MODE_DESIRE_VERYHIGH",0.9),("BOT_MODE_DESIRE_ABSOLUTE",1.0)] { lua.set_global(name,Value::Number(value))?; }
     let capture = state.clone();
     global(lua, "GetBot", Rc::new(move |vm, _| {
         let mut state = capture.borrow_mut();
@@ -73,7 +75,7 @@ fn install_unit_reads(lua: &mut Lua, methods: TableId, state: Shared, vectors: V
                     let flag = match name { "IsInvulnerable" => bota_proto::StatusFlags::INVULNERABLE, "IsMagicImmune" => bota_proto::StatusFlags::MAGIC_IMMUNE, "IsChanneling" => bota_proto::StatusFlags::CHANNELLING, _ => bota_proto::StatusFlags::CASTING };
                     Value::Boolean(unit.is_some_and(|unit| unit.statuses.bits & flag != 0))
                 }
-                "IsNull" => Value::Boolean(unit.is_none()),
+                "IsNull" => Value::Boolean(unit.is_none() && !snapshot.is_some_and(|snapshot| snapshot.players.iter().any(|player| player.unit == Some(id)))),
                 "IsAlive" => Value::Boolean(!dead && unit.is_some_and(|unit| unit.hp > 0)),
                 "GetHealth" => Value::Number(if dead { 0.0 } else { unit.map_or(0.0, |unit| f64::from(unit.hp)) }),
                 "GetMaxHealth" => Value::Number(unit.map_or(0.0, |unit| f64::from(unit.max_hp))),
@@ -136,7 +138,8 @@ fn install_bot_state(lua: &mut Lua, methods: TableId, state: Shared) -> Result<(
             let mut state = capture.borrow_mut();
             let id = identity(vm, &state, args)?;
             let active = state.bot_index();
-            let index = state.unit(id).and_then(|unit| unit.owner).and_then(|slot| state.seats.iter().position(|seat| seat.slot == slot));
+            let owner = state.snapshot.as_ref().and_then(|snapshot| snapshot.players.iter().find(|player| player.unit == Some(id)).map(|player| player.slot)).or_else(|| state.unit(id).and_then(|unit| unit.owner));
+            let index = owner.and_then(|slot| state.seats.iter().position(|seat| seat.slot == slot));
             let value = match name {
                 "GetGold" | "GetRespawnTime" => {
                     let player = state.snapshot.as_ref().and_then(|snapshot| snapshot.players.iter().find(|player| player.unit == Some(id)));

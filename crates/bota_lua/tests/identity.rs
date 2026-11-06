@@ -60,3 +60,23 @@ fn respawn_time_converts_six_hundred_protocol_ticks_to_twenty_seconds() {
     let turn=lua.think(&sessions[0]).expect("think");
     assert!(turn.failures.is_empty(),"{:?}",turn.failures);
 }
+
+#[test]
+fn bot_state_survives_the_dead_heros_unit_track_expiring() {
+    let (_,mut sessions)=support::local(&[Team::Radiant,Team::Dire]);
+    let mut lua=team(&[0]);
+    lua.add_script(SlotId(0),ScriptKind::Takeover,"remember",b"local saved function Think() local b=GetBot() if saved==nil then saved=b b:SetTarget(b) b:SetNextItemPurchaseValue(17) else assert(b==saved) assert(b:GetTarget()==b) assert(b:GetNextItemPurchaseValue()==17) assert(not b:IsNull()) end end").expect("script");
+    assert!(lua.think(&sessions[0]).expect("first").failures.is_empty());
+    let mut view=sessions[0].current().expect("view").clone();
+    view.tick+=bota_client_core::SessionOptions::default().forget_after_ticks+1;
+    let hero=view.units.iter().find(|unit|unit.owner==Some(SlotId(0))&&unit.hero.is_some()).expect("hero").clone();
+    view.units.retain(|unit|unit.id!=hero.id);
+    let player=view.players.iter_mut().find(|player|player.slot==SlotId(0)).expect("player");
+    player.respawn_left=600; player.kit=Some(Kit{abilities:hero.abilities,items:hero.items,town_portal:hero.town_portal});
+    let tick=view.tick;
+    sessions[0].ingest(ServerMsg::Snapshot{view},&mut()).expect("snapshot");
+    sessions[0].ingest(ServerMsg::Events{tick,events:Vec::new()},&mut()).expect("events");
+    assert!(!sessions[0].entities().iter().any(|track| track.id==hero.id),"fixture expired the unit track");
+    let turn=lua.think(&sessions[0]).expect("think");
+    assert!(turn.failures.is_empty(),"{:?}",turn.failures);
+}

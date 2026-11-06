@@ -92,3 +92,12 @@ fn visible_queries_and_casts_use_the_filtered_session_and_real_order_path() {
     assert!(cast);
     assert!(sessions[0].own_hero().expect("hero").mana < before);
 }
+
+#[test]
+fn estimated_attack_damage_uses_visible_mitigation_and_rejects_nonfinite_time() {
+    let (_,sessions)=support::local(&[Team::Radiant,Team::Dire]);
+    let mut lua=LuaTeam::new(Team::Radiant,&[BotSeat{slot:SlotId(0),hero:HeroId::SHADOW_FIEND}],Limits::DEFAULT,Keys{hash:[17,19],random:23}).expect("team");
+    lua.add_script(SlotId(0),ScriptKind::Takeover,"estimate",b"function Think() local b=GetBot() assert(b:GetEstimatedDamageToTarget(true,b,0,DAMAGE_TYPE_ALL)==0) local d=b:GetEstimatedDamageToTarget(true,b,1,DAMAGE_TYPE_PHYSICAL) assert(d>0 and d<math.huge) assert(not pcall(b.GetEstimatedDamageToTarget,b,true,b,math.huge,DAMAGE_TYPE_ALL)) end").expect("script");
+    let turn=lua.think(&sessions[0]).expect("think");
+    assert!(turn.failures.is_empty(),"{:?}",turn.failures);
+}

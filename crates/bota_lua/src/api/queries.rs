@@ -10,6 +10,7 @@ fn boolean(vm: &mut Vm, args: Args, index: usize) -> Result<bool, LuaError> {
 }
 
 pub(super) fn install(lua: &mut Lua, methods: TableId, state: Shared, vectors: Vectors) -> Result<(), BindingError> {
+    install_estimate(lua, methods, state.clone())?;
     install_nearby(lua, methods, state.clone())?;
     install_positions(lua, methods, state.clone(), vectors)?;
     let capture = state.clone();
@@ -139,4 +140,24 @@ fn aoe(vm: &mut Vm, args: Args, state: &State, vectors: Vectors) -> Result<usize
     let value = vectors.location(vm, target)?;
     vm.raw_set(table, key, value)?;
     vm.results(&[Value::Table(table)])
+}
+
+fn install_estimate(lua: &mut Lua, methods: TableId, state: Shared) -> Result<(), BindingError> {
+    method(lua,methods,"GetEstimatedDamageToTarget",Rc::new(move |vm,args| {
+        let state=state.borrow();
+        let actor=identity(vm,&state,args)?;
+        let attacks=boolean(vm,args,1)?;
+        let target=state.id(vm.arg(args,2)).ok_or_else(||vm.error("unit handle expected"))?;
+        let seconds=vector::number(vm,args,3)?.max(0.0);
+        let kind=integer(vm,args,4)?;
+        vm.charge_fuel(1+state.snapshot.as_ref().map_or(0,|snapshot|snapshot.units.len()) as u64/4)?;
+        let actor=state.unit(actor).ok_or_else(||vm.error("unit is no longer known"))?;
+        let target=state.unit(target).ok_or_else(||vm.error("unit is no longer known"))?;
+        // A fixed reference amount keeps mitigation arithmetic bounded even for hostile view statistics.
+        let reference=bota_core::mitigate(1_000_000,bota_proto::DamageKind::Physical,target.armor,bota_core::magic_resist_bp(target.magic_resist));
+        let damage=if attacks && (kind==1||kind==7) {f64::from(actor.attack_damage.max(0))*f64::from(reference)/1_000_000.0*seconds*1000.0/f64::from(actor.attack_time.max(1))}else{0.0};
+        if !damage.is_finite(){return Err(vm.error("damage estimate is not finite"));}
+        vm.results(&[Value::Number(damage)])
+    }))?;
+    Ok(())
 }
