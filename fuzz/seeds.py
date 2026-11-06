@@ -70,6 +70,8 @@ def main(path):
         # The target puts this build's header in front of an even input.
         prefix = b"".join(struct.pack("<I", len(p)) + p for p in payloads[: 2 * count])
         write("client_replay", f"start-{count}", b"\x00" + prefix)
+        # The target puts this build's header in front of the records the recorder reads.
+        write("replay_meta", f"records-{count}", b"\x02" + prefix)
     with open(path, "rb") as replay:
         start = replay.read(PACKED_SEED)
     if start.startswith(ZSTD_MAGIC):

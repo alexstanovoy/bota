@@ -105,6 +105,7 @@ dependencies = [
  "bota_client_core",
  "bota_core",
  "bota_proto",
+ "bota_replay",
  "bota_server",
  "libfuzzer-sys",
  "serde",
