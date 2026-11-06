@@ -698,7 +698,7 @@ fn utility_value(id: AbilityId, key: &str) -> Option<Dec> {
             (key == "stash_range").then_some(integer(rules::COURIER_STASH_RANGE))
         }
         AbilityId::DELIVER => {
-            (key == "deliver_range").then_some(integer(rules::COURIER_DELIVER_RANGE))
+            (key == "deliver_range").then_some(integer(rules::COURIER_HANDOFF_RANGE))
         }
         AbilityId::CAPTURE => {
             (key == "base_capture_time").then_some(ticks(bota_core::CAPTURE_TICKS))
@@ -789,5 +789,29 @@ fn hero_value(id: AbilityId, key: &str, level: u8) -> Option<Dec> {
             _ => None,
         },
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod courier_handoff_tests {
+    use super::*;
+
+    #[test]
+    fn courier_deliver_range_reports_the_handoff_distance_without_a_cast_range() {
+        assert_eq!(
+            ability_value(AbilityId::DELIVER, 1, "deliver_range"),
+            Some(Dec(400_000)),
+            "Transfer Items projects its 7.41f handoff distance in world units"
+        );
+        assert_eq!(
+            ability_value(AbilityId::DELIVER, 1, "AbilityCastRange"),
+            Some(Dec(0)),
+            "a no-target ability has no cast range to substitute for its handoff distance"
+        );
+        assert_eq!(
+            ability_value(AbilityId::TAKE_STASH, 1, "deliver_range"),
+            None,
+            "a delivery-only value must not become a generic stash/pickup range"
+        );
     }
 }

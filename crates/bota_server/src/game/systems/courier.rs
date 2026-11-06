@@ -300,7 +300,7 @@ impl World {
         let Some(to) = self.pos(owner) else {
             return false;
         };
-        if !self.walk_into_reach(courier, to, rules::COURIER_DELIVER_RANGE) {
+        if !self.walk_into_reach(courier, to, rules::COURIER_HANDOFF_RANGE) {
             return false;
         }
         self.hand_over(courier, owner);

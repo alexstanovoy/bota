@@ -1154,8 +1154,9 @@ pub const COURIER_SHIELD_TICKS: u32 = 2 * TICKS_PER_SECOND;
 pub const COURIER_SHIELD_COOLDOWN: u32 = 200 * TICKS_PER_SECOND;
 /// How near its home fountain a courier has to be to reach the stash.
 pub const COURIER_STASH_RANGE: i32 = 700;
-/// How close a courier must be to hand over what it carries.
-pub const COURIER_DELIVER_RANGE: i32 = 200;
+/// Handoff distance for every delivery errand in 7.41f [LIQ Courier].
+/// The install's courier ability entries contain no range key.
+pub const COURIER_HANDOFF_RANGE: i32 = 400;
 
 /// How far ahead of itself a feared unit aims each step, in world units.
 pub const FLEE_LOOKAHEAD: i32 = 600;

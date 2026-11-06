@@ -1152,3 +1152,120 @@ fn locked_return_after_a_full_bag_handoff_keeps_locked_cargo_aboard() {
     run(&mut world, 30);
     assert_only_unlocked_cargo_returned(&world, courier);
 }
+
+/// Dota 7.41f Transfer Items uses a 400-unit handoff distance.
+/// https://liquipedia.net/dota2/Courier#Transfer_Items
+#[test]
+fn courier_delivery_hands_over_within_400_as_soon_as_in_reach() {
+    for distance in [350, 400, 401, 600] {
+        let (mut world, hero, courier) = courier_handoff_on_open_ground();
+        let at = world.pos(hero).expect("the owner");
+        world.transform.get_mut(courier).expect("the courier").pos =
+            at + Vec2::from_ints(distance, 0);
+        hand_item(&mut world, courier, ItemId::BOOTS, 0);
+        let events = advance_validated(
+            &mut world,
+            Some(courier),
+            Order::Cast {
+                slot: AbilitySlot(3),
+                target: Target::None,
+            },
+        );
+        assert!(events.iter().any(|e| matches!(
+            e.kind(),
+            EventKind::AbilityCast {
+                ability: AbilityId::DELIVER,
+                ..
+            }
+        )));
+        // The cast hook runs after movement. The first delivery decision is next tick.
+        assert_eq!(world.errand.get(courier), Some(&Errand::ToOwner));
+        assert_eq!(world.pos(courier), Some(at + Vec2::from_ints(distance, 0)));
+        assert!(slot_of(&world, hero, 0).is_none());
+        world.advance_trusted(&[]);
+        assert_eq!(
+            slot_of(&world, hero, 0).is_some(),
+            distance <= 400,
+            "courier at {distance} hands over within 400"
+        );
+        let mut handoff_from = world.pos(courier).unwrap();
+        if distance > 400 {
+            for _ in 0..120 {
+                if slot_of(&world, hero, 0).is_some() {
+                    break;
+                }
+                handoff_from = world.pos(courier).unwrap();
+                world.step();
+            }
+        }
+        assert_eq!(slot_of(&world, hero, 0).map(|s| s.id), Some(ItemId::BOOTS));
+        let apart = isqrt64(at.distance_squared(handoff_from));
+        assert!(apart <= i64::from(Fixed::from_int(400).raw));
+        if distance > 400 {
+            let step = bota_core::per_tick(world.stats.get(courier).unwrap().move_speed);
+            assert!(
+                apart >= i64::from((Fixed::from_int(400) - step).raw),
+                "handoff occurs within one movement step of first entering 400 range"
+            );
+        }
+    }
+}
+
+fn courier_handoff_on_open_ground() -> (World, Entity, Entity) {
+    let config = MatchConfig {
+        map: bota_proto::MapId(0),
+        ..config()
+    };
+    let mut world = World::for_match(&config, config.rng());
+    let hero = world.seats[0].unit.expect("the owner");
+    let courier = the_courier(&world);
+    let room =
+        crate::game::plan_radius(world.hull.get(courier).expect("the courier hull").collision);
+    let at = (9000..10000)
+        .step_by(64)
+        .flat_map(|y| (7500..9000).step_by(64).map(move |x| Vec2::from_ints(x, y)))
+        .find(|at| {
+            world
+                .clearance
+                .capsule_clear(*at, *at + Vec2::from_ints(600, 0), room)
+        })
+        .expect("an open corridor through full-map mid");
+    world.transform.get_mut(hero).expect("the owner").pos = at;
+    (world, hero, courier)
+}
+
+#[test]
+fn courier_retrieve_then_transfer_hands_over_within_400() {
+    let (mut world, hero, courier) = courier_handoff_on_open_ground();
+    world.seats[0].stash.slots[0] = Some(a_stack_of(ItemId::BOOTS, 0));
+    advance_validated(
+        &mut world,
+        Some(courier),
+        Order::Cast {
+            slot: AbilitySlot(0),
+            target: Target::None,
+        },
+    );
+    for _ in 0..10 {
+        if world.errand.get(courier) == Some(&Errand::ToOwner) {
+            break;
+        }
+        world.advance_trusted(&[]);
+    }
+    assert_eq!(world.errand.get(courier), Some(&Errand::ToOwner));
+    assert!(world.seats[0].stash.slots[0].is_none());
+    assert_eq!(
+        slot_of(&world, courier, 0).map(|item| item.id),
+        Some(ItemId::BOOTS)
+    );
+    let from = world.pos(courier).expect("the loaded courier");
+    world.transform.get_mut(hero).expect("the owner").pos = from + Vec2::from_ints(350, 0);
+    world.advance_trusted(&[]);
+    assert_eq!(
+        slot_of(&world, hero, 0).map(|item| item.id),
+        Some(ItemId::BOOTS),
+        "the retrieve path's first delivery decision uses 400 range"
+    );
+    assert!(slot_of(&world, courier, 0).is_none());
+    assert_eq!(world.errand.get(courier), Some(&Errand::GoingHome));
+}
