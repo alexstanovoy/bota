@@ -31,6 +31,7 @@ pub const PUDGE: UnitDef = UnitDef {
     max_hp: DATA.health,
     max_mana: DATA.mana,
     hp_regen: per_tick_of(DATA.health_regen),
+    mana_regen: per_tick_of(DATA.mana_regen),
     damage: DATA.damage_min,
     damage_spread: DATA.damage_max - DATA.damage_min,
     attack_range: DATA.attack_range,

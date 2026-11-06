@@ -599,6 +599,22 @@ fn a_flesh_heap_keeps_every_enemy_hero_that_falls_near_it_and_nothing_else() {
     );
 }
 
+/// Pudge has no mana regeneration of his own (`npc_dota_hero_base`'s `StatusManaRegen` 0;
+/// his script sets none): at level one only his 16 intelligence mends it, 0.8 a second
+/// (the dota2.com hero data gives 0.8).
+#[test]
+fn pudge_mends_only_the_mana_his_intelligence_gives_eight_in_ten_seconds() {
+    let (mut world, pudge) = a_lone_pudge();
+    world.mana.get_mut(pudge).expect("a hero has mana").mana = Fixed::ZERO;
+    run(&mut world, 10 * rules::TICKS_PER_SECOND);
+    let mended = world.mana.get(pudge).expect("a hero has mana").mana;
+    // A tick's share of 0.8 is rounded down, so ten seconds fall a hair short of 8.
+    assert!(
+        mended > Fixed::from_ratio(79, 10) && mended <= Fixed::from_int(8),
+        "0.8 mana a second, none of it his own: {mended}"
+    );
+}
+
 /// A stack is worth two strength flat, whatever the hero's level, and the heap
 /// leaves magic resistance alone.
 #[test]
