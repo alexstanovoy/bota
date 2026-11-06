@@ -302,8 +302,8 @@ impl App {
             .filter(|award| Some(award.recipient) == watched && award.amount > 0)
         {
             let unit = match award.kind {
-                GoldAwardKind::KillBounty => fallen,
-                GoldAwardKind::FlagbearerBonus => self
+                GoldAwardKind::KillBounty if self.spot(fallen).is_some() => fallen,
+                GoldAwardKind::KillBounty | GoldAwardKind::FlagbearerBonus => self
                     .body_of(award.recipient)
                     .filter(|hero| self.freshest(*hero).is_some())
                     .unwrap_or(fallen),

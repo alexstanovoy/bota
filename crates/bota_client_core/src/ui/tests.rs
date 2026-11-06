@@ -1353,8 +1353,10 @@ fn an_events_previous_unit_stays_at_its_origin_after_later_snapshots_arrive() {
     assert_eq!(app.before_event(index, us).unwrap().pos, from);
 }
 
+/// A coexistence guard for the HUD feed. The server and headless flagbearer_gold tests
+/// reproduce the split awards; this test keeps the one-award hero feed path intact.
 #[test]
-fn death_awards_keep_one_hero_feed_line_and_do_not_repeat_its_gold_caption() {
+fn death_awards_keep_one_hero_feed_line_and_do_not_repeat_its_gold_caption_guard() {
     use bota_proto::{GoldAward, GoldAwardKind};
     let (mut app, us, theirs) = a_duel_app();
     let recipient = app.my_slot.expect("own seat");
@@ -1400,6 +1402,47 @@ fn death_awards_keep_one_hero_feed_line_and_do_not_repeat_its_gold_caption() {
         .map(|floater| floater.amount)
         .collect();
     assert_eq!(captions, [200], "the feed does not duplicate its award");
+}
+
+#[test]
+fn an_unseen_kill_award_floats_over_its_recipients_own_hero() {
+    use bota_proto::{GoldAward, GoldAwardKind};
+    let (mut app, us, theirs) = a_duel_app();
+    assert!(
+        app.freshest(theirs).is_none(),
+        "the fallen hero was never seen"
+    );
+    let recipient = app.my_slot.expect("own seat");
+    let team = app.my_team().expect("own side");
+    app.handle(bota_proto::ServerMsg::Events {
+        tick: 10,
+        events: vec![EventKind::Died {
+            unit: theirs,
+            killer: Some(us),
+            denied: false,
+            gold: 0,
+            bounty: Some(37),
+            assists: 0,
+            awards: Some(Box::new(vec![GoldAward {
+                recipient,
+                team,
+                kind: GoldAwardKind::KillBounty,
+                amount: 37,
+            }])),
+        }],
+    });
+    let captions: Vec<_> = app
+        .floaters
+        .iter()
+        .filter(|floater| floater.kind == crate::ui::app::FloaterKind::Gold)
+        .map(|floater| (floater.unit, floater.amount))
+        .collect();
+    assert_eq!(captions, [(us, 37)]);
+    assert_eq!(
+        app.feed.len(),
+        1,
+        "the unseen hero kill still has one feed line"
+    );
 }
 
 #[test]
@@ -1476,6 +1519,7 @@ fn a_fallen_tower_is_fed_with_the_hero_that_brought_it_down() {
                 gold: 0,
                 bounty: None,
                 assists: 0,
+                awards: None,
             },
             EventKind::StructureDestroyed {
                 unit: tower,
