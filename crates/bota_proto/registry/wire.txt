@@ -688,3 +688,4 @@ variant GoldAwardKind 2 AssistGold
 
 field EventKind::Died 7 credited_hero: Option<EntityId>
 field EventKind::ItemUsed 3 target: Option<EntityId>
+field EventKind::Landed 3 missile: Option<EntityId>

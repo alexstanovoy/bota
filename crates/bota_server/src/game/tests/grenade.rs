@@ -209,12 +209,29 @@ fn a_grenade_names_its_item_in_flight_where_it_lands_in_its_blows_and_on_its_deb
     );
     let grenade = Inflictor::Item(ItemId::BLOOD_GRENADE);
     let mut flew = false;
+    let mut missile = None;
+    let mut side_missile = None;
+    let mut names = crate::game::Handles::new(&config(), &world);
     for _ in 0..30 {
-        flew |= world.view(Team::Dire).projectiles.iter().any(|shot| {
-            shot.inflictor == Some(grenade)
-                && shot.ability.is_none()
-                && shot.source == Some(wire_id(hero))
-        });
+        let mut view = world.view(Team::Dire);
+        if let Some(shot) = view
+            .projectiles
+            .iter()
+            .find(|shot| shot.inflictor == Some(grenade))
+        {
+            flew = true;
+            missile = Some(shot.id);
+            assert!(shot.ability.is_none());
+            assert_eq!(shot.source, Some(wire_id(hero)));
+        }
+        names.tell_view(&world, &mut view);
+        if let Some(shot) = view
+            .projectiles
+            .iter()
+            .find(|shot| shot.inflictor == Some(grenade))
+        {
+            side_missile = Some(shot.id);
+        }
         events.extend(world.advance(&[]));
     }
     assert!(flew, "the other side sees the item fly, and who threw it");
@@ -229,7 +246,15 @@ fn a_grenade_names_its_item_in_flight_where_it_lands_in_its_blows_and_on_its_deb
             inflictor: grenade,
             caster: Some(wire_id(hero)),
             at: aim,
+            missile,
         }
+    );
+    let mut projected = vec![landed[0].kind()];
+    names.tell_events(Team::Dire, world.tick, &mut projected);
+    assert!(side_missile.is_some(), "the side actually saw the flight");
+    assert!(
+        matches!(projected[0], EventKind::Landed { missile, .. } if missile == side_missile),
+        "the landing keeps the same side-stream name after the missile is removed"
     );
     assert_eq!(
         landed[0].visible_to(),

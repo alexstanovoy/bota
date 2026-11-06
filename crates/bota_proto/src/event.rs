@@ -177,6 +177,8 @@ pub enum EventKind {
         caster: Option<EntityId>,
         /// Where it went off.
         at: Vec2,
+        /// The missile that ended here; absent in records without flight identity.
+        missile: Option<EntityId>,
     },
     /// A building changed hands: an Outpost captured. Told to both sides.
     Captured {
@@ -314,9 +316,13 @@ impl EventKind {
                 killer.iter_mut().for_each(&mut *visit);
                 credited_hero.as_deref_mut().into_iter().for_each(visit);
             }
-            EventKind::Landed { caster, .. } | EventKind::TreeFelled { by: caster, .. } => {
-                caster.iter_mut().for_each(visit)
+            EventKind::Landed {
+                caster, missile, ..
+            } => {
+                caster.iter_mut().for_each(&mut *visit);
+                missile.iter_mut().for_each(visit);
             }
+            EventKind::TreeFelled { by, .. } => by.iter_mut().for_each(visit),
             EventKind::ItemUsed { caster, target, .. } => {
                 caster.iter_mut().for_each(&mut *visit);
                 target.iter_mut().for_each(visit);

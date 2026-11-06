@@ -664,6 +664,7 @@ pub fn all_events() -> Vec<EventKind> {
             inflictor: Inflictor::Item(ItemId::BLOOD_GRENADE),
             caster: Some(entity(7)),
             at: Vec2::from_ints(1500, -700),
+            missile: None,
         },
         EventKind::Captured {
             unit: entity(300),

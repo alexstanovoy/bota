@@ -1204,6 +1204,7 @@ fn the_front_end_is_handed_what_the_server_told_until_the_next_pump() {
             inflictor: bota_proto::Inflictor::Item(bota_proto::ItemId::BLOOD_GRENADE),
             caster: None,
             at: bota_proto::Vec2::from_ints(100, 200),
+            missile: None,
         },
     ];
     app.handle(bota_proto::ServerMsg::Events {

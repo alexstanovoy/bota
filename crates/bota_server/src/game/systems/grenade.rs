@@ -153,6 +153,7 @@ impl World {
                 inflictor: with,
                 caster: Some(wire_id(shot.owner)),
                 at: shot.aim,
+                missile: Some(wire_id(grenade)),
             },
             visible_to: self.who_sees_spot(shot.aim, side),
             gold_hidden_from: None,
