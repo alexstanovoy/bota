@@ -1473,17 +1473,14 @@ impl Server {
                 eprintln!("bota_server: every seat is empty; the match is abandoned");
                 break MatchEnd::Abandoned;
             }
-            let commands = inbox.line.release(&world, &mut refused);
+            let (commands, events) = inbox.line.advance(&mut world, &mut refused);
+            self.world_tick.store(world.tick, Ordering::Relaxed);
             self.refuse(&mut refused);
             let taken: Vec<SlotOrder> = commands.iter().map(Command::told).collect();
             replay.record(&ReplayRecord::Orders {
-                tick: world.tick + 1,
+                tick: world.tick,
                 orders: taken.clone(),
             });
-            let events = world.advance(&commands);
-            self.world_tick.store(world.tick, Ordering::Relaxed);
-            refused.append(&mut world.refused);
-            self.refuse(&mut refused);
             let told = Told {
                 line: &inbox.line,
                 handles: &mut inbox.handles,

@@ -150,10 +150,8 @@ impl LocalMatch {
                 }
             }
         }
-        let commands = self.line.release(&self.world, &mut self.refused);
-        let events = self.world.advance(&commands);
+        let (commands, events) = self.line.advance(&mut self.world, &mut self.refused);
         self.record_tick(&commands, &events);
-        self.refused.append(&mut self.world.refused);
         for refusal in self.refused.drain(..) {
             let seat = self
                 .seats

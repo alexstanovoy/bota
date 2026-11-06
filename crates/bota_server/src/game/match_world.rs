@@ -73,9 +73,21 @@ impl World {
     }
 
     /// One tick of the match: every command taken in the order given, then
-    /// [`World::step`]. A completed Map2 ignores commands and advances no
-    /// further. What it refused is left in [`World::refused`].
+    /// [`World::step`]. Commands are trusted simulation inputs, not player
+    /// requests: use [`super::DelayLine`] for untrusted orders. A completed
+    /// Map2 ignores commands and advances no further. What it refused is
+    /// left in [`World::refused`].
     pub fn advance(&mut self, cmds: &[Command]) -> Vec<Event> {
+        self.advance_commands(cmds, false)
+    }
+
+    /// Player requests validate in application order, after earlier commands
+    /// have changed the inventory, stats and pools they may read.
+    pub(super) fn advance_checked(&mut self, cmds: &[Command]) -> Vec<Event> {
+        self.advance_commands(cmds, true)
+    }
+
+    fn advance_commands(&mut self, cmds: &[Command], check: bool) -> Vec<Event> {
         self.refused.clear();
         if self.map2_finished() {
             return Vec::new();
@@ -83,7 +95,7 @@ impl World {
         let mut events = Vec::new();
         self.economy_events_due(&mut events);
         for cmd in cmds {
-            if inventory_dependent(cmd.order)
+            if check
                 && let Err(reason) = self.check_order(cmd.slot, cmd.unit, &cmd.order, cmd.queue)
             {
                 self.refused.push(crate::game::RefusedOrder {

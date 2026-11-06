@@ -6,7 +6,7 @@ use bota_core::rules::{MAX_ORDER_DELAY_TICKS, MAX_ORDERS_PER_TICK};
 use bota_proto::{EntityId, Order, OrderDelayView, RejectReason, SlotId, Team};
 
 use crate::engine::state_hash;
-use crate::game::{Command, MatchConfig, Stream, World};
+use crate::game::{Command, Event, MatchConfig, Stream, World};
 
 /// How late one seat's orders take effect, in ticks past the earliest tick
 /// each one could.
@@ -191,11 +191,26 @@ impl DelayLine {
         Ok(())
     }
 
+    /// Releases the next tick's player requests and advances the world,
+    /// validating each immediately before application. The returned commands
+    /// include admitted attempts refused at application, for the order tape;
+    /// every refusal is appended to `refused`.
+    pub fn advance(
+        &mut self,
+        world: &mut World,
+        refused: &mut Vec<RefusedOrder>,
+    ) -> (Vec<Command>, Vec<Event>) {
+        let commands = self.release(world, refused);
+        let events = world.advance_checked(&commands);
+        refused.append(&mut world.refused);
+        (commands, events)
+    }
+
     /// The orders that take effect on the tick after the one `world` stands
     /// on, seat by seat in slot order and each seat's in the order given,
     /// validated again; inventory-dependent orders are checked in ordered
     /// application. Those no longer valid are appended to `refused`.
-    pub fn release(&mut self, world: &World, refused: &mut Vec<RefusedOrder>) -> Vec<Command> {
+    fn release(&mut self, world: &World, refused: &mut Vec<RefusedOrder>) -> Vec<Command> {
         let next = world.tick + 1;
         let mut commands = Vec::with_capacity(self.seats.len());
         for line in &mut self.seats {

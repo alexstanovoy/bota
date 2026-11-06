@@ -34,7 +34,7 @@ fn play(delay: OrderDelay, ticks: u32) -> Vec<(Option<u32>, Vec<OrderDelayView>)
     for seq in 0..ticks {
         let seen = Some(world.tick);
         assert_eq!(line.give(&world, hero_order(seq, walk(seq)), seen), Ok(()));
-        let commands = line.release(&world, &mut refused);
+        let (commands, _) = line.advance(&mut world, &mut refused);
         assert!(refused.is_empty());
         assert!(commands.len() <= 1);
         let applied = commands.first().map(|command| {
@@ -46,7 +46,6 @@ fn play(delay: OrderDelay, ticks: u32) -> Vec<(Option<u32>, Vec<OrderDelayView>)
             };
             (goal.x.to_int() - 6000) as u32
         });
-        world.advance(&commands);
         ticked.push((applied, line.views(Some(Team::Radiant))));
     }
     ticked
@@ -110,9 +109,7 @@ fn an_order_that_no_longer_holds_on_its_tick_is_refused_then() {
             let given = line.give(&world, hero_order(seq, boots), Some(world.tick));
             assert_eq!(given, Ok(()), "the gold for one pair is there when given");
         }
-        let commands = line.release(&world, &mut refused);
-        world.advance(&commands);
-        refused.append(&mut world.refused);
+        line.advance(&mut world, &mut refused);
     }
     assert_eq!(
         refused,
@@ -156,10 +153,9 @@ fn cheats_given_on_one_tick_all_take_effect() {
         );
     }
     let mut refused = Vec::new();
-    let commands = line.release(&world, &mut refused);
-    assert_eq!(commands.len(), 4, "every one goes through");
     let gold = world.seats[0].gold;
-    world.advance(&commands);
+    let (commands, _) = line.advance(&mut world, &mut refused);
+    assert_eq!(commands.len(), 4, "every one goes through");
     assert!(world.clock_shift.game > 0, "the game began");
     assert!(world.creeps_halted);
     assert_eq!(world.seats[0].gold, gold + 100);
@@ -189,10 +185,9 @@ fn purchases_given_on_one_tick_all_take_effect() {
         );
     }
     let mut refused = Vec::new();
-    let commands = line.release(&world, &mut refused);
-    assert_eq!(commands.len(), 4, "every one goes through");
     let gold = world.seats[0].gold;
-    world.advance(&commands);
+    let (commands, _) = line.advance(&mut world, &mut refused);
+    assert_eq!(commands.len(), 4, "every one goes through");
     assert!(refused.is_empty(), "{refused:?}");
     let cost = |item| bota_core::item_def(item).expect("sold").cost;
     assert_eq!(
