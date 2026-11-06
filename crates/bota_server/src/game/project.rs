@@ -60,11 +60,16 @@ impl World {
         if keep_within_bounds(viewer, &mut units) {
             let ids: Vec<bota_proto::EntityId> = units.iter().map(|unit| unit.id).collect();
             let carried = |id| ids.binary_search(&id).is_ok();
-            aggro.retain(|entry| {
-                carried(entry.unit)
-                    && entry.target.is_none_or(carried)
-                    && entry.swing.is_none_or(|swing| carried(swing.target))
-            });
+            // A unit kept tells whom it fights only if that one is kept too: what it does stays
+            // told, at whom does not, and no hold is told on nobody.
+            aggro.retain(|entry| carried(entry.unit));
+            for entry in &mut aggro {
+                if entry.target.is_some_and(|target| !carried(target)) {
+                    entry.target = None;
+                    entry.held_for = None;
+                }
+                entry.swing = entry.swing.filter(|swing| carried(swing.target));
+            }
             projectiles
                 .retain(|shot| shot.source.is_none_or(carried) && shot.target.is_none_or(carried));
             for effect in units.iter_mut().flat_map(|unit| &mut unit.effects) {

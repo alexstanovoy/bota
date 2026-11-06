@@ -37,3 +37,30 @@ fn a_crowded_world_is_told_within_the_bounds_its_heroes_first() {
         "the same world, the same view"
     );
 }
+
+/// A unit kept whose target is left out keeps its entry of whom it fights, the target absent:
+/// what it does is told, at whom is not.
+#[test]
+fn a_unit_whose_target_is_left_out_keeps_its_aggro_without_the_target() {
+    let (mut world, hero) = match_hero();
+    let spot = an_empty_spot(&world);
+    let mut last = None;
+    for _ in 0..=MAX_VIEW_UNITS {
+        last = Some(thinking_creep_of(&mut world, Team::Dire, spot));
+    }
+    world.settle();
+    let target = last.expect("a creep");
+    world.set_target(hero, target);
+    let view = world.view_full();
+    assert!(
+        view.units.iter().all(|unit| unit.id != wire_id(target)),
+        "the target is left out"
+    );
+    let entry = view
+        .aggro
+        .iter()
+        .find(|entry| entry.unit == wire_id(hero))
+        .expect("the hero's aggro is told");
+    assert_eq!(entry.target, None);
+    assert_eq!(entry.held_for, None, "no hold on nobody");
+}
