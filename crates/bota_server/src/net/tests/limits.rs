@@ -10,9 +10,10 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use super::*;
 use crate::spectators::Spectators;
 
-/// How long the fair client is given: a guard against the hang a flooded server caused, not a
-/// measure of speed.
-const FAIR_GUARD: Duration = Duration::from_secs(2);
+/// How long the fair client is given: a guard against the hang a flooded server caused, never a
+/// measure of speed. The flood goes on until the test stops it, so a fair client that is kept out
+/// stays out however long it waits, and a loaded machine only needs the room.
+const FAIR_GUARD: Duration = Duration::from_secs(60);
 
 /// A server listening on every address of both families, TCP and WebSocket: a client dials it
 /// from 127.0.0.1 and from ::1, two sources.
@@ -41,17 +42,24 @@ const UPGRADE: &[u8] = b"GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket
 Connection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n";
 
 /// Threads that each hold a connection to `addr` open, doing `stall` on it, and open the next as
-/// soon as the server lets it go, until the returned flag is raised.
-fn flood(addr: SocketAddr, stall: Stall, threads: usize) -> Arc<AtomicBool> {
+/// soon as the server lets it go, until the returned flag is raised; `dialled` counts the
+/// connections they have made.
+fn flood(
+    addr: SocketAddr,
+    stall: Stall,
+    threads: usize,
+    dialled: &Arc<AtomicUsize>,
+) -> Arc<AtomicBool> {
     let stop = Arc::new(AtomicBool::new(false));
     for _ in 0..threads {
-        let stop = Arc::clone(&stop);
+        let (stop, dialled) = (Arc::clone(&stop), Arc::clone(dialled));
         thread::spawn(move || {
             while !stop.load(Ordering::Relaxed) {
                 let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_secs(1))
                 else {
                     continue;
                 };
+                dialled.fetch_add(1, Ordering::Relaxed);
                 let _ = stream.set_read_timeout(Some(Duration::from_millis(100)));
                 if let Stall::Upgraded = stall {
                     let _ = stream.write_all(UPGRADE);
@@ -80,13 +88,20 @@ fn a_flooding_source_cannot_keep_a_fair_client_out() {
     opts.max_connections = Some(64);
     let (tcp, ws) = start_on_both_families(opts);
     let flooder = |port| SocketAddr::from(([127, 0, 0, 1], port));
+    let dialled = Arc::new(AtomicUsize::new(0));
     let floods = [
-        flood(flooder(ws), Stall::Silent, 100),
-        flood(flooder(ws), Stall::Upgraded, 100),
-        flood(flooder(tcp), Stall::Silent, 100),
+        flood(flooder(ws), Stall::Silent, 100, &dialled),
+        flood(flooder(ws), Stall::Upgraded, 100, &dialled),
+        flood(flooder(tcp), Stall::Silent, 100, &dialled),
     ];
-    // Let the flood take whatever it can before the fair client comes.
-    thread::sleep(Duration::from_millis(500));
+    // The fair client comes once the flooding threads have dialled, so that the flood is on. What
+    // the server took of it by then is not observable from outside and needs no wait: the flood
+    // redials without end, so the fair client meets it at any moment.
+    let started = Instant::now();
+    while dialled.load(Ordering::Relaxed) < 300 {
+        assert!(started.elapsed() < HANG_GUARD, "the flood never got going");
+        thread::sleep(Duration::from_millis(10));
+    }
     let welcomed = bota_client_core::Endpoint::parse(&format!("ws://[::1]:{ws}"))
         .and_then(|endpoint| bota_client_core::Link::open(endpoint, FAIR_GUARD))
         .map(|link| link.with_redial(bota_client_core::Redial::OFF))
