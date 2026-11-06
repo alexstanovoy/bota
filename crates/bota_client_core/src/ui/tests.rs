@@ -2301,9 +2301,16 @@ fn a_credited_tower_kill_names_the_hero_but_tracks_the_physical_attacker() {
 
 #[test]
 fn scenery_reconnect_keeps_the_original_scenery_for_players_and_spectators() {
-    for slot in [Some(SlotId(0)), None] {
+    for slots in [
+        [Some(SlotId(0)), Some(SlotId(0))],
+        [None, None],
+        [None, Some(SlotId(0))],
+    ] {
         let mut app = App::new(crate::ui::app::Source::Live(Box::<HangingUp>::default()));
-        for trees in [vec![Vec2::from_ints(100, 100)], Vec::new()] {
+        for (slot, trees) in slots
+            .into_iter()
+            .zip([vec![Vec2::from_ints(100, 100)], Vec::new()])
+        {
             app.handle(bota_proto::ServerMsg::Welcome {
                 player_id: bota_proto::PlayerId(1),
                 slot,

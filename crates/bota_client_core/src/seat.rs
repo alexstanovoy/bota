@@ -247,6 +247,13 @@ impl Seat {
         self.seated.as_ref()
     }
 
+    /// Assigning a player's role must preserve the match-lifetime opening checks.
+    pub(crate) fn assign(&mut self, seated: Seated) {
+        assert!(self.session.is_none(), "the match has already started");
+        assert!(self.seated.is_none(), "the seat was already assigned");
+        self.seated = Some(seated);
+    }
+
     /// The map and trees the server told on joining, until the match starts and states them.
     pub fn scenery(&self) -> Option<(MapId, &[Vec2])> {
         self.scenery.as_ref().map(|(map, trees)| (*map, &trees[..]))

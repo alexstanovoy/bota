@@ -983,7 +983,7 @@ impl App {
                     && self.seat.seated().is_none()
                     && let (Some(seated), None) = (self.lobby.seated(), self.seat.session())
                 {
-                    self.seat = Seat::new(seated, SESSION_OPTIONS);
+                    self.seat.assign(seated);
                 }
             }
             ServerMsg::LobbyState { slots, .. } => {
