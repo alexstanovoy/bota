@@ -143,9 +143,7 @@ fn install_actions(lua: &mut Lua, methods: TableId, state: Shared, _vectors: Vec
 fn pending_once(vm: &mut Vm, state: &State, source: bota_proto::EntityId, target: bota_proto::EntityId) -> Result<crate::state::PendingOnce, LuaError> {
     if let Some(pending) = state.bots[state.bot_index()].pending_once.filter(|pending| pending.source == source && pending.target == target && !pending.launched) { return Ok(pending); }
     let snapshot = state.snapshot.as_ref().ok_or_else(|| vm.error("a current view is required"))?;
-    vm.charge_fuel(1 + snapshot.attacks.len() as u64)?;
-    let allow_impact = !snapshot.attacks.iter().any(|fact| fact.kind == crate::state::AttackFactKind::Projectile && fact.source == source && fact.target.is_none_or(|old| old == target));
-    Ok(crate::state::PendingOnce { source, target, tick: snapshot.tick, allow_impact, launched: false })
+    Ok(crate::state::PendingOnce { source, target, tick: snapshot.tick, launched: false })
 }
 
 fn install_bot_state(lua: &mut Lua, methods: TableId, state: Shared) -> Result<(), BindingError> {

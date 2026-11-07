@@ -189,9 +189,7 @@ impl LuaTeam {
         let mut pending = state.bots[index].pending_once?;
         if state.player(pending.source).is_none_or(|player| player.respawn_left > 0) { state.bots[index].pending_once = None; return None; }
         let snapshot = state.snapshot.as_ref()?;
-        let visible = snapshot.units.iter().any(|known| known.unit.id == pending.source && known.visible);
-        pending.launched |= snapshot.attacks.iter().any(|fact| fact.tick > pending.tick && fact.source == pending.source && fact.target.is_none_or(|target| target == pending.target)
-            && (fact.kind == crate::state::AttackFactKind::Launch || !visible && pending.allow_impact && fact.kind == crate::state::AttackFactKind::Impact));
+        pending.launched |= snapshot.attacks.iter().any(|fact| fact.tick > pending.tick && fact.source == pending.source && fact.target.is_none_or(|target| target == pending.target));
         state.bots[index].pending_once = Some(pending);
         if pending.launched {
             assert!(state.orders.is_empty(), "the completion pass precedes this bot's hooks");

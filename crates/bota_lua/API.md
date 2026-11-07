@@ -92,5 +92,5 @@ callbacks. Orders remain ordinary scheduler outbox entries.
 Once attacks complete from `AttackLaunched` facts whose envelope tick is later
 than the request, retained in the client's bounded entity memory rather than its
 recent-event ring. The completion pass queues Stop before the next script hooks.
-An impact fallback is restricted to an unseen attacker with no older relevant
-projectile, so an older in-flight shot cannot complete a new request.
+Only retained launch facts complete a request; projectile and impact observations
+are not used to infer completion.

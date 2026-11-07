@@ -93,7 +93,7 @@ fn an_attack_arrived(session: &ClientSession, source: EntityId, target: EntityId
 }
 
 #[test]
-fn attack_once_survives_a_think_gap_covering_the_projectiles_entire_flight() {
+fn attack_once_resolves_a_missed_snapshot_gap_from_the_retained_launch() {
     attack_once_think_gap(false);
 }
 
@@ -107,24 +107,39 @@ fn attack_once_think_gap(evict: bool) {
     let source = sessions[0].own_player().expect("player").unit.expect("hero");
     let mut lua = once_script();
     let started = sessions[0].current().expect("view").tick;
+    let mut delayed = sessions[0].clone();
+    let mut skipped = Vec::new();
     let turn = lua.think(&sessions[0]).expect("request");
     let orders = issued(&mut sessions[0], turn);
-    step(&mut local,&mut sessions,&orders);
     let mut arrived = false;
-    for _ in 0..300 {
+    for index in 0..300 {
         if an_attack_arrived(&sessions[0],source,target,started) { arrived=true; break; }
-        step(&mut local,&mut sessions,&[]);
+        let streams = local.step(&[if index == 0 { &orders } else { &[] }, &[]]).expect("step");
+        for message in &streams[0] {
+            if let bota_proto::ServerMsg::Events { tick, events } = message {
+                skipped.push(bota_proto::SkippedTick { tick: *tick, events: events.clone() });
+            }
+        }
+        for (session, stream) in sessions.iter_mut().zip(streams) { support::fold(session, stream); }
     }
     assert!(arrived,"one attack arrived while no thinks ran");
     assert!(!sessions[0].current().expect("view").projectiles.iter().any(|shot| shot.source==Some(source) && shot.inflictor.is_none()));
+    let mut view = sessions[0].current().expect("view").clone();
+    view.tick += 1;
+    view.skipped_ticks = skipped;
+    let tick = view.tick;
+    delayed.ingest(bota_proto::ServerMsg::Snapshot { view }, &mut ()).expect("missed snapshots with retained events");
+    delayed.ingest(bota_proto::ServerMsg::Events { tick, events: Vec::new() }, &mut ()).expect("completed current tick");
+    assert!(delayed.skipped_ticks() > 0);
+    assert!(delayed.entity(source).expect("tracked attacker").last_attack_launched.is_some_and(|launch| launch.tick > started));
     if evict {
-        let mut view=sessions[0].current().expect("view").clone(); view.tick+=1;
+        let mut view=delayed.current().expect("view").clone(); view.tick+=1; view.skipped_ticks.clear();
         let tick=view.tick;
-        sessions[0].ingest(bota_proto::ServerMsg::Snapshot{view}, &mut()).expect("snapshot");
-        sessions[0].ingest(bota_proto::ServerMsg::Events{tick, events:vec![EventKind::TreeGrew{at:bota_proto::Vec2::from_ints(9216,9216)};bota_client_core::MAX_RECENT_EVENTS]}, &mut()).expect("unrelated events");
-        assert!(!sessions[0].recent_events().iter().any(|event|matches!(event.kind,EventKind::AttackLaunched{..})),"the recent history really evicted the launch");
+        delayed.ingest(bota_proto::ServerMsg::Snapshot{view}, &mut()).expect("snapshot");
+        delayed.ingest(bota_proto::ServerMsg::Events{tick, events:vec![EventKind::TreeGrew{at:bota_proto::Vec2::from_ints(9216,9216)};bota_client_core::MAX_RECENT_EVENTS]}, &mut()).expect("unrelated events");
+        assert!(!delayed.recent_events().iter().any(|event|matches!(event.kind,EventKind::AttackLaunched{..})),"the recent history really evicted the launch");
     }
-    let turn = lua.think(&sessions[0]).expect("resume");
+    let turn = lua.think(&delayed).expect("resume");
     assert!(turn.failures.is_empty(),"{:?}",turn.failures);
     assert!(turn.bots[0].orders.iter().any(|order|order.order==(Order::Move{target:Target::None})),"a completed shot is not repeated after the gap");
 }
