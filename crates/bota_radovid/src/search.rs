@@ -280,3 +280,7 @@ fn search_of(entry: &QueueEntry, now: u64) -> Search {
         joined_ms: now.saturating_sub(u64::from(entry.for_ms)),
     }
 }
+
+#[cfg(test)]
+#[path = "search_tests.rs"]
+mod tests;
