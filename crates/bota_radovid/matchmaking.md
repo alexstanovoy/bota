@@ -63,9 +63,9 @@ queue places, admitted and cancelled together. `Searches::entries()` exposes the
 `Searches::groups()` gives one display row per search. A proposal reserves both places; accepting
 consumes them, and a failed proposal restores both original places. Other searches remain independent.
 
-## Protocol 18 coordination
+## Protocol 19 coordination
 
-Rebuild every matchmaking client with the service's version-18 protocol/client crates. Versions below 18 are
+Rebuild every matchmaking client with the service's version-19 protocol/client crates. Versions below 19 are
 refused at `Hello`; queue records gained appended audience/search fields and requests. Read
 `AccountGameLimit::Limited(n)` or `Unlimited`, rather than interpreting a numeric sentinel. Each account still
 holds one ladder rating per ruleset, shared across simultaneous matches.
@@ -73,7 +73,7 @@ holds one ladder rating per ruleset, shared across simultaneous matches.
 The service and rebuilt matchmaking clients need the same protocol boundary when they resume exchanging control
 messages. Keep game-server/client wire fingerprints matched separately: the control-protocol change does not alter
 bota's game wire or replay format. Existing source configurations keep working when their lobby layout is explicit.
-The service's [coordination note](../../../radovid/docs/protocol_18.md) describes the generic upgrade contract.
+The service's [coordination note](../../../radovid/docs/protocol_19.md) describes the generic upgrade contract.
 
 ## Integration tests
 
@@ -98,7 +98,7 @@ an unrated variant to its mode. The handoff and result retain the selected ID an
 `[ruleset.rating_window]` overrides individual values. Unranked must be at least as
 loose as its rated sibling, and every player must accept the group's full rating spread.
 The service serves these policies in the catalog and `Limits`; querying either sibling's
-limits returns both resolved mode policies. Rebuild clients with protocol 18 together.
+limits returns both resolved mode policies. Rebuild clients with protocol 19 together.
 
 ## Leaderboards and profile ranks
 
@@ -123,4 +123,10 @@ stale replies, coalesce edits, and keep at least 300 ms between queries with one
 request `ClientMsg::Account { account: client.me().id }` through `Client::request`;
 `PublicAccount.ratings` holds the per-mode rating and game counts with the appended
 `RatingSummary.rank`. Missing records have no rated position. Every client and the service
-must rebuild together for protocol 18.
+must rebuild together for protocol 19.
+
+Protocol19 adds `Error::LookupTooExpensive`: a fixed work-limit failure is not a retryable
+throttle. Retry `Throttled { retry_after_ms }` after its delay; an unchanged request that
+returns `LookupTooExpensive` needs a different request or service-side intervention.
+Lookup admission is per account across its sessions, with one in flight; another account
+cannot consume that quota. Active bans hide rows and other accounts' profile views.
