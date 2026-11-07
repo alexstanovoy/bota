@@ -137,3 +137,10 @@ five million instructions; `LookupTooExpensive` stays non-retryable. A bounded
 one-second sweep restores timed-ban ranks (at most 256 expired accounts per tick),
 so a large expiry backlog can temporarily leave an expired account unranked. The
 SDK DTOs and calls are unchanged.
+
+Profile summaries survive an expensive ordinal-rank walk. Each mode has its own
+rank work budget; `RatingSummary.rank == None` can mean that budget was exhausted
+even when `games > 0`. Keep rendering the rating and game counts with an unavailable
+rank. A later cheap mode can still return a rank. Board/own-row response semantics
+are unchanged. SQLite checkpoint maintenance can temporarily backpressure writes;
+a failed checkpoint refuses subsequent mutations before executing them.
