@@ -63,7 +63,7 @@ fn preloaded_modules_use_distinct_roots_and_need_no_files_during_think() {
 }
 
 #[test]
-fn source_reader_refuses_symlinks_fifos_and_oversized_regular_files_without_paths() {
+fn source_reader_refuses_unsafe_sources_with_relative_diagnostics() {
     for kind in [0, 1, 2] {
         let pack = Directory::new();
         let outside = Directory::new();
@@ -97,10 +97,12 @@ fn source_reader_refuses_symlinks_fifos_and_oversized_regular_files_without_path
         let message = error.to_string();
         assert!(!message.contains(pack.path().to_str().expect("fixture name")));
         assert!(!message.contains(outside.path().to_str().expect("fixture name")));
-        assert!(
-            message.contains("not found") || message.contains("limit"),
-            "{message}"
-        );
+        let reason = match kind {
+            0 => "symbolic links are not allowed",
+            1 => "FIFO sources are not allowed",
+            _ => "module source limit exceeded",
+        };
+        assert_eq!(message, format!("module source \"bots/module.lua\": {reason}"));
     }
 }
 
@@ -111,7 +113,8 @@ fn source_reader_refuses_a_symlinked_directory_and_excessive_depth() {
     std::fs::write(outside.path().join("module.lua"), b"return 17").expect("outside");
     std::os::unix::fs::symlink(outside.path(), pack.path().join("linked"))
         .expect("directory symlink");
-    assert!(bota_lua::native::load_modules(pack.path(), None, Limits::DEFAULT).is_err());
+    let error = bota_lua::native::load_modules(pack.path(), None, Limits::DEFAULT).expect_err("directory symlink");
+    assert_eq!(error.to_string(), r#"module source "bots/linked": symbolic links are not allowed"#);
     std::fs::remove_file(pack.path().join("linked")).expect("remove symlink");
     let mut directory = pack.path().to_path_buf();
     for _ in 0..17 {
@@ -138,4 +141,24 @@ fn source_reader_rejects_a_regular_source_hard_linked_outside_the_pack() {
         .expect_err("a pack must not load an inode shared outside its root");
     assert!(error.to_string().contains("hard link"), "{error}");
     assert_eq!(std::fs::read(original).expect("outside source untouched"), b"return 'outside the pack'");
+}
+
+#[test]
+fn source_diagnostics_escape_relative_names_and_do_not_disclose_the_root() {
+    let pack = Directory::new();
+    let relative = "bad\x1b[31m\n.lua";
+    std::fs::write(pack.path().join(relative), b"return 1").expect("source");
+    let error = bota_lua::native::load_modules(pack.path(), None, Limits::DEFAULT).expect_err("invalid name");
+    let rendered = error.to_string();
+    assert_eq!(rendered, r#"module source "bots/bad\u{1b}[31m\n.lua": invalid module name"#);
+    assert!(!rendered.chars().any(char::is_control));
+    assert!(!rendered.contains(pack.path().to_str().expect("root")));
+}
+
+#[test]
+fn missing_runtime_root_is_identified_without_its_absolute_path() {
+    let pack = Directory::new();
+    let missing = pack.path().join("missing");
+    let error = bota_lua::native::load_modules(pack.path(), Some(&missing), Limits::DEFAULT).expect_err("missing runtime root");
+    assert_eq!(error.to_string(), r#"module source "game/": module root cannot be resolved"#);
 }

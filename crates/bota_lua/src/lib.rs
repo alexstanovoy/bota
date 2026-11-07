@@ -18,6 +18,7 @@ pub use team::*;
 #[derive(Debug)]
 pub enum BindingError {
     Configuration(&'static str),
+    Source { path: String, reason: String },
     Lua(luagee::Error),
     Callback(luagee::LuaError),
 }
@@ -38,6 +39,7 @@ impl std::fmt::Display for BindingError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Configuration(message) => f.write_str(message),
+            Self::Source { path, reason } => write!(f, "module source {path:?}: {reason}"),
             Self::Lua(error) => error.fmt(f),
             Self::Callback(error) => write!(f, "callback setup failed: {error:?}"),
         }
