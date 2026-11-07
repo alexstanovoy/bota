@@ -98,7 +98,7 @@ an unrated variant to its mode. The handoff and result retain the selected ID an
 `[ruleset.rating_window]` overrides individual values. Unranked must be at least as
 loose as its rated sibling, and every player must accept the group's full rating spread.
 The service serves these policies in the catalog and `Limits`; querying either sibling's
-limits returns both resolved mode policies. Rebuild clients with protocol 19 together.
+limits returns both resolved mode policies. Rebuild clients and service with the current protocol together.
 
 ## Leaderboards and profile ranks
 
@@ -123,7 +123,7 @@ stale replies, coalesce edits, and keep at least 300 ms between queries with one
 request `ClientMsg::Account { account: client.me().id }` through `Client::request`;
 `PublicAccount.ratings` holds the per-mode rating and game counts with the appended
 `RatingSummary.rank`. Missing records have no rated position. Every client and the service
-must rebuild together for protocol 19.
+must rebuild together for the current protocol.
 
 Protocol19 adds `Error::LookupTooExpensive`: a fixed work-limit failure is not a retryable
 throttle. Retry `Throttled { retry_after_ms }` after its delay; an unchanged request that
@@ -139,11 +139,13 @@ so a large expiry backlog can temporarily leave an expired account unranked. The
 SDK DTOs and calls are unchanged.
 
 Profile summaries survive an expensive ordinal-rank walk. Each mode has its own
-rank work budget; `RatingSummary.rank == None` can mean that budget was exhausted
+rank work budget (five million SQLite instructions), with twenty million shared across
+all mode ranks; `RatingSummary.rank == None` can mean either budget was exhausted
 even when `games > 0`. Keep rendering the rating and game counts with an unavailable
 rank. A later cheap mode can still return a rank. Board/own-row response semantics
-are unchanged. SQLite checkpoint maintenance can temporarily backpressure writes;
-a failed checkpoint refuses subsequent mutations before executing them.
+are unchanged. Short background checkpoints do not reserve the writer turn. A failed
+checkpoint keeps normal writes available below the separate 512-MiB emergency WAL
+threshold; mutations beyond that threshold are refused until checkpoint recovery.
 ## Account avatars (protocol 20)
 
 `Client::set_avatar(&png)` and `Client::remove_avatar()` change only the signed-in
