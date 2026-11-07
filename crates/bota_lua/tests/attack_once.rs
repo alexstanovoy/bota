@@ -161,3 +161,38 @@ fn an_older_inflight_shot_cannot_complete_a_new_once_request() {
     assert!(turn.failures.is_empty(),"{:?}",turn.failures);
     assert!(turn.bots[0].orders.iter().any(|order|order.order==(Order::Move{target:Target::None})));
 }
+
+#[test]
+fn a_continuous_attack_replaces_an_earlier_once_request() {
+    let (mut local, mut sessions, _) = a_durable_creep_in_solo_mid(HeroId::SHADOW_FIEND);
+    let source = sessions[0].own_player().expect("player").unit.expect("hero");
+    let mut lua = LuaTeam::new(Team::Radiant, &[BotSeat { slot: SlotId(0), hero: HeroId::SHADOW_FIEND }], Limits::DEFAULT, Keys { hash: [17,19], random:23 }).expect("team");
+    lua.add_script(SlotId(0), ScriptKind::Takeover, "replace_once", br#"
+        local issued=false
+        function Think()
+            if not issued then
+                local bot=GetBot()
+                local target=bot:GetNearbyCreeps(1600,true)[1]
+                assert(target)
+                bot:Action_AttackUnit(target,true)
+                bot:Action_AttackUnit(target,false)
+                issued=true
+            end
+        end
+    "#).expect("script");
+    let started = sessions[0].current().expect("view").tick;
+    let mut launches = BTreeSet::new();
+    for _ in 0..600 {
+        let turn = lua.think(&sessions[0]).expect("think");
+        assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+        assert!(!turn.bots[0].orders.iter().any(|order| order.order == (Order::Move { target: Target::None })),
+            "a replaced once request cannot stop the later continuous attack");
+        let orders = issued(&mut sessions[0], turn);
+        step(&mut local, &mut sessions, &orders);
+        if let Some(observed) = sessions[0].entity(source).and_then(|track| track.last_attack_launched).filter(|observed| observed.tick > started) {
+            launches.insert(observed.tick);
+        }
+        if launches.len() >= 2 { break; }
+    }
+    assert!(launches.len() >= 2, "the replacement remains a continuous attack");
+}
