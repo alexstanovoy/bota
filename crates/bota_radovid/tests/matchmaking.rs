@@ -29,6 +29,8 @@ fn the_shipped_config_pairs_ranked_and_unranked_mid_and_full_queues() {
             .expect("unranked counterpart");
         assert!(!casual.rated);
         assert_eq!(casual.teams, ranked.teams);
+        assert!(casual.launcher.artifact.is_some(), "unranked {mode} keeps game replays");
+        assert!(casual.launcher.artifact_args.iter().any(|arg| arg == "{artifact}"));
     }
 }
 

@@ -98,4 +98,4 @@ an unrated variant to its mode. The handoff and result retain the selected ID an
 `[ruleset.rating_window]` overrides individual values. Unranked must be at least as
 loose as its rated sibling, and every player must accept the group's full rating spread.
 The service serves these policies in the catalog and `Limits`; querying either sibling's
-limits returns both resolved mode policies. Rebuild clients with protocol 16 together.
+limits returns both resolved mode policies. Rebuild clients with protocol 17 together.

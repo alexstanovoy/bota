@@ -150,6 +150,8 @@ args = ["--map", "0", "--match-id", "{match_id}", "--bind", "0.0.0.0", "--ws-por
         "--start-after-secs", "60", "--abandon-unjoined", "--empty-after-secs", "300"]
 env = { BOTA_SEATS = "{seats}" }
 cheats_args = ["--lobby-cheats"]
+artifact = "/var/lib/radovid/replays/replay-{match_id}.brp"
+artifact_args = ["--replay", "{artifact}"]
 
 [[ruleset]]
 id = "solo_mid_unranked"
@@ -175,3 +177,5 @@ args = ["--map", "2", "--match-id", "{match_id}", "--bind", "0.0.0.0", "--ws-por
         "--tls-cert", "/certs/fullchain.pem", "--tls-key", "/certs/privkey.pem",
         "--heroes", "1", "--start-after-secs", "60", "--abandon-unjoined", "--empty-after-secs", "300"]
 env = { BOTA_SEATS = "{seats}" }
+artifact = "/var/lib/radovid/replays/replay-{match_id}.brp"
+artifact_args = ["--replay", "{artifact}"]
