@@ -3,6 +3,7 @@
 
     tools/test_groups.py check [--base REV | --all]   every test in exactly one group, every file routed, at most 30 groups
     tools/test_groups.py plan [--base REV | --all]    the groups and crates the change since the merge-base with REV affects
+    tools/test_groups.py available                    the crates of their own whose required checkouts are here (see [crate.*] requires)
     tools/test_groups.py run [--record FILE] [--cpus N] GROUP...
                                                       the groups' tests and commands side by side, their threads within
                                                       N CPUs (TEST_GROUPS_CPUS; default: the CPUs the run may use),
@@ -15,9 +16,10 @@ crate's plain one that no running group uses, no changed file names a feature of
 check_tests, builds_to_list, beyond_plain and check_feature_files). `run` runs the test binaries
 the listing built directly, side by side and the longest of the last run first (target/test-groups-history.json), and
 checks that each ran exactly as many tests as its groups select, so this selection and libtest's own cannot drift apart.
-`plan` prints four lines: `groups NAME...`, `crates NAME...` (the workspace crates to lint), `fuzz 0|1` (whether the fuzz
-targets are to be compiled: a crate they build on or the fuzz crate itself changed) and `scope`
-(what a stamp of the check names besides the tree).
+`plan` prints five lines: `groups NAME...`, `crates NAME...` (the crates to lint: the workspace's, and bota_lua where its
+luagee checkout is), `fuzz 0|1` (whether the fuzz targets are to be compiled: a crate they build on or the fuzz crate itself
+changed), `uncovered NAME...` (the crates that cannot be built here, so nothing covers them; a change to one of their files
+is refused) and `scope` (what a stamp of the check names besides the tree).
 """
 
 import argparse
@@ -41,6 +43,9 @@ ROOT = Path(subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_outp
 CONFIG = ROOT / "tools/test_groups.toml"
 FUZZ_MANIFEST = ROOT / "fuzz/Cargo.toml"
 PROFILE = "test-release"
+# Set (to anything) to make a crate whose `requires` files are absent a failure instead of a noted omission: for the machines
+# that merge: they must cover everything.
+REQUIRE_ALL = "TEST_GROUPS_REQUIRE_ALL"
 # A unittest suite is a build of its own: its directory stands where a crate's name does.
 UNITTEST = "unittest"
 # At most this many groups: few enough to know each by name, enough to follow the code's crates and subsystems.
@@ -115,6 +120,8 @@ class Crate:
     name: str
     directory: str  # relative to ROOT
     manifest: str | None  # outside the workspace: its own manifest
+    requires: list[str]  # files (relative to ROOT) it cannot build without: other repositories checked out beside this one
+    lint: bool  # outside the workspace: the gate lints it too (clippy and the wasm check with its own manifest)
     routed: bool
     features: list[str]
     profile: str
@@ -125,6 +132,7 @@ class Crate:
     launchers: set[str] = field(default_factory=set)  # direct, declared: crates whose tests run this one's binary
     harnessless: set[str] = field(default_factory=set)  # test targets with `harness = false`
     benches: set[str] = field(default_factory=set)
+    available: bool = True  # False: its `requires` were absent when it was loaded, so nothing of it can be built here
 
 
 @dataclass
@@ -135,6 +143,10 @@ class Listed:
     roots: dict[str, Path]
     executables: dict[str, Path] = field(default_factory=dict)
     sources: set[str] = field(default_factory=set)  # the crate's files its test binaries are built from (rustc's dep-info)
+
+
+def present(requires: list[str]) -> bool:
+    return all((ROOT / path).exists() for path in requires)
 
 
 def git(*args: str) -> str:
@@ -171,9 +183,19 @@ def feature_closure(table: dict[str, list[str]], wanted: list[str]) -> tuple[str
 
 def load_crates(config: dict) -> dict[str, Crate]:
     crates: dict[str, Crate] = {}
+    outside: dict[str, dict] = {}  # the packages of the crates with a manifest of their own, which also depend on workspace crates
     workspace = metadata(None)
     for name, settings in config["crate"].items():
         manifest = settings.get("manifest")
+        requires = settings.get("requires", [])
+        if requires and not manifest:
+            raise Failure(f"test_groups.toml: crate {name} requires files, so it must be outside the workspace (name its manifest)")
+        if not present(requires):
+            if os.environ.get(REQUIRE_ALL):
+                missing = [path for path in requires if not present([path])]
+                raise Failure(f"crate {name} needs {' '.join(missing)}, which is absent, and {REQUIRE_ALL} is set")
+            crates[name] = absent_crate(name, settings, manifest)
+            continue
         packages = metadata(manifest)["packages"] if manifest else workspace["packages"]
         package = next((p for p in packages if p["name"] == name), None)
         if package is None:
@@ -181,10 +203,14 @@ def load_crates(config: dict) -> dict[str, Crate]:
         table = package["features"]
         wasm_only = set(settings.get("wasm_only_features", []))
         manifest_toml = tomllib.loads(Path(package["manifest_path"]).read_text())
+        if manifest:
+            outside[name] = package
         crates[name] = Crate(
             name=name,
             directory=str(Path(package["manifest_path"]).parent.relative_to(ROOT)),
             manifest=manifest,
+            requires=requires,
+            lint=settings.get("lint", manifest is None),
             routed=settings.get("routed", False),
             features=settings.get("features", []),
             profile=settings.get("profile", PROFILE),
@@ -199,18 +225,43 @@ def load_crates(config: dict) -> dict[str, Crate]:
     for name, package in members.items():
         if name not in crates:
             raise Failure(f"test_groups.toml: workspace crate {name} has no [crate.{name}] table")
+    for name, package in {**members, **outside}.items():
         for dependency in package["dependencies"]:
             if dependency.get("path") and dependency["name"] in crates:
                 crates[dependency["name"]].dependents.add(name)
     return crates
 
 
+def absent_crate(name: str, settings: dict, manifest: str) -> Crate:
+    """A crate whose `requires` are missing: it is routed (its files belong to it) but nothing of it can be built, listed or
+    run, so it has no features, no groups (load drops them) and nothing depends on it."""
+    return Crate(name, str(Path(manifest).parent), manifest, settings["requires"], settings.get("lint", False), settings.get("routed", False),
+                 [], settings.get("profile", PROFILE), (), [], {}, available=False)
+
+
 def load() -> tuple[dict[str, Crate], list[Group], list[tuple[list[str], list[str]]]]:
     config = tomllib.loads(CONFIG.read_text())
     crates = load_crates(config)
     groups = [load_group(entry, crates) for entry in config.get("group", [])]
+    groups = [g for g in groups if not left_out(g, crates)]
     routes = [(route["paths"], route["groups"]) for route in config.get("route", [])]
     return crates, groups, routes
+
+
+def available_optional(config: dict) -> list[str]:
+    """The crates with `requires` whose files are all there (read from the config alone: no cargo, so cheap for scripts)."""
+    return [name for name, settings in config["crate"].items()
+            if settings.get("requires") and present(settings["requires"])]
+
+
+def left_out(group: Group, crates: dict[str, Crate]) -> bool:
+    """A group of tests of crates that cannot be built here (their `requires` are absent) is left out, said once on stderr."""
+    absent = {s.build.crate for s in group.selectors if s.build.profile != UNITTEST and not crates[s.build.crate].available}
+    if not absent:
+        return False
+    print(f"test-groups: group {group.name} is not covered here: {', '.join(sorted(absent))} needs "
+          f"{' '.join(p for c in sorted(absent) for p in crates[c].requires)}, which is absent", file=sys.stderr)
+    return True
 
 
 def load_group(entry: dict, crates: dict[str, Crate]) -> Group:
@@ -283,6 +334,14 @@ class Router:
     def workspace(self) -> set[str]:
         return {name for name, crate in self.crates.items() if crate.manifest is None}
 
+    def linted(self) -> set[str]:
+        """The crates a plan lints: the workspace and the crates of their own that are linted too and can be built here."""
+        return self.workspace() | {name for name, crate in self.crates.items() if crate.lint and crate.available}
+
+    def uncovered(self) -> list[str]:
+        """The crates that cannot be built here because a checkout they require is absent: no group, lint or step covers them."""
+        return sorted(name for name, crate in self.crates.items() if not crate.available)
+
     def crate_of(self, path: str) -> Crate | None:
         inside = [c for c in self.crates.values() if path.startswith(c.directory + "/")]
         return max(inside, key=lambda c: len(c.directory), default=None)
@@ -341,7 +400,7 @@ def fuzz_dependencies() -> set[str]:
 
 def plan(router: Router, paths: list[str] | None) -> tuple[set[str], set[str], bool]:
     """Groups to run, workspace crates to lint and whether the fuzz targets are to be checked; `paths` None: everything."""
-    workspace = router.workspace()
+    workspace = router.linted()
     if paths is None:
         return set(router.names), workspace, True
     groups: set[str] = set()
@@ -352,7 +411,7 @@ def plan(router: Router, paths: list[str] | None) -> tuple[set[str], set[str], b
             return set(router.names), workspace, True
         groups |= routed[0]
         crate = router.crate_of(path)
-        if routed[0] and crate is not None and crate.manifest is None:
+        if routed[0] and crate is not None and crate.name in workspace:
             touched.add(crate.name)
     crates: set[str] = set()
     for crate in touched:
@@ -363,19 +422,34 @@ def plan(router: Router, paths: list[str] | None) -> tuple[set[str], set[str], b
 
 def plan_report(router: Router, merge_base: str | None, paths: list[str] | None) -> list[str]:
     """`plan`'s lines: the groups, the crates to lint, whether to check the fuzz targets, and the scope of the stamps."""
+    absent = router.uncovered()
+    if paths is not None:
+        check_absent_untouched(router, paths)
     chosen, lint, fuzz = plan(router, paths)
     ordered = [n for n in router.names if n in chosen]
-    everything = (set(router.names), router.workspace(), True) == (chosen, lint, fuzz)
-    scope = scope_of(None if everything else merge_base, ordered, sorted(lint), fuzz)
-    return [" ".join(["groups", *ordered]), " ".join(["crates", *sorted(lint)]), f"fuzz {int(fuzz)}", f"scope {scope}"]
+    everything = (set(router.names), router.linted(), True) == (chosen, lint, fuzz)
+    scope = scope_of(None if everything else merge_base, ordered, sorted(lint), fuzz, absent)
+    return [" ".join(["groups", *ordered]), " ".join(["crates", *sorted(lint)]), f"fuzz {int(fuzz)}",
+            " ".join(["uncovered", *absent]), f"scope {scope}"]
 
 
-def scope_of(merge_base: str | None, groups: list[str], crates: list[str], fuzz: bool) -> str:
+def check_absent_untouched(router: Router, paths: list[str]) -> None:
+    """A change to a file of a crate that cannot be built here cannot be checked here: refuse it rather than let it look
+    green. Documents are no code to check."""
+    for path in paths:
+        crate = router.crate_of(path)
+        if crate is not None and not crate.available and not path.endswith(".md"):
+            raise Failure(f"{path} changed, but {crate.name} cannot be built here: {' '.join(crate.requires)} is missing. Check "
+                          f"out that repository beside this one so that the change can be checked")
+
+
+def scope_of(merge_base: str | None, groups: list[str], crates: list[str], fuzz: bool, uncovered: list[str] = ()) -> str:
     """What a stamp of a check covers besides the tree: `full` (everything, also when a change selects it all), or what was
-    compared with and what that selected."""
+    compared with and what that selected; with crates that cannot be built here (`uncovered`) never `full`, so a stamp of a
+    tree that was not fully checked is not taken for one that was."""
     if merge_base is None:
-        return "full"
-    selection = json.dumps([merge_base, groups, crates, fuzz])
+        return "full" if not uncovered else "full-without-" + "-".join(uncovered)
+    selection = json.dumps([merge_base, groups, crates, fuzz, list(uncovered)])
     return "affected-" + hashlib.sha256(selection.encode()).hexdigest()[:16]
 
 
@@ -515,6 +589,7 @@ def check(crates: dict[str, Crate], groups: list[Group], router: Router, paths: 
             break
         if crate is not None:
             scope |= router.above(crate.name)
+    scope = {name for name in scope if crates[name].available}
     return problems + check_tests(crates, groups, router, scope, paths)
 
 
@@ -523,12 +598,16 @@ TEST_MARKERS = {".rs": ("#[test]", "#[cfg(test)]"), ".py": ("def test_", "unitte
 
 
 def check_markers(router: Router, every_file: list[str]) -> list[str]:
-    """A file a route sends to no group (fuzz/, scripts/) may hold no test: no group would run it."""
+    """A file a route sends to no group (fuzz/, scripts/) may hold no test: no group would run it. The files of a crate that
+    cannot be built here (router.uncovered) are left out: their groups are, and every plan names them."""
     problems = []
+    absent = router.uncovered()
     for path in every_file:
         markers = TEST_MARKERS.get(Path(path).suffix)
         routed = router.route(path)
         if not markers or routed is None or routed[0] or not (ROOT / path).is_file():
+            continue
+        if (crate := router.crate_of(path)) is not None and crate.name in absent:
             continue
         found = [m for m in markers if m in (ROOT / path).read_text(errors="replace")]
         if found:
@@ -1092,6 +1171,7 @@ def main() -> int:
         each = sub.add_parser(action)
         each.add_argument("--base", default=None, help="compare with the merge-base with this revision (default origin/main)")
         each.add_argument("--all", action="store_true", help="everything, whatever changed")
+    sub.add_parser("available")
     running = sub.add_parser("run")
     running.add_argument("--record", type=Path, help="write the names of the groups that failed here")
     running.add_argument("--cpus", default=os.environ.get("TEST_GROUPS_CPUS"),
@@ -1099,6 +1179,9 @@ def main() -> int:
     running.add_argument("groups", nargs="+")
     options = parser.parse_args()
     try:
+        if options.action == "available":
+            print(" ".join(available_optional(tomllib.loads(CONFIG.read_text()))))
+            return 0
         crates, groups, routes = load()
         router = Router(crates, groups, routes)
         if options.action == "run":

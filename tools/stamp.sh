@@ -3,7 +3,9 @@
 #
 # A stamp names a tree by the hash of its content with formatting left out: the files that are not Rust sources of the
 # workspace crates as they are (the tracked and the not ignored new ones; a file marked skip-worktree counts as the commit
-# has it), the Rust sources of the crates as `cargo fmt --all` writes them. The scripts add the selection to the name
+# has it), the Rust sources of the crates as `cargo fmt --all` writes them (those of crates/bota_lua, a workspace of its own,
+# as its own `cargo fmt` writes them where the luagee checkout it needs is here, as stored where it is not; its fuzz target
+# as stored). The scripts add the selection to the name
 # (tools/test_groups.py plan's `scope`: `full`, or what the change was compared with and what that selected). So a change
 # that only formats keeps the stamp, and the same content in another checkout of this repository has the same stamp.
 # Stamps live in the repository's common git directory, one file per tree and selection:
@@ -12,13 +14,23 @@
 #   gate-full ok <time>       tools/gate.sh passed in full (GATE_FULL=1)
 
 tree_key() { # fails, saying why, when cargo fmt cannot read the crates (their Rust would drop out of the key)
-    local idx real_idx formatted
+    local idx real_idx formatted stored='\tcrates/(?!bota_lua/fuzz/).*\.rs$'
     formatted=$(mktemp)
     if ! cargo fmt --all -- --emit stdout > "$formatted" 2> "$formatted.err"; then
         echo "stamp: \`cargo fmt --all\` failed, so this tree has no key:" >&2
         cat "$formatted.err" >&2
         rm -f "$formatted" "$formatted.err"
         return 1
+    fi
+    if [[ " $(python3 tools/test_groups.py available) " == *" bota_lua "* ]]; then
+        if ! cargo fmt --manifest-path crates/bota_lua/Cargo.toml --all -- --emit stdout >> "$formatted" 2> "$formatted.err"; then
+            echo "stamp: \`cargo fmt\` of crates/bota_lua failed, so this tree has no key:" >&2
+            cat "$formatted.err" >&2
+            rm -f "$formatted" "$formatted.err"
+            return 1
+        fi
+    else
+        stored='\tcrates/(?!bota_lua/).*\.rs$' # bota_lua's Rust stays in the key as stored
     fi
     idx=$(mktemp) && rm -f "$idx"
     real_idx=$(git rev-parse --git-path index)
@@ -34,7 +46,7 @@ tree_key() { # fails, saying why, when cargo fmt cannot read the crates (their R
                 fi
             done
             # the Rust of the workspace crates as `cargo fmt --all` writes it below; the rest (fuzz/, the importer) as stored
-            git ls-files -s | grep -vE $'\tcrates/.*\\.rs$'
+            git ls-files -s | grep -vP "$stored"
         )
         cat "$formatted"
     } | sha256sum | cut -c1-32

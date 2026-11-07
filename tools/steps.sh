@@ -4,6 +4,9 @@
 # the plan's fuzz flag; each prints one line per step, tab separated: its name, 1 when the change needs it and 0 otherwise,
 # why it is not needed, its command (words without quoting). The gate names every step and runs the needed ones; the
 # precheck runs the needed ones.
+# bota_lua (the bot-script host) is a workspace of its own that needs the luagee checkout beside this repository: it is in the
+# plan's crates only where that checkout is, and its steps use its manifest.
+botscript=crates/bota_lua/Cargo.toml
 
 has() { # list word: success when word is in the space separated list
     case " $1 " in *" $2 "*) return 0 ;; esac
@@ -16,14 +19,18 @@ needed() { # list word: 1 when word is in the list, 0 otherwise
 
 lint_steps() { # crates
     local crates=$1 packages="" crate unchanged="and what it builds on are unchanged"
-    for crate in $crates; do [ "$crate" = bota_radovid ] || packages+=" -p $crate"; done
+    for crate in $crates; do
+        case "$crate" in bota_radovid | bota_lua) ;; *) packages+=" -p $crate" ;; esac
+    done
     printf '%s\t%s\t%s\t%s\n' \
         clippy "$([ -n "$packages" ] && echo 1 || echo 0)" "no crate changed" \
         "cargo clippy$packages --all-targets -- -D warnings" \
         clippy-radovid "$(needed "$crates" bota_radovid)" "bota_radovid $unchanged" \
         "cargo clippy -p bota_radovid --all-targets --features e2e -- -D warnings" \
         clippy-lua "$(needed "$crates" bota_lua)" "bota_lua $unchanged" \
-        "cargo clippy -p bota_lua --all-targets --all-features -- -D warnings" \
+        "cargo clippy --manifest-path $botscript --all-targets --all-features -- -D warnings" \
+        fuzz-lua "$(needed "$crates" bota_lua)" "bota_lua $unchanged" \
+        "crates/bota_lua/fuzz/fuzz.sh check" \
         clippy-ui "$(needed "$crates" bota_client_core)" "bota_client_core $unchanged" \
         "cargo clippy -p bota_client_core --all-targets --features ui -- -D warnings"
 }
@@ -38,7 +45,7 @@ wasm_steps() { # crates
         wasm "$(needed "$crates" bota_client_core)" "bota_client_core $unchanged" \
         "cargo check --target wasm32-unknown-unknown -p bota_client_core -p bota_proto --features bota_client_core/ui" \
         wasm-lua "$(needed "$crates" bota_lua)" "bota_lua $unchanged" \
-        "cargo check --release --target wasm32-unknown-unknown -p bota_lua --no-default-features" \
+        "cargo check --release --target wasm32-unknown-unknown --manifest-path $botscript --no-default-features" \
         wasm-radovid "$(needed "$crates" bota_radovid)" "bota_radovid $unchanged" \
         "cargo check --target wasm32-unknown-unknown -p bota_radovid --features web" \
         wasm-web "$(needed "$crates" bota_client_core)" "bota_client_core $unchanged" \

@@ -19,7 +19,13 @@
 [crate.bota_core]
 [crate.bota_replay]
 
+# The bot-script host is a workspace of its own (crates/bota_lua/Cargo.toml) because it builds on luagee, a repository
+# beside this one: without that checkout nothing of it is built, linted, listed or run, and `plan` says so. Machines that
+# must cover it set TEST_GROUPS_REQUIRE_ALL=1.
 [crate.bota_lua]
+manifest = "crates/bota_lua/Cargo.toml"
+requires = ["../luagee/crates/luagee/Cargo.toml"]
+lint = true
 features = ["native"]
 
 [crate.bota_client_core]

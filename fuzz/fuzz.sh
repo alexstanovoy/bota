@@ -11,6 +11,9 @@
 #                                         and memory blowups, all of which land in artifacts/;
 #                                         an input slower than FUZZ_TIMEOUT seconds (30) is a hang
 #
+# crates/bota_lua/fuzz/fuzz.sh is a link to this script and does the same for the target of the bot-script host, which
+# needs the luagee checkout and so has a fuzz workspace of its own.
+#
 # Each target keeps its corpus in fuzz/corpus/<target> and writes what it
 # finds to fuzz/artifacts/<target>.
 set -euo pipefail

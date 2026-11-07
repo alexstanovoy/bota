@@ -39,7 +39,22 @@ Setup I/O has no latency guarantee. Thinks load exclusively from the completed b
 `bots/` and bare module names address pack sources; `game/` addresses the optional
 runtime-source root. Diagnostics use logical module names.
 
-Run `bota_botscript` with `--features native -- --scripts DIR --team radiant`.
+## Building and testing
+
+`bota_lua` is a workspace of its own, outside the bota workspace: it builds on `luagee`, which must be checked out
+beside the bota repository (`../luagee`, relative to the repository root), and the bota workspace builds without it.
+Run these from the bota repository root; the build output goes to `crates/bota_lua/target`.
+
+```sh
+cargo build --release --manifest-path crates/bota_lua/Cargo.toml --features native      # the bota_botscript binary
+cargo test --profile test-release --manifest-path crates/bota_lua/Cargo.toml --features native
+cargo clippy --manifest-path crates/bota_lua/Cargo.toml --all-targets --all-features -- -D warnings
+```
+
+`tools/precheck.sh` and `tools/gate.sh` cover it as well (clippy, the wasm check, the fuzz target, `cargo deny`, fmt and
+the `lua` test group) wherever the luagee checkout is present.
+
+Run `bota_botscript` (`crates/bota_lua/target/release/bota_botscript`) with `--scripts DIR --team radiant`.
 Options include `--runtime-scripts DIR`, `--address HOST:PORT`, `--hero KEY` and
 `--think-ms N`. It connects directly using `bota_client_core`. `BOTA_SEATS` accepts
 server-style `key_hex:team:name[:kind]` reservations; only the selected team's bot
@@ -51,5 +66,6 @@ It reports local-source conformance separately as not run when no pack is config
 setting `BOTA_LUA_LOCAL_PACK` also enables that contract in the group.
 `tools/test_lua_local.sh` is explicitly optional: set `BOTA_LUA_LOCAL_PACK` and,
 when required, `BOTA_LUA_RUNTIME_SCRIPTS`. It runs the ignored local-source match
-without copying source into the repository. `fuzz/fuzz_targets/lua_binding.rs`
-drives Lua source, hostile arguments, collection modes and varied game states.
+without copying source into the repository. `fuzz/fuzz_targets/lua_binding.rs` (here,
+a fuzz workspace of its own run with `fuzz/fuzz.sh`) drives Lua source, hostile arguments,
+collection modes and varied game states.

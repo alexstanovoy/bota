@@ -2,16 +2,18 @@
 resolver = "3"
 members = [
     "crates/bota_client_core",
-    "crates/bota_lua",
     "crates/bota_core",
     "crates/bota_proto",
     "crates/bota_radovid",
     "crates/bota_replay",
     "crates/bota_server",
 ]
+# bota_lua (the bot-script host and its `bota_botscript` binary) is a workspace of its own: Cargo loads the manifest of
+# every path dependency, an optional one included, so a member depending on the separate luagee repository would stop
+# every build here when that checkout is absent. See crates/bota_lua/README.md for how to build it.
+exclude = ["crates/bota_lua"]
 # bota_radovid is a helper for client writers and stays out of a plain cargo build and test.
 default-members = [
-    "crates/bota_lua",
     "crates/bota_client_core",
     "crates/bota_core",
     "crates/bota_proto",
@@ -33,10 +35,6 @@ proc-macro2 = { version = "=1.0.107", default-features = false }
 quote = { version = "1.0.47", default-features = false }
 prettyplease = { version = "=0.2.37", default-features = false }
 sha2 = { version = "0.11.1", default-features = false }
-rustix = { version = "=1.1.6", default-features = false }
-getrandom = { version = "=0.4.3", default-features = false }
-luagee = { path = "../luagee/crates/luagee", default-features = false }
-bota_lua = { path = "crates/bota_lua", default-features = false }
 bota_client_core = { path = "crates/bota_client_core" }
 bota_core = { path = "crates/bota_core" }
 bota_proto = { path = "crates/bota_proto" }

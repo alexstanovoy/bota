@@ -12,7 +12,6 @@ publish = false
 cargo-fuzz = true
 
 [dependencies]
-bota_lua.workspace = true
 bota_client_core = { path = "../crates/bota_client_core", features = ["ui"] }
 bota_core = { path = "../crates/bota_core" }
 bota_proto = { path = "../crates/bota_proto" }
@@ -21,9 +20,6 @@ bota_server = { path = "../crates/bota_server" }
 libfuzzer-sys = "0.4"
 serde = "1"
 signal-hook = "0.3"
-
-[workspace.dependencies]
-bota_lua = { path = "../crates/bota_lua", default-features = false }
 
 [workspace]
 members = ["."]
@@ -71,13 +67,6 @@ bench = false
 [[bin]]
 name = "replay_meta"
 path = "fuzz_targets/replay_meta.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "lua_binding"
-path = "fuzz_targets/lua_binding.rs"
 test = false
 doc = false
 bench = false

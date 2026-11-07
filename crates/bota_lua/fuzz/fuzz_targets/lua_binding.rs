@@ -5,7 +5,7 @@ use bota_lua::{BotSeat, GcStress, Keys, Limits, LuaTeam, ModuleBank, ScriptKind}
 use bota_proto::{EventKind, HeroId, ItemId, Order, ServerMsg, SlotId, Team};
 use libfuzzer_sys::fuzz_target;
 use std::sync::{Mutex, OnceLock};
-#[path = "../../crates/bota_lua/tests/support/mod.rs"]
+#[path = "../../tests/support/mod.rs"]
 mod support;
 
 fn fresh() -> ClientSession {

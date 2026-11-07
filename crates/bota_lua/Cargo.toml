@@ -1,3 +1,7 @@
+# The bot-script host: a workspace of its own, outside the bota workspace, because it depends on luagee, a repository
+# of its own that is not always checked out beside this one (Cargo loads every path dependency's manifest, optional or not,
+# so as a member it would break every build of bota without that checkout). Build and test it with
+# `--manifest-path crates/bota_lua/Cargo.toml` (README.md); it has its own Cargo.lock and target directory.
 [package]
 name = "bota_lua"
 version.workspace = true
@@ -31,3 +35,39 @@ workspace = true
 name = "bota_botscript"
 path = "src/bin/bota_botscript.rs"
 required-features = ["native"]
+
+[workspace]
+members = ["."]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[workspace.dependencies]
+rustix = { version = "=1.1.6", default-features = false }
+getrandom = { version = "=0.4.3", default-features = false }
+luagee = { path = "../../../luagee/crates/luagee", default-features = false }
+bota_client_core = { path = "../bota_client_core" }
+bota_core = { path = "../bota_core" }
+bota_proto = { path = "../bota_proto" }
+bota_server = { path = "../bota_server" }
+
+[workspace.lints.clippy]
+float_arithmetic = "deny"
+
+# The profiles of the bota workspace (Cargo.toml there; a profile of a member is ignored, so they are repeated): the
+# tests run in release's optimisation with the checks of a debug build in this repository's crates.
+[profile.release]
+codegen-units = 1
+
+[profile.test-release]
+inherits = "release"
+debug-assertions = true
+overflow-checks = true
+codegen-units = 16
+
+[profile.test-release.package."*"]
+debug-assertions = false
+overflow-checks = false
+codegen-units = 1
