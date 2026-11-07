@@ -38,7 +38,10 @@ coordinate shift and nearest-even fixed-point conversion. All retained storage
 must fit the host reserve or a rooted charged userdata allocation.
 
 `context.issue_hero` checks active-bot ownership and appends an ordinary pending
-`IssuedOrder`. The scheduler commits only after all callbacks for that bot succeed;
+`IssuedOrder`. `context.issue_move` additionally accepts that seat's currently
+visible, living courier and emits an ordinary courier movement order. It checks
+current kind, owner and side; a remembered handle alone grants no control.
+The scheduler commits only after all callbacks for that bot succeed;
 on error or fuel exhaustion it discards the bot's entire outbox. The native worker
 discards late outputs. Actions must not change simulation state or call a `World`.
 

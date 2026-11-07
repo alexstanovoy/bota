@@ -1,5 +1,4 @@
 //! Three complete examples for API families: a global, a filtered getter and an action.
-use bota_proto::{Order, Target};
 use luagee::{Args, Lua, LuaError, Value, Vm};
 use super::context::{ApiContext, register_global, register_unit};
 use crate::{BindingError, vector};
@@ -40,6 +39,6 @@ fn get_health(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, Lu
 fn move_to_location(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaError> {
     let receiver = context.receiver(vm, args)?;
     let position = vector::position(vm, vm.arg(args, 1))?;
-    context.issue_hero(vm, receiver, Order::Move { target: Target::Pos(position) })?;
+    context.issue_move(vm, receiver, position)?;
     Ok(0)
 }

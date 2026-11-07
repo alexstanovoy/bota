@@ -1,7 +1,7 @@
 //! The binding extension contract: checked engine identities, filtered state and ordinary orders.
 
 use bota_client_core::IssuedOrder;
-use bota_proto::{EntityId, Order};
+use bota_proto::{EntityId, Order, Target, UnitKind, Vec2};
 use luagee::{Args, Lua, LuaError, TableId, Value, Vm};
 use super::{Shared, method, global};
 use crate::{BindingError, vector::Vectors};
@@ -23,6 +23,20 @@ impl ApiContext {
     /// Stable per-entity table, pinned and accounted by the host; absent identity becomes Lua nil.
     pub fn unit_value(&self, vm: &mut Vm, id: Option<EntityId>) -> Result<Value, LuaError> {
         self.state.borrow_mut().handle(vm, id)
+    }
+
+    /// Movement may also address the active bot's currently observed living courier.
+    pub fn issue_move(&self, vm: &mut Vm, receiver: EntityId, position: Vec2) -> Result<(), LuaError> {
+        let order = Order::Move { target: Target::Pos(position) };
+        if Some(receiver) == self.state.borrow().own_id() { return self.issue_hero(vm, receiver, order); }
+        let mut state = self.state.borrow_mut();
+        vm.charge_fuel(2 + state.snapshot.as_ref().map_or(0, |snapshot| snapshot.units.len()) as u64 / 8)?;
+        let permitted = state.snapshot.as_ref().is_some_and(|snapshot| snapshot.units.iter().any(|known| {
+            known.unit.id == receiver && known.visible && known.unit.hp > 0 && known.unit.kind == UnitKind::Courier
+                && known.unit.owner == Some(state.current_slot) && known.unit.team == state.team
+        }));
+        if !permitted { return Err(vm.error("movement requires the active bot or its visible living courier")); }
+        state.order(vm, IssuedOrder::courier(receiver, order))
     }
 
     /// This is a pending intent. The scheduler publishes it only after the bot's complete turn succeeds.
