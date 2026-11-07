@@ -122,6 +122,7 @@ impl TestClient {
 over_every_wire!(
     a_key_holder_takes_its_seat_and_hero_back_only_once_the_live_connection_has_ended,
     a_seat_that_left_for_good_cannot_rejoin_a_running_match,
+    a_departed_seat_key_cannot_watch_but_a_disconnected_one_can,
     a_seat_that_left_for_good_cannot_order_or_speak_on_its_open_connection,
     a_disconnected_seat_can_rejoin_during_picks_or_a_running_match,
     a_seat_key_admits_only_so_many_spectators_at_once,
@@ -201,6 +202,27 @@ fn a_seat_that_left_for_good_cannot_rejoin_a_running_match(wire: Wire) {
         );
         // The teammate still plays: refusal did not cancel the match or disturb its seat.
         clients[1].say_all_and_hear("still playing");
+    }
+}
+
+fn a_departed_seat_key_cannot_watch_but_a_disconnected_one_can(wire: Wire) {
+    for (reserved_seats, left) in [(true, false), (true, true), (false, false), (false, true)] {
+        let (addr, mut clients) = three_seats(wire, reserved_seats, true);
+        let mut departing = clients.remove(0);
+        if left {
+            departing.send(&ClientMsg::LeaveGame);
+        }
+        departing.leave();
+        let mut watcher = TestClient::connect(addr.as_str());
+        watcher.hello(Role::Spectator, Some(KEYS[0]));
+        if left {
+            assert_eq!(watcher.refusal(), RejectReason::NotAdmitted);
+        } else {
+            assert_eq!(watcher.welcome(), None);
+        }
+        let mut other = TestClient::connect(addr.as_str());
+        other.hello(Role::Spectator, Some(KEYS[1]));
+        assert_eq!(other.welcome(), None, "another seat's key still watches");
     }
 }
 

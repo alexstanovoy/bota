@@ -649,11 +649,6 @@ impl Server {
                 if let Some(seat) = self.roster.seat_of(id)
                     && self.left.contains(&seat.slot)
                 {
-                    log::debug!(
-                        "ignoring message from player {} after seat {} left for good",
-                        id.0,
-                        seat.slot.0
-                    );
                     return None;
                 }
                 return self.conn(id).is_some().then(|| (id, msg.into_message()));
@@ -1014,6 +1009,9 @@ impl Server {
             Watch::Live | Watch::Late => None,
         };
         if let Some(slot) = eyes {
+            if self.left.contains(&slot) {
+                return Err(RejectReason::NotAdmitted);
+            }
             let watching = self
                 .spectators
                 .iter()
@@ -1280,6 +1278,7 @@ impl Server {
             && !self.left.contains(&seat.slot)
         {
             self.left.push(seat.slot);
+            eprintln!("bota_server: seat {} left for good", seat.slot.0);
         }
     }
 

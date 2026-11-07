@@ -145,7 +145,6 @@ dependencies = [
  "clap",
  "futures-util",
  "getrandom 0.4.3",
- "log",
  "miniz_oxide",
  "rand_chacha",
  "rustc-hash",
