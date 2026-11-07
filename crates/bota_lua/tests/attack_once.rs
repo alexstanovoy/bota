@@ -341,7 +341,7 @@ fn attack_once_think_gap(evict: bool) {
                 .recent_events()
                 .iter()
                 .any(|event| matches!(event.kind, EventKind::AttackLaunched { .. })),
-            "the recent history really evicted the launch"
+            "launch observations stay outside recent history"
         );
     }
     let turn = lua.think(&delayed).expect("resume");
@@ -404,10 +404,11 @@ fn an_older_inflight_shot_cannot_complete_a_new_once_request() {
     );
     let mut launched = false;
     for _ in 0..120 {
-        if sessions[0].recent_events().iter().any(|event| {
-            event.tick > requested
-                && matches!(event.kind,EventKind::AttackLaunched{attacker,..} if attacker==source)
-        }) {
+        if sessions[0]
+            .entity(source)
+            .and_then(|track| track.last_attack_launched)
+            .is_some_and(|launch| launch.tick > requested)
+        {
             launched = true;
             break;
         }
