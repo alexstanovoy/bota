@@ -121,8 +121,140 @@ impl TestClient {
 
 over_every_wire!(
     a_key_holder_takes_its_seat_and_hero_back_only_once_the_live_connection_has_ended,
+    a_seat_that_left_for_good_cannot_rejoin_a_running_match,
+    a_disconnected_seat_can_rejoin_during_picks_or_a_running_match,
     a_seat_key_admits_only_so_many_spectators_at_once,
 );
+
+/// Three seats, so one Radiant seat leaving does not forfeit its team's match.
+fn three_seats(wire: Wire, reserved_seats: bool, started: bool) -> (String, Vec<TestClient>) {
+    let mut opts = reserved(55);
+    opts.players = 3;
+    opts.order_delays = vec![OrderDelay { base: 1, jitter: 0 }; 3];
+    opts.reserved.push(ReservedSeat {
+        kind: None,
+        key: SeatKey([3; 32]),
+        name: "two".to_owned(),
+        team: Team::Radiant,
+    });
+    if !reserved_seats {
+        opts.reserved.clear();
+    }
+    // No phase ends while the test drives another socket on a busy machine.
+    opts.pick_time = HANG_GUARD * 2;
+    opts.mode = TickMode::Lockstep;
+    opts.ack_timeout_ticks = 30 * HANG_GUARD.as_secs() as u32;
+    let addr = serve_over(opts, wire);
+    let mut clients = Vec::new();
+    for key in [KEYS[0], KEYS[1], SeatKey([3; 32])] {
+        let mut client = TestClient::connect(addr.as_str());
+        client.hello(Role::Bot, Some(key));
+        client.welcome();
+        client.send(&ClientMsg::PickHero {
+            hero: HeroId::SHADOW_FIEND,
+        });
+        client.send(&ClientMsg::SetReady(started));
+        clients.push(client);
+    }
+    if started {
+        for client in &mut clients {
+            client.match_start();
+        }
+    }
+    (addr, clients)
+}
+
+fn a_seat_that_left_for_good_cannot_rejoin_a_running_match(wire: Wire) {
+    for reserved_seats in [true, false] {
+        let (addr, mut clients) = three_seats(wire, reserved_seats, true);
+        let mut leaver = clients.remove(0);
+        leaver.send(&ClientMsg::LeaveGame);
+        // The close is a barrier: LeaveGame was heard and the old connection released.
+        leaver.leave();
+        let mut back = TestClient::connect(addr.as_str());
+        back.hello(Role::Bot, Some(KEYS[0]));
+        assert_eq!(back.refusal(), RejectReason::NotAdmitted);
+        // The client library exposes the final admission refusal to its caller as well.
+        let mut link = bota_client_core::Net::connect(&addr).expect("connected");
+        let error = bota_client_core::greet(&mut link, Role::Bot, "back", Some(KEYS[0]))
+            .expect_err("a seat left for good is refused");
+        assert!(
+            matches!(
+                error
+                    .get_ref()
+                    .and_then(|error| error.downcast_ref::<bota_client_core::SessionError>()),
+                Some(bota_client_core::SessionError::Refused(
+                    RejectReason::NotAdmitted
+                ))
+            ),
+            "{error}"
+        );
+        // The teammate still plays: refusal did not cancel the match or disturb its seat.
+        clients[1].say_all_and_hear("still playing");
+    }
+}
+
+#[test]
+fn a_leave_during_picks_cancels_even_with_another_hello_queued() {
+    let mut opts = reserved(56);
+    opts.pick_time = HANG_GUARD * 2;
+    let server = start_ending_server(opts);
+    let mut stayer = TestClient::connect(server.addr);
+    stayer.hello(Role::Bot, Some(KEYS[1]));
+    stayer.welcome();
+    let mut leaver = TestClient::connect(server.addr);
+    leaver.hello(Role::Bot, Some(KEYS[0]));
+    leaver.welcome();
+    // One write preserves the wire order even when the reader batches both messages.
+    let mut frames = encode_frame_to_vec(&ClientMsg::LeaveGame).expect("leave frame");
+    frames.extend(
+        encode_frame_to_vec(&ClientMsg::hello(
+            Role::Bot,
+            "back",
+            Some(KEYS[0]),
+            bota_core::WIRE_FINGERPRINT,
+        ))
+        .expect("hello frame"),
+    );
+    leaver.stream.write_all(&frames).expect("leave then hello");
+    while let Some(msg) = leaver.recv_or_hangup() {
+        assert!(
+            !matches!(
+                msg,
+                ServerMsg::Welcome { .. } | ServerMsg::MatchStart { .. }
+            ),
+            "{msg:?}"
+        );
+    }
+    while let Some(msg) = stayer.recv_or_hangup() {
+        assert!(!matches!(msg, ServerMsg::MatchStart { .. }), "{msg:?}");
+    }
+    assert_eq!(server.end(), MatchEnd::Abandoned);
+}
+
+fn a_disconnected_seat_can_rejoin_during_picks_or_a_running_match(wire: Wire) {
+    for reserved_seats in [true, false] {
+        for started in [false, true] {
+            let (addr, mut clients) = three_seats(wire, reserved_seats, started);
+            clients.remove(0).leave();
+            let mut back = TestClient::connect(addr.as_str());
+            back.hello(Role::Bot, Some(KEYS[0]));
+            assert_eq!(back.welcome(), Some(SlotId(0)));
+            if started {
+                assert_eq!(back.match_start().picks[0].hero, HeroId::SHADOW_FIEND);
+            } else {
+                back.recv_until(|msg| match msg {
+                    ServerMsg::LobbyState { slots, .. } => {
+                        assert_eq!(slots[0].hero, Some(HeroId::SHADOW_FIEND));
+                        Some(())
+                    }
+                    _ => None,
+                });
+            }
+            back.say_all_and_hear("back after disconnect");
+        }
+    }
+}
 
 fn a_key_holder_takes_its_seat_and_hero_back_only_once_the_live_connection_has_ended(wire: Wire) {
     let (addr, old, mut other) = running_match(wire);

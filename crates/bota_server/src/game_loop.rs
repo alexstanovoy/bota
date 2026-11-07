@@ -305,7 +305,7 @@ fn run_inner(
         started: Instant::now(),
         delayed,
         pick_clock: PickClock::Waiting,
-        left_in_lobby: None,
+        left: Vec::new(),
         world_tick: Arc::new(AtomicU32::new(0)),
         #[cfg(test)]
         start_gate: hooks.start_gate,
@@ -514,9 +514,9 @@ struct Server {
     world_tick: Arc<AtomicU32>,
     /// The hero selection clock; runs in the lobby phase only.
     pick_clock: PickClock,
-    /// The seat whose holder left for good during the picks ([`ClientMsg::LeaveGame`]): the
-    /// match is cancelled, as Dota cancels one abandoned during hero selection.
-    left_in_lobby: Option<SlotId>,
+    /// Seats whose holders left for good, in departure order. Admission and forfeits share
+    /// this record so a released connection never makes an abandoned seat available again.
+    left: Vec<SlotId>,
     /// What each connection may still say.
     rates: Rates,
     /// The lines the replay is yet to be given, in the order taken in.
@@ -533,8 +533,6 @@ struct Inbox {
     acked: Vec<u32>,
     /// What each side calls the entities it is told of.
     handles: Handles,
-    /// Seats whose holder left the match for good ([`ClientMsg::LeaveGame`]).
-    left: Vec<SlotId>,
     /// Which seats were held when the match began: only those can leave it.
     seated: Vec<bool>,
 }
@@ -1051,8 +1049,8 @@ impl Server {
             .then_some("its address holds as many watchers as it may")
     }
 
-    /// Seats a connection in a seat its key entitles it to, unless a live
-    /// connection holds it: one that ended, or was found dead, let it go.
+    /// Seats a connection in a seat its key entitles it to, unless it left for good or a live
+    /// connection holds it. A disconnection alone lets the seat be taken back.
     fn take_seat(
         &mut self,
         id: PlayerId,
@@ -1060,6 +1058,9 @@ impl Server {
         slot: SlotId,
         name: String,
     ) -> Result<(), RejectReason> {
+        if self.left.contains(&slot) {
+            return Err(RejectReason::NotAdmitted);
+        }
         let forced = self.forced_hero();
         let seat = &mut self.roster.seats[usize::from(slot.0)];
         if seat.player.is_some() {
@@ -1184,7 +1185,7 @@ impl Server {
 
     /// Whether a seat left for good during the picks: the match is cancelled.
     fn left_during_picks(&self) -> bool {
-        let Some(slot) = self.left_in_lobby else {
+        let Some(slot) = self.left.first() else {
             return false;
         };
         eprintln!(
@@ -1254,16 +1255,21 @@ impl Server {
             ClientMsg::Catalogue(told) => self.hear_catalogue(id, told, None),
             // A seat left for good before the match begins: nobody plays it, as Dota cancels a
             // match abandoned during hero selection.
-            ClientMsg::LeaveGame => {
-                if let Some(seat) = self.roster.seat_of(id) {
-                    self.left_in_lobby = Some(seat.slot);
-                }
-            }
+            ClientMsg::LeaveGame => self.leave_game(id),
             ClientMsg::Order { .. }
             | ClientMsg::Ack { .. }
             | ClientMsg::ViewAs { .. }
             | ClientMsg::Pong
             | ClientMsg::Probe { .. } => {}
+        }
+    }
+
+    /// Records an explicit departure; losing a connection never comes through here.
+    fn leave_game(&mut self, id: PlayerId) {
+        if let Some(seat) = self.roster.seat_of(id)
+            && !self.left.contains(&seat.slot)
+        {
+            self.left.push(seat.slot);
         }
     }
 
@@ -1464,7 +1470,6 @@ impl Server {
                 .expect("check_opts checked the order delays"),
             acked: vec![0; self.roster.seats.len()],
             handles: Handles::new(&cfg, &world),
-            left: Vec::new(),
             seated: self
                 .roster
                 .seats
@@ -1555,14 +1560,14 @@ impl Server {
                 .zip(&inbox.seated)
                 .filter(|(seat, held)| **held && seat.team == team)
                 .peekable();
-            held.peek().is_some() && held.all(|(seat, _)| inbox.left.contains(&seat.slot))
+            held.peek().is_some() && held.all(|(seat, _)| self.left.contains(&seat.slot))
         };
         let (loser, winner) = match (team_gone(Team::Radiant), team_gone(Team::Dire)) {
             (true, false) => (Team::Radiant, Team::Dire),
             (false, true) => (Team::Dire, Team::Radiant),
             _ => return None,
         };
-        let leaver = inbox.left.iter().find(|slot| {
+        let leaver = self.left.iter().find(|slot| {
             self.roster
                 .seats
                 .iter()
@@ -1832,14 +1837,7 @@ impl Server {
             }
             ClientMsg::Say(line) => self.say(id, line, Some((world, &inbox.handles))),
             ClientMsg::Compress(_) => self.compress(id),
-            ClientMsg::LeaveGame => {
-                if let Some(seat) = self.roster.seat_of(id) {
-                    let slot = seat.slot;
-                    if !inbox.left.contains(&slot) {
-                        inbox.left.push(slot);
-                    }
-                }
-            }
+            ClientMsg::LeaveGame => self.leave_game(id),
             ClientMsg::Catalogue(told) => self.hear_catalogue(id, told, Some(cfg.catalogue)),
             ClientMsg::PickHero { .. }
             | ClientMsg::SetReady(_)
