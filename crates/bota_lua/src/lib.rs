@@ -11,8 +11,8 @@ mod team;
 mod vector;
 
 pub use luagee::{GcStress, Keys, Limits, Loader, ModuleName};
-pub use team::*;
 pub use modules::ModuleBank;
+pub use team::*;
 
 /// A setup or session contract error; script failures are reported per bot in `TeamTurn`.
 #[derive(Debug)]
@@ -23,11 +23,15 @@ pub enum BindingError {
 }
 
 impl From<luagee::Error> for BindingError {
-    fn from(error: luagee::Error) -> Self { Self::Lua(error) }
+    fn from(error: luagee::Error) -> Self {
+        Self::Lua(error)
+    }
 }
 
 impl From<luagee::LuaError> for BindingError {
-    fn from(error: luagee::LuaError) -> Self { Self::Callback(error) }
+    fn from(error: luagee::LuaError) -> Self {
+        Self::Callback(error)
+    }
 }
 
 impl std::fmt::Display for BindingError {

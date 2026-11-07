@@ -5,7 +5,19 @@ use bota_proto::{HeroId, SlotId, Team};
 #[test]
 fn visible_towers_report_their_engine_unit_names() {
     let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
-    let mut lua = LuaTeam::new(Team::Radiant, &[BotSeat { slot: SlotId(0), hero: HeroId::SHADOW_FIEND }], Limits::DEFAULT, Keys { hash:[17,19], random:23 }).expect("team");
+    let mut lua = LuaTeam::new(
+        Team::Radiant,
+        &[BotSeat {
+            slot: SlotId(0),
+            hero: HeroId::SHADOW_FIEND,
+        }],
+        Limits::DEFAULT,
+        Keys {
+            hash: [17, 19],
+            random: 23,
+        },
+    )
+    .expect("team");
     lua.add_script(SlotId(0), ScriptKind::Takeover, "tower_names", br#"
         function Think()
             for team=2,3 do
@@ -28,11 +40,31 @@ fn the_first_solo_mid_wave_reports_canonical_creep_names() {
     let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
     let position = sessions[0].map().creep_spawns[0][usize::from(bota_core::rules::LANE_MID)];
     for _ in 0..=sessions[0].map().pregame_ticks + 1 {
-        let order = sessions[0].issue(bota_client_core::IssuedOrder::hero(bota_proto::Order::Move { target: bota_proto::Target::Pos(position) })).expect("order");
+        let order = sessions[0]
+            .issue(bota_client_core::IssuedOrder::hero(
+                bota_proto::Order::Move {
+                    target: bota_proto::Target::Pos(position),
+                },
+            ))
+            .expect("order");
         let streams = local.step(&[&[order], &[]]).expect("step");
-        for (session, stream) in sessions.iter_mut().zip(streams) { support::fold(session, stream); }
+        for (session, stream) in sessions.iter_mut().zip(streams) {
+            support::fold(session, stream);
+        }
     }
-    let mut lua = LuaTeam::new(Team::Radiant, &[BotSeat { slot: SlotId(0), hero: HeroId::SHADOW_FIEND }], Limits::DEFAULT, Keys { hash:[17,19], random:23 }).expect("team");
+    let mut lua = LuaTeam::new(
+        Team::Radiant,
+        &[BotSeat {
+            slot: SlotId(0),
+            hero: HeroId::SHADOW_FIEND,
+        }],
+        Limits::DEFAULT,
+        Keys {
+            hash: [17, 19],
+            random: 23,
+        },
+    )
+    .expect("team");
     lua.add_script(SlotId(0), ScriptKind::Takeover, "creep_names", br#"
         function Think()
             local creeps=GetBot():GetNearbyCreeps(1600,false)

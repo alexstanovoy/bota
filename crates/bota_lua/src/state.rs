@@ -1,5 +1,8 @@
 use bota_client_core::{ClientSession, IssuedOrder, VelocityEstimate};
-use bota_proto::{AbilityView, EntityId, HeroId, ItemSlot, ItemView, Kit, SlotId, StockView, TalentView, Team, UnitView};
+use bota_proto::{
+    AbilityView, EntityId, HeroId, ItemSlot, ItemView, Kit, SlotId, StockView, TalentView, Team,
+    UnitView,
+};
 use luagee::{LuaError, TableId, Value, Vm};
 
 use crate::{BindingError, BotSeat};
@@ -29,7 +32,11 @@ pub(crate) struct KnownUnit {
     pub velocity: Option<VelocityEstimate>,
 }
 
-pub(crate) struct AttackFact { pub tick: u32, pub source: EntityId, pub target: Option<EntityId> }
+pub(crate) struct AttackFact {
+    pub tick: u32,
+    pub source: EntityId,
+    pub target: Option<EntityId>,
+}
 
 #[derive(Clone, Copy)]
 pub(crate) struct PendingOnce {
@@ -55,58 +62,194 @@ pub(crate) struct Snapshot {
 
 impl Snapshot {
     pub(crate) fn capture(session: &ClientSession) -> Result<Self, BindingError> {
-        let view = session.current().ok_or(BindingError::Configuration("a current view is required"))?;
+        let view = session
+            .current()
+            .ok_or(BindingError::Configuration("a current view is required"))?;
         let players = view.players.iter().try_fold(0usize, |bytes, player| {
-            bytes.checked_add(std::mem::size_of::<Player>())?
-                .checked_add(player.stash.as_ref().map_or(0, |slots| slots.len()).checked_mul(std::mem::size_of::<Option<ItemView>>())?)?
-                .checked_add(player.kit.as_ref().map_or(0, |kit| kit.abilities.len()).checked_mul(std::mem::size_of::<AbilityView>())?)?
-                .checked_add(player.kit.as_ref().map_or(0, |kit| kit.items.len()).checked_mul(std::mem::size_of::<Option<ItemView>>())?)
+            bytes
+                .checked_add(std::mem::size_of::<Player>())?
+                .checked_add(
+                    player
+                        .stash
+                        .as_ref()
+                        .map_or(0, |slots| slots.len())
+                        .checked_mul(std::mem::size_of::<Option<ItemView>>())?,
+                )?
+                .checked_add(
+                    player
+                        .kit
+                        .as_ref()
+                        .map_or(0, |kit| kit.abilities.len())
+                        .checked_mul(std::mem::size_of::<AbilityView>())?,
+                )?
+                .checked_add(
+                    player
+                        .kit
+                        .as_ref()
+                        .map_or(0, |kit| kit.items.len())
+                        .checked_mul(std::mem::size_of::<Option<ItemView>>())?,
+                )
         });
-        let players = players.and_then(|bytes| bytes.checked_add(view.talents.len().checked_mul(std::mem::size_of::<TalentView>())?)?
-            .checked_add(view.stock.len().checked_mul(std::mem::size_of::<StockView>())?)?
-            .checked_add(session.recent_events().len().checked_mul(std::mem::size_of::<(u32, EntityId, EntityId)>())?)?
-            .checked_add(session.entities().len().checked_mul(std::mem::size_of::<AttackFact>())?));
-        let bytes = session.entities().iter().try_fold(players.unwrap_or(usize::MAX), |bytes, track| {
-            let unit = &track.unit;
-            bytes.checked_add(std::mem::size_of::<KnownUnit>())?
-                .checked_add(unit.abilities.len().checked_mul(std::mem::size_of::<bota_proto::AbilityView>())?)?
-                .checked_add(unit.items.len().checked_mul(std::mem::size_of::<Option<bota_proto::ItemView>>())?)?
-                .checked_add(unit.effects.len().checked_mul(std::mem::size_of::<bota_proto::EffectView>())?)?
-                .checked_add(unit.queue.len().checked_mul(std::mem::size_of::<bota_proto::Order>())?)
+        let players = players.and_then(|bytes| {
+            bytes
+                .checked_add(
+                    view.talents
+                        .len()
+                        .checked_mul(std::mem::size_of::<TalentView>())?,
+                )?
+                .checked_add(
+                    view.stock
+                        .len()
+                        .checked_mul(std::mem::size_of::<StockView>())?,
+                )?
+                .checked_add(
+                    session
+                        .recent_events()
+                        .len()
+                        .checked_mul(std::mem::size_of::<(u32, EntityId, EntityId)>())?,
+                )?
+                .checked_add(
+                    session
+                        .entities()
+                        .len()
+                        .checked_mul(std::mem::size_of::<AttackFact>())?,
+                )
         });
-        if session.recent_events().len() > 16384 || session.entities().len() > MAX_HANDLES || view.players.len() > 10 || bytes.is_none_or(|bytes| bytes > MAX_SNAPSHOT_BYTES) {
-            return Err(BindingError::Configuration("Lua snapshot storage limit exceeded"));
+        let bytes =
+            session
+                .entities()
+                .iter()
+                .try_fold(players.unwrap_or(usize::MAX), |bytes, track| {
+                    let unit = &track.unit;
+                    bytes
+                        .checked_add(std::mem::size_of::<KnownUnit>())?
+                        .checked_add(
+                            unit.abilities
+                                .len()
+                                .checked_mul(std::mem::size_of::<bota_proto::AbilityView>())?,
+                        )?
+                        .checked_add(
+                            unit.items
+                                .len()
+                                .checked_mul(std::mem::size_of::<Option<bota_proto::ItemView>>())?,
+                        )?
+                        .checked_add(
+                            unit.effects
+                                .len()
+                                .checked_mul(std::mem::size_of::<bota_proto::EffectView>())?,
+                        )?
+                        .checked_add(
+                            unit.queue
+                                .len()
+                                .checked_mul(std::mem::size_of::<bota_proto::Order>())?,
+                        )
+                });
+        if session.recent_events().len() > 16384
+            || session.entities().len() > MAX_HANDLES
+            || view.players.len() > 10
+            || bytes.is_none_or(|bytes| bytes > MAX_SNAPSHOT_BYTES)
+        {
+            return Err(BindingError::Configuration(
+                "Lua snapshot storage limit exceeded",
+            ));
         }
         Ok(Self {
-            team: session.team(), tick: view.tick, horn: session.map().pregame_ticks, map: session.map(),
-            players: view.players.iter().map(|player| {
-                let own = player.team == session.team();
-                Player { slot: player.slot, team: player.team, hero: player.hero, level: player.level, unit: player.unit,
-                    gold: own.then_some(player.gold).flatten(), kit: own.then(|| player.kit.clone()).flatten(),
-                    stash: own.then(|| player.stash.clone()).flatten(), respawn_left: player.respawn_left }
-            }).collect(),
-            damage: session.recent_events().iter().filter_map(|event| match event.kind { bota_proto::EventKind::Damaged { source: Some(source), target, .. } => Some((event.tick, source, target)), _ => None }).collect(),
-            talents: view.talents.iter().filter(|talents| view.players.iter().any(|player| player.slot == talents.slot && player.team == session.team())).copied().collect(),
-            stock: view.stock.clone(), catalogue: session.statics().catalogue(),
+            team: session.team(),
+            tick: view.tick,
+            horn: session.map().pregame_ticks,
+            map: session.map(),
+            players: view
+                .players
+                .iter()
+                .map(|player| {
+                    let own = player.team == session.team();
+                    Player {
+                        slot: player.slot,
+                        team: player.team,
+                        hero: player.hero,
+                        level: player.level,
+                        unit: player.unit,
+                        gold: own.then_some(player.gold).flatten(),
+                        kit: own.then(|| player.kit.clone()).flatten(),
+                        stash: own.then(|| player.stash.clone()).flatten(),
+                        respawn_left: player.respawn_left,
+                    }
+                })
+                .collect(),
+            damage: session
+                .recent_events()
+                .iter()
+                .filter_map(|event| match event.kind {
+                    bota_proto::EventKind::Damaged {
+                        source: Some(source),
+                        target,
+                        ..
+                    } => Some((event.tick, source, target)),
+                    _ => None,
+                })
+                .collect(),
+            talents: view
+                .talents
+                .iter()
+                .filter(|talents| {
+                    view.players
+                        .iter()
+                        .any(|player| player.slot == talents.slot && player.team == session.team())
+                })
+                .copied()
+                .collect(),
+            stock: view.stock.clone(),
+            catalogue: session.statics().catalogue(),
             attacks: attack_facts(session, view),
-            units: session.entities().iter().map(|track| KnownUnit { unit: track.unit.clone(), visible: view.units.binary_search_by_key(&track.unit.id, |unit| unit.id).is_ok(), last_visible: (track.last_seen_tick, track.unit.pos), velocity: track.velocity }).collect(),
+            units: session
+                .entities()
+                .iter()
+                .map(|track| KnownUnit {
+                    unit: track.unit.clone(),
+                    visible: view
+                        .units
+                        .binary_search_by_key(&track.unit.id, |unit| unit.id)
+                        .is_ok(),
+                    last_visible: (track.last_seen_tick, track.unit.pos),
+                    velocity: track.velocity,
+                })
+                .collect(),
         })
     }
 }
 
 fn attack_facts(session: &ClientSession, view: &bota_proto::WorldView) -> Vec<AttackFact> {
-    let owned = |source| view.unit(source).is_some_and(|unit| unit.team == session.team()) || view.players.iter().any(|player| player.team == session.team() && player.unit == Some(source));
+    let owned = |source| {
+        view.unit(source)
+            .is_some_and(|unit| unit.team == session.team())
+            || view
+                .players
+                .iter()
+                .any(|player| player.team == session.team() && player.unit == Some(source))
+    };
     let mut facts = Vec::with_capacity(session.entities().len());
     for track in session.entities() {
-        if owned(track.id) && let Some(launch) = track.last_attack_launched {
-            facts.push(AttackFact { tick: launch.tick, source: track.id, target: launch.target });
+        if owned(track.id)
+            && let Some(launch) = track.last_attack_launched
+        {
+            facts.push(AttackFact {
+                tick: launch.tick,
+                source: track.id,
+                target: launch.target,
+            });
         }
     }
     facts
 }
 
 #[derive(Default)]
-pub(crate) struct BotState { pub target: Option<EntityId>, pub next_purchase: i32, pub mode: u8, pub desire: f64, pub pending_once: Option<PendingOnce> }
+pub(crate) struct BotState {
+    pub target: Option<EntityId>,
+    pub next_purchase: i32,
+    pub mode: u8,
+    pub desire: f64,
+    pub pending_once: Option<PendingOnce>,
+}
 
 pub(crate) struct State {
     pub team: Team,
@@ -126,29 +269,67 @@ pub(crate) struct State {
 
 impl State {
     pub fn new(team: Team, seats: &[BotSeat]) -> Self {
-        Self { team, seats: seats.to_vec(), current_slot: seats[0].slot, snapshot: None, orders: Vec::with_capacity(MAX_ORDERS), units: Vec::new(), unit_methods: None, ability_methods: None, abilities: Vec::new(), bots: (0..seats.len()).map(|_| BotState::default()).collect(), selecting: false, picks: vec![None; seats.len()], purchases: None }
+        Self {
+            team,
+            seats: seats.to_vec(),
+            current_slot: seats[0].slot,
+            snapshot: None,
+            orders: Vec::with_capacity(MAX_ORDERS),
+            units: Vec::new(),
+            unit_methods: None,
+            ability_methods: None,
+            abilities: Vec::new(),
+            bots: (0..seats.len()).map(|_| BotState::default()).collect(),
+            selecting: false,
+            picks: vec![None; seats.len()],
+            purchases: None,
+        }
     }
 
-    pub fn bot_index(&self) -> usize { self.seats.iter().position(|seat| seat.slot == self.current_slot).expect("active slot belongs to the team") }
+    pub fn bot_index(&self) -> usize {
+        self.seats
+            .iter()
+            .position(|seat| seat.slot == self.current_slot)
+            .expect("active slot belongs to the team")
+    }
 
     pub fn own_id(&self) -> Option<EntityId> {
-        self.snapshot.as_ref()?.players.iter().find(|player| player.slot == self.current_slot)?.unit
+        self.snapshot
+            .as_ref()?
+            .players
+            .iter()
+            .find(|player| player.slot == self.current_slot)?
+            .unit
     }
 
     pub fn unit(&self, id: EntityId) -> Option<&UnitView> {
-        self.snapshot.as_ref()?.units.iter().find(|known| known.unit.id == id).map(|known| &known.unit)
+        self.snapshot
+            .as_ref()?
+            .units
+            .iter()
+            .find(|known| known.unit.id == id)
+            .map(|known| &known.unit)
     }
 
     pub fn player(&self, id: EntityId) -> Option<&Player> {
-        self.snapshot.as_ref()?.players.iter().find(|player| player.unit == Some(id))
+        self.snapshot
+            .as_ref()?
+            .players
+            .iter()
+            .find(|player| player.unit == Some(id))
     }
 
     pub fn hero(&self, id: EntityId) -> Option<HeroId> {
-        self.player(id).map(|player| player.hero).or_else(|| self.unit(id)?.hero)
+        self.player(id)
+            .map(|player| player.hero)
+            .or_else(|| self.unit(id)?.hero)
     }
 
     pub fn ability_book(&self, id: EntityId) -> Option<&[AbilityView]> {
-        self.player(id).and_then(|player| player.kit.as_ref()).map(|kit| kit.abilities.as_slice()).or_else(|| self.unit(id).map(|unit| unit.abilities.as_slice()))
+        self.player(id)
+            .and_then(|player| player.kit.as_ref())
+            .map(|kit| kit.abilities.as_slice())
+            .or_else(|| self.unit(id).map(|unit| unit.abilities.as_slice()))
     }
 
     pub fn item(&self, id: EntityId, slot: ItemSlot) -> Option<&ItemView> {
@@ -156,26 +337,44 @@ impl State {
         let kit = player.and_then(|player| player.kit.as_ref());
         let unit = self.unit(id);
         match usize::from(slot.0) {
-            index @ 0..=8 => kit.map(|kit| kit.items.as_slice()).or_else(|| unit.map(|unit| unit.items.as_slice()))?.get(index)?.as_ref(),
+            index @ 0..=8 => kit
+                .map(|kit| kit.items.as_slice())
+                .or_else(|| unit.map(|unit| unit.items.as_slice()))?
+                .get(index)?
+                .as_ref(),
             index @ 9..=14 => player?.stash.as_ref()?.get(index - 9)?.as_ref(),
-            15 => kit.map(|kit| &kit.town_portal).or_else(|| unit.map(|unit| &unit.town_portal))?.as_ref(),
+            15 => kit
+                .map(|kit| &kit.town_portal)
+                .or_else(|| unit.map(|unit| &unit.town_portal))?
+                .as_ref(),
             _ => None,
         }
     }
 
     pub fn id(&self, table: Value) -> Option<EntityId> {
-        self.units.iter().find(|(_, handle)| table == Value::Table(*handle)).map(|(id, _)| *id)
+        self.units
+            .iter()
+            .find(|(_, handle)| table == Value::Table(*handle))
+            .map(|(id, _)| *id)
     }
 
     pub fn handle(&mut self, vm: &mut Vm, id: Option<EntityId>) -> Result<Value, LuaError> {
         let Some(id) = id else { return Ok(Value::Nil) };
         vm.charge_fuel(1 + self.units.len() as u64 / 8)?;
-        if let Some((_, table)) = self.units.iter().find(|(unit, _)| *unit == id) { return Ok(Value::Table(*table)); }
-        if self.units.len() >= MAX_HANDLES { return Err(vm.error("unit handle limit exceeded")); }
+        if let Some((_, table)) = self.units.iter().find(|(unit, _)| *unit == id) {
+            return Ok(Value::Table(*table));
+        }
+        if self.units.len() >= MAX_HANDLES {
+            return Err(vm.error("unit handle limit exceeded"));
+        }
         let table = vm.new_table()?;
         let meta = vm.new_table()?;
         let key = vm.new_string(b"__index")?;
-        vm.raw_set(meta, key, self.unit_methods.map_or(Value::Nil, Value::Table))?;
+        vm.raw_set(
+            meta,
+            key,
+            self.unit_methods.map_or(Value::Nil, Value::Table),
+        )?;
         let key = vm.new_string(b"__metatable")?;
         vm.raw_set(meta, key, Value::Boolean(false))?;
         vm.set_metatable(table, Some(meta))?;
@@ -185,8 +384,13 @@ impl State {
     }
 
     pub fn order(&mut self, vm: &mut Vm, order: IssuedOrder) -> Result<(), LuaError> {
-        if self.orders.len() >= MAX_ORDERS { return Err(vm.error("order limit exceeded")); }
-        if order.unit.is_none() && !order.queue && self.breaks_once(order.order) { let index = self.bot_index(); self.bots[index].pending_once = None; }
+        if self.orders.len() >= MAX_ORDERS {
+            return Err(vm.error("order limit exceeded"));
+        }
+        if order.unit.is_none() && !order.queue && self.breaks_once(order.order) {
+            let index = self.bot_index();
+            self.bots[index].pending_once = None;
+        }
         self.orders.push(order);
         Ok(())
     }
@@ -195,8 +399,16 @@ impl State {
         use bota_proto::Order;
         match order {
             Order::Move { .. } | Order::MoveDirection { .. } | Order::Attack { .. } => true,
-            Order::Cast { slot, .. } => self.own_id().and_then(|id| self.ability_book(id)?.get(usize::from(slot.0))).and_then(|ability| bota_core::ability_def(ability.id)).is_none_or(|ability| !ability.immediate),
-            Order::Use { slot, .. } => self.own_id().and_then(|id| self.item(id, slot)).and_then(|item| bota_core::item_def(item.id)).is_none_or(|item| !item.immediate),
+            Order::Cast { slot, .. } => self
+                .own_id()
+                .and_then(|id| self.ability_book(id)?.get(usize::from(slot.0)))
+                .and_then(|ability| bota_core::ability_def(ability.id))
+                .is_none_or(|ability| !ability.immediate),
+            Order::Use { slot, .. } => self
+                .own_id()
+                .and_then(|id| self.item(id, slot))
+                .and_then(|item| bota_core::item_def(item.id))
+                .is_none_or(|item| !item.immediate),
             _ => false,
         }
     }
@@ -205,53 +417,93 @@ impl State {
 #[cfg(test)]
 mod tests {
     use super::*;
-    mod support { include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/support/mod.rs")); }
+    mod support {
+        include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/support/mod.rs"));
+    }
 
     #[test]
     fn the_opposing_snapshot_never_captures_private_inventory_or_gold() {
         let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
         let item = bota_core::item_by_key("item_branches").expect("item");
-        let buy = sessions[0].issue(IssuedOrder::hero(bota_proto::Order::Buy { item })).expect("buy");
+        let buy = sessions[0]
+            .issue(IssuedOrder::hero(bota_proto::Order::Buy { item }))
+            .expect("buy");
         let streams = local.step(&[&[buy], &[]]).expect("step");
-        for (session, stream) in sessions.iter_mut().zip(streams) { support::fold(session, stream); }
+        for (session, stream) in sessions.iter_mut().zip(streams) {
+            support::fold(session, stream);
+        }
         let own = Snapshot::capture(&sessions[0]).expect("own snapshot");
         let enemy = Snapshot::capture(&sessions[1]).expect("opposing snapshot");
-        let own_player = own.players.iter().find(|player| player.slot == SlotId(0)).expect("own player");
-        let hidden_player = enemy.players.iter().find(|player| player.slot == SlotId(0)).expect("opposing player");
+        let own_player = own
+            .players
+            .iter()
+            .find(|player| player.slot == SlotId(0))
+            .expect("own player");
+        let hidden_player = enemy
+            .players
+            .iter()
+            .find(|player| player.slot == SlotId(0))
+            .expect("opposing player");
         assert!(own_player.gold.is_some());
         assert!(own_player.stash.is_some());
         assert_eq!(hidden_player.gold, None);
         assert!(hidden_player.stash.is_none());
         assert!(hidden_player.kit.is_none());
-        assert!(!enemy.units.iter().any(|known| Some(known.unit.id) == own_player.unit));
+        assert!(
+            !enemy
+                .units
+                .iter()
+                .any(|known| Some(known.unit.id) == own_player.unit)
+        );
     }
 
     #[test]
     fn last_visible_motion_freezes_when_an_enemy_walks_into_fog() {
         use bota_proto::{Order, Target, Vec2};
         let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
-        let id = sessions[0].own_player().expect("player").unit.expect("hero");
+        let id = sessions[0]
+            .own_player()
+            .expect("player")
+            .unit
+            .expect("hero");
         let home = bota_core::fountain_pos(sessions[0].map(), Team::Radiant);
         let middle = Vec2::from_ints(9216, 9216);
         let mut last_seen = None;
         let mut hidden_ticks = 0;
         for _ in 0..2000 {
-            let radiant = sessions[0].issue(IssuedOrder::hero(Order::Move { target: Target::Pos(if last_seen.is_some() { home } else { middle }) })).expect("radiant order");
-            let dire = sessions[1].issue(IssuedOrder::hero(Order::Move { target: Target::Pos(middle) })).expect("dire order");
+            let radiant = sessions[0]
+                .issue(IssuedOrder::hero(Order::Move {
+                    target: Target::Pos(if last_seen.is_some() { home } else { middle }),
+                }))
+                .expect("radiant order");
+            let dire = sessions[1]
+                .issue(IssuedOrder::hero(Order::Move {
+                    target: Target::Pos(middle),
+                }))
+                .expect("dire order");
             let streams = local.step(&[&[radiant], &[dire]]).expect("step");
-            for (session, stream) in sessions.iter_mut().zip(streams) { support::fold(session, stream); }
+            for (session, stream) in sessions.iter_mut().zip(streams) {
+                support::fold(session, stream);
+            }
             let snapshot = Snapshot::capture(&sessions[1]).expect("opposing snapshot");
-            let Some(known) = snapshot.units.iter().find(|known| known.unit.id == id) else { continue };
+            let Some(known) = snapshot.units.iter().find(|known| known.unit.id == id) else {
+                continue;
+            };
             if known.visible {
                 assert_eq!(known.last_visible, (snapshot.tick, known.unit.pos));
                 last_seen = Some((known.last_visible, known.velocity));
             } else {
                 assert_eq!(Some((known.last_visible, known.velocity)), last_seen);
                 hidden_ticks += 1;
-                if hidden_ticks == 10 { break; }
+                if hidden_ticks == 10 {
+                    break;
+                }
             }
         }
-        assert_eq!(hidden_ticks, 10, "the enemy was seen moving, then lost in fog");
+        assert_eq!(
+            hidden_ticks, 10,
+            "the enemy was seen moving, then lost in fog"
+        );
     }
 
     #[test]
