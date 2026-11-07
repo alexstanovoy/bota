@@ -88,9 +88,9 @@ fn drink(def: &mut ItemDef) -> &mut crate::Drink {
 #[test]
 fn adding_roshan_items_keeps_the_preexisting_catalogue_prefix_identical() {
     let previous = bota_proto::CataloguePrefix {
-        items: 62,
-        // Pristine rhash main9b64ead adds identifier bindings to row digests.
-        digest: 0xfdd9_00b6_4f2c_4b0a,
+        items: 88,
+        // Independently measured on pristine landing main bc20dfbb, before Roshan.
+        digest: 0x976c_2b63_8294_681d,
     };
     assert_eq!(
         crate::Catalogue::first(previous.items)
