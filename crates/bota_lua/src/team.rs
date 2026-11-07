@@ -276,6 +276,8 @@ impl LuaTeam {
         let tick = snapshot.tick;
         self.last_tick = Some(tick);
         self.state.borrow_mut().snapshot = Some(snapshot);
+        let retired = self.state.borrow_mut().retire_handles();
+        for table in retired { self.lua.unpin(Value::Table(table))?; }
         self.state.borrow_mut().purchases = None;
         self.lua.begin_tick();
         let seats = self.state.borrow().seats.clone();

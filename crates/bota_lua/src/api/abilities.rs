@@ -3,7 +3,7 @@ use bota_proto::{AbilityId, AbilitySlot, EntityId, ItemId, ItemSlot, StatusFlags
 use super::globals::{integer, string};
 use super::*;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum Identity {
     Ability {
         unit: EntityId,
@@ -34,7 +34,7 @@ impl Identity {
         }
     }
 
-    pub(super) fn owner(self) -> EntityId {
+    pub(crate) fn owner(self) -> EntityId {
         match self {
             Self::Ability { unit, .. }
             | Self::Innate { unit, .. }
@@ -134,7 +134,7 @@ fn view(state: &State, identity: Identity) -> Option<View> {
     }
 }
 
-pub(super) fn valid(state: &State, identity: Identity) -> bool {
+pub(crate) fn valid(state: &State, identity: Identity) -> bool {
     view(state, identity).is_some()
 }
 
@@ -144,6 +144,7 @@ pub(super) fn identity(state: &State, value: Value) -> Option<Identity> {
         .iter()
         .find(|(_, table)| value == Value::Table(*table))
         .map(|(identity, _)| *identity)
+        .or_else(|| state.ability_identities.value(value))
 }
 
 fn handle(vm: &mut Vm, state: &mut State, identity: Option<Identity>) -> Result<Value, LuaError> {
@@ -157,6 +158,11 @@ fn handle(vm: &mut Vm, state: &mut State, identity: Option<Identity>) -> Result<
     if state.abilities.len() >= 8192 {
         return Err(vm.error("ability handle limit exceeded"));
     }
+    if let Some(table) = state.ability_identities.table(vm, identity)? {
+        vm.pin(Value::Table(table))?;
+        state.abilities.push((identity, table));
+        return Ok(Value::Table(table));
+    }
     let table = vm.new_table()?;
     let meta = vm.new_table()?;
     let key = vm.new_string(b"__index")?;
@@ -167,6 +173,7 @@ fn handle(vm: &mut Vm, state: &mut State, identity: Option<Identity>) -> Result<
     )?;
     let key = vm.new_string(b"__metatable")?;
     vm.raw_set(meta, key, Value::Boolean(false))?;
+    state.ability_identities.remember(vm, table, meta, identity)?;
     vm.set_metatable(table, Some(meta))?;
     vm.pin(Value::Table(table))?;
     state.abilities.push((identity, table));

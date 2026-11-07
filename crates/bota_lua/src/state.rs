@@ -258,9 +258,11 @@ pub(crate) struct State {
     pub snapshot: Option<Snapshot>,
     pub orders: Vec<IssuedOrder>,
     pub units: Vec<(EntityId, TableId)>,
+    unit_identities: crate::handles::Identities<EntityId>,
     pub unit_methods: Option<TableId>,
     pub ability_methods: Option<TableId>,
     pub abilities: Vec<(super::api::abilities::Identity, TableId)>,
+    pub ability_identities: crate::handles::Identities<super::api::abilities::Identity>,
     pub bots: Vec<BotState>,
     pub selecting: bool,
     pub picks: Vec<Option<HeroId>>,
@@ -276,9 +278,11 @@ impl State {
             snapshot: None,
             orders: Vec::with_capacity(MAX_ORDERS),
             units: Vec::new(),
+            unit_identities: crate::handles::Identities::new(),
             unit_methods: None,
             ability_methods: None,
             abilities: Vec::new(),
+            ability_identities: crate::handles::Identities::new(),
             bots: (0..seats.len()).map(|_| BotState::default()).collect(),
             selecting: false,
             picks: vec![None; seats.len()],
@@ -356,6 +360,7 @@ impl State {
             .iter()
             .find(|(_, handle)| table == Value::Table(*handle))
             .map(|(id, _)| *id)
+            .or_else(|| self.unit_identities.value(table))
     }
 
     pub fn handle(&mut self, vm: &mut Vm, id: Option<EntityId>) -> Result<Value, LuaError> {
@@ -364,6 +369,16 @@ impl State {
         if let Some((_, table)) = self.units.iter().find(|(unit, _)| *unit == id) {
             return Ok(Value::Table(*table));
         }
+        let tracked = self.tracked(id);
+        if let Some(table) = self.unit_identities.table(vm, id)? {
+            if tracked {
+                if self.units.len() >= MAX_HANDLES { return Err(vm.error("unit handle limit exceeded")); }
+                vm.pin(Value::Table(table))?;
+                self.units.push((id, table));
+            }
+            return Ok(Value::Table(table));
+        }
+        if !tracked { return Ok(Value::Nil); }
         if self.units.len() >= MAX_HANDLES {
             return Err(vm.error("unit handle limit exceeded"));
         }
@@ -377,10 +392,33 @@ impl State {
         )?;
         let key = vm.new_string(b"__metatable")?;
         vm.raw_set(meta, key, Value::Boolean(false))?;
+        self.unit_identities.remember(vm, table, meta, id)?;
         vm.set_metatable(table, Some(meta))?;
         vm.pin(Value::Table(table))?;
         self.units.push((id, table));
         Ok(Value::Table(table))
+    }
+
+    fn tracked(&self, id: EntityId) -> bool {
+        self.snapshot.as_ref().is_some_and(|snapshot| {
+            snapshot.units.binary_search_by_key(&id, |known| known.unit.id).is_ok()
+                || snapshot.players.iter().any(|player| player.unit == Some(id))
+        })
+    }
+
+    pub fn retire_handles(&mut self) -> Vec<TableId> {
+        let mut retired = Vec::new();
+        let mut index = 0;
+        while index < self.units.len() {
+            if self.tracked(self.units[index].0) { index += 1; }
+            else { retired.push(self.units.swap_remove(index).1); }
+        }
+        let mut index = 0;
+        while index < self.abilities.len() {
+            if self.tracked(self.abilities[index].0.owner()) && super::api::abilities::valid(self, self.abilities[index].0) { index += 1; }
+            else { retired.push(self.abilities.swap_remove(index).1); }
+        }
+        retired
     }
 
     pub fn order(&mut self, vm: &mut Vm, order: IssuedOrder) -> Result<(), LuaError> {

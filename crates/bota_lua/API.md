@@ -94,3 +94,11 @@ than the request, retained in the client's bounded entity memory rather than its
 recent-event ring. The completion pass queues Stop before the next script hooks.
 Only retained launch facts complete a request; projectile and impact observations
 are not used to infer completion.
+
+Tracked unit and ability tables are pinned only while their received identity remains
+tracked (player identities and owned death kits remain stable). Historical tables
+kept by Lua retain authenticated identity and fields, report null/none values while
+forgotten, and are reused if that identity is observed again. Opaque witnesses in
+protected metatables carry weak host-index entries charged to interpreter memory;
+collection removes those entries and shrinks their capacity. Copying script fields
+or borrowing a method cannot create an engine identity.
