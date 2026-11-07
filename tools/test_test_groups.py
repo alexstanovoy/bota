@@ -1,6 +1,8 @@
 """tools/test_groups.py's routing, selection and guards, on this repository's own groups (tools/test_groups.toml)."""
 
 import io
+from contextlib import redirect_stdout
+from unittest.mock import patch
 import os
 import signal
 import subprocess
@@ -321,6 +323,32 @@ class Running(unittest.TestCase):
                 self.assertFalse(passed, out)
                 self.assertEqual(self.recorded(), "core\n")
                 self.assertIn(f"0 failed, {ignored} ignored, {measured} measured tests", out)
+
+    def local_conformance_run(self):
+        name = "local_scripts_play_a_complete_match_without_script_failures"
+        target_name = "test:local_scripts"
+        build = test_groups.Build("bota_lua", test_groups.PROFILE, ("native",))
+        listed = test_groups.Listed({target_name: [name, "another_contract"]}, {},
+                                    executables={target_name: Path("/test-binary")})
+        target = test_groups.Target(build, target_name, (), (), ())
+        return test_groups.invocation(CRATES, listed, target, {"lua"}, {})
+
+    def test_optional_local_conformance_is_reported_and_only_its_exact_name_is_excluded(self):
+        output = io.StringIO()
+        with patch.dict(os.environ, {"BOTA_LUA_LOCAL_PACK": ""}), redirect_stdout(output):
+            run = self.local_conformance_run()
+        self.assertEqual(run.expected, 1)
+        self.assertIn("--skip", run.command)
+        self.assertNotIn("another_contract", run.command[run.command.index("--skip") + 1:])
+        self.assertIn("optional local conformance not run", output.getvalue())
+        self.assertIn("tools/test_lua_local.sh", output.getvalue())
+
+    def test_configured_local_conformance_executes_and_counts_the_ignored_contract(self):
+        with patch.dict(os.environ, {"BOTA_LUA_LOCAL_PACK": "/local-sources"}):
+            run = self.local_conformance_run()
+        self.assertEqual(run.expected, 2)
+        self.assertIn("--include-ignored", run.command)
+        self.assertNotIn("--skip", run.command)
 
     def test_manual_recorders_are_exempted_by_name_without_exempting_their_file(self):
         build = Partition.BUILD

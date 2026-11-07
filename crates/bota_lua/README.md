@@ -41,6 +41,8 @@ seats are used. Without credentials it joins one unreserved seat. Keys never bel
 on the command line.
 
 The normal test group runs original small scripts through complete matches.
+It reports local-source conformance separately as not run when no pack is configured;
+setting `BOTA_LUA_LOCAL_PACK` also enables that contract in the group.
 `tools/test_lua_local.sh` is explicitly optional: set `BOTA_LUA_LOCAL_PACK` and,
 when required, `BOTA_LUA_RUNTIME_SCRIPTS`. It runs the ignored local-source match
 without copying source into the repository. `fuzz/fuzz_targets/lua_binding.rs`

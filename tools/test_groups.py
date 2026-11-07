@@ -54,6 +54,30 @@ MANUAL_RECORDERS = {
 }
 
 
+# Local sources are explicitly optional and never fetched by the public gate. Only
+# these exact contracts may be omitted; ordinary ignored tests still fail the run.
+LOCAL_CONFORMANCE = {
+    ("bota_lua", "test:local_scripts", "local_scripts_play_a_complete_match_without_script_failures"):
+        ("BOTA_LUA_LOCAL_PACK", "tools/test_lua_local.sh"),
+}
+
+
+def local_conformance(crate: str, target: str, selected: list[str]) -> tuple[list[str], list[str]]:
+    omitted, arguments = [], []
+    for name in selected:
+        requirement = LOCAL_CONFORMANCE.get((crate, target, name))
+        if requirement is None:
+            continue
+        variable, command = requirement
+        if os.environ.get(variable):
+            arguments = ["--include-ignored"]
+        else:
+            omitted.append(name)
+            print(f"test-groups: optional local conformance not run: {crate} {name}; "
+                  f"set {variable} and run {command} (public contracts only)")
+    return omitted, arguments
+
+
 class Failure(Exception):
     """A problem to report to the user, one per line."""
 
@@ -781,8 +805,9 @@ def invocation(crates: dict[str, Crate], listed: Listed, target: Target, owners:
     build = target.build
     selected = [n for n in listed.tests.get(target.name, []) if selects(selector, target.name, n)]
     recorders = sorted(set(selected) & MANUAL_RECORDERS.get((build.crate, target.name), frozenset()))
-    expected = len(selected) - len(recorders)
-    skips = [argument for name in recorders for argument in ("--skip", name)]
+    omitted, local_args = local_conformance(build.crate, target.name, selected)
+    expected = len(selected) - len(recorders) - len(omitted)
+    skips = [argument for name in recorders + omitted for argument in ("--skip", name)]
     key = " ".join([build.crate, build.profile, ",".join(build.features), target.name, *target.filters, *target.args])
     env = {k: v.format(**places) for k, v in target.env}
     if target.name == "doc":  # rustdoc builds and runs them: only cargo can
@@ -793,7 +818,7 @@ def invocation(crates: dict[str, Crate], listed: Listed, target: Target, owners:
     env |= {"CARGO_MANIFEST_DIR": str(ROOT / crate.directory), "CARGO_PKG_NAME": crate.name}
     # Libtest applies --exact to both filters and --skip. Expand the already selected
     # names so substring group filters retain their meaning without suppressing name prefixes.
-    command = [str(listed.executables[target.name]), "--exact", *selected, *target.args, *skips]
+    command = [str(listed.executables[target.name]), "--exact", *selected, *target.args, *local_args, *skips]
     return Invocation(key, command, ROOT / crate.directory, env, expected, owners)
 
 
