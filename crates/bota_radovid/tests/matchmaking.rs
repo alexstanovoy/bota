@@ -30,7 +30,7 @@ fn avatars_cross_the_sdk_service_and_public_profile_and_board_contracts() {
         panic!("image reply");
     };
     assert_eq!(account, alpha_id);
-    assert_eq!(image.png, png);
+    assert_eq!(image.png,radovid::avatar::canonicalize(png).expect("canonical fixture"));
     let seq = beta.client.get_avatar(alpha_id).expect("send fetch");
     assert_eq!(
         beta.reply(seq),
