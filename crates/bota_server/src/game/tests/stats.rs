@@ -523,14 +523,13 @@ type Row = (&'static UnitDef, i32, (i32, i32), (i32, i32));
 
 #[test]
 fn super_and_mega_creeps_match_the_table_at_fifteen_minutes() {
-    // Liquipedia, Lane Creeps, the upgrade table's 15:00 row (two upgrades):
-    // health, damage range, gold range. Mega creeps grow only their bounty;
-    // a super or mega melee creep's 1.5 gold a step is paid in whole gold.
+    // Installed 7.41f unit rows plus two upgrade cycles; Valve 7.33 changed bounty
+    // growth, and 7.35 added five damage to super and mega creeps.
     let rows: [Row; 4] = [
-        (&SUPER_MELEE_CREEP, 738, (40, 48), (23, 29)),
-        (&MEGA_MELEE_CREEP, 1270, (96, 104), (23, 29)),
-        (&SUPER_RANGED_CREEP, 511, (47, 52), (31, 37)),
-        (&MEGA_RANGED_CREEP, 1015, (131, 136), (31, 37)),
+        (&SUPER_MELEE_CREEP, 738, (45, 53), (20, 26)),
+        (&MEGA_MELEE_CREEP, 1270, (101, 109), (20, 26)),
+        (&SUPER_RANGED_CREEP, 511, (52, 57), (25, 31)),
+        (&MEGA_RANGED_CREEP, 1015, (136, 141), (25, 31)),
     ];
     for (def, hp, damage, gold) in rows {
         let mut world = World::new();
@@ -732,4 +731,173 @@ fn applied_status_resistance_is_shown_green() {
         (split.base, split.bonus),
         (Fixed::ZERO, fifth * Fixed::from_int(100))
     );
+}
+
+#[test]
+fn upgraded_creep_stats_and_bounties_match_both_sides_installed_rows() {
+    for (def, scripts, hp_gain, damage_gain, gold_gain) in installed_creep_rows() {
+        for (side, script) in [Team::Radiant, Team::Dire].into_iter().zip(scripts) {
+            for intervals in [0, 2, rules::WAVE_UPGRADE_CAP + 1] {
+                let combat = if def.tier == Some(bota_proto::CreepTier::Mega) {
+                    rules::WAVE_UPGRADE_CAP
+                } else {
+                    intervals.min(rules::WAVE_UPGRADE_CAP)
+                } as i32;
+                let mut world = World::new();
+                let creep = world.spawn_creep(def, side, Vec2::from_ints(5000, 5000), 0, intervals);
+                world.settle();
+                let stats = world.stats.get(creep).expect("settled creep");
+                assert_installed_creep_stats(&world, creep, stats, script);
+                assert_eq!(
+                    stats.max_hp.to_int(),
+                    script.first("StatusHealth").int() + combat * hp_gain,
+                    "{} health",
+                    script.key
+                );
+                assert_eq!(
+                    stats.damage,
+                    script.first("AttackDamageMin").int() + combat * damage_gain,
+                    "{} damage",
+                    script.key
+                );
+                assert_eq!(
+                    stats.damage + stats.damage_spread,
+                    script.first("AttackDamageMax").int() + combat * damage_gain,
+                    "{} damage spread",
+                    script.key
+                );
+                assert_eq!(
+                    stats.armor.to_int(),
+                    script.first("ArmorPhysical").int(),
+                    "{} armor",
+                    script.key
+                );
+                let bounty = world.bounty.get(creep).expect("creep bounty");
+                assert_eq!(
+                    bounty.gold.min,
+                    script.first("BountyGoldMin").int() + intervals as i32 * gold_gain,
+                    "{} minimum gold",
+                    script.key
+                );
+                assert_eq!(
+                    bounty.gold.max,
+                    script.first("BountyGoldMax").int() + intervals as i32 * gold_gain,
+                    "{} maximum gold",
+                    script.key
+                );
+                assert_eq!(
+                    bounty.xp,
+                    script.first("BountyXP").int(),
+                    "{} experience",
+                    script.key
+                );
+            }
+        }
+    }
+}
+
+fn assert_installed_creep_stats(
+    world: &World,
+    creep: crate::game::Entity,
+    stats: &Stats,
+    script: bota_core::ScriptData,
+) {
+    assert_eq!(
+        world.level.get(creep).map_or(1, |level| level.0 as i32),
+        script.first("Level").int(),
+        "{} NPC level",
+        script.key
+    );
+    assert_eq!(
+        stats.max_mana.to_int(),
+        script.first("StatusMana").int(),
+        "{} mana",
+        script.key
+    );
+    assert_eq!(
+        stats.attack_range.to_int(),
+        script.first("AttackRange").int(),
+        "{} attack range",
+        script.key
+    );
+    assert_eq!(
+        stats.attack_time,
+        script.first("AttackRate").0 as u32,
+        "{} attack time",
+        script.key
+    );
+    assert_eq!(
+        stats.hp_regen,
+        Fixed::from_ratio(
+            script.first("StatusHealthRegen").0,
+            1000 * rules::TICKS_PER_SECOND as i32
+        ),
+        "{} health regeneration",
+        script.key
+    );
+    assert_eq!(
+        stats.mana_regen,
+        Fixed::from_ratio(
+            script.first("StatusManaRegen").0,
+            1000 * rules::TICKS_PER_SECOND as i32
+        ),
+        "{} mana regeneration",
+        script.key
+    );
+    assert_eq!(
+        stats.magic_resist_bp,
+        100 * script.first("MagicalResistance").int(),
+        "{} magic resistance",
+        script.key
+    );
+}
+
+type InstalledCreepRow = (&'static UnitDef, [bota_core::ScriptData; 2], i32, i32, i32);
+
+fn installed_creep_rows() -> [InstalledCreepRow; 6] {
+    use bota_core::creep_data::*;
+    [
+        (
+            &SUPER_MELEE_CREEP,
+            [GOODGUYS_MELEE_UPGRADED, BADGUYS_MELEE_UPGRADED],
+            19,
+            2,
+            0,
+        ),
+        (
+            &MEGA_MELEE_CREEP,
+            [GOODGUYS_MELEE_UPGRADED_MEGA, BADGUYS_MELEE_UPGRADED_MEGA],
+            19,
+            2,
+            0,
+        ),
+        (
+            &SUPER_RANGED_CREEP,
+            [GOODGUYS_RANGED_UPGRADED, BADGUYS_RANGED_UPGRADED],
+            18,
+            3,
+            3,
+        ),
+        (
+            &MEGA_RANGED_CREEP,
+            [GOODGUYS_RANGED_UPGRADED_MEGA, BADGUYS_RANGED_UPGRADED_MEGA],
+            18,
+            3,
+            3,
+        ),
+        (
+            &bota_core::SUPER_SIEGE_CREEP,
+            [GOODGUYS_SIEGE_UPGRADED, BADGUYS_SIEGE_UPGRADED],
+            0,
+            0,
+            0,
+        ),
+        (
+            &bota_core::MEGA_SIEGE_CREEP,
+            [GOODGUYS_SIEGE_UPGRADED_MEGA, BADGUYS_SIEGE_UPGRADED_MEGA],
+            0,
+            0,
+            0,
+        ),
+    ]
 }

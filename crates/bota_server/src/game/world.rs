@@ -2,7 +2,7 @@
 
 use std::collections::VecDeque;
 
-use bota_proto::{HeroId, Inflictor, SlotId, Team, UnitKind, Vec2};
+use bota_proto::{CreepTier, HeroId, Inflictor, SlotId, Team, UnitKind, Vec2};
 
 use crate::game::world_tables::world_tables;
 use crate::game::{
@@ -222,6 +222,8 @@ world_tables! {
         pub gate: crate::game::TwinGate;
         /// The warp each unit channelling at a Twin Gate has under way.
         pub warp: crate::game::Warp;
+        /// Historical lane-creep spawn tier. Normal is represented by an absent row.
+        pub creep_tier: CreepTier;
     }
 
     derived {

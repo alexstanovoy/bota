@@ -672,57 +672,49 @@ pub const CREEP_ATTACK_TIME: u32 = 1000;
 /// Lane creep fog light radius, by day and by night alike.
 pub const CREEP_VISION: i32 = 750;
 
-// Super and mega creeps: what a wave grows into once the enemy barracks that
-// held it back have fallen.
+// Installed npc_units.txt rows; the mega scripts use the super base plus the full upgrade cap.
+const SUPER_MELEE_DATA: crate::ScriptData = crate::creep_data::GOODGUYS_MELEE_UPGRADED;
+const SUPER_RANGED_DATA: crate::ScriptData = crate::creep_data::GOODGUYS_RANGED_UPGRADED;
+const SUPER_SIEGE_DATA: crate::ScriptData = crate::creep_data::GOODGUYS_SIEGE_UPGRADED;
 
-/// Super melee creep health.
-pub const SUPER_MELEE_HP: i32 = 700;
-/// Least attack damage of a super melee creep's swing, of 36 to 44.
-pub const SUPER_MELEE_ATTACK_DAMAGE: i32 = 36;
-/// How much more a super melee creep's swing may deal.
-pub const SUPER_MELEE_DAMAGE_SPREAD: i32 = 8;
-/// Super melee creep armor.
-pub const SUPER_MELEE_ARMOR: i32 = 3;
-/// Super melee creep gold bounty.
-pub const SUPER_MELEE_BOUNTY: GoldRange = GoldRange::new(20, 26);
-/// Super melee creep experience.
-pub const SUPER_MELEE_XP: i32 = 25;
-/// Super ranged creep health.
-pub const SUPER_RANGED_HP: i32 = 475;
-/// Least attack damage of a super ranged creep's swing, of 41 to 46.
-pub const SUPER_RANGED_ATTACK_DAMAGE: i32 = 41;
-/// How much more a super ranged creep's swing may deal.
-pub const SUPER_RANGED_DAMAGE_SPREAD: i32 = 5;
-/// Super ranged creep armor.
-pub const SUPER_RANGED_ARMOR: i32 = 1;
-/// Super ranged creep gold bounty.
-pub const SUPER_RANGED_BOUNTY: GoldRange = GoldRange::new(19, 25);
-/// Super ranged creep experience.
-pub const SUPER_RANGED_XP: i32 = 22;
-/// Least attack damage of a super siege creep's swing, of 51 to 62.
-pub const SUPER_SIEGE_ATTACK_DAMAGE: i32 = 51;
-/// How much more a super siege creep's swing may deal.
-pub const SUPER_SIEGE_DAMAGE_SPREAD: i32 = 11;
-/// Health one upgrade adds to a super melee creep.
+pub const SUPER_MELEE_HP: i32 = SUPER_MELEE_DATA.first("StatusHealth").int();
+pub const SUPER_MELEE_ATTACK_DAMAGE: i32 = SUPER_MELEE_DATA.first("AttackDamageMin").int();
+pub const SUPER_MELEE_DAMAGE_SPREAD: i32 =
+    SUPER_MELEE_DATA.first("AttackDamageMax").int() - SUPER_MELEE_ATTACK_DAMAGE;
+pub const SUPER_MELEE_ARMOR: i32 = SUPER_MELEE_DATA.first("ArmorPhysical").int();
+pub const SUPER_MELEE_BOUNTY: GoldRange = GoldRange::new(
+    SUPER_MELEE_DATA.first("BountyGoldMin").int(),
+    SUPER_MELEE_DATA.first("BountyGoldMax").int(),
+);
+pub const SUPER_MELEE_XP: i32 = SUPER_MELEE_DATA.first("BountyXP").int();
+pub const SUPER_RANGED_HP: i32 = SUPER_RANGED_DATA.first("StatusHealth").int();
+pub const SUPER_RANGED_ATTACK_DAMAGE: i32 = SUPER_RANGED_DATA.first("AttackDamageMin").int();
+pub const SUPER_RANGED_DAMAGE_SPREAD: i32 =
+    SUPER_RANGED_DATA.first("AttackDamageMax").int() - SUPER_RANGED_ATTACK_DAMAGE;
+pub const SUPER_RANGED_ARMOR: i32 = SUPER_RANGED_DATA.first("ArmorPhysical").int();
+pub const SUPER_RANGED_BOUNTY: GoldRange = GoldRange::new(
+    SUPER_RANGED_DATA.first("BountyGoldMin").int(),
+    SUPER_RANGED_DATA.first("BountyGoldMax").int(),
+);
+pub const SUPER_RANGED_XP: i32 = SUPER_RANGED_DATA.first("BountyXP").int();
+pub const SUPER_SIEGE_ATTACK_DAMAGE: i32 = SUPER_SIEGE_DATA.first("AttackDamageMin").int();
+pub const SUPER_SIEGE_DAMAGE_SPREAD: i32 =
+    SUPER_SIEGE_DATA.first("AttackDamageMax").int() - SUPER_SIEGE_ATTACK_DAMAGE;
+/// Per 7:30 upgrade (Liquipedia, Lane Creeps; Valve 7.07 caps combat growth at 30).
 pub const SUPER_MELEE_UPGRADE_HP: i32 = 19;
-/// Attack damage one upgrade adds to a super melee creep.
 pub const SUPER_MELEE_UPGRADE_DAMAGE: i32 = 2;
-/// Half gold one upgrade adds to a super or mega melee creep's bounty.
-pub const SUPER_MELEE_UPGRADE_GOLD_HALVES: i32 = 3;
-/// Health one upgrade adds to a super ranged creep.
+/// Valve 7.33: super melee gold growth reduced from 1.5 to zero.
+pub const SUPER_MELEE_UPGRADE_GOLD_HALVES: i32 = 0;
 pub const SUPER_RANGED_UPGRADE_HP: i32 = 18;
-/// Attack damage one upgrade adds to a super ranged creep.
 pub const SUPER_RANGED_UPGRADE_DAMAGE: i32 = 3;
-/// Gold one upgrade adds to a super or mega ranged creep's bounty.
-pub const SUPER_RANGED_UPGRADE_GOLD: i32 = 6;
-/// Mega melee creep health.
-pub const MEGA_MELEE_HP: i32 = 1270;
-/// Least attack damage of a mega melee creep's swing, of 96 to 104.
-pub const MEGA_MELEE_ATTACK_DAMAGE: i32 = 96;
-/// Mega ranged creep health.
-pub const MEGA_RANGED_HP: i32 = 1015;
-/// Least attack damage of a mega ranged creep's swing, of 131 to 136.
-pub const MEGA_RANGED_ATTACK_DAMAGE: i32 = 131;
+/// Valve 7.33: super ranged gold growth reduced from 6 to 3.
+pub const SUPER_RANGED_UPGRADE_GOLD: i32 = 3;
+pub const MEGA_MELEE_HP: i32 = SUPER_MELEE_HP + WAVE_UPGRADE_CAP as i32 * SUPER_MELEE_UPGRADE_HP;
+pub const MEGA_MELEE_ATTACK_DAMAGE: i32 =
+    SUPER_MELEE_ATTACK_DAMAGE + WAVE_UPGRADE_CAP as i32 * SUPER_MELEE_UPGRADE_DAMAGE;
+pub const MEGA_RANGED_HP: i32 = SUPER_RANGED_HP + WAVE_UPGRADE_CAP as i32 * SUPER_RANGED_UPGRADE_HP;
+pub const MEGA_RANGED_ATTACK_DAMAGE: i32 =
+    SUPER_RANGED_ATTACK_DAMAGE + WAVE_UPGRADE_CAP as i32 * SUPER_RANGED_UPGRADE_DAMAGE;
 
 // Buildings.
 

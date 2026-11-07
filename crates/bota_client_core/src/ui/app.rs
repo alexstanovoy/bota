@@ -292,6 +292,10 @@ pub enum CueKind {
     QuickBuyFull,
     /// A boss's public fall, sounded globally.
     BossDeath(bota_proto::ObjectiveKind),
+    /// A side gained mega creeps: the global stinger.
+    MegaCreeps(Team),
+    /// The horn at the named side's public Ancient.
+    MegaCreepsHorn(Team),
 }
 
 /// A cue's kind, gain and optional world position. A positional event retains `told`

@@ -3,7 +3,7 @@
 use bota_core::{creep_spawn_pos, isqrt64, lane_polyline, map_of, rules};
 
 use crate::game::{Entity, Lane, UnitOrder, World, lane_routes, plan_radius};
-use bota_proto::{Fixed, MapId, Team, UnitKind, Vec2};
+use bota_proto::{CreepTier, Fixed, MapId, Team, UnitKind, Vec2};
 
 use super::support::*;
 
@@ -297,7 +297,7 @@ fn a_fallen_barracks_turns_the_waves_against_it_super_and_all_of_them_mega() {
     let stats = world.stats.get(*mega_melee).expect("settled");
     assert_eq!(
         (stats.max_hp, stats.damage, stats.attack_time),
-        (Fixed::from_int(1270), 96, rules::CREEP_ATTACK_TIME),
+        (Fixed::from_int(1270), 101, rules::CREEP_ATTACK_TIME),
         "a mega melee is a fully grown super one, swinging at the plain pace"
     );
 }
@@ -387,4 +387,257 @@ fn no_route_on_any_map_walks_a_wave_backwards() {
             }
         }
     }
+}
+
+#[test]
+fn upgraded_creeps_use_735_damage_and_siege_needs_only_ranged_barracks() {
+    let mut world = a_match_with_nobody_in_it(321, MapId(0));
+    fell_at(&mut world, rules::RADIANT_BARRACKS[1].2);
+    world.spawn_wave(rules::FIRST_SIEGE_WAVE);
+    let find = |kind| {
+        world
+            .entities
+            .iter()
+            .find(|e| {
+                world.team.get(*e) == Some(&Team::Dire)
+                    && world.kind.get(*e) == Some(&kind)
+                    && world.lane.get(*e) == Some(&Lane(rules::LANE_MID))
+            })
+            .expect("Dire mid creep")
+    };
+    assert_eq!(
+        world
+            .stats
+            .get(find(UnitKind::CreepSiege))
+            .expect("settled")
+            .damage,
+        51,
+        "the ranged barracks alone upgrades the next siege wave"
+    );
+    assert_eq!(
+        world
+            .stats
+            .get(find(UnitKind::CreepRanged))
+            .expect("settled")
+            .damage,
+        46,
+        "7.35 added five damage to super and mega creeps"
+    );
+}
+
+#[test]
+fn each_barracks_upgrades_only_its_lane_and_kind_and_all_six_upgrade_every_lane() {
+    for side in [Team::Radiant, Team::Dire] {
+        for ranged in [false, true] {
+            let mut world = a_match_with_nobody_in_it(321, MapId(0));
+            let enemy = if side == Team::Radiant {
+                Team::Dire
+            } else {
+                Team::Radiant
+            };
+            let barracks = world.map.barracks[bota_core::team_index(side)];
+            let at = barracks
+                .iter()
+                .find(|b| b.0 == rules::LANE_MID && b.1 == ranged)
+                .expect("mid barracks")
+                .2;
+            fell_at(&mut world, at);
+            world.spawn_wave(rules::FIRST_SIEGE_WAVE);
+            for entity in world
+                .entities
+                .iter()
+                .filter(|e| world.march.get(*e).is_some())
+            {
+                let kind = *world.kind.get(entity).expect("kind");
+                let lane = world.lane.get(entity).expect("lane").0;
+                let belongs = world.team.get(entity) == Some(&enemy) && lane == rules::LANE_MID;
+                let upgrades = if ranged {
+                    matches!(kind, UnitKind::CreepRanged | UnitKind::CreepSiege)
+                } else {
+                    kind == UnitKind::CreepMelee
+                };
+                let expected = if belongs && upgrades {
+                    CreepTier::Super
+                } else {
+                    CreepTier::Normal
+                };
+                assert_eq!(
+                    shown(&world, None, entity).creep_tier,
+                    Some(expected),
+                    "{side:?} ranged={ranged} lane={lane} {kind:?}"
+                );
+            }
+            for &(_, _, at) in barracks {
+                if world.entities.iter().any(|e| {
+                    world.kind.get(e) == Some(&UnitKind::Barracks) && world.pos(e) == Some(at)
+                }) {
+                    fell_at(&mut world, at);
+                }
+            }
+            let before: Vec<_> = world.entities.iter().collect();
+            world.spawn_wave(rules::FIRST_SIEGE_WAVE);
+            let mut lanes = std::collections::BTreeSet::new();
+            for entity in world
+                .entities
+                .iter()
+                .filter(|e| !before.contains(e) && world.march.get(*e).is_some())
+            {
+                let kind = *world.kind.get(entity).expect("kind");
+                let mega =
+                    world.team.get(entity) == Some(&enemy) && kind != UnitKind::CreepFlagbearer;
+                let expected = if mega {
+                    CreepTier::Mega
+                } else {
+                    CreepTier::Normal
+                };
+                assert_eq!(shown(&world, None, entity).creep_tier, Some(expected));
+                if mega {
+                    lanes.insert(world.lane.get(entity).expect("lane").0);
+                }
+            }
+            assert_eq!(lanes.len(), 3, "mega creeps spawn in every lane");
+        }
+    }
+}
+
+#[test]
+fn mega_creep_bounties_keep_growing_past_the_combat_upgrade_cap() {
+    let mut world = a_match_with_nobody_in_it(322, MapId(0));
+    for &(_, _, at) in &rules::RADIANT_BARRACKS {
+        fell_at(&mut world, at);
+    }
+    world.spawn_wave(1 + rules::WAVE_UPGRADE_PERIOD * (rules::WAVE_UPGRADE_CAP + 1));
+    let ranged = world
+        .entities
+        .iter()
+        .find(|e| {
+            world.team.get(*e) == Some(&Team::Dire)
+                && world.kind.get(*e) == Some(&UnitKind::CreepRanged)
+        })
+        .expect("mega ranged");
+    assert_eq!(
+        world.stats.get(ranged).expect("stats").max_hp,
+        Fixed::from_int(1015)
+    );
+    let bounty = world.bounty.get(ranged).expect("bounty");
+    assert_eq!(
+        (bounty.gold.min, bounty.gold.max, bounty.xp),
+        (112, 118, 22),
+        "31 upgrades affect gold; mega combat stats and experience stay fixed"
+    );
+}
+
+#[test]
+fn the_last_barracks_announce_mega_creeps_once_when_their_deaths_settle_together() {
+    use bota_proto::EventKind;
+    for together in [true, false] {
+        let mut world = a_match_with_nobody_in_it(323, MapId(0));
+        for &(_, _, at) in rules::RADIANT_BARRACKS.iter().take(4) {
+            fell_at(&mut world, at);
+        }
+        let last: Vec<_> = rules::RADIANT_BARRACKS
+            .iter()
+            .skip(4)
+            .map(|b| structure_at(&world, b.2))
+            .collect();
+        // Damage has already reached zero for both; burial may arrive as one batch or two.
+        for &entity in &last {
+            world.health.get_mut(entity).expect("barracks health").hp = Fixed::ZERO;
+        }
+        let mut events = Vec::new();
+        if together {
+            world.bury(
+                last.iter().map(|entity| (*entity, None)).collect(),
+                &mut events,
+            );
+        } else {
+            for &entity in &last {
+                world.bury(vec![(entity, None)], &mut events);
+            }
+        }
+        let announcements: Vec<_> = events
+            .iter()
+            .filter_map(|event| {
+                if let EventKind::MegaCreeps { team } = event.kind() {
+                    Some(team)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(announcements, vec![Team::Dire], "together={together}");
+        for side in [Some(Team::Radiant), Some(Team::Dire), None] {
+            assert_eq!(
+                crate::game_loop::visible_events(&events, side)
+                    .iter()
+                    .filter(|event| matches!(event, EventKind::MegaCreeps { team: Team::Dire }))
+                    .count(),
+                1
+            );
+        }
+    }
+}
+
+#[test]
+fn a_creeps_spawn_tier_changes_its_world_fingerprint() {
+    for (super_def, mega_def) in [
+        (&bota_core::SUPER_MELEE_CREEP, &bota_core::MEGA_MELEE_CREEP),
+        (&bota_core::SUPER_SIEGE_CREEP, &bota_core::MEGA_SIEGE_CREEP),
+    ] {
+        let spawn = |def| {
+            let mut world = World::new();
+            let creep = world.spawn_creep(def, Team::Radiant, Vec2::from_ints(5000, 5000), 0, 0);
+            world.settle();
+            world.health.get_mut(creep).expect("creep health").hp = Fixed::from_int(200);
+            (world, creep)
+        };
+        let (super_world, super_creep) = spawn(super_def);
+        let (mega_world, mega_creep) = spawn(mega_def);
+        assert_eq!(
+            shown(&super_world, None, super_creep).creep_tier,
+            Some(CreepTier::Super)
+        );
+        assert_eq!(
+            shown(&mega_world, None, mega_creep).creep_tier,
+            Some(CreepTier::Mega)
+        );
+        assert_ne!(
+            super_world.hash(),
+            mega_world.hash(),
+            "{:?} retains its historical spawn tier",
+            super_def.kind
+        );
+    }
+}
+
+#[test]
+fn normal_creeps_use_no_tier_hash_row_even_after_an_upgraded_slot_is_reused() {
+    let mut world = World::new();
+    let upgraded = world.spawn_creep(
+        &bota_core::MEGA_MELEE_CREEP,
+        Team::Radiant,
+        Vec2::from_ints(5000, 5000),
+        0,
+        0,
+    );
+    assert_eq!(world.creep_tier.get(upgraded), Some(&CreepTier::Mega));
+    assert!(world.despawn(upgraded));
+    let normal = world.spawn_creep(
+        &bota_core::MELEE_CREEP,
+        Team::Radiant,
+        Vec2::from_ints(5000, 5000),
+        0,
+        0,
+    );
+    world.settle();
+    assert_eq!(
+        normal.index(),
+        upgraded.index(),
+        "the retired slot is reused with a fresh generation"
+    );
+    assert_eq!(world.creep_tier.get(normal), None);
+    assert_eq!(
+        shown(&world, None, normal).creep_tier,
+        Some(CreepTier::Normal)
+    );
 }

@@ -543,3 +543,16 @@ pub enum UnitKind {
     /// unit channels at to be carried to the other gate.
     TwinGate,
 }
+
+/// How strong a lane creep spawned: Dota's plain, super and mega creeps, each a unit of its own
+/// (`npc_dota_creep_goodguys_melee`, `..._upgraded`, `..._upgraded_mega`) with its own look.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum CreepTier {
+    /// Neither of the others.
+    Normal,
+    /// Spawned once the enemy barracks of its kind in its lane has fallen:
+    /// the melee or the ranged one, the ranged one for a siege creep.
+    Super,
+    /// Spawned once every enemy barracks has fallen.
+    Mega,
+}

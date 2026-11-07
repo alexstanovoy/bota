@@ -1,7 +1,7 @@
 //! Numeric unit and ability rows of Roshan, from the same install as the items.
 use heatel::keyvalues::{Kv, parse_kv, text};
 use heatel::{DirSource, Vpk, find_game_dir};
-use std::{fmt::Write, path::Path};
+use std::path::Path;
 
 pub fn table(dota: Option<&Path>) -> Result<String, String> {
     let game = find_game_dir(dota).ok_or("no Dota 2 install")?;
@@ -24,12 +24,12 @@ pub fn table(dota: Option<&Path>) -> Result<String, String> {
          //! Internal keys and numeric values only. Run the importer to update.\n\
          //! Read from {build}.\nuse crate::{{Dec, ScriptData}};\n"
     );
-    row(&mut out, "ROSHAN_UNIT", "npc_dota_roshan", unit)?;
+    crate::emit::script_row(&mut out, "ROSHAN_UNIT", "npc_dota_roshan", unit)?;
     let banner = units
         .get("DOTAUnits")
         .and_then(|u| u.get("npc_dota_unit_roshans_banner"))
         .ok_or("no banner unit")?;
-    row(
+    crate::emit::script_row(
         &mut out,
         "BANNER_UNIT",
         "npc_dota_unit_roshans_banner",
@@ -49,34 +49,7 @@ pub fn table(dota: Option<&Path>) -> Result<String, String> {
             .get("DOTAAbilities")
             .and_then(|a| a.get(key))
             .ok_or("missing boss passive")?;
-        row(&mut out, constant, key, ability)?;
+        crate::emit::script_row(&mut out, constant, key, ability)?;
     }
     Ok(out)
-}
-
-fn row(out: &mut String, constant: &str, key: &str, block: &Kv) -> Result<(), String> {
-    let mut fields = Vec::new();
-    for (key, value) in block.block().ok_or("not a block")? {
-        if let Kv::Text(text) = value
-            && let Ok(values) = crate::dec::levels(text)
-        {
-            fields.push((key.clone(), values));
-        }
-    }
-    fields.extend(crate::item::values(block)?);
-    let _ = writeln!(
-        out,
-        "pub const {constant}: ScriptData = ScriptData {{ key: {key:?}, values: &["
-    );
-    for (name, values) in fields {
-        let _ = write!(out, "({name:?}, &[");
-        for value in values {
-            let value =
-                i32::try_from(value).map_err(|_| format!("{key}.{name}: number out of range"))?;
-            let _ = write!(out, "Dec({value}),");
-        }
-        out.push_str("]),\n");
-    }
-    out.push_str("] };\n");
-    Ok(())
 }

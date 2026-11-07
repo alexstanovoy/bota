@@ -6,9 +6,9 @@ use bota_core::{
 };
 use bota_proto::RuneSet;
 use bota_proto::{
-    AbilityId, AbilitySlot, Attribute, ClockShift, DamageKind, EntityId, HeroId, Inflictor, ItemId,
-    ItemSlot, ModifierSpec, NeutralId, ObjectiveSet, Order, ProjectileModel, RejectReason, SlotId,
-    Talents, Target,
+    AbilityId, AbilitySlot, Attribute, ClockShift, CreepTier, DamageKind, EntityId, HeroId,
+    Inflictor, ItemId, ItemSlot, ModifierSpec, NeutralId, ObjectiveSet, Order, ProjectileModel,
+    RejectReason, SlotId, Talents, Target,
 };
 
 use crate::engine::{Fnv, StateHash, state_hash};
@@ -38,6 +38,7 @@ state_hash!(ModifierSpec {
     gold_income
 });
 state_hash!(DamageKind as u8: DamageKind::Physical, DamageKind::Magical);
+state_hash!(CreepTier as u8: CreepTier::Super, CreepTier::Mega);
 state_hash!(Attribute as u8: Attribute::Strength, Attribute::Agility);
 state_hash!(NeutralId(0));
 state_hash!(Control as u8: Control::Stun,Control::Root);

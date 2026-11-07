@@ -1,7 +1,7 @@
 //! What one side is allowed to know about the world right now.
 
 use crate::{
-    AbilityId, Aim, Angle, Attribute, Attributes, EffectId, EntityId, EventKind, Fixed, HeroId,
+    AbilityId, Aim, Angle, Attribute, Attributes, CreepTier, EffectId, EntityId, EventKind, Fixed, HeroId,
     Inflictor, ItemId, NeutralId, Order, PlayerId, ProjectileModel, RuneKind, SlotId, StatusFlags,
     Talents, Team, UnitKind, Vec2,
 };
@@ -374,6 +374,8 @@ pub struct UnitView {
     pub forced: Option<ForcedView>,
     /// A visible ability channel, independent of incidental passive activations.
     pub channel: Option<ChannelView>,
+    /// The tier of a lane creep at spawn; absent on other units. Flagbearers remain normal.
+    pub creep_tier: Option<CreepTier>,
 }
 
 /// A countdown a side runs by standing near a map objective.

@@ -2,9 +2,9 @@
 
 use bota_core::{ModifierKind, ability_mana_cost, effect_def, kind_def, phase_ticks_left, rules};
 use bota_proto::{
-    AbilityId, AbilityView, AggroView, CastView, EffectView, Fixed, Inflictor, PlayerView,
-    ProjectileView, StatusFlags, SwingView, TalentSlot, TalentView, Talents, Team, UnitKind,
-    UnitView, WorldView,
+    AbilityId, AbilityView, AggroView, CastView, CreepTier, EffectView, Fixed, Inflictor,
+    PlayerView, ProjectileView, StatusFlags, SwingView, TalentSlot, TalentView, Talents, Team,
+    UnitKind, UnitView, WorldView,
 };
 
 use crate::game::{ActionPhase, ActionState, Entity, Seat, Stats, World, item_view, item_views};
@@ -565,6 +565,25 @@ impl World {
         Some(unit)
     }
 
+    fn creep_tier_shown(&self, entity: Entity) -> Option<CreepTier> {
+        if !kind_def(*self.kind.get(entity)?).lane_creep {
+            return None;
+        }
+        let tier = self
+            .creep_tier
+            .get(entity)
+            .copied()
+            .unwrap_or(CreepTier::Normal);
+        if let Some(def) = self.def.get(entity) {
+            assert_eq!(
+                tier,
+                def.0.tier.unwrap_or(CreepTier::Normal),
+                "creep spawn identity agrees with its definition"
+            );
+        }
+        Some(tier)
+    }
+
     /// What a unit's cooldowns and mana costs come to, when they are not the table's own, told to
     /// its own side and to a view of the whole map. Another side is not told: what shortens them
     /// can be a setup (a cheat's modifier) that is no business of the enemy's.
@@ -649,6 +668,7 @@ impl World {
             }),
             forced: self.forced_view(entity),
             channel: self.channel_view(entity),
+            creep_tier: self.creep_tier_shown(entity),
             true_sight_radius: stats.true_sight,
             statuses: StatusFlags {
                 bits: self.statuses_of(entity, stats),

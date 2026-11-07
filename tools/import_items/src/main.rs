@@ -5,15 +5,16 @@
 //! Dota's internal names only, and name the client build they were read from.
 //!
 //! ```text
-//! import_items [--dota <"dota 2 beta" folder>] [--check] [--add <item key>]...
+//! import_items [--dota <"dota 2 beta" folder>] [--check] [--add <item key>]... [--creeps-only]
 //! ```
 //!
 //! `--add` appends a registry line for each new item key first. `--check` writes nothing and
 //! fails when a committed table holds other rows than the install gives (the client build it
-//! names aside).
+//! names aside). `--creeps-only` updates or checks the lane creep numeric table alone.
 
 mod ability;
 mod boss;
+mod creeps;
 mod dec;
 mod emit;
 mod emit_heroes;
@@ -56,6 +57,7 @@ struct Args {
     dota: Option<PathBuf>,
     check: bool,
     add: Vec<String>,
+    creeps_only: bool,
 }
 
 fn args() -> Result<Args, String> {
@@ -63,12 +65,14 @@ fn args() -> Result<Args, String> {
         dota: None,
         check: false,
         add: Vec::new(),
+        creeps_only: false,
     };
     let mut words = std::env::args().skip(1);
     while let Some(word) = words.next() {
         match word.as_str() {
             "--dota" => parsed.dota = Some(words.next().ok_or("--dota needs a folder")?.into()),
             "--check" => parsed.check = true,
+            "--creeps-only" => parsed.creeps_only = true,
             "--add" => parsed
                 .add
                 .push(words.next().ok_or("--add needs an item key")?),
@@ -80,6 +84,24 @@ fn args() -> Result<Args, String> {
 
 fn run() -> Result<(), String> {
     let args = args()?;
+    if args.creeps_only && !args.add.is_empty() {
+        return Err("--creeps-only and --add exclude each other".into());
+    }
+    let creeps = rustfmt(&creeps::table(args.dota.as_deref())?)?;
+    let path = repo().join("crates/bota_core/src/creep_data.rs");
+    if args.check {
+        if !emit::same_items(
+            &std::fs::read_to_string(&path).map_err(|e| e.to_string())?,
+            &creeps,
+        ) {
+            return Err("lane creep script data is stale".into());
+        }
+    } else {
+        std::fs::write(&path, creeps).map_err(|e| e.to_string())?;
+    }
+    if args.creeps_only {
+        return Ok(());
+    }
     let boss = rustfmt(&boss::table(args.dota.as_deref())?)?;
     let boss_path = repo().join("crates/bota_core/src/roshan_data.rs");
     if args.check {
@@ -225,6 +247,15 @@ mod tests {
     #[test]
     #[ignore = "needs a Dota 2 install"]
     fn the_committed_table_is_what_the_install_gives() {
+        let creeps = crate::rustfmt(&crate::creeps::table(None).expect("lane creep scripts"))
+            .expect("formatted creep data");
+        let committed =
+            std::fs::read_to_string(crate::repo().join("crates/bota_core/src/creep_data.rs"))
+                .expect("committed creep data");
+        assert!(
+            crate::emit::same_items(&committed, &creeps),
+            "lane creep script data is stale"
+        );
         let boss = crate::rustfmt(&crate::boss::table(None).expect("boss scripts"))
             .expect("formatted scripts");
         let committed =

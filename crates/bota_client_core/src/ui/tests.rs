@@ -130,6 +130,7 @@ fn a_unit() -> UnitView {
         lit_for: None,
         forced: None,
         channel: None,
+        creep_tier: None,
         seen_by: None,
         attack_range: Fixed::from_int(600),
         attack_time: 1700,
@@ -2968,4 +2969,36 @@ fn f07_review_shop_access_and_placement_use_the_same_primary_courier() {
             available
         );
     }
+}
+
+#[test]
+fn mega_creeps_sound_globally_and_at_the_public_enemy_ancient() {
+    let (mut app, _, _) = a_duel_app();
+    app.cues.clear();
+    app.handle(bota_proto::ServerMsg::Events {
+        tick: 10,
+        events: vec![EventKind::MegaCreeps {
+            team: Team::Radiant,
+        }],
+    });
+    app.pump(0.0);
+    assert_eq!(
+        app.cues.len(),
+        2,
+        "the 2D stinger and the enemy Ancient's horn"
+    );
+    assert_eq!(app.cues[0].at, None);
+    assert_eq!(
+        app.cues[1].at,
+        Some((
+            bota_core::rules::DIRE_ANCIENT_POS.x.to_f32(),
+            bota_core::rules::DIRE_ANCIENT_POS.y.to_f32()
+        ))
+    );
+    assert!(
+        app.cues
+            .iter()
+            .all(|cue| cue.target.is_none() && cue.hero.is_none()),
+        "no hidden unit handles"
+    );
 }

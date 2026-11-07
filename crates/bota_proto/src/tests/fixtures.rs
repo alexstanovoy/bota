@@ -122,6 +122,7 @@ pub fn hero_unit() -> UnitView {
         lit_for: None,
         forced: None,
         channel: None,
+        creep_tier: None,
         seen_by: Some(SeenBy {
             radiant: true,
             dire: true,
@@ -199,6 +200,7 @@ pub fn creep_unit(idx: u32) -> UnitView {
         lit_for: None,
         forced: None,
         channel: None,
+        creep_tier: Some(CreepTier::Normal),
         seen_by: None,
         attack_range: fixed(100),
         attack_time: 1000,

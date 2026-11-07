@@ -130,6 +130,7 @@ impl World {
             .collect();
         let mut structure_fell = false;
         let mut tower_losses = [false; 2];
+        let mut barracks_losses = [false; 2];
         for ((entity, killer), told) in fallen.into_iter().zip(told) {
             if !self.entities.contains(entity) {
                 continue;
@@ -146,8 +147,27 @@ impl World {
                 match (kind, side) {
                     (UnitKind::Tower, Team::Radiant) => tower_losses[0] = true,
                     (UnitKind::Tower, Team::Dire) => tower_losses[1] = true,
+                    (UnitKind::Barracks, Team::Radiant) => barracks_losses[0] = true,
+                    (UnitKind::Barracks, Team::Dire) => barracks_losses[1] = true,
                     _ => {}
                 }
+            }
+        }
+        for (index, side) in [Team::Radiant, Team::Dire].into_iter().enumerate() {
+            // Announce after the last body is retired, even when several falls settle together.
+            let barracks_left = self.entities.iter().any(|entity| {
+                self.kind.get(entity) == Some(&UnitKind::Barracks)
+                    && self.team.get(entity) == Some(&side)
+            });
+            if barracks_losses[index] && !barracks_left {
+                events.push(Event::Fact {
+                    kind: EventKind::MegaCreeps {
+                        team: other_side(side),
+                    },
+                    visible_to: EventVisibility::Everyone,
+                    gold_hidden_from: None,
+                    source_told_to: EventVisibility::Everyone,
+                });
             }
         }
         if structure_fell {

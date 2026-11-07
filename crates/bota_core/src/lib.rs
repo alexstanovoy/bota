@@ -19,6 +19,7 @@ mod cast_rule;
 mod catalogue;
 mod cells;
 mod chance;
+pub mod creep_data;
 mod damage;
 mod data;
 mod growth_clock;

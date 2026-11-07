@@ -4,7 +4,7 @@
 //! plain form of its type; level, upgrades, items and whatever is on it are
 //! added by the server as it works out what a unit fights by.
 
-use bota_proto::{AbilityId, Attribute, Attributes, Fixed, Team, UnitKind};
+use bota_proto::{AbilityId, Attribute, Attributes, CreepTier, Fixed, Team, UnitKind};
 
 use crate::{Aura, AuraModifier, GoldRange, HitCount, ModifierKind, Reach, Whom, rules};
 
@@ -65,6 +65,8 @@ pub struct UnitDef {
     pub kind: UnitKind,
     /// The NPC level at creation, before player experience.
     pub base_level: u8,
+    /// How strong it is, for a lane creep. Absent for any other unit.
+    pub tier: Option<CreepTier>,
     /// Attributes it spawns with. All zero for whatever has none.
     pub attributes: Attributes,
     /// Which attribute pays its attack damage. Absent for whatever has none.
@@ -194,6 +196,7 @@ pub(crate) const NO_GROWTH: Growth = Growth {
 pub(crate) const BARE_UNIT: UnitDef = UnitDef {
     kind: UnitKind::Ward,
     base_level: 1,
+    tier: None,
     attributes: Attributes::ZERO,
     primary: None,
     max_hp: 0,
@@ -252,6 +255,7 @@ pub(crate) const BARE_UNIT: UnitDef = UnitDef {
 /// A melee lane creep.
 pub const MELEE_CREEP: UnitDef = UnitDef {
     kind: UnitKind::CreepMelee,
+    tier: Some(CreepTier::Normal),
     max_hp: rules::MELEE_CREEP_HP,
     damage: rules::MELEE_CREEP_ATTACK_DAMAGE,
     damage_spread: rules::MELEE_CREEP_DAMAGE_SPREAD,
@@ -336,6 +340,10 @@ pub const RANGED_CREEP: UnitDef = UnitDef {
 /// A super melee creep: what spawns once the enemy melee barracks of the
 /// lane has fallen.
 pub const SUPER_MELEE_CREEP: UnitDef = UnitDef {
+    tier: Some(CreepTier::Super),
+    base_level: crate::creep_data::GOODGUYS_MELEE_UPGRADED
+        .first("Level")
+        .int() as u8,
     max_hp: rules::SUPER_MELEE_HP,
     damage: rules::SUPER_MELEE_ATTACK_DAMAGE,
     damage_spread: rules::SUPER_MELEE_DAMAGE_SPREAD,
@@ -354,6 +362,7 @@ pub const SUPER_MELEE_CREEP: UnitDef = UnitDef {
 /// A mega melee creep, once every enemy barracks has fallen: a fully
 /// upgraded super one whose bounty alone still grows.
 pub const MEGA_MELEE_CREEP: UnitDef = UnitDef {
+    tier: Some(CreepTier::Mega),
     max_hp: rules::MEGA_MELEE_HP,
     damage: rules::MEGA_MELEE_ATTACK_DAMAGE,
     per_upgrade: Growth {
@@ -364,6 +373,19 @@ pub const MEGA_MELEE_CREEP: UnitDef = UnitDef {
 };
 
 pub const SUPER_RANGED_CREEP: UnitDef = UnitDef {
+    tier: Some(CreepTier::Super),
+    base_level: crate::creep_data::GOODGUYS_RANGED_UPGRADED
+        .first("Level")
+        .int() as u8,
+    max_mana: crate::creep_data::GOODGUYS_RANGED_UPGRADED
+        .first("StatusMana")
+        .int(),
+    mana_regen: Fixed::from_ratio(
+        crate::creep_data::GOODGUYS_RANGED_UPGRADED
+            .first("StatusManaRegen")
+            .0,
+        1000 * rules::TICKS_PER_SECOND as i32,
+    ),
     max_hp: rules::SUPER_RANGED_HP,
     damage: rules::SUPER_RANGED_ATTACK_DAMAGE,
     damage_spread: rules::SUPER_RANGED_DAMAGE_SPREAD,
@@ -382,6 +404,7 @@ pub const SUPER_RANGED_CREEP: UnitDef = UnitDef {
 /// A mega ranged creep, once every enemy barracks has fallen: a fully
 /// upgraded super one whose bounty alone still grows.
 pub const MEGA_RANGED_CREEP: UnitDef = UnitDef {
+    tier: Some(CreepTier::Mega),
     max_hp: rules::MEGA_RANGED_HP,
     damage: rules::MEGA_RANGED_ATTACK_DAMAGE,
     per_upgrade: Growth {
@@ -450,9 +473,21 @@ pub const HERO: UnitDef = UnitDef {
 
 /// A super siege creep: the same wagon hitting harder.
 pub const SUPER_SIEGE_CREEP: UnitDef = UnitDef {
+    tier: Some(CreepTier::Super),
+    base_level: crate::creep_data::GOODGUYS_SIEGE_UPGRADED
+        .first("Level")
+        .int() as u8,
     damage: rules::SUPER_SIEGE_ATTACK_DAMAGE,
     damage_spread: rules::SUPER_SIEGE_DAMAGE_SPREAD,
     ..SIEGE_CREEP
+};
+
+/// A mega siege creep, once every enemy barracks has fallen: the super one under another name
+/// (Liquipedia, *Siege Creep*: "the same unit with a different name"; `npc_units.txt` gives
+/// both the same numbers).
+pub const MEGA_SIEGE_CREEP: UnitDef = UnitDef {
+    tier: Some(CreepTier::Mega),
+    ..SUPER_SIEGE_CREEP
 };
 
 pub const BARRACKS_MELEE: UnitDef = UnitDef {
@@ -708,7 +743,7 @@ pub const MAX_VISION: i32 = max_vision();
 /// The kinds of unit that stand on their own, not one of a table's rows: with the heroes, the
 /// neutrals and the wards the items stand, every kind of unit there is. Listed by hand: a new
 /// kind goes here too, or the server's sight pass asserts once one of it sees farther.
-pub const FIXED_UNIT_DEFS: [&UnitDef; 29] = [
+pub const FIXED_UNIT_DEFS: [&UnitDef; 30] = [
     &BARE_UNIT,
     &MELEE_CREEP,
     &FLAGBEARER_CREEP,
@@ -738,6 +773,7 @@ pub const FIXED_UNIT_DEFS: [&UnitDef; 29] = [
     &crate::WATCHER,
     &crate::SHRINE,
     &crate::ROSHAN,
+    &MEGA_SIEGE_CREEP,
 ];
 
 const fn max_vision() -> i32 {

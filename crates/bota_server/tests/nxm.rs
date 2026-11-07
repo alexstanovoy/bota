@@ -4,7 +4,7 @@
 //! by tower, turn their waves super and then mega, and win by the Ancient, told to every seat
 //! and kept in the replay.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::net::TcpListener;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -15,8 +15,8 @@ use std::time::Duration;
 use bota_client_core::{ClientSession, IssuedOrder, Link, Outcome, Transport, UnpackedReplay};
 use bota_core::{creep_spawn_pos, map_of, rules};
 use bota_proto::{
-    Cheat, ClientMsg, EntityId, EventKind, FrameReader, HeroId, MapId, Order, ReplayRecord,
-    SeatKey, ServerMsg, Target, Team, TickMode, UnitKind, Vec2,
+    Cheat, ClientMsg, CreepTier, EntityId, EventKind, FrameReader, HeroId, MapId, Order,
+    ReplayRecord, SeatKey, ServerMsg, Target, Team, TickMode, UnitKind, Vec2,
 };
 use bota_server::game_loop::{
     DEFAULT_IDLE_TIMEOUT, DEFAULT_SPECTATORS_PER_SEAT, MatchEnd, ServerOpts, check_opts, run,
@@ -309,11 +309,14 @@ fn pusher(lane: u8, broken: Arc<AtomicU8>) -> impl FnMut(&ClientSession) -> Vec<
 }
 
 /// What the replay shows: the order Dire's structures fell in, by where they stood, the
-/// biggest Radiant lane creep seen after each count of fallen Dire barracks, and the winner.
+/// biggest Radiant lane creep seen after each count of fallen Dire barracks and the tiers
+/// Radiant's melee creeps were told in, and the winner.
 struct Replayed {
     fell: Vec<Vec2>,
     melee_hp_by_fallen_barracks: HashMap<usize, i32>,
+    melee_tiers_by_fallen_barracks: HashMap<usize, BTreeSet<CreepTier>>,
     winner: Option<Team>,
+    mega_announcements: Vec<Team>,
 }
 
 fn replayed(path: &std::path::Path) -> Replayed {
@@ -326,7 +329,9 @@ fn replayed(path: &std::path::Path) -> Replayed {
     let mut out = Replayed {
         fell: Vec::new(),
         melee_hp_by_fallen_barracks: HashMap::new(),
+        melee_tiers_by_fallen_barracks: HashMap::new(),
         winner: None,
+        mega_announcements: Vec::new(),
     };
     while let Some(record) = reader.next_message::<ReplayRecord>().expect("a record") {
         match record {
@@ -341,11 +346,18 @@ fn replayed(path: &std::path::Path) -> Replayed {
                     if unit.team == Team::Radiant && unit.kind == UnitKind::CreepMelee {
                         let best = out.melee_hp_by_fallen_barracks.entry(rax_down).or_default();
                         *best = (*best).max(unit.max_hp);
+                        out.melee_tiers_by_fallen_barracks
+                            .entry(rax_down)
+                            .or_default()
+                            .extend(unit.creep_tier);
                     }
                 }
             }
             ReplayRecord::Msg(ServerMsg::Events { events, .. }) => {
                 for event in events {
+                    if let EventKind::MegaCreeps { team } = event {
+                        out.mega_announcements.push(team);
+                    }
                     if let EventKind::StructureDestroyed {
                         unit,
                         team: Team::Dire,
@@ -433,6 +445,11 @@ fn five_pushing_three_lanes_break_them_in_dotas_order_and_win_by_the_ancient() {
         "the Ancient falls last: {:?}",
         seen.fell
     );
+    assert_eq!(
+        seen.mega_announcements,
+        vec![Team::Radiant],
+        "the final barracks announces mega creeps exactly once"
+    );
     let hp = &seen.melee_hp_by_fallen_barracks;
     assert!(hp[&0] < rules::SUPER_MELEE_HP, "plain waves before: {hp:?}");
     assert!(
@@ -442,6 +459,22 @@ fn five_pushing_three_lanes_break_them_in_dotas_order_and_win_by_the_ancient() {
     assert!(
         (2..6).any(|n| hp.get(&n).is_some_and(|hp| *hp >= rules::SUPER_MELEE_HP)),
         "super waves after a lane's barracks: {hp:?}"
+    );
+    // The same told on the wire: a plain tier before, a super one after a lane's barracks, a mega
+    // one after all six (and the creeps that were there before stay what they were).
+    let tiers = &seen.melee_tiers_by_fallen_barracks;
+    assert_eq!(
+        tiers[&0],
+        BTreeSet::from([CreepTier::Normal]),
+        "plain tiers before: {tiers:?}"
+    );
+    assert!(
+        (2..6).any(|n| tiers.get(&n).is_some_and(|t| t.contains(&CreepTier::Super))),
+        "a super tier after a lane's barracks: {tiers:?}"
+    );
+    assert!(
+        tiers[&6].contains(&CreepTier::Mega),
+        "a mega tier after all six: {tiers:?}"
     );
 }
 

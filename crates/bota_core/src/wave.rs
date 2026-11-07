@@ -8,20 +8,6 @@ use bota_proto::Vec2;
 use crate::isqrt64;
 use crate::rules::{self, Schedule};
 
-/// How strong one kind of a side's lane creeps is, by which enemy barracks
-/// have fallen. Always [`Normal`](CreepRank::Normal) on a map with no
-/// barracks.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CreepRank {
-    /// Neither of the others.
-    Normal,
-    /// The enemy barracks of the lane matching its kind destroyed: melee or
-    /// ranged, both of them for siege.
-    Super,
-    /// Every enemy barracks destroyed.
-    Mega,
-}
-
 /// The make-up of one wave.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct WavePlan {
@@ -33,8 +19,8 @@ pub struct WavePlan {
     pub ranged: u32,
     /// Siege creeps.
     pub siege: u32,
-    /// Upgrades the wave's creeps carry. Siege creeps and the flagbearer
-    /// gain nothing from them.
+    /// Elapsed upgrade intervals. Combat growth is capped when applied;
+    /// bounties continue growing. Siege creeps gain nothing from them.
     pub upgrades: u32,
 }
 
@@ -69,9 +55,9 @@ pub const fn wave_spawn_tick(wave: u32, schedule: Schedule) -> u32 {
 }
 
 /// Upgrades a wave's creeps carry: one per [`rules::WAVE_UPGRADE_PERIOD`]
-/// waves, up to [`rules::WAVE_UPGRADE_CAP`].
+/// waves. Combat growth alone is capped at [`rules::WAVE_UPGRADE_CAP`].
 pub fn wave_upgrades(wave: u32) -> u32 {
-    ((wave - 1) / rules::WAVE_UPGRADE_PERIOD).min(rules::WAVE_UPGRADE_CAP)
+    (wave - 1) / rules::WAVE_UPGRADE_PERIOD
 }
 
 /// What the given wave is made of.

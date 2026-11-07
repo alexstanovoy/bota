@@ -1,11 +1,12 @@
 //! Waves: putting them on the map and walking them down their lane.
 
 use bota_core::{
-    CreepRank, FLAGBEARER_CREEP, MEGA_MELEE_CREEP, MEGA_RANGED_CREEP, MELEE_CREEP, RANGED_CREEP,
-    SIEGE_CREEP, SUPER_MELEE_CREEP, SUPER_RANGED_CREEP, SUPER_SIEGE_CREEP, StructureId, UnitDef,
-    WavePlan, creep_spawn_pos, latest_wave, rules, spawn_offsets, team_index, wave_at, wave_plan,
+    FLAGBEARER_CREEP, MEGA_MELEE_CREEP, MEGA_RANGED_CREEP, MEGA_SIEGE_CREEP, MELEE_CREEP,
+    RANGED_CREEP, SIEGE_CREEP, SUPER_MELEE_CREEP, SUPER_RANGED_CREEP, SUPER_SIEGE_CREEP,
+    StructureId, UnitDef, WavePlan, creep_spawn_pos, latest_wave, rules, spawn_offsets, team_index,
+    wave_at, wave_plan,
 };
-use bota_proto::{Team, Vec2};
+use bota_proto::{CreepTier, Team, Vec2};
 
 use crate::game::{Entity, March, Purpose, UnitOrder, World, advance_waypoint};
 
@@ -38,8 +39,8 @@ impl World {
                 };
                 let offsets = spawn_offsets(&plan, forward);
                 let flag_slot = self.flag_slot(plan.melee);
-                let ranks = self.wave_creep_ranks(team, lane);
-                for (index, def) in wave_ranks(&plan, flag_slot, ranks).into_iter().enumerate() {
+                let tiers = self.wave_creep_tiers(team, lane);
+                for (index, def) in wave_tiers(&plan, flag_slot, tiers).into_iter().enumerate() {
                     let pos = at + offsets.get(index).copied().unwrap_or(Vec2::ZERO);
                     self.spawn_creep(def, team, pos, lane, plan.upgrades);
                 }
@@ -72,8 +73,8 @@ impl World {
         let plan = wave_plan(latest_wave(self.clock(), self.schedule()).unwrap_or(1));
         let offsets = spawn_offsets(&plan, forward);
         let flag_slot = self.flag_slot(plan.melee);
-        let ranks = self.wave_creep_ranks(team, lane);
-        for (place, def) in wave_ranks(&plan, flag_slot, ranks).into_iter().enumerate() {
+        let tiers = self.wave_creep_tiers(team, lane);
+        for (place, def) in wave_tiers(&plan, flag_slot, tiers).into_iter().enumerate() {
             let pos = at + offsets.get(place).copied().unwrap_or(Vec2::ZERO);
             let creep = self.spawn_creep(def, team, pos, lane, plan.upgrades);
             self.march.insert(
@@ -94,29 +95,31 @@ impl World {
         self.rng.global(Purpose::Wave).below(melee)
     }
 
-    /// How strong a team's wave in a lane spawns, one rank per creep kind:
+    /// How strong a team's wave in a lane spawns, one tier per creep kind:
     /// melee, ranged, siege.
     ///
     /// Losing a barracks strengthens the creeps marching against it: a
     /// wave's melee go super once the enemy melee barracks of its lane is
-    /// down, its ranged likewise, its siege once the lane holds no barracks
-    /// at all, and everything goes mega once every enemy barracks has
-    /// fallen. A map with no barracks spawns plain waves for ever.
-    fn wave_creep_ranks(&self, team: Team, lane: u8) -> [CreepRank; 3] {
+    /// down, its ranged and its siege once the enemy ranged barracks of
+    /// its lane is (Liquipedia, *Siege Creep*: "when the enemy's respective
+    /// Ranged Barracks are destroyed"), and everything goes mega once every
+    /// enemy barracks has fallen. A map with no barracks spawns plain waves
+    /// for ever.
+    fn wave_creep_tiers(&self, team: Team, lane: u8) -> [CreepTier; 3] {
         let their = match team {
             Team::Radiant => Team::Dire,
             Team::Dire => Team::Radiant,
-            Team::Neutral => return [CreepRank::Normal; 3],
+            Team::Neutral => return [CreepTier::Normal; 3],
         };
         let listed = self.map.barracks[team_index(their)];
         if listed.is_empty() {
-            return [CreepRank::Normal; 3];
+            return [CreepTier::Normal; 3];
         }
         if listed
             .iter()
             .all(|&(lane, ranged, _)| self.all_down(their, StructureId::Barracks { lane, ranged }))
         {
-            return [CreepRank::Mega; 3];
+            return [CreepTier::Mega; 3];
         }
         let melee_down = self.all_down(
             their,
@@ -126,17 +129,17 @@ impl World {
             },
         );
         let ranged_down = self.all_down(their, StructureId::Barracks { lane, ranged: true });
-        let rank_of = |fallen: bool| {
+        let tier_of = |fallen: bool| {
             if fallen {
-                CreepRank::Super
+                CreepTier::Super
             } else {
-                CreepRank::Normal
+                CreepTier::Normal
             }
         };
         [
-            rank_of(melee_down),
-            rank_of(ranged_down),
-            rank_of(melee_down && ranged_down),
+            tier_of(melee_down),
+            tier_of(ranged_down),
+            tier_of(ranged_down),
         ]
     }
 
@@ -199,22 +202,24 @@ impl World {
 
 /// The kinds a wave is made of, in the order they are placed.
 ///
-/// `ranks` is how strong each kind spawns: melee, ranged, siege. The
-/// flagbearer stays its plain self whatever has fallen.
-fn wave_ranks(plan: &WavePlan, flag_slot: u32, ranks: [CreepRank; 3]) -> Vec<&'static UnitDef> {
-    let melee_def = match ranks[0] {
-        CreepRank::Normal => &MELEE_CREEP,
-        CreepRank::Super => &SUPER_MELEE_CREEP,
-        CreepRank::Mega => &MEGA_MELEE_CREEP,
+/// `tiers` is how strong each kind spawns: melee, ranged, siege. The
+/// flagbearer stays its plain self whatever has fallen (Liquipedia, *Lane
+/// Creeps*: "only the default Flagbearer Creeps spawn").
+fn wave_tiers(plan: &WavePlan, flag_slot: u32, tiers: [CreepTier; 3]) -> Vec<&'static UnitDef> {
+    let melee_def = match tiers[0] {
+        CreepTier::Normal => &MELEE_CREEP,
+        CreepTier::Super => &SUPER_MELEE_CREEP,
+        CreepTier::Mega => &MEGA_MELEE_CREEP,
     };
-    let ranged_def = match ranks[1] {
-        CreepRank::Normal => &RANGED_CREEP,
-        CreepRank::Super => &SUPER_RANGED_CREEP,
-        CreepRank::Mega => &MEGA_RANGED_CREEP,
+    let ranged_def = match tiers[1] {
+        CreepTier::Normal => &RANGED_CREEP,
+        CreepTier::Super => &SUPER_RANGED_CREEP,
+        CreepTier::Mega => &MEGA_RANGED_CREEP,
     };
-    let siege_def = match ranks[2] {
-        CreepRank::Normal => &SIEGE_CREEP,
-        CreepRank::Super | CreepRank::Mega => &SUPER_SIEGE_CREEP,
+    let siege_def = match tiers[2] {
+        CreepTier::Normal => &SIEGE_CREEP,
+        CreepTier::Super => &SUPER_SIEGE_CREEP,
+        CreepTier::Mega => &MEGA_SIEGE_CREEP,
     };
     let mut out = Vec::new();
     let front = plan.melee + plan.siege;

@@ -64,6 +64,24 @@ impl App {
     /// What one event sets off: its floaters, its feed line, its cues.
     fn take_in(&mut self, event: EventKind) {
         match event {
+            EventKind::MegaCreeps { team } => {
+                let lost = match team {
+                    Team::Radiant => Team::Dire,
+                    Team::Dire => Team::Radiant,
+                    Team::Neutral => return,
+                };
+                self.cue(CueKind::MegaCreeps(team), 1.0, None);
+                let ancient = self.statics().and_then(|statics| {
+                    bota_core::map_of(statics.metadata().map).ancients[bota_core::team_index(lost)]
+                });
+                if let Some(at) = ancient {
+                    self.cue(
+                        CueKind::MegaCreepsHorn(lost),
+                        1.0,
+                        Some((at.x.to_f32(), at.y.to_f32())),
+                    );
+                }
+            }
             EventKind::ItemPlaced { item, team, .. } => {
                 self.push_feed(FeedKind::ItemPlaced { item, team })
             }

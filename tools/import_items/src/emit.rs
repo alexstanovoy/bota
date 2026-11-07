@@ -232,3 +232,35 @@ pub fn decimal(milli: Milli) -> String {
         format!("{sign}{whole}.{}", digits.trim_end_matches('0'))
     }
 }
+
+pub(crate) fn script_row(
+    out: &mut String,
+    constant: &str,
+    key: &str,
+    block: &Kv,
+) -> Result<(), String> {
+    let mut fields = Vec::new();
+    for (key, value) in block.block().ok_or("not a block")? {
+        if let Kv::Text(text) = value
+            && let Ok(values) = crate::dec::levels(text)
+        {
+            fields.push((key.clone(), values));
+        }
+    }
+    fields.extend(crate::item::values(block)?);
+    let _ = writeln!(
+        out,
+        "pub const {constant}: ScriptData = ScriptData {{ key: {key:?}, values: &["
+    );
+    for (name, values) in fields {
+        let _ = write!(out, "({name:?}, &[");
+        for value in values {
+            let value =
+                i32::try_from(value).map_err(|_| format!("{key}.{name}: number out of range"))?;
+            let _ = write!(out, "Dec({value}),");
+        }
+        out.push_str("]),\n");
+    }
+    out.push_str("] };\n");
+    Ok(())
+}

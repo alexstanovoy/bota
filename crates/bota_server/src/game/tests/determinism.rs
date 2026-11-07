@@ -30,7 +30,7 @@ struct Pinned {
     heroes: &'static [u16],
     /// `(tick, world hash, stream digest)` at every checkpoint.
     checkpoints: &'static [(u32, u64, u64)],
-    /// The digest of the final tick, winner and match statistics.
+    /// Digest of the final tick, world, serialized stream, winner and match statistics.
     last: u64,
 }
 

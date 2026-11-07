@@ -3,9 +3,9 @@
 use bota_core::Spell;
 use bota_core::{
     COURIER, COURIER_ABILITIES, HERO, ModifierKind, NeutralKind, UnitDef, effect_def, hero_def,
-    neutral_ability_level,
+    neutral_ability_level, rules,
 };
-use bota_proto::{AbilityId, Angle, Fixed, HeroId, Inflictor, SlotId, Team, Vec2};
+use bota_proto::{AbilityId, Angle, CreepTier, Fixed, HeroId, Inflictor, SlotId, Team, Vec2};
 
 use crate::game::{
     AbilityBook, AbilityState, Action, ActionState, AppliedModifier, AppliedOrigin, Bounty,
@@ -34,6 +34,10 @@ impl World {
         let entity = self.spawn();
         self.def.insert(entity, Def(def));
         self.kind.insert(entity, def.kind);
+        if let Some(tier @ (CreepTier::Super | CreepTier::Mega)) = def.tier {
+            assert!(bota_core::kind_def(def.kind).lane_creep);
+            self.creep_tier.insert(entity, tier);
+        }
         if def.base_level > 1 {
             self.level.insert(entity, Level(def.base_level));
         }
@@ -421,7 +425,8 @@ impl World {
     /// Records how many upgrade intervals a creep stands after, and sets
     /// what killing it pays to its kind's bounty raised by as many steps.
     pub(crate) fn set_upgrades(&mut self, entity: Entity, def: &UnitDef, upgrades: u32) {
-        self.upgrades.insert(entity, Upgrades(upgrades));
+        self.upgrades
+            .insert(entity, Upgrades(upgrades.min(rules::WAVE_UPGRADE_CAP)));
         self.raise_bounty(entity, def, upgrades);
     }
 

@@ -765,3 +765,10 @@ variant ObjectiveKind 6 TwinGates
 variant UnitKind 19 TwinGate
 
 variant RejectReason 32 NothingToBuy
+
+variant CreepTier 0 Normal
+variant CreepTier 1 Super
+variant CreepTier 2 Mega
+field UnitView 48 creep_tier: Option<CreepTier>
+variant EventKind 28 MegaCreeps {}
+field EventKind::MegaCreeps 0 team: Team

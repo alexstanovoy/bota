@@ -425,6 +425,7 @@ impl Tracks {
             | EventKind::LotusPlucked { .. }
             | EventKind::BossRoared { .. }
             | EventKind::BossFell { .. }
+            | EventKind::MegaCreeps { .. }
             | EventKind::ItemDestroyed { .. }
             | EventKind::ItemPlaced { .. }
             | EventKind::ItemTaken { .. }

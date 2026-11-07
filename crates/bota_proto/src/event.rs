@@ -342,6 +342,8 @@ pub enum EventKind {
         /// The unit; `None` to a side that does not see it arrive.
         unit: Option<EntityId>,
     },
+    /// All of the opposing side's barracks fell; this side now spawns mega creeps.
+    MegaCreeps { team: Team },
 }
 
 /// The seats a [`EventKind::Died`] names as assisting, in seat order.

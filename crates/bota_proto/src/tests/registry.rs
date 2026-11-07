@@ -173,6 +173,7 @@ fn trace_wire() -> Registry {
     trace::<Team>(&mut tracer, &mut enums);
     trace::<Aim>(&mut tracer, &mut enums);
     trace::<UnitKind>(&mut tracer, &mut enums);
+    trace::<CreepTier>(&mut tracer, &mut enums);
     trace::<Attribute>(&mut tracer, &mut enums);
     trace::<Audience>(&mut tracer, &mut enums);
     trace::<Body>(&mut tracer, &mut enums);
