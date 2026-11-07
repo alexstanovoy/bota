@@ -54,3 +54,42 @@ Three complete patterns are in `api/patterns.rs`:
 They run through the same installation path as other families. Tests `match.rs`,
 `api.rs` and `identity.rs` exercise their real `LocalMatch` order/state path;
 `hostile.rs` checks forged receivers and malformed numeric/vector arguments.
+
+## Engine values and observations
+
+Signatures and result categories follow the [bot API dump](https://docs.moddota.com/lua_bots/)
+and [engine enums](https://docs.moddota.com/lua_bots_enums/). Lua numbers represent
+integer results too. Times are seconds; positions are world units. Engine XY
+coordinates are protocol XY minus 9,216, with nearest-even Q16.16 conversion on
+orders. Engine lane IDs TOP=1, MID=2, BOT=3 are translated explicitly to core lanes.
+Vectors expose both `x/y/z` and the one-based numeric components `1/2/3`.
+
+Unknown ability names and empty or invalid item slots return nil. Ability names
+come from core definitions, including the hero's separate innate and talent tree.
+Unlearned abilities retain handles at level zero. Innates have their granted level
+and no cast or learning slot. Owned kit and talent views preserve handles while a
+hero is dead. Item slots are inventory 0–5, backpack 6–8, stash 9–14 and TP 15;
+backpack and stash items are not fully castable.
+
+Nearby and AoE queries consider only current visible units. AoE delay extrapolates
+the observed displacement between visible samples; it reads no standing enemy
+order. Remembered observations stop updating in fog. Private inventory, gold and
+talent eligibility are copied only for the receiving side. Stock and catalogue
+information come from the received view and announced match catalogue.
+
+Estimated damage is an integer projection of observed attack stats and core spell
+data over the requested duration. The availability flag restricts allied spells
+and items by the known mana and cooldowns; it does not disable ordinary attacks.
+Enemy availability is assumed, as specified by the API. Mitigation and spell
+piercing use core rules, without positional assumptions.
+
+Purchase results reserve gold, stock and placement for the team's current turn.
+They use core recipe and stacking rules. A failed bot turn releases its own
+reservations; subsequent snapshots replace projections with received facts. The
+legacy `Action_PurchaseItem` and `Action_LevelAbility` names share the immediate
+callbacks. Orders remain ordinary scheduler outbox entries.
+
+Once attacks complete from `AttackLaunched` facts whose envelope tick is later
+than the request. The completion pass queues Stop before the next script hooks.
+An impact fallback is restricted to an unseen attacker with no older relevant
+projectile, so an older in-flight shot cannot complete a new request.
