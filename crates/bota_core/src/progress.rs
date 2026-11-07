@@ -54,3 +54,10 @@ pub const fn phase_ticks_left(ms: u32, progress: u32, attack_speed: i32) -> u32 
     let ticks = left.div_ceil(gain);
     if ticks == 0 { 1 } else { ticks }
 }
+
+/// Milliseconds of an attack animation at its current speed, clamped as the cycle is.
+/// Shared by simulation projections and clients displaying the same duration.
+pub fn attack_duration(ms: u32, attack_speed: i32) -> u32 {
+    let speed = attack_speed.clamp(rules::MIN_ATTACK_SPEED, rules::MAX_ATTACK_SPEED);
+    ms * rules::BASE_ATTACK_SPEED as u32 / speed as u32
+}

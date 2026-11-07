@@ -635,8 +635,8 @@ impl World {
             hp_regen: per_second_view(stats.hp_regen),
             mana_regen: per_second_view(stats.mana_regen),
             attack_range: stats.attack_range,
-            attack_time: after_speed(stats.attack_time, stats.attack_speed),
-            attack_point: after_speed(stats.attack_point, stats.attack_speed),
+            attack_time: bota_core::attack_duration(stats.attack_time, stats.attack_speed),
+            attack_point: bota_core::attack_duration(stats.attack_point, stats.attack_speed),
             attack_speed: stats.attack_speed,
             armor: stats.armor,
             magic_resist: Fixed::from_ratio(stats.magic_resist_bp, rules::NOMINAL_BP),
@@ -806,16 +806,6 @@ fn keep_to_its_side(unit: &mut UnitView) {
         item.disassembly = None;
         item.rune = None;
     }
-}
-
-/// Milliseconds of animation at an attack speed, clamped as the cycle
-/// clamps it.
-fn after_speed(ms: u32, attack_speed: i32) -> u32 {
-    let speed = attack_speed.clamp(
-        bota_core::rules::MIN_ATTACK_SPEED,
-        bota_core::rules::MAX_ATTACK_SPEED,
-    );
-    ms * bota_core::rules::BASE_ATTACK_SPEED as u32 / speed as u32
 }
 
 /// A pool as a number to show: anything above zero shows as at least one

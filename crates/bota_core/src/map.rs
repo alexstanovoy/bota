@@ -12,6 +12,9 @@ use crate::{
     SIMULATED_RUNES, TwinGateDef, camp, objective, rules,
 };
 
+/// The hero sandbox map.
+pub const DEMO_ID: MapId = MapId(1);
+
 /// Full Dota geometry with mid-only waves and bounded hero/tower play.
 pub const MAP2_ID: MapId = MapId(2);
 /// Hero lives lost across a side's seats before that side loses Map2.
@@ -233,7 +236,7 @@ const DOTA: MapDef = MapDef {
 /// fountains, no Ancients, and the real forest and ground. Everything
 /// comes from the game's own `hero_demo_main`, shifted like the big map.
 const DEMO: MapDef = MapDef {
-    id: MapId(1),
+    id: DEMO_ID,
     secret_shops: &[],
     // hero_demo/scripts/vscripts/addon_game_mode.lua: SetUseUniversalShopMode(true).
     universal_shop: true,
