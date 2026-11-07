@@ -104,8 +104,7 @@ impl World {
     /// that is takes nothing on, stands still and casts nothing. An ethereal
     /// one is disarmed as well (Dota's Ghost Form: "unable to attack").
     pub fn disarmed(&self, entity: Entity) -> bool {
-        self.controlled(entity, bota_core::Control::Disarm)
-            || self.attack_immune(entity)
+        self.controlled(entity, bota_core::Control::Disarm) || self.attack_immune(entity)
     }
 
     /// The world units an AoE bonus adds to an entity's radii that it widens: what it carries.

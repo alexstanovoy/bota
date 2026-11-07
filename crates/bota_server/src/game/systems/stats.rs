@@ -9,9 +9,9 @@ use bota_core::{
 use bota_proto::{Attributes, Fixed, ModifierSpec};
 
 use crate::game::{
-    AbilityBook, AppliedModifiers, Def, Entity, EntityAllocator, Health, Illusion, Inventory, Level,
-    MAX_COMBINED_MODIFIER_SCALE, Mana, Modifier, Modifiers, StatBonus, Stats, Table, Upgrades,
-    carried_bonus, disabled_in,
+    AbilityBook, AppliedModifiers, Def, Entity, EntityAllocator, Health, Illusion, Inventory,
+    Level, MAX_COMBINED_MODIFIER_SCALE, Mana, Modifier, Modifiers, StatBonus, Stats, Table,
+    Upgrades, carried_bonus, disabled_in,
 };
 
 use super::grenade::grenade_of;
@@ -73,7 +73,10 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         night,
         only,
     } = cx;
-    for entity in entities.iter().filter(|&entity| only.is_none_or(|one| one == entity)) {
+    for entity in entities
+        .iter()
+        .filter(|&entity| only.is_none_or(|one| one == entity))
+    {
         let Some(Def(kind)) = def.get(entity) else {
             continue;
         };

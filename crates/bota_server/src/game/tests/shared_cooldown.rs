@@ -37,7 +37,10 @@ fn two_ghost_scepters_share_one_cooldown() {
     assert!(
         !events.iter().any(|event| matches!(
             event.kind(),
-            EventKind::ItemUsed { item: ItemId::GHOST_SCEPTER, .. }
+            EventKind::ItemUsed {
+                item: ItemId::GHOST_SCEPTER,
+                ..
+            }
         )),
         "the second is not used while the first waits"
     );

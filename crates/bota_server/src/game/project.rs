@@ -720,14 +720,17 @@ fn wear_sheet(illusion: &mut UnitView, hero: UnitView) {
 }
 
 /// Takes off a unit what only its own side is told: whether a skill point
-/// could go into an ability, and which items are marked for sale. Dota
-/// shows another side's abilities with their levels and cooldowns, and its
-/// items, but not its unspent points or its own plans for them.
+/// could go into an ability, which items are marked for sale, and how long
+/// its items wait. Dota shows another side's abilities with their levels and
+/// cooldowns, and its items with their charges, but not its unspent points,
+/// its own plans for its items, or their cooldowns (2016-03-25: "Fixed being
+/// able to see enemy item cooldowns in the item tooltips").
 fn keep_to_its_side(unit: &mut UnitView) {
     for ability in &mut unit.abilities {
         ability.learnable = None;
     }
     for item in unit.items.iter_mut().flatten().chain(&mut unit.town_portal) {
+        item.cooldown_left = 0;
         item.selling = None;
         item.locked = None;
         item.disassembly = None;

@@ -1205,6 +1205,46 @@ fn a_hero_never_seen_is_scored_as_a_match_starts_it_and_says_so() {
     );
 }
 
+/// An enemy hero's item cooldowns are its side's to know (Dota 2016-03-25: "Fixed being able to
+/// see enemy item cooldowns in the item tooltips"; Liquipedia, Items: the other side's Ctrl+Alt
+/// ping says only that an item "could be on cooldown"): of an Infused Raindrops just spent on a
+/// block, its own side and a view of everything see the wait, the other side none, though it
+/// sees the item and its charges.
+#[test]
+fn an_enemy_heros_item_cooldowns_stay_with_its_side() {
+    let mut world = World::new();
+    let ours = seat_hero(&mut world, 0, Team::Radiant, Vec2::from_ints(1000, 1000));
+    let enemy = seat_hero(&mut world, 1, Team::Dire, Vec2::from_ints(1300, 1000));
+    hand_item(&mut world, enemy, ItemId::INFUSED_RAINDROP, 6);
+    world.step();
+    world.push_hit(
+        Some(ours),
+        enemy,
+        300,
+        bota_proto::DamageKind::Magical,
+        None,
+    );
+    world.step();
+    let raindrop = |side: Option<Team>| {
+        shown(&world, side, enemy).items[0].map(|item| (item.cooldown_left > 0, item.charges))
+    };
+    assert_eq!(
+        raindrop(Some(Team::Dire)),
+        Some((true, Some(5))),
+        "its own side"
+    );
+    assert_eq!(
+        raindrop(None),
+        Some((true, Some(5))),
+        "a view of everything"
+    );
+    assert_eq!(
+        raindrop(Some(Team::Radiant)),
+        Some((false, Some(5))),
+        "the other side sees the item and its charges, not its wait"
+    );
+}
+
 #[test]
 fn an_enemy_hero_in_sight_keeps_its_unspent_points_and_its_sale_marks_to_itself() {
     let mut world = World::new();

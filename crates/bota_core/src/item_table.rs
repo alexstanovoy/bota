@@ -61,11 +61,8 @@ pub const ITEM_COUNT: usize = ITEM_ROWS.len();
 // A const, not a static: the client's limits and the catalog checks read it
 // at compile time.
 #[allow(clippy::large_const_arrays)]
-pub const ITEMS: [ItemDef; ITEM_COUNT] = keyed_by_wait_group(placed_by_id!(
-    ITEM_ROWS,
-    ITEM_COUNT,
-    |row| row.id.0 as usize
-));
+pub const ITEMS: [ItemDef; ITEM_COUNT] =
+    keyed_by_wait_group(placed_by_id!(ITEM_ROWS, ITEM_COUNT, |row| row.id.0 as usize));
 
 /// The catalogue with each item that shares a named cooldown ([`ItemDef::wait_group`]) owed
 /// under the first of the catalogue naming the same one ([`ItemDef::wait_key`]): the
