@@ -194,3 +194,25 @@ fn legacy_immediate_action_names_issue_the_same_purchase_and_learning_orders() {
     assert!(hero.abilities.iter().any(|ability| ability.level > 0));
     assert!(hero.items.iter().any(Option::is_some));
 }
+
+#[test]
+fn owned_talents_resolve_by_core_names_and_learning_uses_a_talent_order() {
+    let (_, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let mut view = sessions[0].current().expect("view").clone();
+    view.tick += 1;
+    let talent = view.talents.iter_mut().find(|talent| talent.slot == SlotId(0)).expect("talent view");
+    talent.may_learn = Some(bota_proto::Talents::default().with(bota_proto::TalentSlot(0)));
+    let tick = view.tick;
+    sessions[0].ingest(bota_proto::ServerMsg::Snapshot { view }, &mut ()).expect("snapshot");
+    sessions[0].ingest(bota_proto::ServerMsg::Events { tick, events: Vec::new() }, &mut ()).expect("events");
+    let mut source = String::from("function Think() local b=GetBot()\n");
+    for (index, talent) in bota_core::SHADOW_FIEND_TALENTS.iter().enumerate() {
+        source.push_str(&format!("do local a=b:GetAbilityByName('{}') assert(a~=nil,'talent lookup') assert(a:GetName()=='{}' and a:GetLevel()==0) assert(not a:IsFullyCastable()) assert(a:CanAbilityBeUpgraded()=={}) end\n", talent.key(), talent.key(), index == 0));
+    }
+    source.push_str(&format!("b:ActionImmediate_LevelAbility('{}') end", bota_core::SHADOW_FIEND_TALENTS[0].key()));
+    let mut lua = LuaTeam::new(Team::Radiant, &[BotSeat { slot: SlotId(0), hero: HeroId::SHADOW_FIEND }], Limits::DEFAULT, Keys { hash: [17,19], random:23 }).expect("team");
+    lua.add_script(SlotId(0), ScriptKind::Takeover, "talents", source.as_bytes()).expect("script");
+    let turn = lua.think(&sessions[0]).expect("think");
+    assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+    assert!(turn.bots[0].orders.iter().any(|issued| matches!(issued.order, Order::LearnTalent { talent: bota_proto::TalentSlot(0) })));
+}

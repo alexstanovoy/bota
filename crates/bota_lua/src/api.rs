@@ -74,11 +74,11 @@ fn install_unit_reads(lua: &mut Lua, methods: TableId, state: Shared) -> Result<
                 "IsNull" => Value::Boolean(unit.is_none() && !snapshot.is_some_and(|snapshot| snapshot.players.iter().any(|player| player.unit == Some(id)))),
                 "IsAlive" => Value::Boolean(!dead && unit.is_some_and(|unit| unit.hp > 0)),
                 "GetMaxHealth" => Value::Number(unit.map_or(0.0, |unit| f64::from(unit.max_hp))),
-                "GetLevel" => Value::Number(unit.map_or(0.0, |unit| f64::from(unit.level))),
-                "GetTeam" => Value::Number(unit.map_or(4.0, |unit| team_number(unit.team))),
+                "GetLevel" => Value::Number(state.player(id).map_or_else(|| unit.map_or(0.0, |unit| f64::from(unit.level)), |player| f64::from(player.level))),
+                "GetTeam" => Value::Number(state.player(id).map_or_else(|| unit.map_or(4.0, |unit| team_number(unit.team)), |player| team_number(player.team))),
                 "CanBeSeen" => Value::Boolean(snapshot.is_some_and(|snapshot| snapshot.units.iter().any(|known| known.unit.id == id && known.visible))),
                 "GetUnitName" => {
-                    let key = unit.and_then(|unit| unit.hero).and_then(bota_core::hero_def).map_or("", |hero| hero.key);
+                    let key = state.hero(id).and_then(bota_core::hero_def).map_or("", |hero| hero.key);
                     vm.new_string(key.as_bytes())?
                 }
                 _ => unreachable!("registered unit read"),
@@ -154,7 +154,7 @@ fn install_bot_state(lua: &mut Lua, methods: TableId, state: Shared) -> Result<(
                     state.bots[active].next_purchase = i32::try_from(value).map_err(|_| vm.error("purchase value is outside integer range"))?;
                     return Ok(0);
                 }
-                "IsHero" => Value::Boolean(state.unit(id).is_some_and(|unit| unit.kind == bota_proto::UnitKind::Hero)),
+                "IsHero" => Value::Boolean(state.player(id).is_some() || state.unit(id).is_some_and(|unit| unit.kind == bota_proto::UnitKind::Hero)),
                 _ => unreachable!("registered bot state"),
             };
             vm.results(&[value])

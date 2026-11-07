@@ -2,6 +2,51 @@ mod support;
 use bota_client_core::IssuedOrder;
 use bota_lua::{BotSeat, Keys, Limits, LuaTeam, ScriptKind};
 use bota_proto::{HeroId, SlotId, Team, Order, ItemSlot, ServerMsg, Kit};
+
+#[test]
+fn cached_ability_and_item_handles_read_the_owned_kit_after_death_and_track_expiry() {
+    let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let item = bota_core::item_by_key("item_branches").expect("item");
+    let orders: Vec<_> = [Order::Buy { item }, Order::Learn { slot: bota_proto::AbilitySlot(0) }].into_iter().map(|order| sessions[0].issue(IssuedOrder::hero(order)).expect("order")).collect();
+    let streams = local.step(&[&orders, &[]]).expect("step");
+    for (session, stream) in sessions.iter_mut().zip(streams) { support::fold(session, stream); }
+    let mut lua = team(&[0]);
+    lua.add_script(SlotId(0), ScriptKind::Takeover, "dead_kit", br#"
+        local ability,item,innate
+        function Think()
+            local b=GetBot()
+            if ability==nil then
+                ability=b:GetAbilityByName('nevermore_shadowraze1')
+                innate=b:GetAbilityByName('nevermore_necromastery')
+                item=b:GetItemInSlot(0)
+                assert(ability~=nil and item~=nil and innate~=nil)
+            else
+                assert(not b:IsAlive() and b:GetLevel()==7)
+                assert(ability==b:GetAbilityByName('nevermore_shadowraze1'))
+                assert(item==b:GetItemInSlot(0))
+                assert(innate==b:GetAbilityByName('nevermore_necromastery'))
+                assert(not ability:IsNull() and ability:GetLevel()==1)
+                assert(not item:IsNull() and item:GetName()=='item_branches')
+                assert(not innate:IsNull() and innate:GetLevel()==1)
+                assert(not ability:IsFullyCastable() and not ability:CanAbilityBeUpgraded())
+                assert(b:GetUnitName()=='npc_dota_hero_nevermore')
+            end
+        end
+    "#).expect("script");
+    assert!(lua.think(&sessions[0]).expect("first").failures.is_empty());
+    let mut view = sessions[0].current().expect("view").clone();
+    view.tick += bota_client_core::SessionOptions::default().forget_after_ticks + 1;
+    let hero = sessions[0].own_hero().expect("hero").clone();
+    view.units.retain(|unit| unit.id != hero.id);
+    let player = view.players.iter_mut().find(|player| player.slot == SlotId(0)).expect("player");
+    player.respawn_left = 600; player.level = 7;
+    player.kit = Some(Kit { abilities: hero.abilities, items: hero.items, town_portal: hero.town_portal });
+    let tick = view.tick;
+    sessions[0].ingest(ServerMsg::Snapshot { view }, &mut ()).expect("snapshot");
+    sessions[0].ingest(ServerMsg::Events { tick, events: Vec::new() }, &mut ()).expect("events");
+    let turn = lua.think(&sessions[0]).expect("dead think");
+    assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+}
 fn team(slots: &[u8]) -> LuaTeam {
     LuaTeam::new(Team::Radiant, &slots.iter().map(|&slot| BotSeat { slot: SlotId(slot), hero: HeroId::SHADOW_FIEND }).collect::<Vec<_>>(), Limits::DEFAULT, Keys { hash:[17,19], random:23 }).expect("team")
 }
