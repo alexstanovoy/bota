@@ -103,6 +103,9 @@ fn install_actions(lua: &mut Lua, methods: TableId, state: Shared, _vectors: Vec
             let mut state = capture.borrow_mut();
             let id = identity(vm, &state, args)?;
             if Some(id) != state.own_id() { return Err(vm.error("action requires the active bot")); }
+            let once = if name == "Action_AttackUnit" {
+                match vm.arg(args, 2) { Value::Nil => false, Value::Boolean(once) => once, _ => return Err(vm.arg_error(args, 2, "boolean expected")) }
+            } else { false };
             let order = match name {
                 "Action_UseAbility" | "Action_UseAbilityOnEntity" | "Action_UseAbilityOnLocation" => {
                     vm.charge_fuel(1 + state.abilities.len() as u64 / 8)?;
@@ -124,11 +127,25 @@ fn install_actions(lua: &mut Lua, methods: TableId, state: Shared, _vectors: Vec
                 "Action_ClearActions" => Order::Move { target: Target::None },
                 _ => unreachable!("registered action"),
             };
+            let index = state.bot_index();
+            let pending = match (once, order) {
+                (true, Order::Attack { target: Target::Unit(target) }) => Some(pending_once(vm, &state, id, target)?),
+                _ => None,
+            };
             state.order(vm, bota_client_core::IssuedOrder::hero(order))?;
+            if let Some(pending) = pending { state.bots[index].pending_once = Some(pending); }
             Ok(0)
         }))?;
     }
     Ok(())
+}
+
+fn pending_once(vm: &mut Vm, state: &State, source: bota_proto::EntityId, target: bota_proto::EntityId) -> Result<crate::state::PendingOnce, LuaError> {
+    if let Some(pending) = state.bots[state.bot_index()].pending_once.filter(|pending| pending.source == source && pending.target == target && !pending.launched) { return Ok(pending); }
+    let snapshot = state.snapshot.as_ref().ok_or_else(|| vm.error("a current view is required"))?;
+    vm.charge_fuel(1 + snapshot.attacks.len() as u64)?;
+    let allow_impact = !snapshot.attacks.iter().any(|fact| fact.kind == crate::state::AttackFactKind::Projectile && fact.source == source && fact.target.is_none_or(|old| old == target));
+    Ok(crate::state::PendingOnce { source, target, tick: snapshot.tick, allow_impact, launched: false })
 }
 
 fn install_bot_state(lua: &mut Lua, methods: TableId, state: Shared) -> Result<(), BindingError> {

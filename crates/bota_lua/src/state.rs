@@ -29,6 +29,19 @@ pub(crate) struct KnownUnit {
     pub velocity: Option<VelocityEstimate>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AttackFactKind { Launch, Projectile, Impact }
+pub(crate) struct AttackFact { pub tick: u32, pub source: EntityId, pub target: Option<EntityId>, pub kind: AttackFactKind }
+
+#[derive(Clone, Copy)]
+pub(crate) struct PendingOnce {
+    pub source: EntityId,
+    pub target: EntityId,
+    pub tick: u32,
+    pub allow_impact: bool,
+    pub launched: bool,
+}
+
 pub(crate) struct Snapshot {
     pub team: Team,
     pub tick: u32,
@@ -40,6 +53,7 @@ pub(crate) struct Snapshot {
     pub talents: Vec<TalentView>,
     pub stock: Vec<StockView>,
     pub catalogue: bota_core::Catalogue,
+    pub attacks: Vec<AttackFact>,
 }
 
 impl Snapshot {
@@ -53,7 +67,8 @@ impl Snapshot {
         });
         let players = players.and_then(|bytes| bytes.checked_add(view.talents.len().checked_mul(std::mem::size_of::<TalentView>())?)?
             .checked_add(view.stock.len().checked_mul(std::mem::size_of::<StockView>())?)?
-            .checked_add(session.recent_events().len().checked_mul(std::mem::size_of::<(u32, EntityId, EntityId)>())?));
+            .checked_add(session.recent_events().len().checked_mul(std::mem::size_of::<(u32, EntityId, EntityId)>())?)?
+            .checked_add((session.recent_events().len().checked_add(view.projectiles.len())?).checked_mul(std::mem::size_of::<AttackFact>())?));
         let bytes = session.entities().iter().try_fold(players.unwrap_or(usize::MAX), |bytes, track| {
             let unit = &track.unit;
             bytes.checked_add(std::mem::size_of::<KnownUnit>())?
@@ -76,13 +91,35 @@ impl Snapshot {
             damage: session.recent_events().iter().filter_map(|event| match event.kind { bota_proto::EventKind::Damaged { source: Some(source), target, .. } => Some((event.tick, source, target)), _ => None }).collect(),
             talents: view.talents.iter().filter(|talents| view.players.iter().any(|player| player.slot == talents.slot && player.team == session.team())).copied().collect(),
             stock: view.stock.clone(), catalogue: session.statics().catalogue(),
+            attacks: attack_facts(session, view),
             units: session.entities().iter().map(|track| KnownUnit { unit: track.unit.clone(), visible: view.units.binary_search_by_key(&track.unit.id, |unit| unit.id).is_ok(), last_visible: (track.last_seen_tick, track.unit.pos), velocity: track.velocity }).collect(),
         })
     }
 }
 
+fn attack_facts(session: &ClientSession, view: &bota_proto::WorldView) -> Vec<AttackFact> {
+    let owned = |source| view.unit(source).is_some_and(|unit| unit.team == session.team()) || view.players.iter().any(|player| player.team == session.team() && player.unit == Some(source));
+    let mut facts = Vec::with_capacity(view.projectiles.len() + session.recent_events().len());
+    for projectile in &view.projectiles {
+        let Some(source) = projectile.source.filter(|&source| owned(source)) else { continue };
+        if projectile.inflictor.is_some() { continue; }
+        let Ok(index) = session.missiles().binary_search_by_key(&projectile.id, |missile| missile.id) else { continue };
+        facts.push(AttackFact { tick: session.missiles()[index].first_tick, source, target: projectile.target, kind: AttackFactKind::Projectile });
+    }
+    for event in session.recent_events() {
+        let (source, target, kind) = match event.kind {
+            bota_proto::EventKind::AttackLaunched { attacker, target } => (attacker, target, AttackFactKind::Launch),
+            bota_proto::EventKind::Damaged { source: Some(source), target, inflictor: None, removal: false, .. }
+            | bota_proto::EventKind::Missed { source: Some(source), target } => (source, Some(target), AttackFactKind::Impact),
+            _ => continue,
+        };
+        if owned(source) { facts.push(AttackFact { tick: event.tick, source, target, kind }); }
+    }
+    facts
+}
+
 #[derive(Default)]
-pub(crate) struct BotState { pub target: Option<EntityId>, pub next_purchase: i32, pub mode: u8, pub desire: f64 }
+pub(crate) struct BotState { pub target: Option<EntityId>, pub next_purchase: i32, pub mode: u8, pub desire: f64, pub pending_once: Option<PendingOnce> }
 
 pub(crate) struct State {
     pub team: Team,
@@ -162,8 +199,19 @@ impl State {
 
     pub fn order(&mut self, vm: &mut Vm, order: IssuedOrder) -> Result<(), LuaError> {
         if self.orders.len() >= MAX_ORDERS { return Err(vm.error("order limit exceeded")); }
+        if order.unit.is_none() && !order.queue && self.breaks_once(order.order) { let index = self.bot_index(); self.bots[index].pending_once = None; }
         self.orders.push(order);
         Ok(())
+    }
+
+    fn breaks_once(&self, order: bota_proto::Order) -> bool {
+        use bota_proto::Order;
+        match order {
+            Order::Move { .. } | Order::MoveDirection { .. } | Order::Attack { .. } => true,
+            Order::Cast { slot, .. } => self.own_id().and_then(|id| self.ability_book(id)?.get(usize::from(slot.0))).and_then(|ability| bota_core::ability_def(ability.id)).is_none_or(|ability| !ability.immediate),
+            Order::Use { slot, .. } => self.own_id().and_then(|id| self.item(id, slot)).and_then(|item| bota_core::item_def(item.id)).is_none_or(|item| !item.immediate),
+            _ => false,
+        }
     }
 }
 

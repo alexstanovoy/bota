@@ -158,23 +158,46 @@ impl LuaTeam {
         let seats = self.state.borrow().seats.clone();
         self.state.borrow_mut().current_slot = seats[0].slot;
         self.state.borrow_mut().orders.clear();
+        let first_once = self.complete_once(0);
         let first_purchases = self.state.borrow().purchases.clone();
         let mut team_error = self.run_team().err();
         let mut result = TeamTurn::default();
         for (index, seat) in seats.iter().enumerate() {
             self.state.borrow_mut().current_slot = seat.slot;
             if index != 0 { self.state.borrow_mut().orders.clear(); }
+            let once_before = if index == 0 { first_once } else { self.complete_once(index) };
             let purchases_before = if index == 0 { first_purchases.clone() } else { self.state.borrow().purchases.clone() };
             let ended = if index == 0 { team_error.take().map_or_else(|| self.run_seat(index, seat.slot, tick), Err) } else { self.run_seat(index, seat.slot, tick) };
             let orders = if let Err(error) = ended {
                 self.state.borrow_mut().orders.clear();
+                self.state.borrow_mut().bots[index].pending_once = once_before;
                 self.state.borrow_mut().purchases = purchases_before;
                 result.failures.push(self.failure(index, seat.slot, tick, error));
                 Vec::new()
-            } else { std::mem::take(&mut self.state.borrow_mut().orders) };
+            } else {
+                let mut state = self.state.borrow_mut();
+                if state.bots[index].pending_once.is_some_and(|pending| pending.launched) { state.bots[index].pending_once = None; }
+                std::mem::take(&mut state.orders)
+            };
             result.bots.push(BotTurn { slot: seat.slot, orders });
         }
         Ok(result)
+    }
+
+    fn complete_once(&mut self, index: usize) -> Option<crate::state::PendingOnce> {
+        let mut state = self.state.borrow_mut();
+        let mut pending = state.bots[index].pending_once?;
+        if state.player(pending.source).is_none_or(|player| player.respawn_left > 0) { state.bots[index].pending_once = None; return None; }
+        let snapshot = state.snapshot.as_ref()?;
+        let visible = snapshot.units.iter().any(|known| known.unit.id == pending.source && known.visible);
+        pending.launched |= snapshot.attacks.iter().any(|fact| fact.tick > pending.tick && fact.source == pending.source && fact.target.is_none_or(|target| target == pending.target)
+            && (fact.kind == crate::state::AttackFactKind::Launch || !visible && pending.allow_impact && fact.kind == crate::state::AttackFactKind::Impact));
+        state.bots[index].pending_once = Some(pending);
+        if pending.launched {
+            assert!(state.orders.is_empty(), "the completion pass precedes this bot's hooks");
+            state.orders.push(IssuedOrder::hero(bota_proto::Order::Move { target: bota_proto::Target::None }));
+        }
+        Some(pending)
     }
 
     /// Runs one selection frame; unknown heroes use the configured fallback and foreign seats are ignored.
