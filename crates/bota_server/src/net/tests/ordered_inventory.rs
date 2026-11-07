@@ -6,14 +6,20 @@ use bota_proto::{ItemId, SlotOrder, TickMode};
 fn replay_directory() -> std::path::PathBuf {
     let mut nonce = [0u8; 16];
     getrandom::fill(&mut nonce).expect("temporary directory entropy");
-    let directory = std::env::temp_dir().join(format!("bota-net-purchases-{:032x}", u128::from_le_bytes(nonce)));
+    let directory = std::env::temp_dir().join(format!(
+        "bota-net-purchases-{:032x}",
+        u128::from_le_bytes(nonce)
+    ));
     let mut builder = std::fs::DirBuilder::new();
     #[cfg(unix)]
     {
         use std::os::unix::fs::DirBuilderExt;
         builder.mode(0o700);
     }
-    builder.recursive(false).create(&directory).expect("exclusive private replay directory");
+    builder
+        .recursive(false)
+        .create(&directory)
+        .expect("exclusive private replay directory");
     directory
 }
 

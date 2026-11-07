@@ -329,7 +329,78 @@ fn fold_attack_gap(
 }
 
 #[test]
-fn attack_launch_survives_recent_event_eviction_across_skipped_snapshots() {
+fn attack_launch_bursts_preserve_older_recent_facts_and_update_the_durable_launch() {
+    for skipped in [false, true] {
+        let (_, mut session) = seated_with(SessionOptions::default());
+        let attacker = session.own_hero().expect("own hero").id;
+        let view = later(session.current().expect("a view"), 1);
+        let tick = view.tick;
+        session
+            .ingest(ServerMsg::Snapshot { view }, &mut ())
+            .expect("snapshot");
+        session
+            .ingest(
+                ServerMsg::Events {
+                    tick,
+                    events: vec![EventKind::AbilityCast {
+                        caster: attacker,
+                        ability: bota_proto::AbilityId::RAZE_NEAR,
+                    }],
+                },
+                &mut (),
+            )
+            .expect("an older fact");
+        let before = session.recent_events().clone();
+        assert!(!before.is_empty());
+
+        let mut view = later(
+            session.current().expect("a view"),
+            if skipped { 2 } else { 1 },
+        );
+        let tick = view.tick;
+        let launch_tick = if skipped { tick - 1 } else { tick };
+        let events = vec![
+            EventKind::AttackLaunched {
+                attacker,
+                target: None
+            };
+            bota_client_core::MAX_RECENT_EVENTS
+        ];
+        if skipped {
+            view.skipped_ticks = vec![SkippedTick {
+                tick: launch_tick,
+                events,
+            }];
+            fold_view(&mut session, view).expect("skipped launch burst");
+        } else {
+            session
+                .ingest(ServerMsg::Snapshot { view }, &mut ())
+                .expect("snapshot");
+            session
+                .ingest(ServerMsg::Events { tick, events }, &mut ())
+                .expect("launch burst");
+        }
+        assert_eq!(
+            session.recent_events(),
+            &before,
+            "launches neither enter nor evict recent facts; skipped={skipped}"
+        );
+        assert_eq!(
+            session
+                .entity(attacker)
+                .expect("tracked hero")
+                .last_attack_launched,
+            Some(bota_client_core::AttackLaunchObservation {
+                tick: launch_tick,
+                target: None
+            })
+        );
+        assert_eq!(session.last_event_tick(), Some(tick));
+    }
+}
+
+#[test]
+fn attack_launch_survives_recent_history_overflow_across_skipped_snapshots() {
     let (_, mut session) = seated_with(SessionOptions::default());
     let attacker = session.own_hero().expect("own hero").id;
     let tick = fold_attack_gap(&mut session, attacker, None);
@@ -342,7 +413,7 @@ fn attack_launch_survives_recent_event_eviction_across_skipped_snapshots() {
             .recent_events()
             .iter()
             .any(|event| matches!(event.kind, EventKind::AttackLaunched { .. })),
-        "the launch really was evicted"
+        "launch observations stay outside recent history"
     );
     assert_eq!(
         session

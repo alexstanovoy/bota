@@ -490,6 +490,9 @@ impl ClientSession {
         assert!(self.last_event_tick.is_none_or(|previous| previous < tick));
         self.tracks.fold_events(tick, events);
         for event in events {
+            if matches!(event, EventKind::AttackLaunched { .. }) {
+                continue;
+            }
             if self.recent_events.len() == MAX_RECENT_EVENTS {
                 self.recent_events.pop_front();
             }
@@ -631,6 +634,7 @@ impl ClientSession {
     }
 
     /// Recent visible events in stream order.
+    /// Attack launches are retained on `EntityTrack::last_attack_launched` instead.
     #[inline]
     pub fn recent_events(&self) -> &VecDeque<ObservedEvent> {
         &self.recent_events
