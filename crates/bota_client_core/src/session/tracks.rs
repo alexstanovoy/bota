@@ -69,6 +69,14 @@ pub struct AbilityCastObservation {
     pub ability: AbilityId,
 }
 
+/// The latest attack point this stream reported for a tracked entity.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AttackLaunchObservation {
+    pub tick: u32,
+    /// Absent when the stream concealed the target.
+    pub target: Option<EntityId>,
+}
+
 /// A physical non-critical damage event that might be an attack landing.
 ///
 /// The wire does not identify attack damage. This value is only a candidate and
@@ -114,6 +122,8 @@ pub struct EntityTrack {
     pub last_death: Option<DeathObservation>,
     /// Latest completed ability cast reported for this entity.
     pub last_ability_cast: Option<AbilityCastObservation>,
+    /// Latest reported attack point, retained while this entity is tracked.
+    pub last_attack_launched: Option<AttackLaunchObservation>,
     /// Latest damage event that can only be treated as a possible landed attack.
     pub last_possible_attack_landed: Option<PossibleAttackLanded>,
     /// Whom it fights as the current snapshot tells it; absent while unseen or quiet.
@@ -354,6 +364,11 @@ impl Tracks {
 
     fn update_from_event(&mut self, tick: u32, event: &EventKind) {
         match *event {
+            EventKind::AttackLaunched { attacker, target } => {
+                if let Some(entity) = self.get_mut(attacker) {
+                    entity.last_attack_launched = Some(AttackLaunchObservation { tick, target });
+                }
+            }
             EventKind::Damaged {
                 source,
                 target,
@@ -391,7 +406,6 @@ impl Tracks {
             // recorded before any same-tick damage. A teleport's end names no entity, and a
             // landing is told by the blows it deals. A tree is no unit.
             EventKind::Missed { .. }
-            | EventKind::AttackLaunched { .. }
             | EventKind::AbilityCast { .. }
             | EventKind::LevelUp { .. }
             | EventKind::ItemBought { .. }
@@ -520,6 +534,7 @@ fn new_entity(tick: u32, unit: &UnitView) -> EntityTrack {
         last_mana_restoration_received: None,
         last_death: None,
         last_ability_cast: None,
+        last_attack_launched: None,
         last_possible_attack_landed: None,
         fight: None,
         attackers: [0; 2],

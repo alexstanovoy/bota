@@ -302,6 +302,40 @@ fn told(session: &ClientSession, wanted: &EventKind) -> bool {
         .any(|event| &event.kind == wanted)
 }
 
+fn fold_attack_gap(session: &mut ClientSession, attacker: EntityId, target: Option<EntityId>) -> u32 {
+    let mut view = later(session.current().expect("a view"), 3);
+    let launch_tick = view.tick - 2;
+    view.skipped_ticks = vec![
+        SkippedTick { tick: launch_tick, events: vec![EventKind::AttackLaunched { attacker, target }] },
+        SkippedTick { tick: launch_tick + 1, events: vec![EventKind::TreeGrew { at: Vec2::from_ints(9216, 9216) }; bota_client_core::MAX_RECENT_EVENTS] },
+    ];
+    fold_view(session, view).expect("a skipped launch followed by unrelated events");
+    launch_tick
+}
+
+#[test]
+fn attack_launch_survives_recent_event_eviction_across_skipped_snapshots() {
+    let (_, mut session) = seated_with(SessionOptions::default());
+    let attacker = session.own_hero().expect("own hero").id;
+    let tick = fold_attack_gap(&mut session, attacker, None);
+    assert_eq!(session.recent_events().len(), bota_client_core::MAX_RECENT_EVENTS);
+    assert!(!session.recent_events().iter().any(|event| matches!(event.kind, EventKind::AttackLaunched { .. })), "the launch really was evicted");
+    assert_eq!(session.entity(attacker).expect("tracked hero").last_attack_launched,
+        Some(bota_client_core::AttackLaunchObservation { tick, target: None }));
+}
+
+#[test]
+fn attack_launch_replaces_an_old_target_with_the_latest_concealed_target() {
+    let (_, mut session) = seated_with(SessionOptions::default());
+    let attacker = session.own_hero().expect("own hero").id;
+    let old_tick = fold_attack_gap(&mut session, attacker, Some(attacker));
+    assert_eq!(session.entity(attacker).expect("tracked hero").last_attack_launched,
+        Some(bota_client_core::AttackLaunchObservation { tick: old_tick, target: Some(attacker) }));
+    let tick = fold_attack_gap(&mut session, attacker, None);
+    assert_eq!(session.entity(attacker).expect("tracked hero").last_attack_launched,
+        Some(bota_client_core::AttackLaunchObservation { tick, target: None }));
+}
+
 /// Seat 0 reads its scroll at its own tower and plays `ticks` ticks on.
 fn read_scroll_and_play(local: &mut LocalMatch, session: &mut ClientSession, ticks: u32) {
     local.world_mut().seats[0].item_clocks.clear();
