@@ -122,15 +122,22 @@ impl TestClient {
 over_every_wire!(
     a_key_holder_takes_its_seat_and_hero_back_only_once_the_live_connection_has_ended,
     a_seat_that_left_for_good_cannot_rejoin_a_running_match,
+    a_seat_that_left_for_good_cannot_order_or_speak_on_its_open_connection,
     a_disconnected_seat_can_rejoin_during_picks_or_a_running_match,
     a_seat_key_admits_only_so_many_spectators_at_once,
 );
 
 /// Three seats, so one Radiant seat leaving does not forfeit its team's match.
 fn three_seats(wire: Wire, reserved_seats: bool, started: bool) -> (String, Vec<TestClient>) {
+    let addr = serve_over(three_seat_opts(reserved_seats), wire);
+    let clients = join_three_seats(&addr, started);
+    (addr, clients)
+}
+
+fn three_seat_opts(reserved_seats: bool) -> ServerOpts {
     let mut opts = reserved(55);
     opts.players = 3;
-    opts.order_delays = vec![OrderDelay { base: 1, jitter: 0 }; 3];
+    opts.order_delays = vec![OrderDelay::NONE; 3];
     opts.reserved.push(ReservedSeat {
         kind: None,
         key: SeatKey([3; 32]),
@@ -144,10 +151,13 @@ fn three_seats(wire: Wire, reserved_seats: bool, started: bool) -> (String, Vec<
     opts.pick_time = HANG_GUARD * 2;
     opts.mode = TickMode::Lockstep;
     opts.ack_timeout_ticks = 30 * HANG_GUARD.as_secs() as u32;
-    let addr = serve_over(opts, wire);
+    opts
+}
+
+fn join_three_seats(addr: &str, started: bool) -> Vec<TestClient> {
     let mut clients = Vec::new();
     for key in [KEYS[0], KEYS[1], SeatKey([3; 32])] {
-        let mut client = TestClient::connect(addr.as_str());
+        let mut client = TestClient::connect(addr);
         client.hello(Role::Bot, Some(key));
         client.welcome();
         client.send(&ClientMsg::PickHero {
@@ -161,7 +171,7 @@ fn three_seats(wire: Wire, reserved_seats: bool, started: bool) -> (String, Vec<
             client.match_start();
         }
     }
-    (addr, clients)
+    clients
 }
 
 fn a_seat_that_left_for_good_cannot_rejoin_a_running_match(wire: Wire) {
@@ -192,6 +202,136 @@ fn a_seat_that_left_for_good_cannot_rejoin_a_running_match(wire: Wire) {
         // The teammate still plays: refusal did not cancel the match or disturb its seat.
         clients[1].say_all_and_hear("still playing");
     }
+}
+
+fn leave_then_order_and_speak(client: &mut TestClient, tick: u32) {
+    let mut frames = Vec::new();
+    for msg in [
+        ClientMsg::LeaveGame,
+        ClientMsg::Order {
+            seq: 77,
+            unit: None,
+            order: Order::Buy {
+                item: bota_proto::ItemId::BOOTS,
+            },
+            seen: Some(tick),
+            queue: false,
+        },
+        say(Audience::All, "after leaving"),
+        ClientMsg::Ack { tick },
+    ] {
+        frames.extend(encode_frame_to_vec(&msg).expect("message frame"));
+    }
+    client
+        .stream
+        .write_all(&frames)
+        .expect("leave then more messages");
+}
+
+fn a_seat_that_left_for_good_cannot_order_or_speak_on_its_open_connection(wire: Wire) {
+    let (_addr, mut clients) = three_seats(wire, true, true);
+    let first = clients[0].recv_until(snapshot);
+    clients[1].recv_until(snapshot);
+    let teammate = clients[2].recv_until(snapshot);
+    let hero = teammate
+        .player(SlotId(0))
+        .expect("allied seat")
+        .unit
+        .expect("allied hero");
+    let items = teammate.unit(hero).expect("visible ally").items.clone();
+    // Before the fix, the last Ack can advance this tick only after the order and chat were
+    // heard. After the fix, departed seats owe no Ack, and all their messages are inert.
+    leave_then_order_and_speak(&mut clients[0], first.tick);
+    for client in &mut clients[1..] {
+        client.send(&ClientMsg::Ack { tick: first.tick });
+    }
+    let mut told = clients[2].collect_through_tick(first.tick + 1);
+    let after = told
+        .iter()
+        .find_map(|msg| snapshot(msg.clone()))
+        .expect("next tick");
+    assert_eq!(
+        after.unit(hero).expect("visible ally").items,
+        items,
+        "an abandoned seat cannot buy"
+    );
+    // No further Ack comes from the abandoned socket; its team can still advance again.
+    for client in &mut clients[1..] {
+        client.send(&ClientMsg::Ack {
+            tick: first.tick + 1,
+        });
+    }
+    told.extend(clients[2].collect_through_tick(first.tick + 2));
+    // The old socket stayed open while the surviving seats advanced the match. Closing it
+    // now is a barrier for every preceding message, including any chat queued after the tick.
+    clients.remove(0).leave();
+    told.extend(clients[1].collect_until(|msg| {
+        matches!(
+            msg,
+            ServerMsg::ParticipantLeft {
+                slot: Some(SlotId(0)),
+                ..
+            }
+        )
+    }));
+    assert!(
+        !told.iter().any(|msg| matches!(
+            msg,
+            ServerMsg::Heard(heard)
+                if heard.line.body == Body::Text("after leaving".to_owned())
+        )),
+        "an abandoned seat cannot speak"
+    );
+}
+
+#[test]
+fn an_abandoned_socket_cannot_keep_an_empty_match_alive() {
+    let mut opts = three_seat_opts(true);
+    opts.empty_after = Some(Duration::ZERO);
+    let server = start_ending_server(opts);
+    let mut clients = join_three_seats(&server.addr.to_string(), true);
+    let first = clients[0].recv_until(snapshot).tick;
+    for client in &mut clients[1..] {
+        client.recv_until(snapshot);
+        client.send(&ClientMsg::Ack { tick: first });
+    }
+    clients[0].send(&ClientMsg::LeaveGame);
+    let next = clients[0].recv_until(snapshot).tick;
+    assert_eq!(next, first + 1, "the departed seat owes no Ack");
+    let mut abandoned = clients.remove(0);
+    // The other sockets close without acknowledging `next`. Only the abandoned socket remains.
+    for client in clients {
+        client.leave();
+    }
+    while let Some(msg) = abandoned.recv_or_hangup() {
+        match msg {
+            ServerMsg::Snapshot { view } => {
+                panic!("the empty match advanced to tick {}", view.tick)
+            }
+            ServerMsg::MatchOver { .. } => {
+                panic!("the empty match completed instead of abandoning")
+            }
+            _ => {}
+        }
+    }
+    assert_eq!(server.end(), MatchEnd::Abandoned);
+}
+
+#[test]
+fn a_keyless_seat_that_leaves_still_forfeits_against_a_dummy() {
+    let mut opts = realtime(57);
+    opts.dummy_seat = true;
+    opts.mode = TickMode::Lockstep;
+    let server = start_ending_server(opts);
+    let (mut leaver, slot) = join_as_bot(server.addr, "leaver");
+    leaver.match_start();
+    leaver.recv_until(snapshot);
+    leaver.send(&ClientMsg::LeaveGame);
+    let end = server.end();
+    assert!(
+        matches!(end, MatchEnd::Over { winner: Team::Dire, left: Some(left), .. } if Some(SlotId(left)) == slot),
+        "leaving forfeits instead of cancelling a running match: {end:?}"
+    );
 }
 
 #[test]

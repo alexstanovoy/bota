@@ -20,7 +20,7 @@ use crate::chat::{ChatOpts, Rates};
 use crate::game::{
     Command, DelayLine, Event, Handles, MatchConfig, MatchSecrets, OrderDelay, RefusedOrder, World,
 };
-use crate::lobby::{ReservedSeat, Roster};
+use crate::lobby::{ReservedSeat, Roster, RosterSeat};
 use crate::net::{Connection, FrameStream, Linger, Listeners, LiveConnections, NetEvent, Terms};
 use crate::pick_clock::PickClock;
 use crate::replay::ReplayWriter;
@@ -646,6 +646,16 @@ impl Server {
     fn hear(&mut self, event: NetEvent, in_match: bool) -> Option<(PlayerId, ClientMsg)> {
         let (id, broken) = match event {
             NetEvent::Msg(id, msg) => {
+                if let Some(seat) = self.roster.seat_of(id)
+                    && self.left.contains(&seat.slot)
+                {
+                    log::debug!(
+                        "ignoring message from player {} after seat {} left for good",
+                        id.0,
+                        seat.slot.0
+                    );
+                    return None;
+                }
                 return self.conn(id).is_some().then(|| (id, msg.into_message()));
             }
             NetEvent::Connected(stream) => {
@@ -1482,7 +1492,7 @@ impl Server {
         let end = loop {
             self.gather_input(&world, &cfg, &mut inbox, &pace);
             self.record_heard(&mut replay);
-            if self.deserted(&mut empty_since) {
+            if self.deserted(&mut empty_since) && self.forfeit(&inbox).is_none() {
                 eprintln!("bota_server: every seat is empty; the match is abandoned");
                 break MatchEnd::Abandoned;
             }
@@ -1588,7 +1598,7 @@ impl Server {
     /// than [`ServerOpts::empty_after`]. Otherwise a player who may come back
     /// keeps an empty match going to its end.
     fn deserted(&self, empty_since: &mut Option<Instant>) -> bool {
-        if self.roster.anyone_seated() {
+        if self.remaining_seats().any(|seat| seat.player.is_some()) {
             *empty_since = None;
             return false;
         }
@@ -1643,10 +1653,18 @@ impl Server {
         }
     }
 
-    /// Whether a seat nobody holds may still be taken back: it is reserved, or
-    /// its last holder came with a key.
+    /// Seats whose holders have not left for good, whether connected or not.
+    fn remaining_seats(&self) -> impl Iterator<Item = &RosterSeat> {
+        self.roster
+            .seats
+            .iter()
+            .filter(|seat| !self.left.contains(&seat.slot))
+    }
+
+    /// Whether any seat still in the match has a reserved or previously claimed key.
     fn returnable(&self) -> bool {
-        !self.opts.reserved.is_empty() || self.roster.seats.iter().any(|s| s.claim.is_some())
+        self.remaining_seats()
+            .any(|seat| !self.opts.reserved.is_empty() || seat.claim.is_some())
     }
 
     /// Sends a finished tick to every connection watching live, each through
@@ -1860,11 +1878,9 @@ impl Server {
         }
     }
 
-    /// Whether every connected seat has acknowledged this tick.
+    /// Whether every connected seat still playing has acknowledged this tick.
     fn all_acked(&self, tick: u32, acked: &[u32]) -> bool {
-        self.roster
-            .seats
-            .iter()
+        self.remaining_seats()
             .filter(|s| s.player.is_some())
             .all(|s| acked[usize::from(s.slot.0)] >= tick)
     }
