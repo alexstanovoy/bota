@@ -971,3 +971,184 @@ fn a_courier_moves_at_550_in_its_fountains_rejuvenation_and_3_s_after_it_leaves(
         "then its own"
     );
 }
+
+fn courier_with_mixed_lock_cargo() -> (World, Entity, Entity) {
+    let (mut world, hero, courier) = a_match();
+    for (slot, item) in [ItemId::BOOTS, ItemId::CLARITY, ItemId::GLOVES]
+        .into_iter()
+        .enumerate()
+    {
+        world.inventory.get_mut(courier).expect("courier bag").slots[slot] =
+            Some(fresh_stack(item, u8::from(item == ItemId::CLARITY)));
+        if slot != 1 {
+            advance_validated(
+                &mut world,
+                Some(courier),
+                Order::SetCombineLock {
+                    slot: bota_proto::ItemSlot(slot as u8),
+                    locked: true,
+                },
+            );
+        }
+    }
+    (world, hero, courier)
+}
+
+/// Valve 7.23c excludes combine-locked items from Return Items. The June 24,
+/// 2025 correction permits their delivery, without removing the return restriction.
+/// https://www.dota2.com/patches/7.23c
+/// https://steamcommunity.com/games/dota2/announcements/detail/536605349656920750
+#[test]
+fn return_items_keeps_locked_cargo_and_delivery_still_accepts_it() {
+    let (mut world, hero, courier) = courier_with_mixed_lock_cargo();
+    advance_validated(
+        &mut world,
+        Some(courier),
+        Order::Cast {
+            slot: AbilitySlot(1),
+            target: Target::None,
+        },
+    );
+    run(&mut world, 30);
+    assert_only_unlocked_cargo_returned(&world, courier);
+    advance_validated(
+        &mut world,
+        Some(courier),
+        Order::Cast {
+            slot: AbilitySlot(3),
+            target: Target::None,
+        },
+    );
+    run(&mut world, 30);
+    assert_eq!(
+        held(&world, courier),
+        0,
+        "delivery accepts combine-locked components since June 2025"
+    );
+    for item in [ItemId::BOOTS, ItemId::GLOVES] {
+        assert!(
+            world
+                .inventory
+                .get(hero)
+                .expect("hero bag")
+                .held()
+                .any(|stack| stack.id == item && stack.locked)
+        );
+    }
+}
+
+fn assert_only_unlocked_cargo_returned(world: &World, courier: Entity) {
+    assert_eq!(
+        world.errand.get(courier),
+        Some(&Errand::None),
+        "return completes even with locked cargo"
+    );
+    assert_eq!(
+        world.seats[0]
+            .stash
+            .held()
+            .map(|stack| stack.id)
+            .collect::<Vec<_>>(),
+        vec![ItemId::CLARITY],
+        "only unlocked cargo returns to the stash"
+    );
+    for (slot, item) in [(0, ItemId::BOOTS), (2, ItemId::GLOVES)] {
+        let stack = slot_of(world, courier, slot).expect("locked cargo stays aboard");
+        assert_eq!(stack.id, item);
+        assert!(stack.locked, "Return Items preserves the combine lock");
+    }
+}
+
+/// Explicit player moves stay allowed: combine locks exclude automatic Return Items,
+/// not manual courier-to-stash drags (Valve June 24, 2025; explicit-move parity decision).
+#[test]
+fn locked_return_manual_stash_moves_are_allowed_at_the_shop() {
+    let (mut world, hero, courier) = courier_with_mixed_lock_cargo();
+    world.transform.get_mut(hero).expect("hero standing").pos = rules::DEMO_LANE_CORNERS[0];
+    assert!(
+        !world.at_shop(hero),
+        "stash access comes from the courier, not its distant owner"
+    );
+    assert!(world.at_shop(courier));
+    for (from, item) in [(0, ItemId::BOOTS), (2, ItemId::GLOVES)] {
+        advance_validated(
+            &mut world,
+            Some(courier),
+            Order::Swap {
+                from: bota_proto::ItemSlot(from as u8),
+                to: bota_proto::ItemSlot((BAG_SLOTS + from) as u8),
+            },
+        );
+        assert!(slot_of(&world, courier, from).is_none());
+        let held = world.seats[0].stash.slots[from].expect("explicit move reaches stash");
+        assert_eq!(held.id, item);
+        assert!(held.locked, "the move preserves its combine lock");
+    }
+    assert_eq!(
+        slot_of(&world, courier, 1).map(|stack| stack.id),
+        Some(ItemId::CLARITY)
+    );
+}
+
+/// Liquipedia Courier: a hero death before transfer completes issues Return Items.
+#[test]
+fn locked_return_after_owner_death_keeps_locked_cargo_aboard() {
+    let (mut world, hero, courier) = courier_with_mixed_lock_cargo();
+    world.transform.get_mut(hero).expect("hero standing").pos = rules::DEMO_LANE_CORNERS[0];
+    advance_validated(
+        &mut world,
+        Some(courier),
+        Order::Cast {
+            slot: AbilitySlot(3),
+            target: Target::None,
+        },
+    );
+    assert_eq!(world.errand.get(courier), Some(&Errand::ToOwner));
+    world.bury(vec![(hero, None)], &mut Vec::new());
+    assert!(!world.alive(hero));
+    world.advance_trusted(&[]);
+    assert_eq!(
+        world.errand.get(courier),
+        Some(&Errand::PutBack),
+        "death requests the normal return path"
+    );
+    run(&mut world, 30);
+    assert_only_unlocked_cargo_returned(&world, courier);
+}
+
+/// Pin the lock exclusion in the existing leftover return path; the general overflow
+/// destination remains a separate parity question.
+#[test]
+fn locked_return_after_a_full_bag_handoff_keeps_locked_cargo_aboard() {
+    let (mut world, hero, courier) = courier_with_mixed_lock_cargo();
+    world
+        .inventory
+        .get_mut(hero)
+        .expect("hero bag")
+        .slots
+        .fill(Some(fresh_stack(ItemId::BOOTS, 0)));
+    assert_eq!(
+        held(&world, hero),
+        BAG_SLOTS,
+        "every inventory and backpack slot is occupied"
+    );
+    advance_validated(
+        &mut world,
+        Some(courier),
+        Order::Cast {
+            slot: AbilitySlot(3),
+            target: Target::None,
+        },
+    );
+    assert_eq!(world.errand.get(courier), Some(&Errand::ToOwner));
+    world.advance_trusted(&[]);
+    assert_eq!(
+        world.errand.get(courier),
+        Some(&Errand::PutBack),
+        "undeliverable cargo takes the existing return path"
+    );
+    assert_eq!(held(&world, hero), BAG_SLOTS);
+    assert_eq!(held(&world, courier), 3, "nothing could be handed over");
+    run(&mut world, 30);
+    assert_only_unlocked_cargo_returned(&world, courier);
+}

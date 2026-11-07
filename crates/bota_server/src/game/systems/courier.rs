@@ -249,6 +249,11 @@ impl World {
             let Some(stack) = self.held_in_bag(courier, at) else {
                 continue;
             };
+            // Return Items keeps combine-locked cargo aboard (Valve 7.23c).
+            // The June 2025 delivery correction does not change this operation.
+            if stack.locked {
+                continue;
+            }
             if !self.seats[seat].stash.receive(stack) {
                 break;
             }
