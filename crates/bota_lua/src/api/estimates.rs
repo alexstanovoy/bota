@@ -5,7 +5,8 @@
     reason = "the API projects damage over a finite fractional duration"
 )]
 
-use bota_core::{AbilityObservation, DamageCadence, UseSpec, rules};
+use bota_client_core::{AbilityObservation, DamageCadence};
+use bota_core::{UseSpec, rules};
 use bota_proto::{AbilityView, DamageKind, StatusFlags, UnitView};
 
 use super::{
@@ -137,7 +138,7 @@ fn spell_damage(
             continue;
         }
         let Some(projection) =
-            bota_core::ability_damage_projection(ability.id, ability.level, duration, observation)
+            bota_client_core::ability_damage_projection(ability.id, ability.level, duration, observation)
         else {
             continue;
         };

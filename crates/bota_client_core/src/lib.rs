@@ -36,6 +36,13 @@
 
 #![forbid(unsafe_code)]
 
+// The read view shares the simulation's generated numbers without copying or re-exporting them.
+use bota_core::{Dec, ScriptData};
+#[allow(dead_code, reason = "the shared numeric source also defines simulation-only unit rows")]
+#[path = "../../bota_core/src/roshan_data.rs"]
+mod roshan_data;
+
+mod ability_read;
 mod catalog;
 mod chat;
 mod commands;
@@ -70,6 +77,7 @@ mod web;
 #[cfg(any(feature = "websocket", all(target_arch = "wasm32", feature = "web")))]
 mod ws_frame;
 
+pub use ability_read::*;
 pub use catalog::*;
 pub use chat::*;
 pub use commands::*;

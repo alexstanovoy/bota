@@ -361,7 +361,7 @@ fn install_immediate(lua: &mut Lua, units: TableId, state: Shared) -> Result<(),
 fn ability_damage(identity: Identity, level: u8) -> i32 {
     match identity {
         Identity::Ability { id, .. } | Identity::Innate { id, .. } => {
-            bota_core::ability_base_damage(id, level)
+            bota_client_core::ability_base_damage(id, level)
         }
         Identity::Item { .. } => special(identity, level, b"damage"),
         Identity::Talent { .. } => 0,
@@ -383,7 +383,7 @@ fn special(identity: Identity, level: u8, key: &[u8]) -> i32 {
             })
             .copied(),
         Identity::Ability { id, .. } | Identity::Innate { id, .. } => {
-            bota_core::ability_value(id, level, key)
+            bota_client_core::ability_value(id, level, key)
         }
     };
     value.map_or(0, |value| value.0 / 1000)

@@ -4,7 +4,7 @@
     reason = "finite observation projections do not change simulation state"
 )]
 
-use crate::{Act, Buff, Dec, NeutralAbility, Spell, Stat, Strike, Throe, at_level, rules};
+use bota_core::{Act, Buff, Dec, NeutralAbility, Spell, Stat, Strike, Throe, at_level, rules};
 use bota_proto::{AbilityId, DamageKind, EffectId, UnitKind, UnitView};
 
 /// How an ability contributes damage to an observation-based estimate.
@@ -63,7 +63,7 @@ pub fn ability_damage_projection(
     if level == 0 || !seconds.is_finite() || seconds <= 0.0 {
         return None;
     }
-    crate::ability_def(id)?;
+    bota_core::ability_def(id)?;
     if let Some(ability) = NeutralAbility::of(id) {
         return neutral_damage(ability.spell(), level, seconds, observation);
     }
@@ -76,15 +76,15 @@ pub fn ability_damage_projection(
         .unwrap_or(0);
     match id {
         AbilityId::RAZE_NEAR | AbilityId::RAZE_MID | AbilityId::RAZE_FAR => hit(
-            f64::from(crate::heroes::shadow_fiend::raze_damage(
+            f64::from(bota_core::heroes::shadow_fiend::raze_damage(
                 rank.min(rules::RAZE_DAMAGE.len() - 1),
                 souls,
             )),
             DamageKind::Magical,
         ),
         AbilityId::REQUIEM => hit(
-            f64::from(crate::heroes::shadow_fiend::requiem_line_damage(rank))
-                * f64::from(crate::heroes::shadow_fiend::requiem_lines(souls)),
+            f64::from(bota_core::heroes::shadow_fiend::requiem_line_damage(rank))
+                * f64::from(bota_core::heroes::shadow_fiend::requiem_lines(souls)),
             DamageKind::Magical,
         ),
         AbilityId::MEAT_HOOK => hit(
@@ -97,11 +97,11 @@ pub fn ability_damage_projection(
         AbilityId::DISMEMBER => {
             let bites = (0..rules::DISMEMBER_BITES)
                 .filter(|&bite| {
-                    f64::from(crate::heroes::pudge::dismember_bite_tick(bite))
+                    f64::from(bota_core::heroes::pudge::dismember_bite_tick(bite))
                         < seconds * f64::from(rules::TICKS_PER_SECOND)
                 })
                 .count();
-            let bite = crate::heroes::pudge::dismember_bite_damage(
+            let bite = bota_core::heroes::pudge::dismember_bite_damage(
                 rank.min(rules::DISMEMBER_DAMAGE_PER_SECOND.len() - 1),
                 actor.attributes.strength,
             );
@@ -132,7 +132,7 @@ fn neutral_damage(
             far_dps,
             ..
         } => {
-            let distance = (crate::isqrt64(actor.pos.distance_squared(target.pos)) / 65536)
+            let distance = (bota_core::isqrt64(actor.pos.distance_squared(target.pos)) / 65536)
                 .min(i64::from(i32::MAX)) as i32;
             let dps = if distance <= near_radius {
                 near_dps
@@ -287,7 +287,7 @@ fn cast_damage(
 
 /// The base damage reported by an ability's catalogue, without caster-dependent bonuses.
 pub fn ability_base_damage(id: AbilityId, level: u8) -> i32 {
-    if crate::ability_def(id).is_none() {
+    if bota_core::ability_def(id).is_none() {
         return 0;
     }
     if let Some(ability) = NeutralAbility::of(id) {
@@ -351,10 +351,10 @@ fn ticks(value: u32) -> Dec {
 /// A named numeric value that existing core metadata or a typed mechanic supplies.
 /// Unknown fields remain absent rather than inventing data not present in the catalogue.
 pub fn ability_value(id: AbilityId, level: u8, key: &str) -> Option<Dec> {
-    let def = crate::ability_def(id)?;
+    let def = bota_core::ability_def(id)?;
     let common = match key {
-        "AbilityManaCost" | "mana_cost" => Some(integer(crate::ability_mana_cost(id, level))),
-        "AbilityCooldown" | "cooldown" => Some(ticks(crate::ability_cooldown(id, level))),
+        "AbilityManaCost" | "mana_cost" => Some(integer(bota_core::ability_mana_cost(id, level))),
+        "AbilityCooldown" | "cooldown" => Some(ticks(bota_core::ability_cooldown(id, level))),
         "AbilityCastRange" | "cast_range" => Some(integer(def.range)),
         "AbilityCastPoint" | "cast_point" => Some(Dec(def.point.min(i32::MAX as u32) as i32)),
         "AbilityChannelTime" | "channel_time" => Some(ticks(def.duration)),
@@ -469,8 +469,8 @@ fn act_value(act: Act, key: &str, level: u8) -> Option<Dec> {
             "duration" | "stomp_duration" => Some(Dec(at_level(&hero_ms, level))),
             "creep_duration" => Some(Dec(at_level(&other_ms, level))),
             _ => match then {
-                crate::Then::Wear { buff, .. } => buff_value(buff, key, level),
-                crate::Then::Stun => None,
+                bota_core::Then::Wear { buff, .. } => buff_value(buff, key, level),
+                bota_core::Then::Stun => None,
             },
         },
         Act::Bolt {
@@ -700,10 +700,10 @@ fn utility_value(id: AbilityId, key: &str) -> Option<Dec> {
         AbilityId::DELIVER => {
             (key == "deliver_range").then_some(integer(rules::COURIER_DELIVER_RANGE))
         }
-        AbilityId::CAPTURE => (key == "base_capture_time").then_some(ticks(crate::CAPTURE_TICKS)),
+        AbilityId::CAPTURE => (key == "base_capture_time").then_some(ticks(bota_core::CAPTURE_TICKS)),
         AbilityId::LAMP_USE => match key {
-            "active_duration" => Some(ticks(crate::LAMP_LIT_TICKS)),
-            "inactive_duration" => Some(ticks(crate::LAMP_OFF_TICKS)),
+            "active_duration" => Some(ticks(bota_core::LAMP_LIT_TICKS)),
+            "inactive_duration" => Some(ticks(bota_core::LAMP_OFF_TICKS)),
             _ => None,
         },
         _ => None,
@@ -711,7 +711,7 @@ fn utility_value(id: AbilityId, key: &str) -> Option<Dec> {
 }
 
 fn hero_value(id: AbilityId, key: &str, level: u8) -> Option<Dec> {
-    if let Some(index) = crate::heroes::shadow_fiend::SHADOW_FIEND_RAZES
+    if let Some(index) = bota_core::heroes::shadow_fiend::SHADOW_FIEND_RAZES
         .iter()
         .position(|known| *known == id)
     {
