@@ -126,3 +126,16 @@ fn source_reader_refuses_a_symlinked_directory_and_excessive_depth() {
             .contains("limit")
     );
 }
+
+#[test]
+fn source_reader_rejects_a_regular_source_hard_linked_outside_the_pack() {
+    let pack = Directory::new();
+    let outside = Directory::new();
+    let original = outside.path().join("private.lua");
+    std::fs::write(&original, b"return 'outside the pack'").expect("outside fixture");
+    std::fs::hard_link(&original, pack.path().join("linked.lua")).expect("hard link");
+    let error = bota_lua::native::load_modules(pack.path(), None, Limits::DEFAULT)
+        .expect_err("a pack must not load an inode shared outside its root");
+    assert!(error.to_string().contains("hard link"), "{error}");
+    assert_eq!(std::fs::read(original).expect("outside source untouched"), b"return 'outside the pack'");
+}

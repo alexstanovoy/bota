@@ -142,6 +142,7 @@ impl Reader {
     }
 
     fn read_regular(&self, pinned: &OwnedFd, before: &Stat) -> Result<Vec<u8>, BindingError> {
+        require_single_link(before)?;
         let size = usize::try_from(before.st_size).map_err(|_| not_found())?;
         if size > self.limits.module_size {
             return Err(BindingError::Configuration("module source limit exceeded"));
@@ -156,6 +157,7 @@ impl Reader {
         )
         .map_err(|_| not_found())?;
         let reopened = fs::fstat(&readable).map_err(|_| not_found())?;
+        require_single_link(&reopened)?;
         if !same_object(before, &reopened)
             || FileType::from_raw_mode(reopened.st_mode) != FileType::RegularFile
         {
@@ -166,11 +168,19 @@ impl Reader {
             .ok_or(BindingError::Configuration("module source limit exceeded"))?;
         let source = read_bounded(&readable, limit)?;
         let after = fs::fstat(&readable).map_err(|_| not_found())?;
+        require_single_link(&after)?;
         if source.len() != size || !unchanged(before, &after) {
             return Err(not_found());
         }
         Ok(source)
     }
+}
+
+fn require_single_link(stat: &Stat) -> Result<(), BindingError> {
+    if stat.st_nlink > 1 {
+        return Err(BindingError::Configuration("module source has multiple hard links"));
+    }
+    Ok(())
 }
 
 fn same_object(a: &Stat, b: &Stat) -> bool {
