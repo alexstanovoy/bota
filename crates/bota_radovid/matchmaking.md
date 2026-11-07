@@ -106,9 +106,12 @@ limits returns both resolved mode policies. Rebuild clients with protocol 18 tog
 its normal reply is `Reply::LeaderboardPage { page }`. Select the mode's rated ruleset ID
 (the `rating_ruleset` parent for an unrated sibling). `page.rows` contains the configured
 top N, 100 by default, and preserves absolute category ranks during nickname-prefix search.
-`page.own` contains this account's position in its own category even when another category
-is selected or its nickname is outside the search. Highlight it if present among the rows,
-otherwise show it separately. `None` means no rated position exists in that mode.
+`page.own` contains this account's position in its own category, including when a different
+category is selected. The menu highlights or pins it only when `own.kind == page.kind`:
+the Bots tab does not pin a human row. Within the selected category, highlight it among the
+displayed rows or pin it separately if absent. The menu caps its visible list at 100 rows,
+so test membership against those displayed rows, even when the operator permits a larger
+service response. `None` means no rated position exists in that mode.
 
 Prefixes are literal, case-insensitive ASCII letters, digits and underscores, at most 20 bytes.
 The SDK rejects invalid prefixes locally as `ClientError::Refused(BadLeaderboardSearch)`;
