@@ -216,3 +216,50 @@ fn owned_talents_resolve_by_core_names_and_learning_uses_a_talent_order() {
     assert!(turn.failures.is_empty(), "{:?}", turn.failures);
     assert!(turn.bots[0].orders.iter().any(|issued| matches!(issued.order, Order::LearnTalent { talent: bota_proto::TalentSlot(0) })));
 }
+
+#[test]
+fn damage_estimate_availability_flag_does_not_disable_ordinary_attacks() {
+    let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let mut lua = LuaTeam::new(Team::Radiant, &[BotSeat { slot: SlotId(0), hero: HeroId::SHADOW_FIEND }], Limits::DEFAULT, Keys { hash: [17, 19], random: 23 }).expect("team");
+    lua.add_script(SlotId(0), ScriptKind::Takeover, "damage_availability", br#"
+        function Think()
+            local bot = GetBot()
+            local available = bot:GetEstimatedDamageToTarget(true, bot, 1, DAMAGE_TYPE_PHYSICAL)
+            local potential = bot:GetEstimatedDamageToTarget(false, bot, 1, DAMAGE_TYPE_PHYSICAL)
+            assert(available > 0 and potential == available, 'availability does not disable attacks')
+        end
+    "#).expect("script");
+    let turn = lua.think(&sessions[0]).expect("think");
+    assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+}
+
+#[test]
+fn learned_spells_contribute_to_estimates_and_availability_excludes_cooldowns() {
+    let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let mut lua = LuaTeam::new(Team::Radiant, &[BotSeat { slot: SlotId(0), hero: HeroId::SHADOW_FIEND }], Limits::DEFAULT, Keys { hash: [17, 19], random: 23 }).expect("team");
+    lua.add_script(SlotId(0), ScriptKind::Takeover, "spell_estimate", br#"
+        local turn=0
+        function Think()
+            turn=turn+1
+            local b=GetBot()
+            if turn==1 then b:ActionImmediate_LevelAbility('nevermore_shadowraze1')
+            elseif turn==2 then
+                local damage=b:GetEstimatedDamageToTarget(true,b,2,DAMAGE_TYPE_MAGICAL)
+                assert(damage>0 and damage==math.floor(damage), 'trained spell damage is an integer')
+                assert(b:GetEstimatedDamageToTarget(true,b,0,DAMAGE_TYPE_ALL)==0)
+                b:Action_UseAbility(b:GetAbilityByName('nevermore_shadowraze1'))
+            elseif turn>=25 then
+                local ready=b:GetEstimatedDamageToTarget(true,b,2,DAMAGE_TYPE_MAGICAL)
+                local potential=b:GetEstimatedDamageToTarget(false,b,2,DAMAGE_TYPE_MAGICAL)
+                assert(potential>ready, 'cooldown excluded only from available estimate')
+            end
+        end
+    "#).expect("script");
+    for _ in 0..30 {
+        let turn = lua.think(&sessions[0]).expect("think");
+        assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+        let orders: Vec<_> = turn.bots[0].orders.iter().map(|&issued| sessions[0].issue(issued).expect("ordinary order")).collect();
+        let streams = local.step(&[&orders, &[]]).expect("step");
+        for (session, stream) in sessions.iter_mut().zip(streams) { support::fold(session, stream); }
+    }
+}

@@ -10,6 +10,7 @@ mod patterns;
 mod globals;
 mod queries;
 mod geometry;
+mod estimates;
 pub(crate) mod abilities;
 
 pub(crate) type Shared = Rc<RefCell<State>>;
@@ -44,7 +45,9 @@ pub(crate) fn install(lua: &mut Lua, state: Shared, vectors: Vectors) -> Result<
     let methods = lua.vm().new_table()?;
     lua.pin(Value::Table(methods))?;
     state.borrow_mut().unit_methods = Some(methods);
-    patterns::install(lua, &context::ApiContext { state: state.clone(), vectors })?;
+    let context = context::ApiContext { state: state.clone(), vectors };
+    patterns::install(lua, &context)?;
+    estimates::install(lua, &context)?;
     globals::install(lua, state.clone(), vectors)?;
     queries::install(lua, methods, state.clone(), vectors)?;
     abilities::install(lua, methods, state.clone())?;
