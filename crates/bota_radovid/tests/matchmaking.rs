@@ -62,6 +62,14 @@ fn avatars_cross_the_sdk_service_and_public_profile_and_board_contracts() {
             .avatar,
         Some(image.version)
     );
+    let mut viewer=env.account("viewer",AccountKind::Human);
+    let queries=[AvatarQuery{account:alpha_id,version:None},AvatarQuery{account:beta_id,version:None}];
+    let seq=viewer.client.get_avatars(&queries).expect("batch request");
+    assert_eq!(viewer.reply(seq),Ok(Reply::Avatars{changes:vec![AvatarChange{account:alpha_id,avatar:Some(image.clone())}]}));
+    let cached=[AvatarQuery{account:alpha_id,version:Some(image.version)},queries[1]];
+    let seq=viewer.client.get_avatars(&cached).expect("conditional request");
+    assert_eq!(viewer.reply(seq),Ok(Reply::Avatars{changes:Vec::new()}));
+    assert!(matches!(viewer.client.get_avatars(&[queries[0],queries[0]]),Err(bota_radovid::ClientError::Refused(Error::BadAvatarBatch))));
     let seq = alpha.client.remove_avatar().expect("remove request");
     assert!(
         matches!(alpha.reply(seq), Err(Error::Throttled { .. })),

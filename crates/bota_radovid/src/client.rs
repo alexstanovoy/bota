@@ -223,6 +223,12 @@ impl Client {
         self.request(ClientMsg::GetAvatar { account })
     }
 
+    /// Fetches changed images for up to 100 distinct accounts using one lookup token.
+    pub fn get_avatars(&mut self,accounts:&[radovid_client::proto::AvatarQuery])->Result<u32,ClientError> {
+        if !radovid_client::proto::valid_avatar_batch(accounts) {return Err(ClientError::Refused(Error::BadAvatarBatch));}
+        self.request(ClientMsg::GetAvatars{accounts:accounts.to_vec()})
+    }
+
     /// Uploads a static 32x32 PNG. Full validation belongs to the service.
     pub fn set_avatar(&mut self, png: &[u8]) -> Result<u32, ClientError> {
         if png.len() > radovid_client::proto::MAX_AVATAR_BYTES {

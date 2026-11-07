@@ -173,10 +173,29 @@ Uploads and removals share one attempt per minute per account, including invalid
 images and no-op removals. The limit survives reconnects and restarts; honor
 `Throttled.retry_after_ms`. Reads share the existing per-account lookup quota.
 Other accounts' deleted or currently banned targets return `UnknownAccount`.
-Protocol 20 requires a coordinated rebuild; the screen implementation belongs to
-the consumer.
+Current protocol 21 adds the batch call below; protocol 20 single-image clients remain supported.
+The screen implementation belongs to the consumer.
 
 The client control layer checks the bounded PNG envelope before exposing a fetched
 avatar to an image decoder. Treat image-decoder errors from an untrusted service
 as a missing image; full checksum/pixel validation is performed by a conforming
 service. Keep the image cache bounded and discard obsolete account/version entries.
+
+### Conditional avatar batches (protocol 21)
+
+Use Client::get_avatars(&[AvatarQuery { account, version }]) for visible rows,
+at most 100 distinct accounts per call. Supply the hash of bytes actually cached,
+or None to fetch an image; do not supply a metadata hash when its bytes are absent.
+One batch spends one lookup token. Invalid/empty/duplicate batches return
+BadAvatarBatch locally and on the service. Split larger visible lists into batches.
+
+Reply::Avatars { changes } carries AvatarChange { account, avatar: Option<Avatar> }
+for changed images only. None clears a cached image, including hidden/deleted or
+unreadable images. Missing entries leave the supplied cache state unchanged.
+Cache replacements under their returned hash. No image history or URLs are kept.
+
+Uploads are decoded and re-encoded by the service with fixed settings; returned
+bytes may differ from the file supplied. Hashes identify those returned bytes.
+Canonical output must also fit 512 bytes. Corrupt stored images are absent with a
+server WARN. Existing valid uploads are normalized on fetch without spending the
+upload quota. All client image-cache bounds from above still apply.
