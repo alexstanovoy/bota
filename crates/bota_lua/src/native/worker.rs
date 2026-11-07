@@ -294,9 +294,8 @@ fn run(lua: &mut LuaTeam, input: Receiver<Request>, output: SyncSender<Reply>) {
 fn run_with_reply_hook(lua: &mut LuaTeam, input: Receiver<Request>, output: SyncSender<Reply>, mut before_reply: impl FnMut(&Reply)) {
     let mut previous = None;
     while let Ok(request) = input.recv() {
-        if let Some(checkpoint) = previous.take() {
-            if request.previous_discarded { lua.restore_once(checkpoint); }
-        }
+        if let Some(checkpoint) = previous.take()
+            && request.previous_discarded { lua.restore_once(checkpoint); }
         let checkpoint = lua.once_checkpoint();
         let (reply, panicked) =
             match catch_unwind(AssertUnwindSafe(|| lua.think_snapshot(request.snapshot))) {
