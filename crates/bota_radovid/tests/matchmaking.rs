@@ -14,32 +14,79 @@ use common::*;
 #[test]
 fn avatars_cross_the_sdk_service_and_public_profile_and_board_contracts() {
     let env = start();
-    let mut alpha = env.account("alpha",AccountKind::Human);
-    let mut beta = env.account("beta",AccountKind::Human);
-    let (alpha_id,beta_id) = (alpha.client.me().expect("alpha").id,beta.client.me().expect("beta").id);
+    let mut alpha = env.account("alpha", AccountKind::Human);
+    let mut beta = env.account("beta", AccountKind::Human);
+    let (alpha_id, beta_id) = (
+        alpha.client.me().expect("alpha").id,
+        beta.client.me().expect("beta").id,
+    );
     let png = include_bytes!("fixtures/avatar.png");
     let seq = alpha.client.set_avatar(png).expect("send upload");
-    let Reply::Avatar {account,avatar:Some(image)} = alpha.reply(seq).expect("upload") else { panic!("image reply"); };
-    assert_eq!(account,alpha_id);
-    assert_eq!(image.png,png);
+    let Reply::Avatar {
+        account,
+        avatar: Some(image),
+    } = alpha.reply(seq).expect("upload")
+    else {
+        panic!("image reply");
+    };
+    assert_eq!(account, alpha_id);
+    assert_eq!(image.png, png);
     let seq = beta.client.get_avatar(alpha_id).expect("send fetch");
-    assert_eq!(beta.reply(seq),Ok(Reply::Avatar{account:alpha_id,avatar:Some(image.clone())}));
-    let Reply::Account {account} = beta.ask(bota_radovid::proto::ClientMsg::Account{account:alpha_id}).expect("profile") else {panic!("profile");};
-    assert_eq!(account.avatar,Some(image.version));
-    env.rated_fixture(alpha_id,beta_id,RULESET);
-    let seq = beta.client.leaderboard(&solo(),AccountKind::Human,"").expect("board");
-    let Reply::LeaderboardPage {page} = beta.reply(seq).expect("board") else { panic!("board"); };
-    assert_eq!(page.rows.iter().find(|row|row.account==alpha_id).expect("row").avatar,Some(image.version));
+    assert_eq!(
+        beta.reply(seq),
+        Ok(Reply::Avatar {
+            account: alpha_id,
+            avatar: Some(image.clone())
+        })
+    );
+    let Reply::Account { account } = beta
+        .ask(bota_radovid::proto::ClientMsg::Account { account: alpha_id })
+        .expect("profile")
+    else {
+        panic!("profile");
+    };
+    assert_eq!(account.avatar, Some(image.version));
+    env.rated_fixture(alpha_id, beta_id, RULESET);
+    let seq = beta
+        .client
+        .leaderboard(&solo(), AccountKind::Human, "")
+        .expect("board");
+    let Reply::LeaderboardPage { page } = beta.reply(seq).expect("board") else {
+        panic!("board");
+    };
+    assert_eq!(
+        page.rows
+            .iter()
+            .find(|row| row.account == alpha_id)
+            .expect("row")
+            .avatar,
+        Some(image.version)
+    );
     let seq = alpha.client.remove_avatar().expect("remove request");
-    assert!(matches!(alpha.reply(seq),Err(Error::Throttled{..})),"removal shares the upload quota");
+    assert!(
+        matches!(alpha.reply(seq), Err(Error::Throttled { .. })),
+        "removal shares the upload quota"
+    );
     let seq = beta.client.remove_avatar().expect("other account removal");
-    assert_eq!(beta.reply(seq),Ok(Reply::Avatar{account:beta_id,avatar:None}));
-    assert!(matches!(alpha.client.set_avatar(&[0;513]),Err(bota_radovid::ClientError::Refused(Error::BadAvatar))));
-    let mut invalid = env.account("invalid",AccountKind::Human);
-    let seq = invalid.client.set_avatar(b"not a PNG").expect("server validates");
-    assert_eq!(invalid.reply(seq),Err(Error::BadAvatar));
+    assert_eq!(
+        beta.reply(seq),
+        Ok(Reply::Avatar {
+            account: beta_id,
+            avatar: None
+        })
+    );
+    assert!(matches!(
+        alpha.client.set_avatar(&[0; 513]),
+        Err(bota_radovid::ClientError::Refused(Error::BadAvatar))
+    ));
+    let mut invalid = env.account("invalid", AccountKind::Human);
+    let seq = invalid
+        .client
+        .set_avatar(b"not a PNG")
+        .expect("server validates");
+    assert_eq!(invalid.reply(seq), Err(Error::BadAvatar));
     let seq = invalid.client.remove_avatar().expect("another attempt");
-    assert!(matches!(invalid.reply(seq),Err(Error::Throttled{..})));
+    assert!(matches!(invalid.reply(seq), Err(Error::Throttled { .. })));
 }
 
 #[test]

@@ -216,7 +216,10 @@ impl Client {
     }
 
     /// Fetches the public image separately from profile/leaderboard cache versions.
-    pub fn get_avatar(&mut self, account: radovid_client::proto::AccountId) -> Result<u32, ClientError> {
+    pub fn get_avatar(
+        &mut self,
+        account: radovid_client::proto::AccountId,
+    ) -> Result<u32, ClientError> {
         self.request(ClientMsg::GetAvatar { account })
     }
 
