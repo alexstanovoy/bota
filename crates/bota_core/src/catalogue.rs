@@ -206,7 +206,7 @@ impl Fnv {
                 if stock.opens_ticks == 0 {
                     fnv
                 } else {
-                    fnv.u64(0xA3).u64(stock.opens_ticks as u64)
+                    fnv.u64(0xAE).u64(stock.opens_ticks as u64)
                 }
             }
         }
@@ -263,7 +263,7 @@ impl Fnv {
         if aoe_bonus == 0 {
             fnv
         } else {
-            fnv.u64(0xA5).int(aoe_bonus as i64)
+            fnv.u64(0xB0).int(aoe_bonus as i64)
         }
     }
 
@@ -385,7 +385,6 @@ pub(crate) const fn item_digest(def: &ItemDef) -> u64 {
         pickup,
         public_loot,
         public_placement,
-        cooldown_group,
         cooldown_in_inventory,
         pickup_lifetime,
         reincarnation,
@@ -426,6 +425,8 @@ pub(crate) const fn item_digest(def: &ItemDef) -> u64 {
         kept_empty,
         ally_target,
         wait_key,
+        // What it shares is digested as `wait_key`, which the group works out.
+        wait_group: _,
         charge_recipes,
         take_range,
         effect,
@@ -512,7 +513,7 @@ pub(crate) const fn item_digest(def: &ItemDef) -> u64 {
     let fnv = match magic_block {
         None => fnv,
         Some(block) => fnv
-            .u64(0xA4)
+            .u64(0xAF)
             .int(block.amount as i64)
             .int(block.min_damage as i64),
     };
@@ -534,9 +535,6 @@ pub(crate) const fn item_digest(def: &ItemDef) -> u64 {
             .flag(limits.sellable)
             .flag(limits.killable)
             .flag(limits.backpack);
-    }
-    if let Some(group) = cooldown_group {
-        fnv = fnv.u64(0xA9).u64(group.0 as u64);
     }
     if cooldown_in_inventory {
         fnv = fnv.u64(0xAA);

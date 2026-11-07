@@ -13,9 +13,7 @@ type Change = (&'static str, fn(&mut ItemDef));
 fn every_rule_of_an_item_moves_its_digest() {
     let bottle = *item_def(ItemId::BOTTLE).expect("the Bottle is in the catalogue");
     let changes: [Change; 34] = [
-        ("cooldown group", |d| {
-            d.cooldown_group = Some(ItemId::REFRESHER_SHARD)
-        }),
+        ("wait key", |d| d.wait_key = Some(ItemId::REFRESHER_SHARD)),
         ("inventory cooldown", |d| d.cooldown_in_inventory = true),
         ("public loot", |d| d.public_loot = true),
         ("public placement", |d| d.public_placement = true),
@@ -89,8 +87,10 @@ fn drink(def: &mut ItemDef) -> &mut crate::Drink {
 fn adding_roshan_items_keeps_the_preexisting_catalogue_prefix_identical() {
     let previous = bota_proto::CataloguePrefix {
         items: 88,
-        // Independently measured on pristine landing main bc20dfbb, before Roshan.
-        digest: 0x976c_2b63_8294_681d,
+        // Independently measured on pristine landing main bc20dfbb, before Roshan, and moved once
+        // since by a rule of an item of that prefix: the Magic Wand waits under the Magic Stick's
+        // cooldown (`AbilitySharedCooldown` "magicwand"), which its digest carries as `wait_key`.
+        digest: 0xd7b1_8379_c465_3b6c,
     };
     assert_eq!(
         crate::Catalogue::first(previous.items)

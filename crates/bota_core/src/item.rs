@@ -349,8 +349,6 @@ pub struct ItemDef {
     pub public_loot: bool,
     /// Placement is a public map event, including its location.
     pub public_placement: bool,
-    /// Held copies in this group receive the cooldown when one is used.
-    pub cooldown_group: Option<ItemId>,
     /// Its stack cooldown advances only in a hero's active inventory.
     pub cooldown_in_inventory: bool,
     /// Lifetime begun when an unowned ground item is first picked up.
@@ -451,8 +449,13 @@ pub struct ItemDef {
     /// `DOTA_ABILITY_BEHAVIOR_OPTIONAL_UNIT_TARGET`.
     pub ally_target: bool,
     /// The item whose wait this one is owed under, when it shares one with
-    /// others: Dota's `AbilitySharedCooldown`. Absent: its own.
+    /// others: the first of the catalogue naming its [`wait_group`](Self::wait_group).
+    /// Absent: its own. Worked out from the groups when the catalogue is placed.
     pub wait_key: Option<ItemId>,
+    /// Dota's `AbilitySharedCooldown`: the name of the cooldown it shares with every item
+    /// naming the same one (the Magic Stick's and the Magic Wand's "magicwand"). Absent for one
+    /// that names none; identical items share theirs anyway.
+    pub wait_group: Option<&'static str>,
     /// The sets of parts it is built from by charges, one charge of each
     /// part listed (the lotuses, Royale with Cheese): the build takes those
     /// charges wherever the bag holds them, whichever stacks, and is one
@@ -712,7 +715,6 @@ pub(crate) const PLAIN: ItemDef = ItemDef {
     pickup: PickupEligibility::InventoryCarrier,
     public_loot: false,
     public_placement: false,
-    cooldown_group: None,
     cooldown_in_inventory: false,
     pickup_lifetime: 0,
     reincarnation: None,
@@ -753,6 +755,7 @@ pub(crate) const PLAIN: ItemDef = ItemDef {
     kept_empty: false,
     ally_target: false,
     wait_key: None,
+    wait_group: None,
     charge_recipes: &[],
     take_range: 0,
     effect: UseSpec::None,

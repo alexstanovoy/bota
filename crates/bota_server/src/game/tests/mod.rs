@@ -52,6 +52,7 @@ mod pudge;
 mod purchase_rules;
 mod queue;
 mod runes;
+mod shared_cooldown;
 mod shop;
 mod stacking;
 mod stats;

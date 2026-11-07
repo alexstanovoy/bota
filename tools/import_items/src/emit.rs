@@ -196,6 +196,11 @@ fn write_row(out: &mut String, entry: &Registered, row: &Item, builds: &[Vec<u16
     let _ = writeln!(out, "    builds: &[{}],", ways.join(", "));
     let aoe: Vec<String> = row.aoe.iter().map(|key| format!("\"{key}\"")).collect();
     let _ = writeln!(out, "    aoe: &[{}],", aoe.join(", "));
+    let shared = row
+        .shared_cooldown
+        .as_ref()
+        .map_or("None".to_owned(), |name| format!("Some(\"{name}\")"));
+    let _ = writeln!(out, "    shared_cooldown: {shared},");
     if row.values.is_empty() {
         out.push_str("    values: &[],\n};\n");
         return;

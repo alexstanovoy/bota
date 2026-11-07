@@ -677,14 +677,16 @@ impl World {
             pool.hp = (pool.hp - Fixed::from_int(def.health_cost)).max(Fixed::ONE);
         }
         let cooldown = self.item_cooldown(entity, used.id);
+        let waits_as = def.wait_key.unwrap_or(used.id);
         if def.shared_wait {
-            self.owe_wait(entity, def.wait_key.unwrap_or(used.id), cooldown);
-        }
-        if let Some(group) = def.cooldown_group
-            && let Some(bag) = self.inventory.get_mut(entity)
-        {
+            self.owe_wait(entity, waits_as, cooldown);
+        } else if let Some(bag) = self.inventory.get_mut(entity) {
+            // Every other stack the unit holds that waits as this one waits as long: an identical
+            // item, or one naming the same `AbilitySharedCooldown` (Dota: identical items share
+            // their cooldown; the Magic Stick and the Magic Wand share "magicwand").
             for stack in bag.every_stack_mut() {
-                if item_def(stack.id).is_some_and(|entry| entry.cooldown_group == Some(group)) {
+                let waits_with = item_def(stack.id).and_then(|other| other.wait_key);
+                if waits_with.unwrap_or(stack.id) == waits_as {
                     stack.cooldown = stack.cooldown.max(cooldown);
                 }
             }

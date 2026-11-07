@@ -183,6 +183,8 @@ pub struct ItemData {
     pub builds: &'static [&'static [ItemId]],
     /// The keys of the values an AoE bonus widens (`affected_by_aoe_increase`).
     pub aoe: &'static [&'static str],
+    /// `AbilitySharedCooldown`: the cooldown it shares with every item naming the same one.
+    pub shared_cooldown: Option<&'static str>,
     /// `AbilityValues`: each a number a level, by Dota's key.
     pub values: &'static [(&'static str, &'static [Dec])],
 }

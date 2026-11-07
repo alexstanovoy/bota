@@ -46,6 +46,9 @@ pub struct Item {
     pub values: Vec<(String, Vec<Milli>)>,
     /// The keys of the values `affected_by_aoe_increase` marks, in their order.
     pub aoe: Vec<String>,
+    /// `AbilitySharedCooldown`: the name of the cooldown it shares with every item that names
+    /// the same one; none where it names none.
+    pub shared_cooldown: Option<String>,
 }
 
 /// The `AbilityBehavior` flags an item may carry.
@@ -78,6 +81,7 @@ const READ: &[&str] = &[
     "AbilityCooldown",
     "AbilityHealthCost",
     "AbilityManaCost",
+    "AbilitySharedCooldown",
     "AbilityValues",
     "ItemCost",
     "ItemInitialCharges",
@@ -101,9 +105,8 @@ const READ: &[&str] = &[
 ];
 
 /// Keys known and left out: presentation, the shop's suggestions, and rules bota models
-/// elsewhere or not yet (targets, sharing, dispels, the shared cooldown's name, Turbo's stock).
+/// elsewhere or not yet (targets, sharing, dispels, Turbo's stock).
 const LEFT_OUT: &[&str] = &[
-    "AbilitySharedCooldown",
     "AbilityUnitTargetFlags",
     "AbilityUnitTargetTeam",
     "AbilityUnitTargetType",
@@ -253,6 +256,7 @@ pub fn read(key: &str, block: &Kv) -> Result<Item, String> {
         recipe,
         values: values(block).map_err(fail)?,
         aoe: aoe(block).map_err(fail)?,
+        shared_cooldown: text("AbilitySharedCooldown")?.map(str::to_owned),
     })
 }
 

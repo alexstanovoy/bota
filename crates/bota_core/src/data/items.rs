@@ -39,6 +39,7 @@ pub(crate) const ITEM_BOOTS: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_movement_speed", &[Dec::of("45")])],
 };
 
@@ -78,6 +79,7 @@ pub(crate) const ITEM_CLARITY: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("mana_regen", &[Dec::of("6")]),
         ("buff_duration", &[Dec::of("25")]),
@@ -120,6 +122,7 @@ pub(crate) const ITEM_FLASK: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("buff_duration", &[Dec::of("13")]),
         ("health_regen", &[Dec::of("30")]),
@@ -155,6 +158,7 @@ pub(crate) const ITEM_BRANCHES: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("bonus_all_stats", &[Dec::of("1")]),
         ("tree_duration", &[Dec::of("20")]),
@@ -197,6 +201,7 @@ pub(crate) const ITEM_WARD_OBSERVER: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("lifetime", &[Dec::of("360")]),
         ("vision_range_tooltip", &[Dec::of("1600")]),
@@ -233,6 +238,7 @@ pub(crate) const ITEM_QUELLING_BLADE: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("damage_bonus", &[Dec::of("8")]),
         ("damage_bonus_ranged", &[Dec::of("4")]),
@@ -276,6 +282,7 @@ pub(crate) const ITEM_WARD_SENTRY: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("lifetime", &[Dec::of("420")]),
         ("vision_range", &[Dec::of("0")]),
@@ -318,6 +325,7 @@ pub(crate) const ITEM_TANGO: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("health_regen", &[Dec::of("7")]),
         ("buff_duration", &[Dec::of("16")]),
@@ -357,6 +365,7 @@ pub(crate) const ITEM_TPSCROLL: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: Some("teleport"),
     values: &[
         ("minimum_distance", &[Dec::of("70")]),
         ("maximum_distance", &[Dec::of("800")]),
@@ -393,6 +402,7 @@ pub(crate) const ITEM_CIRCLET: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_all_stats", &[Dec::of("2")])],
 };
 
@@ -424,6 +434,7 @@ pub(crate) const ITEM_GAUNTLETS: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_strength", &[Dec::of("3")])],
 };
 
@@ -455,6 +466,7 @@ pub(crate) const ITEM_SLIPPERS: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_agility", &[Dec::of("3")])],
 };
 
@@ -486,6 +498,7 @@ pub(crate) const ITEM_MANTLE: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_intellect", &[Dec::of("3")])],
 };
 
@@ -517,6 +530,7 @@ pub(crate) const ITEM_BELT_OF_STRENGTH: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_strength", &[Dec::of("6")])],
 };
 
@@ -548,6 +562,7 @@ pub(crate) const ITEM_BOOTS_OF_ELVES: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_agility", &[Dec::of("6")])],
 };
 
@@ -579,6 +594,7 @@ pub(crate) const ITEM_ROBE: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_intellect", &[Dec::of("6")])],
 };
 
@@ -610,6 +626,7 @@ pub(crate) const ITEM_OGRE_AXE: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_strength", &[Dec::of("10")])],
 };
 
@@ -641,6 +658,7 @@ pub(crate) const ITEM_BLADE_OF_ALACRITY: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_agility", &[Dec::of("10")])],
 };
 
@@ -672,6 +690,7 @@ pub(crate) const ITEM_STAFF_OF_WIZARDRY: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_intellect", &[Dec::of("10")])],
 };
 
@@ -703,6 +722,7 @@ pub(crate) const ITEM_GLOVES: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_attack_speed", &[Dec::of("20")])],
 };
 
@@ -734,6 +754,7 @@ pub(crate) const ITEM_BLADES_OF_ATTACK: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_damage", &[Dec::of("9")])],
 };
 
@@ -765,6 +786,7 @@ pub(crate) const ITEM_BROADSWORD: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_damage", &[Dec::of("15")])],
 };
 
@@ -796,6 +818,7 @@ pub(crate) const ITEM_QUARTERSTAFF: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("bonus_speed", &[Dec::of("10")]),
         ("bonus_damage", &[Dec::of("10")]),
@@ -830,6 +853,7 @@ pub(crate) const ITEM_RING_OF_PROTECTION: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_armor", &[Dec::of("2")])],
 };
 
@@ -861,6 +885,7 @@ pub(crate) const ITEM_CHAINMAIL: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_armor", &[Dec::of("4")])],
 };
 
@@ -892,6 +917,7 @@ pub(crate) const ITEM_RING_OF_REGEN: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_health_regen", &[Dec::of("1.25")])],
 };
 
@@ -923,6 +949,7 @@ pub(crate) const ITEM_SOBI_MASK: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_mana_regen", &[Dec::of("0.7")])],
 };
 
@@ -954,6 +981,7 @@ pub(crate) const ITEM_VITALITY_BOOSTER: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_health", &[Dec::of("250")])],
 };
 
@@ -985,6 +1013,7 @@ pub(crate) const ITEM_ENERGY_BOOSTER: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_mana", &[Dec::of("250")])],
 };
 
@@ -1020,6 +1049,7 @@ pub(crate) const ITEM_POWER_TREADS: ItemData = ItemData {
         &[ItemId(0), ItemId(19), ItemId(14)],
     ],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("bonus_movement_speed_ranged", &[Dec::of("45")]),
         ("bonus_movement_speed_melee", &[Dec::of("55")]),
@@ -1057,6 +1087,7 @@ pub(crate) const ITEM_PHASE_BOOTS: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[&[ItemId(0), ItemId(24), ItemId(20)]],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("bonus_movement_speed", &[Dec::of("50")]),
         ("bonus_damage_melee", &[Dec::of("18")]),
@@ -1100,6 +1131,7 @@ pub(crate) const ITEM_BLINK: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: Some("blink"),
     values: &[
         ("blink_range", &[Dec::of("1200")]),
         ("blink_damage_cooldown", &[Dec::of("3")]),
@@ -1135,6 +1167,7 @@ pub(crate) const ITEM_BRACER: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[&[ItemId(9), ItemId(10), ItemId(38)]],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("bonus_strength", &[Dec::of("5")]),
         ("bonus_agility", &[Dec::of("2")]),
@@ -1173,6 +1206,7 @@ pub(crate) const ITEM_WRAITH_BAND: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[&[ItemId(9), ItemId(11), ItemId(39)]],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("bonus_agility", &[Dec::of("5")]),
         ("bonus_strength", &[Dec::of("2")]),
@@ -1210,6 +1244,7 @@ pub(crate) const ITEM_NULL_TALISMAN: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[&[ItemId(9), ItemId(12), ItemId(40)]],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("bonus_intellect", &[Dec::of("5")]),
         ("bonus_strength", &[Dec::of("2")]),
@@ -1247,6 +1282,7 @@ pub(crate) const ITEM_MAGIC_STICK: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &["charge_radius"],
+    shared_cooldown: Some("magicwand"),
     values: &[
         ("max_charges", &[Dec::of("10")]),
         ("charge_radius", &[Dec::of("1200")]),
@@ -1282,6 +1318,7 @@ pub(crate) const ITEM_MAGIC_WAND: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[&[ItemId(35), ItemId(3), ItemId(3), ItemId(41)]],
     aoe: &["charge_radius"],
+    shared_cooldown: Some("magicwand"),
     values: &[
         ("max_charges", &[Dec::of("20")]),
         ("charge_radius", &[Dec::of("1200")]),
@@ -1318,6 +1355,7 @@ pub(crate) const ITEM_RECIPE_PHASE_BOOTS: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[],
 };
 
@@ -1349,6 +1387,7 @@ pub(crate) const ITEM_RECIPE_BRACER: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[],
 };
 
@@ -1380,6 +1419,7 @@ pub(crate) const ITEM_RECIPE_WRAITH_BAND: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[],
 };
 
@@ -1411,6 +1451,7 @@ pub(crate) const ITEM_RECIPE_NULL_TALISMAN: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[],
 };
 
@@ -1442,6 +1483,7 @@ pub(crate) const ITEM_RECIPE_MAGIC_WAND: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[],
 };
 
@@ -1482,6 +1524,7 @@ pub(crate) const ITEM_ENCHANTED_MANGO: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("hp_regen", &[Dec::of("0.4")]),
         ("replenish_amount", &[Dec::of("100")]),
@@ -1516,6 +1559,7 @@ pub(crate) const ITEM_EAGLE: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_agility", &[Dec::of("25")])],
 };
 
@@ -1547,6 +1591,7 @@ pub(crate) const ITEM_CLAYMORE: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_damage", &[Dec::of("20")])],
 };
 
@@ -1578,6 +1623,7 @@ pub(crate) const ITEM_TALISMAN_OF_EVASION: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_evasion", &[Dec::of("15")])],
 };
 
@@ -1609,6 +1655,7 @@ pub(crate) const ITEM_BUTTERFLY: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[&[ItemId(43), ItemId(44), ItemId(45)]],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("bonus_agility", &[Dec::of("30")]),
         ("bonus_evasion", &[Dec::of("35")]),
@@ -1645,6 +1692,7 @@ pub(crate) const ITEM_JAVELIN: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("bonus_chance", &[Dec::of("25")]),
         ("bonus_chance_damage", &[Dec::of("60")]),
@@ -1679,6 +1727,7 @@ pub(crate) const ITEM_DEMON_EDGE: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_damage", &[Dec::of("40")])],
 };
 
@@ -1710,6 +1759,7 @@ pub(crate) const ITEM_BLITZ_KNUCKLES: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_attack_speed", &[Dec::of("35")])],
 };
 
@@ -1741,6 +1791,7 @@ pub(crate) const ITEM_RECIPE_MONKEY_KING_BAR: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[],
 };
 
@@ -1772,6 +1823,7 @@ pub(crate) const ITEM_MONKEY_KING_BAR: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[&[ItemId(48), ItemId(49), ItemId(47), ItemId(50)]],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("bonus_damage", &[Dec::of("50")]),
         ("bonus_attack_speed", &[Dec::of("50")]),
@@ -1809,6 +1861,7 @@ pub(crate) const ITEM_WIND_LACE: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("movement_speed", &[Dec::of("15")])],
 };
 
@@ -1848,6 +1901,7 @@ pub(crate) const ITEM_BLOOD_GRENADE: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &["radius"],
+    shared_cooldown: None,
     values: &[
         ("speed", &[Dec::of("1100")]),
         ("radius", &[Dec::of("300")]),
@@ -1896,6 +1950,7 @@ pub(crate) const ITEM_WARD_DISPENSER: ItemData = ItemData {
         &[ItemId(54), ItemId(54)],
     ],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("bonus_health", &[Dec::of("75")]),
         ("observer_cost", &[Dec::of("75")]),
@@ -1939,6 +1994,7 @@ pub(crate) const ITEM_TANGO_SINGLE: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("health_regen", &[Dec::of("3.5")]),
         ("buff_duration", &[Dec::of("16")]),
@@ -1977,6 +2033,7 @@ pub(crate) const ITEM_BOTTLE: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("health_restore", &[Dec::of("110")]),
         ("mana_restore", &[Dec::of("60")]),
@@ -2021,6 +2078,7 @@ pub(crate) const ITEM_FAMANGO: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: Some("famango"),
     values: &[("replenish_amount", &[Dec::of("125")])],
 };
 
@@ -2056,6 +2114,7 @@ pub(crate) const ITEM_GREAT_FAMANGO: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[&[ItemId(57), ItemId(57), ItemId(57)]],
     aoe: &[],
+    shared_cooldown: Some("famango"),
     values: &[("replenish_amount", &[Dec::of("400")])],
 };
 
@@ -2091,6 +2150,7 @@ pub(crate) const ITEM_GREATER_FAMANGO: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[&[ItemId(58), ItemId(58)]],
     aoe: &[],
+    shared_cooldown: Some("famango"),
     values: &[("replenish_amount", &[Dec::of("900")])],
 };
 
@@ -2122,6 +2182,7 @@ pub(crate) const ITEM_CHEESE: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("health_restore", &[Dec::of("2500")]),
         ("mana_restore", &[Dec::of("1500")]),
@@ -2156,6 +2217,7 @@ pub(crate) const ITEM_ROYALE_WITH_CHEESE: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("shield", &[Dec::of("500")]),
         ("regen", &[Dec::of("100")]),
@@ -2194,6 +2256,7 @@ pub(crate) const ITEM_CROWN: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_all_stats", &[Dec::of("4")])],
 };
 
@@ -2225,6 +2288,7 @@ pub(crate) const ITEM_DIADEM: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_all_stats", &[Dec::of("6")])],
 };
 
@@ -2256,6 +2320,7 @@ pub(crate) const ITEM_SPLINTMAIL: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_armor", &[Dec::of("7")])],
 };
 
@@ -2287,6 +2352,7 @@ pub(crate) const ITEM_HELM_OF_IRON_WILL: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("bonus_armor", &[Dec::of("4")]),
         ("bonus_regen", &[Dec::of("4")]),
@@ -2321,6 +2387,7 @@ pub(crate) const ITEM_MITHRIL_HAMMER: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_damage", &[Dec::of("24")])],
 };
 
@@ -2352,6 +2419,7 @@ pub(crate) const ITEM_FLUFFY_HAT: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_health", &[Dec::of("125")])],
 };
 
@@ -2383,6 +2451,7 @@ pub(crate) const ITEM_WIZARD_HAT: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_mana", &[Dec::of("125")])],
 };
 
@@ -2414,6 +2483,7 @@ pub(crate) const ITEM_RING_OF_HEALTH: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_health_regen", &[Dec::of("4.5")])],
 };
 
@@ -2445,6 +2515,7 @@ pub(crate) const ITEM_VOID_STONE: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_mana_regen", &[Dec::of("1.75")])],
 };
 
@@ -2476,6 +2547,7 @@ pub(crate) const ITEM_PLATEMAIL: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_armor", &[Dec::of("10")])],
 };
 
@@ -2507,6 +2579,7 @@ pub(crate) const ITEM_RING_OF_TARRASQUE: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_health_regen", &[Dec::of("12")])],
 };
 
@@ -2538,6 +2611,7 @@ pub(crate) const ITEM_TIARA_OF_SELEMENE: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_mana_regen", &[Dec::of("6")])],
 };
 
@@ -2569,6 +2643,7 @@ pub(crate) const ITEM_HYPERSTONE: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_attack_speed", &[Dec::of("60")])],
 };
 
@@ -2600,6 +2675,7 @@ pub(crate) const ITEM_POINT_BOOSTER: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("bonus_mana", &[Dec::of("175")]),
         ("bonus_health", &[Dec::of("175")]),
@@ -2634,6 +2710,7 @@ pub(crate) const ITEM_RELIC: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_damage", &[Dec::of("55")])],
 };
 
@@ -2665,6 +2742,7 @@ pub(crate) const ITEM_REAVER: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_strength", &[Dec::of("25")])],
 };
 
@@ -2696,6 +2774,7 @@ pub(crate) const ITEM_MYSTIC_STAFF: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_intellect", &[Dec::of("25")])],
 };
 
@@ -2727,6 +2806,7 @@ pub(crate) const ITEM_ULTIMATE_ORB: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("bonus_all_stats", &[Dec::of("15")])],
 };
 
@@ -2758,6 +2838,7 @@ pub(crate) const ITEM_SHAWL: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("bonus_magical_armor", &[Dec::of("10")]),
         ("tooltip_resist", &[Dec::of("10")]),
@@ -2792,6 +2873,7 @@ pub(crate) const ITEM_CLOAK: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("bonus_magical_armor", &[Dec::of("18")]),
         ("tooltip_resist", &[Dec::of("18")]),
@@ -2826,6 +2908,7 @@ pub(crate) const ITEM_LIFESTEAL: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("lifesteal_percent", &[Dec::of("18")])],
 };
 
@@ -2857,6 +2940,7 @@ pub(crate) const ITEM_VOODOO_MASK: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[("spell_lifesteal", &[Dec::of("15")])],
 };
 
@@ -2888,6 +2972,7 @@ pub(crate) const ITEM_FAERIE_FIRE: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("bonus_damage", &[Dec::of("2")]),
         ("hp_restore", &[Dec::of("85")]),
@@ -2922,6 +3007,7 @@ pub(crate) const ITEM_BLIGHT_STONE: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("corruption_armor", &[Dec::of("-2")]),
         ("corruption_duration", &[Dec::of("3")]),
@@ -2956,6 +3042,7 @@ pub(crate) const ITEM_ORB_OF_VENOM: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("damage", &[Dec::of("12")]),
         ("tick_interval", &[Dec::of("1")]),
@@ -2991,6 +3078,7 @@ pub(crate) const ITEM_ORB_OF_FROST: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("slow_melee", &[Dec::of("-6")]),
         ("slow_ranged", &[Dec::of("-13")]),
@@ -3027,6 +3115,7 @@ pub(crate) const ITEM_AEGIS: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("reincarnate_time", &[Dec::of("5")]),
         ("disappear_time", &[Dec::of("300")]),
@@ -3063,6 +3152,7 @@ pub(crate) const ITEM_REFRESHER_SHARD: ItemData = ItemData {
     cooldown_in_inventory: true,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("bonus_health_regen", &[Dec::of("0")]),
         ("bonus_mana_regen", &[Dec::of("0")]),
@@ -3099,6 +3189,7 @@ pub(crate) const ITEM_ROSHANS_BANNER: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("duration", &[Dec::of("120")]),
         ("radius", &[Dec::of("600"), Dec::of("900"), Dec::of("1200")]),
@@ -3148,6 +3239,7 @@ pub(crate) const ITEM_INFUSED_RAINDROP: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("mana_regen", &[Dec::of("0.6")]),
         ("magic_damage_block", &[Dec::of("120")]),
@@ -3184,6 +3276,7 @@ pub(crate) const ITEM_GHOST: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: Some("ethereal"),
     values: &[
         ("bonus_all_stats", &[Dec::of("5")]),
         ("duration", &[Dec::of("4")]),
@@ -3219,6 +3312,7 @@ pub(crate) const ITEM_CHASM_STONE: ItemData = ItemData {
     cooldown_in_inventory: false,
     builds: &[],
     aoe: &[],
+    shared_cooldown: None,
     values: &[
         ("bonus_health", &[Dec::of("0")]),
         ("aoe_bonus", &[Dec::of("40")]),

@@ -61,8 +61,49 @@ pub const ITEM_COUNT: usize = ITEM_ROWS.len();
 // A const, not a static: the client's limits and the catalog checks read it
 // at compile time.
 #[allow(clippy::large_const_arrays)]
-pub const ITEMS: [ItemDef; ITEM_COUNT] =
-    placed_by_id!(ITEM_ROWS, ITEM_COUNT, |row| row.id.0 as usize);
+pub const ITEMS: [ItemDef; ITEM_COUNT] = keyed_by_wait_group(placed_by_id!(
+    ITEM_ROWS,
+    ITEM_COUNT,
+    |row| row.id.0 as usize
+));
+
+/// The catalogue with each item that shares a named cooldown ([`ItemDef::wait_group`]) owed
+/// under the first of the catalogue naming the same one ([`ItemDef::wait_key`]): the
+/// lotuses' "famango" under the Healing Lotus, the Magic Wand's "magicwand" under the Magic
+/// Stick.
+const fn keyed_by_wait_group(mut items: [ItemDef; ITEM_COUNT]) -> [ItemDef; ITEM_COUNT] {
+    let mut at = 0;
+    while at < ITEM_COUNT {
+        if let Some(group) = items[at].wait_group {
+            let mut first = 0;
+            while first < at {
+                if let Some(theirs) = items[first].wait_group
+                    && crate::item_data::str_eq(group, theirs)
+                {
+                    items[at].wait_key = Some(items[first].id);
+                    break;
+                }
+                first += 1;
+            }
+        }
+        at += 1;
+    }
+    items
+}
+
+// The groups the install names, as the catalogue keys them.
+const _: () = {
+    use bota_proto::ItemId;
+    assert!(ITEMS[ItemId::HEALING_LOTUS.0 as usize].wait_key.is_none());
+    assert!(matches!(
+        ITEMS[ItemId::GREAT_HEALING_LOTUS.0 as usize].wait_key,
+        Some(id) if id.0 == ItemId::HEALING_LOTUS.0
+    ));
+    assert!(matches!(
+        ITEMS[ItemId::MAGIC_WAND.0 as usize].wait_key,
+        Some(id) if id.0 == ItemId::MAGIC_STICK.0
+    ));
+};
 
 const _: () = {
     // A stocked item is bought whole, and is no part of a build.

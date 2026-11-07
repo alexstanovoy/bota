@@ -40,6 +40,7 @@ const fn from(d: &ItemData) -> ItemDef {
         point: d.cast_point.0,
         duration: d.channel.ticks(),
         unbuyable: !d.purchasable,
+        wait_group: d.shared_cooldown,
         components: if d.builds.is_empty() {
             &[]
         } else {
@@ -1031,7 +1032,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
     ItemDef {
         name: "Refresher Shard",
         limits: ITEM_REFRESHER_SHARD.limits,
-        cooldown_group: Some(ItemId::REFRESHER_SHARD),
         cooldown_in_inventory: ITEM_REFRESHER_SHARD.cooldown_in_inventory,
         aim: Some(Aim::Own),
         spends: Spends::One,
@@ -1106,7 +1106,6 @@ const fn lotus(name: &'static str, d: &ItemData) -> ItemDef {
         spends: Spends::One,
         immediate: true,
         ally: Some(AllyUse::Effect { percent: 100 }),
-        wait_key: Some(ItemId::HEALING_LOTUS),
         shared_wait: true,
         take_range: LOTUS_TAKE_RANGE,
         components: &[],
