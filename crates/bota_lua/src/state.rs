@@ -49,6 +49,7 @@ pub(crate) struct PendingOnce {
 pub(crate) struct Snapshot {
     pub team: Team,
     pub tick: u32,
+    pub game_tick: u32,
     pub horn: u32,
     pub map: &'static bota_core::MapDef,
     pub players: Vec<Player>,
@@ -156,6 +157,7 @@ impl Snapshot {
         Ok(Self {
             team: session.team(),
             tick: view.tick,
+            game_tick: view.game_tick(),
             horn: session.map().pregame_ticks,
             map: session.map(),
             players: view

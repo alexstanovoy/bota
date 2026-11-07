@@ -47,7 +47,7 @@ fn estimate(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaE
             0.0
         };
         let snapshot = state.snapshot.as_ref().ok_or_else(|| vm.error("a current view is required"))?;
-        let (spells, mana) = spell_damage(AbilityObservation { actor, target, clock: snapshot.tick, schedule: rules::Schedule::of(snapshot.horn) }, seconds, mask, available);
+        let (spells, mana) = spell_damage(AbilityObservation { actor, target, clock: snapshot.game_tick, schedule: rules::Schedule::of(snapshot.horn) }, seconds, mask, available);
         attacks + spells + item_damage(actor, target, seconds, mask, available, mana)
     };
     if !damage.is_finite() {

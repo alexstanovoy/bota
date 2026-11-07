@@ -72,7 +72,7 @@ fn neutral_damage(spell: &Spell, level: u8, seconds: f64, observation: AbilityOb
         Spell::Strike(Strike::Bash { chance_pct, damage, .. }) => Some(AbilityDamage { amount: f64::from(at_level(&damage, level)) * f64::from(chance_pct) / 100.0, kind: DamageKind::Physical, cadence: DamageCadence::Attack }),
         Spell::Strike(Strike::Crit { chance_pct, mult_pct }) => Some(AbilityDamage { amount: f64::from(actor.attack_damage.max(0)) * f64::from((at_level(&mult_pct, level)-100).max(0)) * f64::from(chance_pct) / 10000.0, kind: DamageKind::Physical, cadence: DamageCadence::Attack }),
         Spell::Strike(Strike::Lay { dps, hero_ms, other_ms, .. }) => continuous(f64::from(at_level(&dps, level)) * seconds.min(f64::from(if target.kind == UnitKind::Hero { hero_ms } else { other_ms }) / 1000.0)),
-        Spell::Strike(Strike::Petrify { below_pct, ms, dps, .. }) if i64::from(actor.hp) * 100 < i64::from(actor.max_hp) * i64::from(below_pct) => continuous(f64::from(dps) * seconds.min(f64::from(at_level(&ms,level))/1000.0)),
+        Spell::Strike(Strike::Petrify { below_pct, ms, dps, .. }) if i64::from(actor.hp) * 100 < i64::from(actor.max_hp) * i64::from(below_pct) => Some(AbilityDamage { amount: f64::from(dps) * seconds.min(f64::from(at_level(&ms,level))/1000.0), kind: DamageKind::Physical, cadence: DamageCadence::Continuous }),
         Spell::Uncast | Spell::Idle | Spell::Upgrade | Spell::Piercing | Spell::Aura(_) | Spell::Intrinsic { .. } | Spell::Block { .. } | Spell::Throe(_) | Spell::Strike(_) => None,
     }
 }
@@ -89,7 +89,11 @@ fn cast_damage(act: Act, level: u8, target: &UnitView, seconds: f64, clock: u32,
         Act::Chain { damage, .. } | Act::Spikes { damage, .. } => hit(f64::from(at_level(&damage,level)), DamageKind::Magical),
         Act::Smash { damage, current_pct, .. } => hit(f64::from(at_level(&damage,level)) + f64::from(target.hp.max(0)) * f64::from(current_pct) / 100.0, DamageKind::Magical),
         Act::Roar(spec) => if seconds * f64::from(rules::TICKS_PER_SECOND) <= f64::from(spec.windup) { None } else { hit(f64::from(spec.growth.amount(spec.damage,level,clock,schedule)), DamageKind::Magical) },
-        Act::Grab(spec) => hit(f64::from(spec.damage) + f64::from(target.hp.max(0)) * f64::from(spec.health_growth.amount(0,level,clock,schedule)) / 10000.0, DamageKind::Pure),
+        Act::Grab(spec) => {
+            if target.kind != UnitKind::Hero || target.effects.iter().any(|effect| effect.id == EffectId::ILLUSION)
+                || seconds * f64::from(rules::TICKS_PER_SECOND) < f64::from(spec.duration.saturating_add(spec.flight)) { return None; }
+            hit(f64::from(spec.damage) + f64::from(target.hp.max(0)) * f64::from(spec.health_growth.amount(0,level,clock,schedule)) / 10000.0, DamageKind::Pure)
+        },
         Act::Summon { .. } | Act::Enrage { .. } | Act::Bubble { .. } | Act::Push { .. } | Act::Purge { .. } | Act::Tornado { .. } => None,
     }
 }
@@ -140,7 +144,7 @@ pub fn ability_value(id: AbilityId, level: u8, key: &str) -> Option<Dec> {
         _ => None,
     };
     common.or_else(|| NeutralAbility::of(id).and_then(|ability| neutral_value(ability,key,level)))
-        .or_else(|| hero_value(id,key,level))
+        .or_else(|| utility_value(id,key)).or_else(|| hero_value(id,key,level))
 }
 
 fn neutral_value(ability: NeutralAbility, key: &str, level: u8) -> Option<Dec> {
@@ -175,7 +179,7 @@ fn neutral_value(ability: NeutralAbility, key: &str, level: u8) -> Option<Dec> {
 
 fn act_value(act: Act,key:&str,level:u8)->Option<Dec> {
     match act {
-        Act::Stomp { radius,damage,hero_ms,other_ms,.. } => match key { "radius"=>Some(integer(at_level(&radius,level))), "damage"=>Some(integer(at_level(&damage,level))), "duration"|"stomp_duration"=>Some(Dec(at_level(&hero_ms,level))), "creep_duration"=>Some(Dec(at_level(&other_ms,level))), _=>None },
+        Act::Stomp { radius,damage,hero_ms,other_ms,then,.. } => match key { "radius"=>Some(integer(at_level(&radius,level))), "damage"=>Some(integer(at_level(&damage,level))), "duration"|"stomp_duration"=>Some(Dec(at_level(&hero_ms,level))), "creep_duration"=>Some(Dec(at_level(&other_ms,level))), _=>match then { crate::Then::Wear { buff,.. }=>buff_value(buff,key,level), crate::Then::Stun=>None } },
         Act::Bolt { speed,hero_damage,other_damage,ms,.. } => match key { "speed"=>Some(integer(speed)), "damage"|"hero_damage"=>Some(integer(hero_damage)), "creep_damage"=>Some(integer(other_damage)), "duration"=>Some(Dec(ms)), _=>None },
         Act::Chain { damage,targets,radius,delay_ms,keep_pct } => match key { "damage"=>Some(integer(at_level(&damage,level))), "targets"=>Some(integer(i32::from(targets))), "radius"=>Some(integer(radius)), "jump_delay"=>Some(Dec(delay_ms)), "damage_keep_pct"=>Some(integer(at_level(&keep_pct,level))), _=>None },
         Act::Summon { count,hp,damage,life_ms,.. } => match key { "count"=>Some(integer(i32::from(count))), "health"=>Some(integer(at_level(&hp,level))), "damage"=>Some(integer(at_level(&damage,level))), "duration"=>Some(Dec(life_ms)), _=>None },
@@ -204,8 +208,34 @@ fn strike_value(strike:Strike,key:&str,level:u8)->Option<Dec> {
 }
 
 fn buff_value(buff:Buff,key:&str,level:u8)->Option<Dec> {
-    let stat=match key { "bonus_movement_speed"|"movement_speed_pct"=>Stat::MovePct,"bonus_attack_speed"=>Stat::AttackSpeed,"bonus_armor"=>Stat::Armor,"bonus_damage"=>Stat::Damage,"bonus_health_pct"=>Stat::MaxHpPct,"magic_resistance"=>Stat::MagicResistPct,"status_resistance"=>Stat::StatusResistPct,_=>return None };
-    Some(integer(buff.get(stat,level)))
+    let stat=match key {
+        "bonus_movement_speed"|"movement_speed_pct"=>Stat::MovePct, "bonus_attack_speed"=>Stat::AttackSpeed,
+        "bonus_armor"=>Stat::Armor, "base_armor_pct"=>Stat::BaseArmorPct, "bonus_damage"=>Stat::Damage,
+        "damage_pct"=>Stat::DamagePct, "outgoing_damage_pct"=>Stat::OutgoingPct,
+        "bonus_health_pct"=>Stat::MaxHpPct, "magic_resistance"=>Stat::MagicResistPct,
+        "magic_resistance_creeps"=>Stat::MagicResistCreepPct, "health_regen"=>Stat::HpRegen,
+        "mana_regen"=>Stat::ManaRegen, "regen_reduction_pct"=>Stat::RegenCutPct,
+        "lifesteal_pct"=>Stat::LifestealPct, "magic_damage_taken_pct"=>Stat::MagicTakenPct,
+        "cooldown_reduction_pct"=>Stat::CooldownPct, "accuracy_pct"=>Stat::AccuracyPct,
+        "slow_resistance"=>Stat::SlowResistPct, "status_resistance"=>Stat::StatusResistPct,
+        "illusion_attack_reduction_pct"=>Stat::IllusionAttackReductionPct, "incoming_damage_pct"=>Stat::IncomingDamagePct,
+        _=>return None
+    };
+    if !buff.stats.iter().any(|(held,_)| *held==stat) { return None; }
+    let value=buff.get(stat,level);
+    Some(match stat { Stat::HpRegen=>Dec(value.saturating_mul(100)), Stat::ManaRegen=>Dec(value.saturating_mul(10)), _=>integer(value) })
+}
+
+fn utility_value(id:AbilityId,key:&str)->Option<Dec> {
+    match id {
+        AbilityId::BURST=>match key { "duration"=>Some(ticks(rules::COURIER_BURST_TICKS)), "bonus_movement_speed"|"movement_speed_pct"=>Some(integer(rules::COURIER_BURST_PCT)), _=>None },
+        AbilityId::SHIELD=>(key=="duration").then_some(ticks(rules::COURIER_SHIELD_TICKS)),
+        AbilityId::TAKE_STASH=>(key=="stash_range").then_some(integer(rules::COURIER_STASH_RANGE)),
+        AbilityId::DELIVER=>(key=="deliver_range").then_some(integer(rules::COURIER_DELIVER_RANGE)),
+        AbilityId::CAPTURE=>(key=="base_capture_time").then_some(ticks(crate::CAPTURE_TICKS)),
+        AbilityId::LAMP_USE=>match key { "active_duration"=>Some(ticks(crate::LAMP_LIT_TICKS)), "inactive_duration"=>Some(ticks(crate::LAMP_OFF_TICKS)), _=>None },
+        _=>None,
+    }
 }
 
 fn hero_value(id:AbilityId,key:&str,level:u8)->Option<Dec> {
