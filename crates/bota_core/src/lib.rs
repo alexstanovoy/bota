@@ -10,6 +10,7 @@
 
 mod ability;
 mod ability_neutral;
+mod ability_read;
 mod aggro;
 mod aoe;
 mod attack_class;
@@ -76,6 +77,7 @@ mod tests;
 
 pub use ability::*;
 pub use ability_neutral::*;
+pub use ability_read::*;
 pub use aggro::*;
 pub use aoe::*;
 pub use attack_class::*;

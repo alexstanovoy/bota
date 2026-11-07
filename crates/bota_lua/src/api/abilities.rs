@@ -120,7 +120,7 @@ fn view(state: &State, identity: Identity) -> Option<View> {
                 .filter(|item| item.id == id)?;
             Some(View {
                 key: bota_core::item_def(id)?.key,
-                level: 1,
+                level: item.level,
                 range: item.range,
                 castable: able
                     && (slot.0 < 6 || slot == ItemSlot::TOWN_PORTAL)
@@ -220,11 +220,11 @@ pub(super) fn install(lua: &mut Lua, units: TableId, state: Shared) -> Result<()
                         } else {
                             b"damage"
                         };
-                        Value::Number(f64::from(special(
-                            identity,
-                            view.as_ref().map_or(0, |view| view.level),
-                            key,
-                        )))
+                        let level = view.as_ref().map_or(0, |view| view.level);
+                        let value = if name == "GetAbilityDamage" {
+                            ability_damage(identity, level)
+                        } else { special(identity, level, key) };
+                        Value::Number(f64::from(value))
                     }
                     "IsNull" => Value::Boolean(view.is_none()),
                     "GetName" => {
@@ -354,38 +354,21 @@ fn install_immediate(lua: &mut Lua, units: TableId, state: Shared) -> Result<(),
     Ok(())
 }
 
-fn special(identity: Identity, level: u8, key: &[u8]) -> i32 {
-    use bota_core::{heroes::shadow_fiend::SHADOW_FIEND_RAZES, rules};
+fn ability_damage(identity: Identity, level: u8) -> i32 {
     match identity {
+        Identity::Ability { id, .. } | Identity::Innate { id, .. } => bota_core::ability_base_damage(id, level),
+        Identity::Item { .. } => special(identity, level, b"damage"),
         Identity::Talent { .. } => 0,
-        Identity::Item { id, .. } => std::str::from_utf8(key)
-            .ok()
-            .and_then(|key| bota_core::item_def(id)?.value(key))
-            .and_then(|values| values.first())
-            .map_or(0, |value| value.0 / 1000),
-        Identity::Ability { id, .. } | Identity::Innate { id, .. } => {
-            if let Some(index) = SHADOW_FIEND_RAZES.iter().position(|known| *known == id) {
-                return match key {
-                    b"shadowraze_radius" => rules::RAZE_RADIUS,
-                    b"shadowraze_range" => rules::RAZE_DISTANCE[index],
-                    b"shadowraze_damage" | b"damage" => {
-                        rules::RAZE_DAMAGE
-                            [usize::from(level.saturating_sub(1)).min(rules::RAZE_DAMAGE.len() - 1)]
-                    }
-                    _ => 0,
-                };
-            }
-            match bota_core::ability_def(id).map(|def| def.key) {
-                Some("nevermore_requiem") if matches!(key, b"damage" | b"requiem_damage") => {
-                    rules::REQUIEM_LINE_DAMAGE[usize::from(level.saturating_sub(1))
-                        .min(rules::REQUIEM_LINE_DAMAGE.len() - 1)]
-                }
-                Some("pudge_meat_hook") if matches!(key, b"damage" | b"hook_damage") => {
-                    rules::HOOK_DAMAGE
-                        [usize::from(level.saturating_sub(1)).min(rules::HOOK_DAMAGE.len() - 1)]
-                }
-                _ => 0,
-            }
-        }
     }
+}
+
+fn special(identity: Identity, level: u8, key: &[u8]) -> i32 {
+    let Ok(key) = std::str::from_utf8(key) else { return 0 };
+    let value = match identity {
+        Identity::Talent { .. } => None,
+        Identity::Item { id, .. } => bota_core::item_def(id).and_then(|item| item.value(key))
+            .and_then(|values| values.get(usize::from(level.saturating_sub(1))).or_else(|| values.last())).copied(),
+        Identity::Ability { id, .. } | Identity::Innate { id, .. } => bota_core::ability_value(id, level, key),
+    };
+    value.map_or(0, |value| value.0 / 1000)
 }

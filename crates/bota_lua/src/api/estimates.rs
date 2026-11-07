@@ -5,32 +5,13 @@
     reason = "the API projects damage over a finite fractional duration"
 )]
 
-use bota_core::{UseSpec, rules};
-use bota_proto::{AbilityId, AbilityView, DamageKind, EffectId, StatusFlags, UnitView};
+use bota_core::{AbilityObservation, DamageCadence, UseSpec, rules};
+use bota_proto::{AbilityView, DamageKind, StatusFlags, UnitView};
 
 use super::{
     context::{ApiContext, register_unit},
     *,
 };
-
-#[derive(Clone, Copy)]
-enum Impact {
-    Raze,
-    Requiem,
-    Hook,
-    Rot,
-    Dismember,
-}
-
-const SPELLS: &[(AbilityId, DamageKind, Impact)] = &[
-    (AbilityId::RAZE_NEAR, DamageKind::Magical, Impact::Raze),
-    (AbilityId::RAZE_MID, DamageKind::Magical, Impact::Raze),
-    (AbilityId::RAZE_FAR, DamageKind::Magical, Impact::Raze),
-    (AbilityId::REQUIEM, DamageKind::Magical, Impact::Requiem),
-    (AbilityId::MEAT_HOOK, DamageKind::Pure, Impact::Hook),
-    (AbilityId::ROT, DamageKind::Magical, Impact::Rot),
-    (AbilityId::DISMEMBER, DamageKind::Magical, Impact::Dismember),
-];
 
 pub(super) fn install(lua: &mut Lua, context: &ApiContext) -> Result<(), BindingError> {
     register_unit(lua, context, "GetEstimatedDamageToTarget", estimate)
@@ -65,7 +46,8 @@ fn estimate(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaE
         } else {
             0.0
         };
-        let (spells, mana) = spell_damage(actor, target, seconds, mask, available);
+        let snapshot = state.snapshot.as_ref().ok_or_else(|| vm.error("a current view is required"))?;
+        let (spells, mana) = spell_damage(AbilityObservation { actor, target, clock: snapshot.tick, schedule: rules::Schedule::of(snapshot.horn) }, seconds, mask, available);
         attacks + spells + item_damage(actor, target, seconds, mask, available, mana)
     };
     if !damage.is_finite() {
@@ -115,13 +97,9 @@ fn mitigated(amount: f64, kind: DamageKind, target: &UnitView) -> f64 {
     amount * f64::from(reference) / 1_000_000.0
 }
 
-fn spell_damage(
-    actor: &UnitView,
-    target: &UnitView,
-    seconds: f64,
-    mask: i64,
-    available: bool,
-) -> (f64, i32) {
+fn spell_damage(observation: AbilityObservation<'_>, seconds: f64, mask: i64, available: bool) -> (f64, i32) {
+    let actor = observation.actor;
+    let target = observation.target;
     let mut damage = 0.0;
     let mut mana = actor.mana.max(0);
     for ability in &actor.abilities {
@@ -130,40 +108,35 @@ fn spell_damage(
         {
             continue;
         }
-        let Some(&(_, kind, impact)) = SPELLS.iter().find(|&&(id, _, _)| id == ability.id) else {
-            continue;
-        };
         let Some(definition) = bota_core::ability_def(ability.id) else {
             continue;
         };
-        if !accepts(mask, kind)
-            || !spell_reaches(definition, target)
-            || !bota_core::kind_def(target.kind).struck_by_area_spells
-        {
+        if !bota_core::kind_def(target.kind).struck_by_area_spells {
             continue;
         }
         let duration = (seconds - f64::from(definition.point) / 1000.0).max(0.0);
         if duration == 0.0 {
             continue;
         }
-        let casts = cast_count(ability, duration, available, mana);
+        let Some(projection) = bota_core::ability_damage_projection(ability.id, ability.level, duration, observation) else { continue };
+        if !accepts(mask, projection.kind) || projection.cadence != DamageCadence::Attack && !spell_reaches(definition, target) { continue; }
+        let casts = match projection.cadence {
+            DamageCadence::Cast => cast_count(ability, duration, available, mana),
+            DamageCadence::Continuous => 1.0,
+            DamageCadence::Attack => duration * 1000.0 / f64::from(actor.attack_time.max(1)),
+        };
         if available {
             mana = mana.saturating_sub(
                 (casts * f64::from(ability.mana_cost.max(0))).min(f64::from(i32::MAX)) as i32,
             );
         }
-        let amount = impact_damage(impact, actor, ability.level, duration);
-        damage += mitigated(amount * casts, kind, target);
+        damage += mitigated(projection.amount * casts, projection.kind, target);
     }
     (damage, mana)
 }
 
 fn cast_count(ability: &AbilityView, duration: f64, available: bool, mana: i32) -> f64 {
-    // Toggles spend once and keep applying their per-second damage.
-    if ability.id == AbilityId::ROT {
-        return 1.0;
-    }
-    let cooldown = f64::from(bota_core::ability_cooldown(ability.id, ability.level)) / 30.0;
+    let cooldown = f64::from(bota_core::ability_cooldown(ability.id, ability.level)) / f64::from(rules::TICKS_PER_SECOND);
     let casts = if cooldown > 0.0 {
         1.0 + (duration / cooldown).floor()
     } else {
@@ -173,39 +146,6 @@ fn cast_count(ability: &AbilityView, duration: f64, available: bool, mana: i32) 
         casts.min(f64::from(mana / ability.mana_cost))
     } else {
         casts
-    }
-}
-
-fn impact_damage(impact: Impact, actor: &UnitView, level: u8, duration: f64) -> f64 {
-    let level = usize::from(level.saturating_sub(1));
-    let souls = actor
-        .effects
-        .iter()
-        .find(|effect| effect.id == EffectId::SOULS)
-        .and_then(|effect| effect.stacks)
-        .unwrap_or(0);
-    match impact {
-        Impact::Raze => f64::from(bota_core::heroes::shadow_fiend::raze_damage(
-            level.min(rules::RAZE_DAMAGE.len() - 1),
-            souls,
-        )),
-        Impact::Requiem => {
-            f64::from(bota_core::heroes::shadow_fiend::requiem_line_damage(level))
-                * f64::from(bota_core::heroes::shadow_fiend::requiem_lines(souls))
-        }
-        Impact::Hook => f64::from(rules::HOOK_DAMAGE[level.min(rules::HOOK_DAMAGE.len() - 1)]),
-        Impact::Rot => {
-            f64::from(
-                rules::ROT_DAMAGE_PER_SECOND[level.min(rules::ROT_DAMAGE_PER_SECOND.len() - 1)],
-            ) * duration
-        }
-        Impact::Dismember => {
-            let level = level.min(rules::DISMEMBER_DAMAGE_PER_SECOND.len() - 1);
-            let strength = f64::from(actor.attributes.strength.raw) / 65536.0;
-            let scaling = f64::from(rules::DISMEMBER_STRENGTH_DAMAGE[level].raw) / 65536.0;
-            (f64::from(rules::DISMEMBER_DAMAGE_PER_SECOND[level]) + strength * scaling)
-                * duration.min(f64::from(rules::DISMEMBER_TICKS) / 30.0)
-        }
     }
 }
 
@@ -257,6 +197,7 @@ fn item_damage(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bota_proto::AbilityId;
     mod support {
         include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/support/mod.rs"));
     }
@@ -272,7 +213,7 @@ mod tests {
         let mut target = actor.clone();
         target.kind = kind;
         target.statuses.bits = if immune { StatusFlags::MAGIC_IMMUNE } else { 0 };
-        spell_damage(&actor, &target, 3.0, 7, false).0
+        spell_damage(AbilityObservation { actor: &actor, target: &target, clock: 0, schedule: rules::Schedule::of(0) }, 3.0, 7, false).0
     }
 
     #[test]
