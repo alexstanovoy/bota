@@ -112,7 +112,7 @@ impl World {
         if !self.runes.has(kind) {
             return;
         }
-        let at = self.map.rune_spots[spot].at;
+        let origin = self.map.rune_spots[spot].at;
         let lying = self
             .entities
             .iter()
@@ -125,6 +125,14 @@ impl World {
         if lying >= bota_proto::MAX_RUNES_AT_SPOT {
             return;
         }
+        let at = if kind == RuneKind::Bounty {
+            let Some(at) = self.vacant_bounty_position(origin) else {
+                return;
+            };
+            at
+        } else {
+            origin
+        };
         let gold = if kind == RuneKind::Bounty {
             bounty_rune_gold(self.clock(), self.schedule())
         } else {
@@ -155,6 +163,55 @@ impl World {
             gold_hidden_from: None,
             source_told_to: EventVisibility::Everyone,
         });
+    }
+
+    /// Bounties persist alongside older ones (Valve 7.29; Liquipedia Runes).
+    /// The local map's default_ents.vents defines only each spawner's origin,
+    /// not its accumulation geometry. These are bota-specific slots: the origin
+    /// and a square ring of half-width 128, with 64 units between neighbours.
+    /// Choose the nearest free slot; ties follow the ring counterclockwise
+    /// from east. Skip slots blocked by navigation clearance.
+    /// A fully occupied or blocked ring skips this spawn; the next cadence
+    /// retries the bounded search. The cap still counts original spawners.
+    fn vacant_bounty_position(&self, origin: Vec2) -> Option<Vec2> {
+        const OFFSETS: [(i32, i32); 17] = [
+            (0, 0),
+            (128, 0),
+            (128, 64),
+            (128, 128),
+            (64, 128),
+            (0, 128),
+            (-64, 128),
+            (-128, 128),
+            (-128, 64),
+            (-128, 0),
+            (-128, -64),
+            (-128, -128),
+            (-64, -128),
+            (0, -128),
+            (64, -128),
+            (128, -128),
+            (128, -64),
+        ];
+        const _: () = assert!(bota_proto::MAX_RUNES_AT_SPOT < OFFSETS.len());
+        // Reserve current rune positions; a pickup frees its slot immediately.
+        let occupied: Vec<_> = self
+            .entities
+            .iter()
+            .filter(|&entity| self.rune.get(entity).is_some())
+            .filter_map(|entity| self.pos(entity))
+            .collect();
+        let clearance = rules::units(64).squared_raw();
+        OFFSETS
+            .into_iter()
+            .map(|(x, y)| origin + Vec2::from_ints(x, y))
+            .filter(|at| self.clearance.stands_clear(*at))
+            .filter(|at| {
+                occupied
+                    .iter()
+                    .all(|other| at.distance_squared(*other) >= clearance)
+            })
+            .min_by_key(|at| at.distance_squared(origin))
     }
 
     /// A spawn discloses exactly the rune that the completed tick's snapshot shows.

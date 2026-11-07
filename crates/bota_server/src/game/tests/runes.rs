@@ -473,18 +473,26 @@ fn bounty_runes_come_to_the_jungles_every_four_minutes_worth_six_more_each_time_
     for (minute, gold) in [(4, 46), (8, 52), (12, 58)] {
         let before: std::collections::BTreeSet<_> = lying(&world).iter().map(|r| r.id).collect();
         let events = step_at_minute(&mut world, minute, 0);
-        let mut got: Vec<Vec2> = spawned(&events)
+        let got: Vec<Vec2> = spawned(&events)
             .into_iter()
             .filter(|(kind, _)| *kind == RuneKind::Bounty)
             .map(|(_, at)| at)
             .collect();
-        got.sort();
-        let mut want = jungle.to_vec();
-        want.sort();
-        assert_eq!(got, want, "a Bounty Rune in each jungle at {minute}:00");
+        assert_eq!(got.len(), jungle.len());
+        for origin in jungle {
+            assert_eq!(
+                got.iter()
+                    .filter(|at| at.within(origin, rules::units(200)))
+                    .count(),
+                1,
+                "a new Bounty Rune beside each jungle spawner at {minute}:00"
+            );
+        }
         let worth: Vec<i32> = lying(&world)
             .iter()
-            .filter(|rune| rune.pos == jungle[0] && !before.contains(&rune.id))
+            .filter(|rune| {
+                rune.pos.within(jungle[0], rules::units(200)) && !before.contains(&rune.id)
+            })
             .filter_map(|rune| rune.gold)
             .collect();
         assert_eq!(
@@ -495,7 +503,7 @@ fn bounty_runes_come_to_the_jungles_every_four_minutes_worth_six_more_each_time_
     }
     let at_jungle = lying(&world)
         .iter()
-        .filter(|rune| rune.pos == jungle[0])
+        .filter(|rune| rune.pos.within(jungle[0], rules::units(200)))
         .count();
     assert_eq!(
         at_jungle, 4,
@@ -1314,4 +1322,290 @@ fn a_seat_that_names_a_rune_as_its_view_does_destroys_it_by_an_attack_order() {
     seat_orders(&mut local, order, |world| lying(world).is_empty());
     let world = local.world();
     assert!(!carries(world, hero(world, 0), ModifierKind::RuneHaste));
+}
+
+/// Untaken jungle bounties remain alongside each newer spawn (Valve 7.29), not overlapped.
+#[test]
+fn unpicked_bounty_runes_keep_their_own_positions_across_natural_spawns() {
+    let mut world = rune_match(&radiant_and_dire());
+    for minute in [0, 4, 8] {
+        step_at_minute(&mut world, minute, 0);
+    }
+    for spot in [DIRE_JUNGLE, RADIANT_JUNGLE] {
+        let positions: Vec<_> = world
+            .entities
+            .iter()
+            .filter(|&entity| {
+                world.rune.get(entity).is_some_and(|rune| {
+                    usize::from(rune.spot) == spot && rune.kind == RuneKind::Bounty
+                })
+            })
+            .map(|entity| world.pos(entity).expect("a rune has a position"))
+            .collect();
+        assert_eq!(
+            positions.len(),
+            3,
+            "opening, four-minute and eight-minute bounties persist"
+        );
+        let distinct: std::collections::BTreeSet<_> = positions.iter().copied().collect();
+        assert_eq!(
+            distinct.len(),
+            positions.len(),
+            "each accumulated bounty stands alongside the others: {positions:?}"
+        );
+        let origin = spots()[spot];
+        let expected = [
+            origin,
+            origin + Vec2::from_ints(128, 0),
+            origin + Vec2::from_ints(0, 128),
+        ]
+        .into_iter()
+        .collect();
+        assert_eq!(
+            distinct, expected,
+            "the nearest slots use a fixed counterclockwise tie order"
+        );
+    }
+}
+
+#[test]
+fn picking_a_ring_bounty_frees_the_nearest_slot_for_the_next_natural_spawn() {
+    let mut world = rune_match(&[Team::Radiant]);
+    let at = spots()[RADIANT_JUNGLE];
+    for minute in [0, 4, 8] {
+        step_at_minute(&mut world, minute, 0);
+    }
+    let east = at + Vec2::from_ints(128, 0);
+    let rune = lying(&world)
+        .into_iter()
+        .find(|r| r.pos == east)
+        .expect("the first ring bounty is east of the occupied origin");
+    let viewer = hero(&world, 0);
+    place(&mut world, viewer, at + Vec2::from_ints(400, 0));
+    advance_validated(
+        &mut world,
+        None,
+        Order::Move {
+            target: Target::Pos(at + Vec2::from_ints(270, 0)),
+        },
+    );
+    for _ in 0..180 {
+        if !lying(&world).iter().any(|r| r.id == rune.id) {
+            break;
+        }
+        world.step();
+    }
+    assert!(
+        !lying(&world).iter().any(|r| r.id == rune.id),
+        "the move order picks up the east bounty"
+    );
+    let survivors: Vec<_> = lying(&world)
+        .into_iter()
+        .filter(|r| r.pos.within(at, rules::units(200)))
+        .collect();
+    assert_eq!(
+        survivors.len(),
+        2,
+        "only the reached ring slot is picked up"
+    );
+    place(&mut world, viewer, at + Vec2::from_ints(400, 0));
+    let events = step_at_minute(&mut world, 12, 0);
+    assert!(
+        spawned(&events).contains(&(RuneKind::Bounty, east)),
+        "the new bounty reuses the nearest vacant slot"
+    );
+    let now = lying(&world);
+    for old in survivors {
+        assert!(
+            now.iter()
+                .any(|r| r.id == old.id && r.pos == old.pos && r.gold == old.gold),
+            "unpicked bounties keep their positions and creation gold"
+        );
+    }
+}
+
+#[test]
+fn accumulated_bounties_have_distinct_slots_up_to_the_existing_spawner_cap() {
+    let mut world = rune_match(&radiant_and_dire());
+    for spawn in 0..=bota_proto::MAX_RUNES_AT_SPOT {
+        step_at_minute(&mut world, spawn as u32 * 4, 0);
+    }
+    for spot in [DIRE_JUNGLE, RADIANT_JUNGLE] {
+        let positions: std::collections::BTreeSet<_> = world
+            .entities
+            .iter()
+            .filter(|&entity| {
+                world
+                    .rune
+                    .get(entity)
+                    .is_some_and(|r| usize::from(r.spot) == spot)
+            })
+            .map(|entity| world.pos(entity).unwrap())
+            .collect();
+        let count = world
+            .entities
+            .iter()
+            .filter(|&entity| {
+                world
+                    .rune
+                    .get(entity)
+                    .is_some_and(|r| usize::from(r.spot) == spot)
+            })
+            .count();
+        assert_eq!(
+            count,
+            bota_proto::MAX_RUNES_AT_SPOT,
+            "the cap still belongs to the original spawner"
+        );
+        assert_eq!(
+            positions.len(),
+            count,
+            "every retained bounty has a separate slot"
+        );
+        let candidates = std::iter::once((0, 0)).chain(
+            (-2_i32..=2)
+                .flat_map(|x| (-2_i32..=2).map(move |y| (x, y)))
+                .filter(|(x, y)| x.abs() == 2 || y.abs() == 2)
+                .map(|(x, y)| (x * 64, y * 64)),
+        );
+        for (x, y) in candidates {
+            let at = spots()[spot] + Vec2::from_ints(x, y);
+            assert!(
+                world.clearance.walkable(at),
+                "each bounty slot is on reachable jungle ground: {at:?}"
+            );
+            let path = crate::game::find_path(
+                &world.clearance,
+                spots()[spot] + Vec2::from_ints(400, 0),
+                at,
+                rules::units(rules::HERO_COLLISION),
+            );
+            assert!(
+                path.last()
+                    .is_some_and(|end| end.within(at, rules::units(bota_core::RUNE_PICKUP_RANGE))),
+                "a hero can approach each bounty within pickup range: {at:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn occupied_rune_slots_make_a_full_ring_retry_on_the_next_cadence() {
+    let mut world = rune_match(&radiant_and_dire());
+    let at = spots()[RADIANT_JUNGLE];
+    // Artificial occupancy fixture: fill every slot with runes whose source
+    // spawners are elsewhere, without bypassing the per-spawner cap.
+    let offsets = std::iter::once((0, 0)).chain(
+        (-2_i32..=2)
+            .flat_map(|x| (-2_i32..=2).map(move |y| (x, y)))
+            .filter(|(x, y)| x.abs() == 2 || y.abs() == 2)
+            .map(|(x, y)| (x * 64, y * 64)),
+    );
+    let mut centre = None;
+    for (index, (x, y)) in offsets.enumerate() {
+        let source = if index < bota_proto::MAX_RUNES_AT_SPOT {
+            DIRE_JUNGLE
+        } else {
+            RIVER_TOP
+        };
+        world.put_rune(RuneKind::Bounty, source);
+        let entity = world
+            .entities
+            .iter()
+            .find(|&entity| {
+                world
+                    .rune
+                    .get(entity)
+                    .is_some_and(|r| usize::from(r.spot) == source)
+                    && world.pos(entity) == Some(spots()[source])
+            })
+            .expect("the new occupancy fixture rune");
+        world.transform.get_mut(entity).unwrap().pos = at + Vec2::from_ints(x, y);
+        if x == 0 && y == 0 {
+            centre = Some(entity);
+        }
+    }
+    let events = step_at_minute(&mut world, 0, 0);
+    assert!(
+        !spawned(&events)
+            .iter()
+            .any(|(_, pos)| pos.within(at, rules::units(200))),
+        "a full ring never spawns an overlapping bounty"
+    );
+    assert!(!world.entities.iter().any(|entity| {
+        world
+            .rune
+            .get(entity)
+            .is_some_and(|r| usize::from(r.spot) == RADIANT_JUNGLE)
+    }));
+    let centre = centre.expect("the occupied origin");
+    world.transform.get_mut(centre).unwrap().pos = at + Vec2::from_ints(500, 0);
+    let events = step_at_minute(&mut world, 4, 0);
+    assert!(
+        spawned(&events).contains(&(RuneKind::Bounty, at)),
+        "the next cadence reuses the freed nearest slot"
+    );
+    assert_eq!(
+        world.rune.get(centre).unwrap().spot as usize,
+        DIRE_JUNGLE,
+        "fixture relocation preserves the original spawner cap"
+    );
+}
+
+#[test]
+fn accumulated_bounties_stand_clear_at_all_four_spawners() {
+    let mut world = rune_match(&radiant_and_dire());
+    for spot in 0..spots().len() {
+        for _ in 0..bota_proto::MAX_RUNES_AT_SPOT {
+            world.put_rune(RuneKind::Bounty, spot);
+        }
+        let positions: std::collections::BTreeSet<_> = world
+            .entities
+            .iter()
+            .filter(|&entity| {
+                world
+                    .rune
+                    .get(entity)
+                    .is_some_and(|rune| usize::from(rune.spot) == spot)
+            })
+            .map(|entity| world.pos(entity).unwrap())
+            .collect();
+        assert_eq!(positions.len(), bota_proto::MAX_RUNES_AT_SPOT);
+        for at in positions {
+            assert!(world.clearance.stands_clear(at), "spawner {spot}: {at:?}");
+        }
+    }
+}
+
+#[test]
+fn a_bounty_skips_a_slot_blocked_by_navigation_clearance() {
+    let mut world = rune_match(&radiant_and_dire());
+    let origin = spots()[RADIANT_JUNGLE];
+    let east = origin + Vec2::from_ints(128, 0);
+    let mut circles = world.clearance.circles().to_vec();
+    circles.push((east, rules::units(32)));
+    world.clearance.set_circles(circles);
+    assert!(!world.clearance.stands_clear(east));
+    world.put_rune(RuneKind::Bounty, RADIANT_JUNGLE);
+    world.put_rune(RuneKind::Bounty, RADIANT_JUNGLE);
+    let positions: std::collections::BTreeSet<_> = world
+        .entities
+        .iter()
+        .filter(|&entity| {
+            world
+                .rune
+                .get(entity)
+                .is_some_and(|rune| usize::from(rune.spot) == RADIANT_JUNGLE)
+        })
+        .map(|entity| world.pos(entity).unwrap())
+        .collect();
+    assert_eq!(positions.len(), 2);
+    assert!(positions.contains(&origin));
+    assert!(
+        positions.contains(&(origin + Vec2::from_ints(0, 128))),
+        "the next nearest clear slot wins"
+    );
+    for at in positions {
+        assert!(world.clearance.stands_clear(at));
+    }
 }
