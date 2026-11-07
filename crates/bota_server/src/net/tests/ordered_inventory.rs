@@ -3,6 +3,20 @@
 use super::*;
 use bota_proto::{ItemId, SlotOrder, TickMode};
 
+fn replay_directory() -> std::path::PathBuf {
+    let mut nonce = [0u8; 16];
+    getrandom::fill(&mut nonce).expect("temporary directory entropy");
+    let directory = std::env::temp_dir().join(format!("bota-net-purchases-{:032x}", u128::from_le_bytes(nonce)));
+    let mut builder = std::fs::DirBuilder::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.recursive(false).create(&directory).expect("exclusive private replay directory");
+    directory
+}
+
 fn replay_orders(path: &std::path::Path, tick: u32) -> Vec<SlotOrder> {
     let bytes = read_replay(path).expect("finished replay");
     let mut reader = FrameReader::new();
@@ -19,10 +33,8 @@ fn replay_orders(path: &std::path::Path, tick: u32) -> Vec<SlotOrder> {
 
 #[test]
 fn same_tick_purchases_refuse_the_second_on_the_socket_and_record_both_attempts() {
-    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!(
-        "../../target/purchase-attempts-{}.brp",
-        std::process::id()
-    ));
+    let directory = replay_directory();
+    let path = directory.join("attempts.brp");
     let mut opts = realtime(41);
     opts.players = 1;
     opts.mode = TickMode::Lockstep;
@@ -91,7 +103,8 @@ fn same_tick_purchases_refuse_the_second_on_the_socket_and_record_both_attempts(
     drop(client);
     server.end();
     let attempts = replay_orders(&path, applied.tick);
-    let _ = std::fs::remove_file(path);
+    std::fs::remove_file(path).expect("remove replay fixture");
+    std::fs::remove_dir(directory).expect("remove replay directory");
     assert_eq!(
         attempts.len(),
         2,
