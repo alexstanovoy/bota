@@ -700,7 +700,9 @@ fn utility_value(id: AbilityId, key: &str) -> Option<Dec> {
         AbilityId::DELIVER => {
             (key == "deliver_range").then_some(integer(rules::COURIER_DELIVER_RANGE))
         }
-        AbilityId::CAPTURE => (key == "base_capture_time").then_some(ticks(bota_core::CAPTURE_TICKS)),
+        AbilityId::CAPTURE => {
+            (key == "base_capture_time").then_some(ticks(bota_core::CAPTURE_TICKS))
+        }
         AbilityId::LAMP_USE => match key {
             "active_duration" => Some(ticks(bota_core::LAMP_LIT_TICKS)),
             "inactive_duration" => Some(ticks(bota_core::LAMP_OFF_TICKS)),

@@ -137,9 +137,12 @@ fn spell_damage(
         if duration == 0.0 {
             continue;
         }
-        let Some(projection) =
-            bota_client_core::ability_damage_projection(ability.id, ability.level, duration, observation)
-        else {
+        let Some(projection) = bota_client_core::ability_damage_projection(
+            ability.id,
+            ability.level,
+            duration,
+            observation,
+        ) else {
             continue;
         };
         if !accepts(mask, projection.kind)

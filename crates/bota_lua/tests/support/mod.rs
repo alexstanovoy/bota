@@ -119,10 +119,14 @@ pub fn fold(
 }
 
 #[allow(dead_code, reason = "shared real-order encounter fixture")]
-pub fn durable_creep_encounter(hero: HeroId) -> (LocalMatch, Vec<ClientSession>, bota_proto::EntityId) {
-    use bota_proto::{Fixed, ModifierSpec, Order, Target};
+pub fn durable_creep_encounter(
+    hero: HeroId,
+) -> (LocalMatch, Vec<ClientSession>, bota_proto::EntityId) {
     use bota_client_core::IssuedOrder;
-    use bota_server::game::{ModifierDuration, SpawnCategory, SpawnModifier, SpawnSelector, SpawnTarget};
+    use bota_proto::{Fixed, ModifierSpec, Order, Target};
+    use bota_server::game::{
+        ModifierDuration, SpawnCategory, SpawnModifier, SpawnSelector, SpawnTarget,
+    };
     let modifiers = vec![SpawnModifier {
         select: SpawnSelector {
             team: None,

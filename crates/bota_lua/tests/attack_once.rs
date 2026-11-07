@@ -6,7 +6,6 @@ use bota_proto::{EntityId, EventKind, HeroId, Order, SlotId, Target, Team};
 use bota_server::local::LocalMatch;
 use std::collections::BTreeSet;
 
-
 fn attack_one_creep_then_stop(hero: HeroId, ranged: bool) {
     let (mut local, mut sessions, target) = support::durable_creep_encounter(hero);
     let own = sessions[0]

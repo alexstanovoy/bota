@@ -267,14 +267,25 @@ impl LuaTeam {
 
     #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
     pub(crate) fn once_checkpoint(&self) -> Vec<Option<crate::state::PendingOnce>> {
-        self.state.borrow().bots.iter().map(|bot| bot.pending_once).collect()
+        self.state
+            .borrow()
+            .bots
+            .iter()
+            .map(|bot| bot.pending_once)
+            .collect()
     }
 
     #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
     pub(crate) fn restore_once(&mut self, checkpoint: Vec<Option<crate::state::PendingOnce>>) {
         let mut state = self.state.borrow_mut();
-        assert_eq!(checkpoint.len(), state.bots.len(), "native acknowledgements belong to this team");
-        for (bot, pending) in state.bots.iter_mut().zip(checkpoint) { bot.pending_once = pending; }
+        assert_eq!(
+            checkpoint.len(),
+            state.bots.len(),
+            "native acknowledgements belong to this team"
+        );
+        for (bot, pending) in state.bots.iter_mut().zip(checkpoint) {
+            bot.pending_once = pending;
+        }
     }
 
     pub(crate) fn think_snapshot(&mut self, snapshot: Snapshot) -> Result<TeamTurn, BindingError> {

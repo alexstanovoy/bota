@@ -539,25 +539,70 @@ fn read_only_ability_projection_does_not_change_the_simulation_identity() {
     let control = Sources::new();
     for path in &candidate.files {
         let destination = control.0.join(path);
-        std::fs::create_dir_all(destination.parent().expect("source parent")).expect("control directory");
+        std::fs::create_dir_all(destination.parent().expect("source parent"))
+            .expect("control directory");
         std::fs::copy(root.join(path), destination).expect("copy authoritative rule input");
     }
     let path = "crates/bota_core/src/lib.rs";
     let library = std::fs::read_to_string(control.0.join(path)).expect("core declarations");
-    let rules_only = library.lines().filter(|line| !matches!(line.trim(), "mod ability_read;" | "pub use ability_read::*;"))
-        .collect::<Vec<_>>().join("\n");
+    let rules_only = library
+        .lines()
+        .filter(|line| {
+            !matches!(
+                line.trim(),
+                "mod ability_read;" | "pub use ability_read::*;"
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
     control.write(path, &rules_only);
     let expected = control.identity();
-    println!("candidate rules identity={:#018x}; simulation-only control={expected:#018x}", candidate.digest);
-    assert_eq!(candidate.digest, expected, "read-only ability projections must not change simulation identity");
-    assert!(!candidate.modules.contains("crates/bota_core/src/ability_read.rs"));
-    assert!(candidate.modules.contains("crates/bota_core/src/roshan_data.rs"), "authoritative shared data remains in the rules graph");
-    control.write("crates/bota_client_core/src/ability_read.rs", "fn read_only_projection() -> u8 { 1 }");
-    assert_eq!(control.identity(), expected, "client projections are outside the rules graph");
-    control.write("crates/bota_client_core/src/ability_read.rs", "fn read_only_projection() -> u8 { 2 }");
-    assert_eq!(control.identity(), expected, "changing a projection must not change rules");
+    println!(
+        "candidate rules identity={:#018x}; simulation-only control={expected:#018x}",
+        candidate.digest
+    );
+    assert_eq!(
+        candidate.digest, expected,
+        "read-only ability projections must not change simulation identity"
+    );
+    assert!(
+        !candidate
+            .modules
+            .contains("crates/bota_core/src/ability_read.rs")
+    );
+    assert!(
+        candidate
+            .modules
+            .contains("crates/bota_core/src/roshan_data.rs"),
+        "authoritative shared data remains in the rules graph"
+    );
+    control.write(
+        "crates/bota_client_core/src/ability_read.rs",
+        "fn read_only_projection() -> u8 { 1 }",
+    );
+    assert_eq!(
+        control.identity(),
+        expected,
+        "client projections are outside the rules graph"
+    );
+    control.write(
+        "crates/bota_client_core/src/ability_read.rs",
+        "fn read_only_projection() -> u8 { 2 }",
+    );
+    assert_eq!(
+        control.identity(),
+        expected,
+        "changing a projection must not change rules"
+    );
     let rule_path = "crates/bota_core/src/rules.rs";
     let rules = std::fs::read_to_string(control.0.join(rule_path)).expect("actual rules");
-    control.write(rule_path, &format!("{rules}\nconst RULE_VIEW_TEST_SENTINEL: u8 = 1;\n"));
-    assert_ne!(control.identity(), expected, "actual core rule declarations remain protected");
+    control.write(
+        rule_path,
+        &format!("{rules}\nconst RULE_VIEW_TEST_SENTINEL: u8 = 1;\n"),
+    );
+    assert_ne!(
+        control.identity(),
+        expected,
+        "actual core rule declarations remain protected"
+    );
 }

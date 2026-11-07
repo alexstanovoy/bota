@@ -38,7 +38,10 @@
 
 // The read view shares the simulation's generated numbers without copying or re-exporting them.
 use bota_core::{Dec, ScriptData};
-#[allow(dead_code, reason = "the shared numeric source also defines simulation-only unit rows")]
+#[allow(
+    dead_code,
+    reason = "the shared numeric source also defines simulation-only unit rows"
+)]
 #[path = "../../bota_core/src/roshan_data.rs"]
 mod roshan_data;
 
