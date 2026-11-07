@@ -274,17 +274,23 @@ fn consuming_one_linked_search_preserves_another_concurrent_search() {
 }
 
 #[test]
-fn two_bots_play_an_unranked_queue_with_served_windows_and_no_rating_change() {
+fn a_linked_human_search_plays_a_bot_unranked_with_served_windows_and_no_rating_change() {
     let env = start_configured(false, |config| {
+        config.rulesets[0].rating_window = radovid::config::RatingWindowConfig {
+            initial: Some(100), widen_per_minute: Some(0), maximum: Some(100),
+        };
         let mut casual = config.rulesets[0].clone();
         casual.id = "casual_mid".into();
         casual.name = "Unranked Mid".into();
         casual.rated = false;
         casual.rating_ruleset = Some(RULESET.into());
         casual.rating_window.initial = Some(700);
+        casual.rating_window.widen_per_minute = Some(0);
+        casual.rating_window.maximum = Some(700);
         config.rulesets.push(casual);
     });
-    let (mut alpha, mut beta) = (env.bot("alpha"), env.bot("beta"));
+    let (mut alpha, mut beta) = (env.account("alpha", AccountKind::Human), env.bot("beta"));
+    alpha.client.set_auto_accept(true);
     settle(&mut [&mut alpha], |a| a.client.limits(None).is_some());
     let casual = RulesetId("casual_mid".into());
     let info = alpha
@@ -309,12 +315,19 @@ fn two_bots_play_an_unranked_queue_with_served_windows_and_no_rating_change() {
             .initial,
         700
     );
-    for account in [&mut alpha, &mut beta] {
-        let seq = account.client.queue(&casual).expect("queue request");
-        account.reply(seq).expect("unranked queue");
-    }
+    let seq = alpha.client.queue_with_audiences(&casual, &[Audience::HumansOnly, Audience::Everyone]).expect("linked unranked search");
+    let Reply::QueuesJoined { entries } = alpha.reply(seq).expect("unranked queues") else { panic!("linked reply"); };
+    assert_eq!(entries.len(), 2);
+    assert!(entries.iter().all(|entry| entry.window_capped));
+    assert_eq!(alpha.client.searches().entries().len(), 2);
+    assert_eq!(alpha.client.searches().groups().len(), 1);
+    assert!(alpha.client.searches().entries().iter().all(|search| search.window_capped), "the adapter preserves the served cap hint for both places");
+    let seq = beta.client.queue(&casual).expect("queue request");
+    beta.reply(seq).expect("unranked queue");
     let handoffs = found(&mut [&mut alpha, &mut beta]);
     assert!(handoffs.iter().all(|h| !h.rated && h.ruleset == casual));
+    assert!(alpha.client.searches().entries().is_empty());
+    assert!(env.activities("alpha").queued.is_empty(), "both linked places were consumed");
     let first = play_seat(handoffs[0].clone(), HeroId::SHADOW_FIEND, env.tls.clone());
     let second = play_seat(handoffs[1].clone(), HeroId::PUDGE, env.tls.clone());
     assert_eq!(

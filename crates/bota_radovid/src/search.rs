@@ -44,6 +44,8 @@ pub struct Search {
     pub overloaded: bool,
     /// Accepted matches waiting for a game slot.
     pub games_waiting: u32,
+    /// This search's skill window has reached its cap; waiting may remain unbounded.
+    pub window_capped: bool,
     /// The open proposal this entry would be consumed by.
     pub offer: Option<Offer>,
     joined_ms: u64,
@@ -222,6 +224,7 @@ impl Searches {
                 known.waiting = entry.waiting;
                 known.overloaded = entry.overloaded;
                 known.games_waiting = entry.games_waiting;
+                known.window_capped = entry.window_capped;
             }
             None => self.entries.push(search_of(entry, now)),
         }
@@ -248,6 +251,7 @@ impl Searches {
             waiting: 0,
             overloaded: false,
             games_waiting: 0,
+            window_capped: false,
             offer: Some(offer),
             joined_ms: now,
         });
@@ -271,6 +275,7 @@ fn search_of(entry: &QueueEntry, now: u64) -> Search {
         waiting: entry.waiting,
         overloaded: entry.overloaded,
         games_waiting: entry.games_waiting,
+        window_capped: entry.window_capped,
         offer: None,
         joined_ms: now.saturating_sub(u64::from(entry.for_ms)),
     }
