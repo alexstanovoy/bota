@@ -3,9 +3,14 @@ use bota_client_core::ClientSession;
 use bota_proto::Team;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::mpsc::{self, Receiver, SyncSender};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
+
+const MAX_CONSECUTIVE_LATE_TICKS: u8 = 3;
+// At the measured ~13ns/fuel, 600k leaves over four times the execution margin
+// inside 33ms, including snapshot copying, collection, and scheduling jitter.
+const NATIVE_LIMITS: Limits = Limits { fuel_per_call: 125_000, fuel_per_tick: 600_000, ..Limits::DEFAULT };
 
 #[derive(Clone, Debug)]
 pub struct NativeConfig {
@@ -22,7 +27,7 @@ impl NativeConfig {
             team,
             seats,
             keys,
-            limits: Limits::DEFAULT,
+            limits: NATIVE_LIMITS,
             think_timeout: Duration::from_millis(33),
             startup_timeout: Duration::from_secs(30),
         }
@@ -52,7 +57,8 @@ impl std::fmt::Display for NativeError {
 impl std::error::Error for NativeError {}
 type Reply = Result<TeamTurn, NativeError>;
 
-/// One request at a time on a dedicated stack. Late outputs are discarded and the worker is retired.
+/// One request at a time on a dedicated stack. Late outputs are discarded; three consecutive
+/// missed ticks retire the worker. A successful timely reply resets that streak.
 /// Cleanup never waits on the caller. Retired workers finish bounded fuel asynchronously; a process-wide
 /// permit bounds active and retiring workers together to 32. Native limits cannot exceed interpreter defaults.
 pub struct NativeTeam {
@@ -63,6 +69,8 @@ pub struct NativeTeam {
     seats: Vec<BotSeat>,
     timeout: Duration,
     last_tick: Option<u32>,
+    in_flight: bool,
+    late_ticks: u8,
 }
 impl NativeTeam {
     pub fn new(config: NativeConfig, modules: ModuleBank) -> Result<Self, NativeError> {
@@ -124,6 +132,8 @@ impl NativeTeam {
                 seats,
                 timeout,
                 last_tick: None,
+                in_flight: false,
+                late_ticks: 0,
             }),
             result => {
                 drop(requests);
@@ -146,61 +156,56 @@ impl NativeTeam {
         if self.retired() {
             return Err(NativeError::Retired);
         }
-        if self.timeout.is_zero() {
-            self.retire();
-            return Err(NativeError::Deadline);
-        }
         let began = Instant::now();
         if session.team() != self.team {
-            return Err(NativeError::Input(
-                "worker needs its team's filtered session".to_owned(),
-            ));
+            return Err(NativeError::Input("worker needs its team's filtered session".to_owned()));
         }
-        let snapshot =
-            Snapshot::capture(session).map_err(|error| NativeError::Input(error.to_string()))?;
+        let snapshot = Snapshot::capture(session).map_err(|error| NativeError::Input(error.to_string()))?;
         if self.last_tick.is_some_and(|last| snapshot.tick <= last) {
             return Err(NativeError::Input("worker tick must increase".to_owned()));
         }
         self.last_tick = Some(snapshot.tick);
-        let Some(remaining) = self
-            .timeout
-            .checked_sub(began.elapsed())
-            .filter(|left| !left.is_zero())
-        else {
-            self.retire();
-            return Err(NativeError::Deadline);
-        };
-        if self
-            .requests
-            .as_ref()
-            .expect("active worker")
-            .try_send(snapshot)
-            .is_err()
-        {
+        if self.in_flight {
+            match self.receive(began) {
+                Ok(_) => {}, // This reply belongs to the previously missed tick, never the new one.
+                Err(NativeError::Deadline) => return self.late(),
+                Err(error) => return Err(error),
+            }
+        }
+        if self.remaining(began).is_none() { return self.late(); }
+        if self.requests.as_ref().expect("active worker").try_send(snapshot).is_err() {
             self.retire();
             return Err(NativeError::Closed);
         }
-        let reply = self
-            .replies
-            .as_ref()
-            .expect("active worker")
-            .recv_timeout(remaining);
-        // A ready value may be late if the caller was descheduled before receiving it.
-        if began.elapsed() > self.timeout {
-            self.retire();
-            return Err(NativeError::Deadline);
+        self.in_flight = true;
+        match self.receive(began) {
+            Ok(turn) if began.elapsed() <= self.timeout => { self.late_ticks = 0; Ok(turn) },
+            Ok(_) | Err(NativeError::Deadline) => self.late(),
+            Err(error) => Err(error),
         }
-        match reply {
-            Ok(Ok(turn)) => Ok(turn),
-            Ok(Err(error)) => {
-                self.retire();
-                Err(error)
+    }
+
+    fn remaining(&self, began: Instant) -> Option<Duration> {
+        self.timeout.checked_sub(began.elapsed()).filter(|left| !left.is_zero())
+    }
+
+    fn receive(&mut self, began: Instant) -> Reply {
+        let Some(remaining) = self.remaining(began) else { return Err(NativeError::Deadline); };
+        match self.replies.as_ref().expect("active worker").recv_timeout(remaining) {
+            Ok(result) => {
+                self.in_flight = false;
+                if result.is_err() { self.retire(); }
+                result
             }
-            Err(_) => {
-                self.retire();
-                Err(NativeError::Deadline)
-            }
+            Err(RecvTimeoutError::Timeout) => Err(NativeError::Deadline),
+            Err(RecvTimeoutError::Disconnected) => { self.retire(); Err(NativeError::Closed) },
         }
+    }
+
+    fn late(&mut self) -> Reply {
+        self.late_ticks = self.late_ticks.saturating_add(1);
+        if self.late_ticks >= MAX_CONSECUTIVE_LATE_TICKS { self.retire(); }
+        Err(NativeError::Deadline)
     }
     fn retire(&mut self) {
         self.requests.take();

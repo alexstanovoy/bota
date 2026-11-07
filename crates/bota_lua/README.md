@@ -22,7 +22,10 @@ finite; coordinate conversion uses nearest-even Q16.16 rounding and a 9,216 offs
 The default crate uses no filesystem or threads. Embedders of `LuaTeam`, including
 Wasm hosts, must supply an execution deadline boundary. Feature `native` supplies
 `NativeTeam`: a 16 MiB worker stack, one outstanding request, a 33 ms think deadline,
-and retirement after a late result or host panic. Native interpreter limits may
+and retirement after three consecutive missed ticks or a host panic.
+Late replies are discarded before submitting another snapshot; a timely reply
+resets the miss counter. Native defaults are 125,000 fuel per call and 600,000
+per team tick, leaving margin inside the deadline under load. Native interpreter limits may
 only reduce the defaults. Active and retiring workers share a process-wide limit
 of 32; cleanup does not wait on timed-out work.
 
