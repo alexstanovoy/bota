@@ -394,8 +394,8 @@ impl State {
         )?;
         let key = vm.new_string(b"__metatable")?;
         vm.raw_set(meta, key, Value::Boolean(false))?;
-        self.unit_identities.remember(vm, table, meta, id)?;
         vm.set_metatable(table, Some(meta))?;
+        self.unit_identities.remember(vm, table, meta, id)?;
         vm.pin(Value::Table(table))?;
         self.units.push((id, table));
         Ok(Value::Table(table))

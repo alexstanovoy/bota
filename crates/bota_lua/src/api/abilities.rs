@@ -173,8 +173,8 @@ fn handle(vm: &mut Vm, state: &mut State, identity: Option<Identity>) -> Result<
     )?;
     let key = vm.new_string(b"__metatable")?;
     vm.raw_set(meta, key, Value::Boolean(false))?;
-    state.ability_identities.remember(vm, table, meta, identity)?;
     vm.set_metatable(table, Some(meta))?;
+    state.ability_identities.remember(vm, table, meta, identity)?;
     vm.pin(Value::Table(table))?;
     state.abilities.push((identity, table));
     Ok(Value::Table(table))

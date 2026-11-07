@@ -67,3 +67,70 @@ impl<I: Copy + Eq + Hash + 'static> Identities<I> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use luagee::{Error, Keys, Limit, Limits, Lua};
+
+    mod support { include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/support/mod.rs")); }
+
+    #[test]
+    fn fuel_failure_cannot_publish_a_handle_without_its_metatable() {
+        use crate::{api, state::{Snapshot, State}, vector};
+        use bota_proto::{HeroId, SlotId, Team};
+        for ability in [false, true] {
+            for budget in 8..160 {
+                let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
+                let state = Rc::new(RefCell::new(State::new(Team::Radiant, &[crate::BotSeat { slot: SlotId(0), hero: HeroId::SHADOW_FIEND }])));
+                state.borrow_mut().snapshot = Some(Snapshot::capture(&sessions[0]).expect("snapshot"));
+                let mut lua = Lua::new(Limits::DEFAULT, Keys { hash: [17,19], random:23 }).expect("vm");
+                let vectors = vector::install(&mut lua).expect("vectors");
+                api::install(&mut lua, state, vectors).expect("API");
+                let drain = lua.function("drain", Rc::new(|vm,args| {
+                    let amount = vm.check_integer(args,0)?;
+                    vm.charge_fuel(amount as u64)?;
+                    Ok(0)
+                })).expect("drain callback");
+                lua.set_global("drain",drain).expect("global");
+                if ability { lua.exec("prime", b"GetBot()").expect("prime unit handle"); }
+                lua.set_gc_stress(luagee::GcStress::Off);
+                let expression = if ability { "GetBot():GetAbilityByName('nevermore_shadowraze1'):GetName()" } else { "GetBot():GetHealth()" };
+                let source = format!("drain({});return {}", Limits::DEFAULT.fuel_per_call-budget, expression);
+                let first = lua.exec("limited",source.as_bytes());
+                if let Err(error) = first { assert!(matches!(error, Error::Limit(Limit::FuelPerCall)), "budget={budget}, ability={ability}: {error}"); }
+                let recovered = lua.exec("recover",format!("return {expression}").as_bytes())
+                    .unwrap_or_else(|error| panic!("budget={budget}, ability={ability}: {error}"));
+                if ability { assert_eq!(lua.bytes(recovered[0]), Some(b"nevermore_shadowraze1".as_slice())); }
+                else { assert!(matches!(recovered[0], Value::Number(value) if value>0.0)); }
+            }
+        }
+    }
+
+    #[test]
+    fn witness_allocation_failure_drops_host_data_without_borrowing_an_index() {
+        let mut lua = Lua::new(Limits { memory: 1 << 20, ..Limits::DEFAULT }, Keys { hash: [17,19], random:23 }).expect("vm");
+        let table = lua.vm().new_table().expect("table");
+        let meta = lua.vm().new_table().expect("metatable");
+        lua.pin(Value::Table(table)).expect("root table");
+        lua.pin(Value::Table(meta)).expect("root metatable");
+        // Trusted setup allocations do not collect, so consume their bounded headroom.
+        for _ in 0..2048 {
+            if lua.vm().userdata((), None, 1024).is_err() { break; }
+        }
+        let mut exhausted = false;
+        for _ in 0..2048 {
+            match lua.vm().userdata((), None, 0) {
+                Ok(_) => {},
+                Err(LuaError::Limit(Limit::Memory)) => { exhausted = true; break; },
+                Err(error) => panic!("unexpected setup error: {error:?}"),
+            }
+        }
+        assert!(exhausted, "the setup allocation headroom was consumed");
+        let mut identities = Identities::new();
+        let error = identities.remember(lua.vm(), table, meta, 7u32).expect_err("witness cannot fit");
+        assert!(matches!(error, LuaError::Limit(Limit::Memory)));
+        assert_eq!(identities.value(Value::Table(table)), None);
+        assert_eq!(identities.table(lua.vm(), 7).expect("empty identity index"), None);
+    }
+}
