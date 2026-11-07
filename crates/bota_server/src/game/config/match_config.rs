@@ -312,7 +312,12 @@ pub enum Event {
 impl Event {
     pub fn kind(&self) -> EventKind {
         match self {
-            Self::AttackLaunched { attacker, target, .. } => EventKind::AttackLaunched { attacker: *attacker, target: Some(*target) },
+            Self::AttackLaunched {
+                attacker, target, ..
+            } => EventKind::AttackLaunched {
+                attacker: *attacker,
+                target: Some(*target),
+            },
             Self::Fact { kind, .. } => kind.clone(),
             Self::ItemUsed {
                 caster,
@@ -331,7 +336,9 @@ impl Event {
 
     pub fn visible_to(&self) -> EventVisibility {
         match self {
-            Self::Fact { visible_to, .. } | Self::ItemUsed { visible_to, .. } | Self::AttackLaunched { visible_to, .. } => *visible_to,
+            Self::Fact { visible_to, .. }
+            | Self::ItemUsed { visible_to, .. }
+            | Self::AttackLaunched { visible_to, .. } => *visible_to,
         }
     }
 

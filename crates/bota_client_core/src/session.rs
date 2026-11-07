@@ -24,8 +24,9 @@ use bota_proto::{
 pub use error::{IngestError, SessionError};
 pub use missiles::{LootTrack, MissileTrack};
 pub use tracks::{
-    AbilityCastObservation, AttackLaunchObservation, DamageObservation, DeathObservation, EntityTrack, HealObservation,
-    ManaRestorationObservation, ObservedEvent, PossibleAttackLanded, VelocityEstimate,
+    AbilityCastObservation, AttackLaunchObservation, DamageObservation, DeathObservation,
+    EntityTrack, HealObservation, ManaRestorationObservation, ObservedEvent, PossibleAttackLanded,
+    VelocityEstimate,
 };
 pub(crate) use validate::lobby as validate_lobby;
 
