@@ -6,8 +6,10 @@ use bota_proto::{ClientMsg, HeroId, Role, SeatKey, Team};
 struct Credential { name: String, key: Option<SeatKey> }
 struct Options { scripts: PathBuf, runtime: Option<PathBuf>, address: String, team: Team, hero: HeroId, think_ms: u64 }
 fn main() -> ExitCode {
-    match run() { Ok(()) => ExitCode::SUCCESS, Err(error) => { eprintln!("{error}"); ExitCode::FAILURE } }
+    match run() { Ok(()) => ExitCode::SUCCESS, Err(error) => { eprintln!("{}", diagnostic(error.as_ref())); ExitCode::FAILURE } }
 }
+fn diagnostic(error: &dyn std::error::Error) -> String { error.to_string().escape_debug().to_string() }
+
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let options = options()?;
     let credentials = credentials(options.team)?;
@@ -70,3 +72,33 @@ fn credentials(team: Team) -> Result<Vec<Credential>, Box<dyn std::error::Error>
     Ok(seats)
 }
 fn parse_team(text: &str) -> Result<Team, &'static str> { match text { "0" => Ok(Team::Radiant), "1" => Ok(Team::Dire), _ => Err("invalid credential team") } }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bota_lua::{Keys, ModuleBank, native::NativeError};
+
+    #[test]
+    fn startup_diagnostics_escape_script_control_characters() {
+        let mut modules = ModuleBank::new(Limits::DEFAULT);
+        modules.insert("bots/hero_selection", br#"function Think() error("bad\27[31mcolour\7\r\nnext") end"#).expect("source");
+        let config = NativeConfig::new(Team::Radiant,
+            vec![BotSeat { slot: bota_proto::SlotId(0), hero: HeroId::SHADOW_FIEND }],
+            Keys { hash: [17,19], random: 23 });
+        let error = NativeTeam::new(config, modules).err().expect("the script rejects startup");
+        let raw = error.to_string();
+        assert!(raw.contains('\x1b'), "the script supplied an escape byte");
+        assert!(raw.contains('\x07'), "the script supplied a bell byte");
+        let rendered = diagnostic(&error);
+        assert!(!rendered.chars().any(char::is_control), "startup diagnostics must not emit raw control characters");
+        for escaped in ["\\u{1b}", "\\u{7}", "\\r", "\\n"] {
+            assert!(rendered.contains(escaped), "the diagnostic preserves the escaped control spelling");
+        }
+    }
+
+    #[test]
+    fn startup_diagnostics_preserve_ordinary_text_and_unicode() {
+        let error = NativeError::Setup("plain café λ".to_owned());
+        assert_eq!(diagnostic(&error), "plain café λ");
+    }
+}
