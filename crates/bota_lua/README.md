@@ -12,7 +12,7 @@ Repeated fuel diagnostics are eligible once per thirty ticks.
 
 Defaults are 500,000 fuel per call, 2,000,000 per team tick and 256 MiB memory.
 Host storage reserves 16 MiB against that cap, including bounded snapshot replacement
-and handle maps. Snapshots hold at most 4 MiB of unit data; unit and ability caches
+and handle maps. Snapshots hold at most 4 MiB of copied facts; unit and ability caches
 hold at most 8,192 entries each; each bot returns at most 64 orders per turn.
 Module banks validate names, module count and source sizes before copying, and
 reserve storage for module-loading copies. Roots and userdata retention stay charged

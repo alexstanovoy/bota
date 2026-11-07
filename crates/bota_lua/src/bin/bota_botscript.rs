@@ -3,6 +3,7 @@ use bota_client_core::{Link, Transport, greet};
 use bota_lua::{BotSeat, Limits, native::{NativeConfig, NativeTeam, load_modules, play_team, random_keys}};
 use bota_proto::{ClientMsg, HeroId, Role, SeatKey, Team};
 
+struct Credential { name: String, key: Option<SeatKey> }
 struct Options { scripts: PathBuf, runtime: Option<PathBuf>, address: String, team: Team, hero: HeroId, think_ms: u64 }
 fn main() -> ExitCode {
     match run() { Ok(()) => ExitCode::SUCCESS, Err(error) => { eprintln!("{error}"); ExitCode::FAILURE } }
@@ -12,9 +13,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let credentials = credentials(options.team)?;
     let modules = load_modules(&options.scripts, options.runtime.as_deref(), Limits::DEFAULT)?;
     let mut joined = Vec::new();
-    for (name, key) in credentials {
+    for credential in credentials {
         let mut link = Link::connect(&options.address, Duration::from_secs(30))?;
-        let lobby = greet(&mut link, Role::Bot, &name, key)?;
+        let lobby = greet(&mut link, Role::Bot, &credential.name, credential.key)?;
         joined.push((link, lobby.seated().ok_or("server assigned no seat")?));
     }
     let seats = joined.iter().map(|(_, seated)| BotSeat { slot: seated.slot, hero: options.hero }).collect();
@@ -35,7 +36,7 @@ fn options() -> Result<Options, Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args_os().skip(1).take(33).collect();
     if args.len() > 32 || args.len() % 2 != 0 { return Err("usage: bota_botscript --scripts DIR [--runtime-scripts DIR] [--address HOST:PORT] [--team radiant|dire] [--hero KEY] [--think-ms N]".into()); }
     let mut options = Options { scripts: PathBuf::new(), runtime: None, address: "127.0.0.1:4455".to_owned(), team: Team::Radiant, hero: HeroId::SHADOW_FIEND, think_ms: 33 };
-    for pair in args.chunks_exact(2) {
+    for pair in args.as_chunks::<2>().0 {
         match pair[0].to_str().ok_or("invalid option")? {
             "--scripts" => options.scripts = PathBuf::from(&pair[1]), "--runtime-scripts" => options.runtime = Some(PathBuf::from(&pair[1])),
             "--address" => options.address = pair[1].to_str().ok_or("invalid address")?.to_owned(),
@@ -48,8 +49,8 @@ fn options() -> Result<Options, Box<dyn std::error::Error>> {
     if options.scripts.as_os_str().is_empty() { return Err("--scripts is required".into()); }
     Ok(options)
 }
-fn credentials(team: Team) -> Result<Vec<(String, Option<SeatKey>)>, Box<dyn std::error::Error>> {
-    let text = match std::env::var("BOTA_SEATS") { Ok(text) => text, Err(std::env::VarError::NotPresent) => return Ok(vec![("lua".to_owned(), None)]), Err(_) => return Err("invalid BOTA_SEATS".into()) };
+fn credentials(team: Team) -> Result<Vec<Credential>, Box<dyn std::error::Error>> {
+    let text = match std::env::var("BOTA_SEATS") { Ok(text) => text, Err(std::env::VarError::NotPresent) => return Ok(vec![Credential { name: "lua".to_owned(), key: None }]), Err(_) => return Err("invalid BOTA_SEATS".into()) };
     if text.len() > 4096 { return Err("too many seat credentials".into()); }
     let mut seats = Vec::new();
     for (index, entry) in text.split(',').enumerate() {
@@ -63,7 +64,7 @@ fn credentials(team: Team) -> Result<Vec<(String, Option<SeatKey>)>, Box<dyn std
         if side != team || kind == "human" { continue; }
         if kind != "bot" { return Err("invalid seat kind".into()); }
         let key = SeatKey::from_hex(fields[0]).ok_or("invalid seat credential")?;
-        seats.push((name.to_owned(), Some(key)));
+        seats.push(Credential { name: name.to_owned(), key: Some(key) });
     }
     if seats.is_empty() { return Err("no bot credentials for the selected team".into()); }
     Ok(seats)
