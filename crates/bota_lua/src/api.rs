@@ -11,6 +11,7 @@ mod globals;
 mod queries;
 mod geometry;
 mod estimates;
+pub(crate) mod shop;
 mod unit_names;
 pub(crate) mod abilities;
 
@@ -52,6 +53,7 @@ pub(crate) fn install(lua: &mut Lua, state: Shared, vectors: Vectors) -> Result<
     globals::install(lua, state.clone(), vectors)?;
     queries::install(lua, methods, state.clone(), vectors)?;
     abilities::install(lua, methods, state.clone())?;
+    shop::install(lua, &context)?;
     install_unit_reads(lua, methods, state.clone())?;
     install_bot_state(lua, methods, state.clone())?;
     install_actions(lua, methods, state, vectors)?;
@@ -141,7 +143,7 @@ fn install_bot_state(lua: &mut Lua, methods: TableId, state: Shared) -> Result<(
             let value = match name {
                 "GetGold" | "GetRespawnTime" => {
                     let player = state.snapshot.as_ref().and_then(|snapshot| snapshot.players.iter().find(|player| player.unit == Some(id)));
-                    Value::Number(player.map_or(0.0, |player| if name == "GetGold" { f64::from(player.gold.unwrap_or(0)) } else { globals::seconds(player.respawn_left) }))
+                    Value::Number(player.map_or(0.0, |player| if name == "GetGold" { f64::from(state.purchases.as_ref().and_then(|projection| projection.gold(player.slot)).or(player.gold).unwrap_or(0)) } else { globals::seconds(player.respawn_left) }))
                 }
                 "GetActiveMode" => Value::Number(index.map_or(0.0, |index| f64::from(state.bots[index].mode))),
                 "GetActiveModeDesire" => Value::Number(index.map_or(0.0, |index| state.bots[index].desire)),

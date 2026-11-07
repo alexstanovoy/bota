@@ -153,18 +153,22 @@ impl LuaTeam {
         let tick = snapshot.tick;
         self.last_tick = Some(tick);
         self.state.borrow_mut().snapshot = Some(snapshot);
+        self.state.borrow_mut().purchases = None;
         self.lua.begin_tick();
         let seats = self.state.borrow().seats.clone();
         self.state.borrow_mut().current_slot = seats[0].slot;
         self.state.borrow_mut().orders.clear();
+        let first_purchases = self.state.borrow().purchases.clone();
         let mut team_error = self.run_team().err();
         let mut result = TeamTurn::default();
         for (index, seat) in seats.iter().enumerate() {
             self.state.borrow_mut().current_slot = seat.slot;
             if index != 0 { self.state.borrow_mut().orders.clear(); }
+            let purchases_before = if index == 0 { first_purchases.clone() } else { self.state.borrow().purchases.clone() };
             let ended = if index == 0 { team_error.take().map_or_else(|| self.run_seat(index, seat.slot, tick), Err) } else { self.run_seat(index, seat.slot, tick) };
             let orders = if let Err(error) = ended {
                 self.state.borrow_mut().orders.clear();
+                self.state.borrow_mut().purchases = purchases_before;
                 result.failures.push(self.failure(index, seat.slot, tick, error));
                 Vec::new()
             } else { std::mem::take(&mut self.state.borrow_mut().orders) };

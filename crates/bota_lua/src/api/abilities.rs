@@ -143,29 +143,20 @@ fn lookup_ability(state: &State, id: EntityId, key: &[u8]) -> Option<Identity> {
 }
 
 fn install_immediate(lua: &mut Lua, units: TableId, state: Shared) -> Result<(), BindingError> {
-    for name in ["ActionImmediate_LevelAbility", "ActionImmediate_PurchaseItem", "Action_LevelAbility", "Action_PurchaseItem"] {
+    for name in ["ActionImmediate_LevelAbility", "Action_LevelAbility"] {
         let capture = state.clone();
         method(lua, units, name, Rc::new(move |vm, args| {
             let mut state = capture.borrow_mut();
             let id = super::identity(vm, &state, args)?;
             if Some(id) != state.own_id() { return Err(vm.error("action requires the active bot")); }
             let key = string(vm, args, 1)?;
-            if matches!(name, "ActionImmediate_LevelAbility" | "Action_LevelAbility") {
-                let order = match lookup_ability(&state, id, key) {
-                    Some(Identity::Ability { slot, .. }) => Some(Order::Learn { slot }),
-                    Some(Identity::Talent { slot, .. }) => Some(Order::LearnTalent { talent: slot }),
-                    _ => None,
-                };
-                if let Some(order) = order { state.order(vm, bota_client_core::IssuedOrder::hero(order))?; }
-                Ok(0)
-            } else {
-                let item = std::str::from_utf8(key).ok().and_then(bota_core::item_by_key);
-                let result = if let Some(item) = item {
-                    state.order(vm, bota_client_core::IssuedOrder::hero(Order::Buy { item }))?;
-                    0.0
-                } else { 6.0 };
-                vm.results(&[Value::Number(result)])
-            }
+            let order = match lookup_ability(&state, id, key) {
+                Some(Identity::Ability { slot, .. }) => Some(Order::Learn { slot }),
+                Some(Identity::Talent { slot, .. }) => Some(Order::LearnTalent { talent: slot }),
+                _ => None,
+            };
+            if let Some(order) = order { state.order(vm, bota_client_core::IssuedOrder::hero(order))?; }
+            Ok(0)
         }))?;
     }
     Ok(())
