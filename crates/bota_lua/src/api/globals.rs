@@ -6,7 +6,7 @@ pub(super) fn integer(vm: &mut Vm, args: Args, index: usize) -> Result<i64, LuaE
     Ok(vector::number(vm, args, index)?.trunc() as i64)
 }
 
-pub(super) fn string<'a>(vm: &'a mut Vm, args: Args, index: usize) -> Result<&'a [u8], LuaError> {
+pub(super) fn string(vm: &mut Vm, args: Args, index: usize) -> Result<&[u8], LuaError> {
     let string = vm.check_string(args, index)?;
     let length = vm.bytes(Value::String(string)).expect("checked string is live").len();
     vm.charge_fuel(1 + length as u64 / 16)?;
@@ -37,11 +37,10 @@ pub(super) fn install(lua: &mut Lua, state: Shared, _vectors: Vectors) -> Result
                     let slot = integer(vm, args, 0)?;
                     let name = string(vm, args, 1)?;
                     let hero = std::str::from_utf8(name).ok().and_then(bota_core::hero_by_key);
-                    if state.selecting {
-                        if let Some(index) = state.seats.iter().position(|seat| i64::from(seat.slot.0) == slot) {
-                            if state.picks[index].is_none() { state.picks[index] = Some(hero.unwrap_or(state.seats[index].hero)); }
-                        }
-                    }
+                    if state.selecting
+                        && let Some(index) = state.seats.iter().position(|seat| i64::from(seat.slot.0) == slot)
+                        && state.picks[index].is_none()
+                    { state.picks[index] = Some(hero.unwrap_or(state.seats[index].hero)); }
                     return Ok(0);
                 }
                 "GetTeamMember" => {
