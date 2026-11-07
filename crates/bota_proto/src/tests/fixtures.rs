@@ -846,6 +846,10 @@ pub fn all_server_msgs() -> Vec<ServerMsg> {
             seq: 12345,
             reason: RejectReason::UnknownTarget,
         },
+        ServerMsg::OrderRejected {
+            seq: 55,
+            reason: RejectReason::NothingToBuy,
+        },
         ServerMsg::MatchOver {
             winner: Team::Radiant,
             stats: match_stats(),

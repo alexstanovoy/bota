@@ -208,6 +208,9 @@ pub fn place_shop_purchase<P: HeldItem>(
     parts: &[ItemId],
     context: &PurchaseContext<'_, P>,
 ) -> Result<Vec<Berth>, RejectReason> {
+    if parts.is_empty() {
+        return Err(RejectReason::NothingToBuy);
+    }
     let mut berths = Vec::with_capacity(parts.len());
     for part in parts {
         let item = sold(*part).ok_or(RejectReason::UnknownItem)?;

@@ -151,6 +151,12 @@ impl App {
             Intent::QuickBuy => {
                 if let Some(item) = self.quick_buy_next() {
                     self.send_order(Order::Buy { item: ItemId(item) });
+                } else if let Some(&target) = self
+                    .quick_buy_parts()
+                    .first()
+                    .or_else(|| self.quick_buy.targets().first())
+                {
+                    self.refuse_purchase(self.purchase_availability(target));
                 }
             }
             Intent::CourierDeliver => self.courier_deliver(),

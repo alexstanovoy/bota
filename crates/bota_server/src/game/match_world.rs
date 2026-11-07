@@ -671,7 +671,7 @@ impl World {
             return Err(RejectReason::NotEnoughGold);
         }
         plan.berths.map(|_| ())?;
-        if !self.in_stock(seat.team, item) {
+        if !self.purchase_in_stock(seat.team, &plan.parts) {
             return Err(RejectReason::OutOfStock);
         }
         Ok(())

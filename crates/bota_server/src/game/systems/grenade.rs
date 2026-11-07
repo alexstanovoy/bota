@@ -40,10 +40,18 @@ impl World {
     /// Whether one side's shop has an item to sell right now. One sold
     /// without limit always has.
     pub fn in_stock(&self, team: Team, item: ItemId) -> bool {
+        bota_core::can_take_from_stock(self.stock_left(team, item), 1)
+    }
+
+    fn stock_left(&self, team: Team, item: ItemId) -> Option<u8> {
         self.shop_stock
             .iter()
             .find(|held| held.team == team && held.item == item)
-            .is_none_or(|held| held.left > 0)
+            .map(|held| held.left)
+    }
+
+    pub(crate) fn purchase_in_stock(&self, team: Team, parts: &[ItemId]) -> bool {
+        bota_core::purchase_stock_available(parts, |item| self.stock_left(team, item))
     }
 
     /// Takes one of an item off a side's shelf. One sold without limit is

@@ -5,7 +5,7 @@
 
 use bota_proto::{Team, Vec2};
 
-use crate::{MapDef, rules, segment_distance_squared};
+use crate::{MapDef, ShopGeometry, rules, segment_distance_squared};
 
 /// The fountain position of a team. The jungle's is the map center.
 #[inline]
@@ -26,10 +26,10 @@ pub fn at_home_shop(map: &MapDef, team: Team, pos: Vec2) -> bool {
 
 /// Either base shop serves every player, including access to their own stash.
 #[inline]
-pub fn at_base_shop(map: &MapDef, pos: Vec2) -> bool {
-    map.fountains
+pub fn at_base_shop(map: &impl ShopGeometry, pos: Vec2) -> bool {
+    map.shop_fountains()
         .iter()
-        .any(|fountain| pos.within(*fountain, rules::units(rules::SHOP_RANGE)))
+        .any(|fountain| pos.within(*fountain, rules::units(map.shop_range())))
 }
 
 /// Where a team's hero appears, beside the fountain rather than inside it.

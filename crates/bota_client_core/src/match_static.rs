@@ -53,6 +53,18 @@ pub struct MatchStatic {
     catalogue: Catalogue,
 }
 
+impl bota_core::ShopGeometry for MatchStatic {
+    fn shop_fountains(&self) -> [Vec2; 2] {
+        self.fountains
+    }
+    fn shop_range(&self) -> i32 {
+        self.shop_range
+    }
+    fn secret_shop_corners(&self) -> impl Iterator<Item = &[Vec2]> {
+        self.secret_shops.iter().map(|shop| shop.corners.as_slice())
+    }
+}
+
 impl MatchStatic {
     /// Validates a match description and keeps what a client reads from it.
     pub fn new(info: &MatchInfo) -> Result<Arc<Self>, SessionError> {

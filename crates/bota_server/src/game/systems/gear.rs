@@ -18,7 +18,7 @@ use crate::game::{
 
 /// Missing parts, their total price and an atomic placement or refusal.
 pub(crate) struct PurchasePlan {
-    parts: Vec<ItemId>,
+    pub(crate) parts: Vec<ItemId>,
     pub(crate) cost: i32,
     pub(crate) berths: Result<Vec<Berth>, RejectReason>,
 }
@@ -521,12 +521,15 @@ impl World {
             return false;
         };
         let unit = self.seats[index].unit;
-        if !self.in_stock(self.seats[index].team, item) || self.catalogue.sold(item).is_none() {
+        if self.catalogue.sold(item).is_none() {
             return false;
         }
         let Some(plan) = self.purchase_plan(slot, item) else {
             return false;
         };
+        if !self.purchase_in_stock(self.seats[index].team, &plan.parts) {
+            return false;
+        }
         let Ok(berths) = plan.berths else {
             return false;
         };
@@ -560,7 +563,7 @@ impl World {
                     .put_in(at, bought),
             }
         }
-        self.finish_purchase(index, item, plan.cost, events);
+        self.finish_purchase(index, item, plan.cost, &plan.parts, events);
         true
     }
 
@@ -605,10 +608,20 @@ impl World {
 
     /// Pays for a completed purchase, takes it off the shelf, and emits its
     /// team-visible event.
-    fn finish_purchase(&mut self, seat: usize, item: ItemId, price: i32, events: &mut Vec<Event>) {
+    fn finish_purchase(
+        &mut self,
+        seat: usize,
+        item: ItemId,
+        price: i32,
+        parts: &[ItemId],
+        events: &mut Vec<Event>,
+    ) {
+        assert!(!parts.is_empty(), "a purchase must place at least one part");
         debug_assert!(price >= 0 && self.seats[seat].gold >= price);
         self.seats[seat].gold -= price;
-        self.take_from_stock(self.seats[seat].team, item);
+        for part in parts {
+            self.take_from_stock(self.seats[seat].team, *part);
+        }
         events.push(Event::Fact {
             kind: EventKind::ItemBought {
                 slot: self.seats[seat].slot,

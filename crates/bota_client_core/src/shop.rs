@@ -3,10 +3,10 @@
 //! server buys by.
 
 use bota_core::{
-    PurchaseCarrier, PurchaseContext, Shelf, ShopAccess, hero_def, missing_parts,
-    place_shop_purchase, purchase_pool, sold,
+    Berth, PurchaseCarrier, PurchaseContext, Shelf, hero_def, missing_parts, place_shop_purchase,
+    purchase_pool, shop_access, sold,
 };
-use bota_proto::{Attribute, Fixed, ItemId, PlayerView, UnitKind, UnitView, WorldView};
+use bota_proto::{Attribute, ItemId, PlayerView, RejectReason, UnitKind, UnitView, WorldView};
 
 use crate::MatchStatic;
 
@@ -75,12 +75,21 @@ pub fn purchase_fits(
     statics: &MatchStatic,
     item: ItemId,
 ) -> bool {
+    purchase_placement(view, p, statics, item).is_ok()
+}
+
+pub(crate) fn purchase_placement(
+    view: &WorldView,
+    p: &PlayerView,
+    statics: &MatchStatic,
+    item: ItemId,
+) -> Result<Vec<Berth>, RejectReason> {
     if p.stash.is_none() {
-        return false;
+        return Err(RejectReason::InventoryFull);
     }
     let parts = missing_for(item, &held_items(view, p), primary_of(p));
     let context = purchase_context(view, p, statics);
-    place_shop_purchase(p.slot, &parts, &context).is_ok()
+    place_shop_purchase(p.slot, &parts, &context)
 }
 
 /// The buyer's receiving inventory, living courier and storage, with the announced shop access.
@@ -132,22 +141,12 @@ pub(crate) fn purchase_carrier<'a>(
     if unit.hp <= 0 {
         return None;
     }
-    let shops = ShopAccess {
-        base: statics
-            .fountains()
-            .iter()
-            .any(|at| unit.pos.within(*at, Fixed::from_int(statics.shop_range()))),
-        secret: statics
-            .secret_shops()
-            .iter()
-            .any(|shop| bota_core::shop_zone_touches(&shop.corners, unit.pos, unit.bound)),
-    };
     Some(PurchaseCarrier {
         bag: Shelf {
             slots: unit.items.as_slice(),
             town_portal: (unit.kind == UnitKind::Hero).then_some(&unit.town_portal),
             combines: true,
         },
-        shops,
+        shops: shop_access(statics, unit.pos, unit.bound),
     })
 }

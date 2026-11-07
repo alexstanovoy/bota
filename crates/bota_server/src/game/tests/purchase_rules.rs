@@ -310,3 +310,58 @@ fn a_dead_hero_at_home_buys_base_items_into_its_kit_through_orders() {
             .all(Option::is_none)
     );
 }
+
+#[test]
+fn f07_review_empty_split_recipe_is_refused_without_an_item_bought_event() {
+    use bota_proto::OutgoingOrder;
+    use bota_proto::{EventKind, ServerMsg};
+    let (mut local, _) = seated();
+    let world = local.world_mut();
+    let hero = world.seats[0].unit.expect("hero");
+    world.transform.get_mut(hero).unwrap().pos = Vec2::from_ints(9000, 9000);
+    world.inventory.get_mut(hero).unwrap().slots[0] = Some(fresh_stack(ItemId::BOOTS, 1));
+    world.seats[0].stash.slots[0] = Some(fresh_stack(ItemId::GLOVES, 1));
+    world.seats[0].stash.slots[1] = Some(fresh_stack(ItemId::BELT, 1));
+    world.seats[0].gold = 10000;
+    let gold = world.seats[0].gold;
+    let stock: Vec<_> = world.shop_stock.iter().map(|s| s.left).collect();
+    let order = OutgoingOrder {
+        seq: 42,
+        unit: None,
+        order: Order::Buy {
+            item: ItemId::POWER_TREADS,
+        },
+        seen: local.tick(),
+        queue: false,
+    };
+    let stream = local.step(&[&[order], &[]]).expect("real order step");
+    assert!(!stream[0].iter().any(|m|matches!(m,ServerMsg::Events {events,..} if events.iter().any(|e|matches!(e,EventKind::ItemBought {item: ItemId::POWER_TREADS,..})))), "an empty plan must emit no purchase event");
+    assert!(
+        stream[0].iter().any(|m| matches!(
+            m,
+            ServerMsg::OrderRejected {
+                seq: 42,
+                reason: bota_proto::RejectReason::NothingToBuy
+            }
+        )),
+        "the empty purchase is specifically refused"
+    );
+    assert_eq!(local.world().seats[0].gold, gold);
+    assert_eq!(
+        local
+            .world()
+            .shop_stock
+            .iter()
+            .map(|s| s.left)
+            .collect::<Vec<_>>(),
+        stock
+    );
+    let mut events = Vec::new();
+    assert!(
+        !local
+            .world_mut()
+            .buy(BUYER, ItemId::POWER_TREADS, &mut events),
+        "execution independently rejects an empty plan"
+    );
+    assert!(events.is_empty());
+}

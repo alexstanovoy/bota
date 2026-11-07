@@ -763,3 +763,5 @@ field EventKind::GateWarped 1 to: EntityId
 field EventKind::GateWarped 2 unit: Option<EntityId>
 variant ObjectiveKind 6 TwinGates
 variant UnitKind 19 TwinGate
+
+variant RejectReason 32 NothingToBuy

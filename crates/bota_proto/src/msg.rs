@@ -270,6 +270,8 @@ pub enum RejectReason {
     HoldsRune,
     /// This catalogue row prohibits the requested item transfer or slot.
     ItemRestricted,
+    /// Every component of the requested recipe is already owned.
+    NothingToBuy,
 }
 
 /// Final numbers for one seat.

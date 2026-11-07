@@ -7,6 +7,36 @@ use bota_proto::ItemId;
 use crate::shop::{held_items, missing_for, price_for, primary_of, whole_price};
 use crate::ui::app::{App, Phase};
 
+/// Whether this seat can buy an item now, including its remaining components.
+#[must_use]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PurchaseAvailability {
+    Available,
+    NoBuyer,
+    NotOffered,
+    InsufficientGold,
+    OutOfStock,
+    /// The required shops or storage berths cannot receive all missing parts.
+    NoPlacement,
+    NoShop,
+    NothingToBuy,
+}
+
+impl PurchaseAvailability {
+    pub(crate) fn rejection(self) -> Option<bota_proto::RejectReason> {
+        use bota_proto::RejectReason as Why;
+        Some(match self {
+            Self::Available | Self::NoBuyer => return None,
+            Self::NotOffered => Why::UnknownItem,
+            Self::InsufficientGold => Why::NotEnoughGold,
+            Self::OutOfStock => Why::OutOfStock,
+            Self::NoPlacement => Why::InventoryFull,
+            Self::NoShop => Why::NotAtShop,
+            Self::NothingToBuy => Why::NothingToBuy,
+        })
+    }
+}
+
 fn hero_primary(hero: bota_proto::HeroId) -> Option<bota_proto::Attribute> {
     bota_core::hero_def(hero).and_then(|def| def.unit.primary)
 }
@@ -184,6 +214,54 @@ impl App {
         missing_for(ItemId(id), &held, primary)
     }
 
+    /// One prediction for purchase selection and presentation. Explicit Buy intents
+    /// still reach the server, which authoritatively accepts or refuses them.
+    pub fn purchase_availability(&self, item: u16) -> PurchaseAvailability {
+        if !self.offers(item) {
+            return PurchaseAvailability::NotOffered;
+        }
+        let (Some(view), Some(shops), Some(slot)) = (self.view(), self.statics(), self.my_slot)
+        else {
+            return PurchaseAvailability::NoBuyer;
+        };
+        let Some(player) = view.player(slot) else {
+            return PurchaseAvailability::NoBuyer;
+        };
+        let parts = self.missing_for(item);
+        if parts.is_empty() {
+            return PurchaseAvailability::NothingToBuy;
+        }
+        if self.price_of(item).0 > self.spendable_gold() {
+            return PurchaseAvailability::InsufficientGold;
+        }
+        if parts.iter().any(|part| !self.offers(part.0)) {
+            return PurchaseAvailability::NotOffered;
+        }
+        if !bota_core::purchase_stock_available(&parts, |part| {
+            self.stock_of(part.0).map(|stock| stock.left)
+        }) {
+            return PurchaseAvailability::OutOfStock;
+        }
+        if let Err(reason) =
+            crate::shop::purchase_placement(view, player, shops.as_ref(), ItemId(item))
+        {
+            return match reason {
+                bota_proto::RejectReason::NotAtShop => PurchaseAvailability::NoShop,
+                bota_proto::RejectReason::NothingToBuy => PurchaseAvailability::NothingToBuy,
+                _ => PurchaseAvailability::NoPlacement,
+            };
+        }
+        PurchaseAvailability::Available
+    }
+
+    pub(crate) fn refuse_purchase(&mut self, availability: PurchaseAvailability) {
+        let Some(reason) = availability.rejection() else {
+            return;
+        };
+        self.reject = Some((crate::Refused::Purchase(availability), 2.5));
+        self.cue(crate::CueKind::Refused(reason), 0.8, None);
+    }
+
     /// Replace the queue, or append a requested copy, reserving ownership once.
     pub fn set_quick_buy(&mut self, item: u16, append: bool) {
         if !self.offers(item) {
@@ -201,10 +279,11 @@ impl App {
         self.quick_buy.parts()
     }
 
+    /// Buy the first available component already allocated to the requested copies.
     pub fn quick_buy_next(&self) -> Option<u16> {
-        let gold = self.player(self.my_slot?)?.gold.unwrap_or(0);
-        self.quick_buy_parts().iter().copied().find(|id| {
-            self.offers(*id) && whole_price(ItemId(*id)).is_some_and(|price| price <= gold)
-        })
+        self.quick_buy_parts()
+            .iter()
+            .copied()
+            .find(|item| self.purchase_availability(*item) == PurchaseAvailability::Available)
     }
 }

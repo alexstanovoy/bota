@@ -20,6 +20,25 @@ impl ShopZone {
     }
 }
 
+/// Shop geometry from a built-in map or validated match description.
+pub trait ShopGeometry {
+    fn shop_fountains(&self) -> [Vec2; 2];
+    fn shop_range(&self) -> i32;
+    fn secret_shop_corners(&self) -> impl Iterator<Item = &[Vec2]>;
+}
+
+impl ShopGeometry for MapDef {
+    fn shop_fountains(&self) -> [Vec2; 2] {
+        self.fountains
+    }
+    fn shop_range(&self) -> i32 {
+        crate::rules::SHOP_RANGE
+    }
+    fn secret_shop_corners(&self) -> impl Iterator<Item = &[Vec2]> {
+        self.secret_shops.iter().map(|shop| shop.corners)
+    }
+}
+
 /// A carrier touches a shop if its hull overlaps the trigger's footprint.
 pub fn shop_zone_touches(corners: &[Vec2], pos: Vec2, bound: Fixed) -> bool {
     if corners.len() < 3 || corners.len() > bota_proto::MAX_SHOP_ZONE_CORNERS || bound.raw < 0 {
@@ -67,13 +86,12 @@ const fn cross(a: Vec2, b: Vec2, p: Vec2) -> i128 {
         - (b.y.raw as i128 - a.y.raw as i128) * (p.x.raw as i128 - a.x.raw as i128)
 }
 
-pub fn at_secret_shop(map: &MapDef, pos: Vec2, bound: Fixed) -> bool {
-    map.secret_shops
-        .iter()
-        .any(|shop| shop_zone_touches(shop.corners, pos, bound))
+pub fn at_secret_shop(map: &impl ShopGeometry, pos: Vec2, bound: Fixed) -> bool {
+    map.secret_shop_corners()
+        .any(|corners| shop_zone_touches(corners, pos, bound))
 }
 
-pub fn shop_access(map: &MapDef, pos: Vec2, bound: Fixed) -> ShopAccess {
+pub fn shop_access(map: &impl ShopGeometry, pos: Vec2, bound: Fixed) -> ShopAccess {
     ShopAccess {
         base: at_base_shop(map, pos),
         secret: at_secret_shop(map, pos, bound),

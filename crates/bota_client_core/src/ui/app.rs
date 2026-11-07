@@ -335,6 +335,8 @@ pub enum Undeniable {
 pub enum Refused {
     /// A further requested Quickbuy copy would exceed the local planning bound.
     QuickBuyFull,
+    /// A purchase the local Quickbuy prediction cannot perform.
+    Purchase(crate::PurchaseAvailability),
     /// A rule of the game, the server's or one the client checks first.
     Rule(bota_proto::RejectReason),
     /// An attack on an ally the client did not send, the game not letting it

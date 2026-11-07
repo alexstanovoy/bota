@@ -2921,3 +2921,51 @@ fn forced_motion_and_channel_snapshots_reject_unknown_abilities_heights_and_inco
         );
     }
 }
+
+#[test]
+fn f07_review_shop_access_and_placement_use_the_same_primary_courier() {
+    for (at, hp, available) in [
+        (Vec2::from_ints(500, 500), 600, false),
+        (Vec2::from_ints(200, 200), 600, true),
+        (Vec2::from_ints(200, 200), 0, false),
+    ] {
+        let mut app = a_silent_app();
+        app.my_slot = Some(SlotId(0));
+        let mut start = a_match_start();
+        let bota_proto::ServerMsg::MatchStart { info } = &mut start else {
+            unreachable!()
+        };
+        info.secret_shops = vec![bota_proto::ShopZoneView {
+            pos: Vec2::from_ints(200, 200),
+            corners: vec![
+                Vec2::from_ints(100, 100),
+                Vec2::from_ints(300, 100),
+                Vec2::from_ints(300, 300),
+                Vec2::from_ints(100, 300),
+            ],
+        }];
+        app.handle(start);
+        let hero = owned(1, UnitKind::Hero, Some(SlotId(0)));
+        let mut first = owned(2, UnitKind::Courier, Some(SlotId(0)));
+        first.pos = at;
+        first.hp = hp;
+        first.items = vec![None; 6];
+        let mut second = first.clone();
+        second.id.idx = 3;
+        second.hp = 600;
+        second.pos = Vec2::from_ints(200, 200);
+        let mut player = a_seat(SlotId(0), Some(hero.id));
+        player.gold = Some(10000);
+        app.handle(snapshot_of(1, vec![hero, first, second], vec![player]));
+        assert_eq!(
+            app.at_secret_shop(),
+            available,
+            "only the personal courier used by placement grants access"
+        );
+        assert_eq!(
+            app.purchase_availability(ItemId::DEMON_EDGE.0)
+                == crate::PurchaseAvailability::Available,
+            available
+        );
+    }
+}

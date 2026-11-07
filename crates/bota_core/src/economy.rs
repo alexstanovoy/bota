@@ -123,6 +123,23 @@ pub fn sold(id: ItemId) -> Option<&'static ItemDef> {
     item_def(id).filter(|def| !def.unbuyable)
 }
 
+/// Whether a shelf can supply a quantity; no shelf means unlimited stock.
+#[must_use]
+pub fn can_take_from_stock(left: Option<u8>, count: usize) -> bool {
+    left.is_none_or(|left| count <= usize::from(left))
+}
+
+/// Each occurrence of a purchased component consumes one from its own shelf.
+#[must_use]
+pub fn purchase_stock_available(parts: &[ItemId], left: impl Fn(ItemId) -> Option<u8>) -> bool {
+    parts.iter().all(|part| {
+        can_take_from_stock(
+            left(*part),
+            parts.iter().filter(|other| *other == part).count(),
+        )
+    })
+}
+
 /// Every item the shop sells, in id order.
 pub fn sold_items() -> impl Iterator<Item = ItemId> {
     (0..ITEMS.len() as u16)
@@ -282,5 +299,23 @@ mod tests {
         let held = [ItemId::CIRCLET];
         let wanted = missing_parts(ItemId::BRACER, &held, None);
         assert_eq!(wanted, [ItemId::GAUNTLETS, ItemId::RECIPE_BRACER]);
+    }
+}
+
+#[cfg(test)]
+mod purchase_stock_tests {
+    use super::*;
+    #[test]
+    fn f07_review_stock_counts_each_occurrence_and_unlimited_shelves() {
+        assert!(can_take_from_stock(None, usize::MAX));
+        assert!(can_take_from_stock(Some(0), 0));
+        assert!(!can_take_from_stock(Some(0), 1));
+        let parts = [ItemId::OBSERVER_WARD, ItemId::OBSERVER_WARD, ItemId::BOOTS];
+        assert!(!purchase_stock_available(&parts, |id| (id
+            == ItemId::OBSERVER_WARD)
+            .then_some(1)));
+        assert!(purchase_stock_available(&parts, |id| (id
+            == ItemId::OBSERVER_WARD)
+            .then_some(2)));
     }
 }
