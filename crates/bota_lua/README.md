@@ -24,7 +24,10 @@ Wasm hosts, must supply an execution deadline boundary. Feature `native` supplie
 `NativeTeam`: a 16 MiB worker stack, one outstanding request, a 33 ms think deadline,
 and retirement after three consecutive missed ticks or a host panic.
 Late replies are discarded before submitting another snapshot; a timely reply
-resets the miss counter. Native defaults are 125,000 fuel per call and 600,000
+resets the miss counter. The next request acknowledges whether the previous
+turn was accepted; discarded host continuations, including attack-once completion,
+are restored before computing that request. Lua script globals are not rewound.
+Native defaults are 125,000 fuel per call and 600,000
 per team tick, leaving margin inside the deadline under load. Native interpreter limits may
 only reduce the defaults. Active and retiring workers share a process-wide limit
 of 32; cleanup does not wait on timed-out work.

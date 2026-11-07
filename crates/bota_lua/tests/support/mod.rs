@@ -117,3 +117,68 @@ pub fn fold(
     }
     won
 }
+
+#[allow(dead_code, reason = "shared real-order encounter fixture")]
+pub fn durable_creep_encounter(hero: HeroId) -> (LocalMatch, Vec<ClientSession>, bota_proto::EntityId) {
+    use bota_proto::{Fixed, ModifierSpec, Order, Target};
+    use bota_client_core::IssuedOrder;
+    use bota_server::game::{ModifierDuration, SpawnCategory, SpawnModifier, SpawnSelector, SpawnTarget};
+    let modifiers = vec![SpawnModifier {
+        select: SpawnSelector {
+            team: None,
+            targets: vec![
+                SpawnTarget::Category(SpawnCategory::LaneCreep),
+                SpawnTarget::Category(SpawnCategory::Hero),
+            ],
+        },
+        spec: ModifierSpec {
+            max_hp: 40_000,
+            ..ModifierSpec::NOMINAL
+        },
+        duration: ModifierDuration::MatchLong,
+    }];
+    let (mut local, mut sessions) = local_with_modifiers(
+        &[(Team::Radiant, hero), (Team::Dire, HeroId::SHADOW_FIEND)],
+        modifiers,
+    );
+    let tower = sessions[0]
+        .map()
+        .radiant_towers
+        .iter()
+        .find(|&&(lane, tier, _)| lane == bota_core::rules::LANE_MID && tier == 1)
+        .expect("tower")
+        .2;
+    let position = bota_core::move_towards(
+        tower,
+        bota_proto::Vec2::from_ints(9216, 9216),
+        Fixed::from_int(800),
+    );
+    for _ in 0..sessions[0].map().pregame_ticks + 1200 {
+        let order = sessions[0]
+            .issue(IssuedOrder::hero(Order::Move {
+                target: Target::Pos(position),
+            }))
+            .expect("move");
+        let streams = local.step(&[&[order], &[]]).expect("step");
+        for (session, stream) in sessions.iter_mut().zip(streams) {
+            fold(session, stream);
+        }
+        let own = sessions[0].own_hero().expect("hero");
+        let target = sessions[0]
+            .current()
+            .expect("view")
+            .units
+            .iter()
+            .filter(|unit| {
+                unit.team == Team::Dire
+                    && bota_core::kind_def(unit.kind).creep
+                    && unit.pos.within(own.pos, Fixed::from_int(1600))
+            })
+            .min_by_key(|unit| (unit.pos.distance_squared(own.pos), unit.id))
+            .map(|unit| unit.id);
+        if let Some(target) = target {
+            return (local, sessions, target);
+        }
+    }
+    panic!("no enemy creep reached the lane");
+}

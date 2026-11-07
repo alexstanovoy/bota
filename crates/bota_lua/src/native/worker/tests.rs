@@ -24,6 +24,7 @@ fn lifecycle_drop_returns_before_an_inflight_worker_is_released() {
         last_tick: None,
         in_flight: false,
         late_ticks: 0,
+        discard_previous: false,
     };
     let (returned, dropped) = mpsc::channel();
     let caller = thread::spawn(move || {
@@ -104,7 +105,7 @@ mod support {
 #[test]
 fn one_late_reply_is_discarded_without_retiring_the_worker() {
     let (_, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
-    let (requests, input) = mpsc::sync_channel::<Snapshot>(1);
+    let (requests, input) = mpsc::sync_channel::<Request>(1);
     let (output, replies) = mpsc::sync_channel(1);
     let (release, blocked) = mpsc::channel();
     let worker = thread::spawn(move || {
@@ -112,11 +113,11 @@ fn one_late_reply_is_discarded_without_retiring_the_worker() {
         blocked
             .recv_timeout(HANG_GUARD)
             .expect("release late request");
-        if output.send(Ok(marker_turn(old.tick))).is_err() {
+        if output.send(Ok(marker_turn(old.snapshot.tick))).is_err() {
             return;
         }
         if let Ok(fresh) = input.recv_timeout(HANG_GUARD) {
-            let _ = output.send(Ok(marker_turn(fresh.tick)));
+            let _ = output.send(Ok(marker_turn(fresh.snapshot.tick)));
         }
     });
     let mut native = NativeTeam {
@@ -129,6 +130,7 @@ fn one_late_reply_is_discarded_without_retiring_the_worker() {
         last_tick: None,
         in_flight: false,
         late_ticks: 0,
+        discard_previous: false,
     };
     let first = native.think(&sessions[0]);
     let active = !native.retired();
@@ -185,13 +187,13 @@ fn marker_turn(tick: u32) -> TeamTurn {
 #[test]
 fn consecutive_late_ticks_retire_a_still_busy_worker_without_queueing_more_work() {
     let (_, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
-    let (requests, input) = mpsc::sync_channel::<Snapshot>(1);
+    let (requests, input) = mpsc::sync_channel::<Request>(1);
     let (output, replies) = mpsc::sync_channel(1);
     let (release, blocked) = mpsc::channel();
     let worker = thread::spawn(move || {
         let request = input.recv().expect("request");
         blocked.recv_timeout(HANG_GUARD).expect("release");
-        let _ = output.send(Ok(marker_turn(request.tick)));
+        let _ = output.send(Ok(marker_turn(request.snapshot.tick)));
         assert!(
             input.try_recv().is_err(),
             "only one request may be in flight"
@@ -207,6 +209,7 @@ fn consecutive_late_ticks_retire_a_still_busy_worker_without_queueing_more_work(
         last_tick: None,
         in_flight: false,
         late_ticks: 0,
+        discard_previous: false,
     };
     let mut retired = Vec::new();
     for _ in 0..3 {
@@ -236,4 +239,51 @@ fn consecutive_late_ticks_retire_a_still_busy_worker_without_queueing_more_work(
     drop(native);
     worker.join().expect("worker exits");
     assert_eq!(retired, vec![false, false, true]);
+}
+
+#[test]
+fn a_discarded_completion_turn_requeues_stop_until_a_turn_is_accepted() {
+    use bota_proto::{HeroId, Order, SlotId, Target};
+    let (mut local, mut sessions, _) = support::durable_creep_encounter(HeroId::SHADOW_FIEND);
+    let source = sessions[0].own_hero().expect("hero").id;
+    let (requests, input) = mpsc::sync_channel(1);
+    let (output, replies) = mpsc::sync_channel(1);
+    let (ready, startup) = mpsc::channel();
+    let (entered, waiting) = mpsc::channel();
+    let (release, blocked) = mpsc::channel();
+    let mut modules = ModuleBank::new(Limits::DEFAULT);
+    modules.insert("bots/bot_nevermore", b"local issued=false function Think() if not issued then local b=GetBot() local c=b:GetNearbyCreeps(1600,true) assert(#c>0) b:Action_AttackUnit(c[1],true) issued=true end end").expect("script");
+    let config=NativeConfig::new(Team::Radiant,vec![BotSeat{slot:SlotId(0),hero:HeroId::SHADOW_FIEND}],Keys{hash:[17,19],random:23});
+    let worker=thread::Builder::new().stack_size(16<<20).spawn(move || {
+        let (mut lua, _) = build(config,modules,&input).expect("worker setup");
+        ready.send(()).expect("ready");
+        let mut held=false;
+        run_with_reply_hook(&mut lua,input,output,|reply| {
+            if !held && reply.as_ref().is_ok_and(|turn|turn.bots.iter().any(|bot|bot.orders.iter().any(|order|order.order==(Order::Move{target:Target::None})))) {
+                held=true; entered.send(()).expect("completion reached");
+                blocked.recv_timeout(HANG_GUARD).expect("release completion");
+            }
+        });
+    }).expect("thread");
+    startup.recv_timeout(HANG_GUARD).expect("ready");
+    let mut native=NativeTeam{requests:Some(requests),replies:Some(replies),worker:Some(worker),team:Team::Radiant,seats:Vec::new(),timeout:Duration::from_millis(33),last_tick:None,in_flight:false,late_ticks:0,discard_previous:false};
+    let mut late_completion=false; let mut stops=0; let mut accepted_stop=None;
+    for _ in 0..600 {
+        let orders=match native.think(&sessions[0]) {
+            Ok(turn)=>{assert!(turn.failures.is_empty());turn.bots.into_iter().flat_map(|bot|bot.orders).collect::<Vec<_>>()},
+            Err(NativeError::Deadline)=>{if waiting.try_recv().is_ok(){late_completion=true;release.send(()).expect("release");} Vec::new()},
+            Err(error)=>panic!("unexpected worker error: {error}"),
+        };
+        let stop_count=orders.iter().filter(|order|order.order==(Order::Move{target:Target::None})).count();
+        stops+=stop_count;
+        if stop_count>0 { accepted_stop.get_or_insert(sessions[0].current().expect("view").tick); }
+        let orders:Vec<_>=orders.into_iter().map(|order|sessions[0].issue(order).expect("order")).collect();
+        let streams=local.step(&[&orders,&[]]).expect("step");
+        for(session,stream)in sessions.iter_mut().zip(streams){support::fold(session,stream);}
+        if accepted_stop.is_some_and(|tick| sessions[0].current().expect("view").tick > tick+60) {break;}
+    }
+    let worker=native.worker.take().expect("worker");drop(native);worker.join().expect("exit");
+    assert!(late_completion,"the actual completion reply was withheld beyond33ms");
+    assert_eq!(stops,1,"the discarded completion must be retried exactly once");
+    assert!(sessions[0].entity(source).and_then(|unit|unit.last_attack_launched).is_some());
 }

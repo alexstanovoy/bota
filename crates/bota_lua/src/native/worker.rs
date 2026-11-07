@@ -60,13 +60,17 @@ impl std::fmt::Display for NativeError {
 }
 impl std::error::Error for NativeError {}
 type Reply = Result<TeamTurn, NativeError>;
+struct Request {
+    snapshot: Snapshot,
+    previous_discarded: bool,
+}
 
 /// One request at a time on a dedicated stack. Late outputs are discarded; three consecutive
 /// missed ticks retire the worker. A successful timely reply resets that streak.
 /// Cleanup never waits on the caller. Retired workers finish bounded fuel asynchronously; a process-wide
 /// permit bounds active and retiring workers together to 32. Native limits cannot exceed interpreter defaults.
 pub struct NativeTeam {
-    requests: Option<SyncSender<Snapshot>>,
+    requests: Option<SyncSender<Request>>,
     replies: Option<Receiver<Reply>>,
     worker: Option<JoinHandle<()>>,
     team: Team,
@@ -75,6 +79,7 @@ pub struct NativeTeam {
     last_tick: Option<u32>,
     in_flight: bool,
     late_ticks: u8,
+    discard_previous: bool,
 }
 impl NativeTeam {
     pub fn new(config: NativeConfig, modules: ModuleBank) -> Result<Self, NativeError> {
@@ -138,6 +143,7 @@ impl NativeTeam {
                 last_tick: None,
                 in_flight: false,
                 late_ticks: 0,
+                discard_previous: false,
             }),
             result => {
                 drop(requests);
@@ -182,23 +188,28 @@ impl NativeTeam {
         if self.remaining(began).is_none() {
             return self.late();
         }
+        let request = Request { snapshot, previous_discarded: self.discard_previous };
         if self
             .requests
             .as_ref()
             .expect("active worker")
-            .try_send(snapshot)
+            .try_send(request)
             .is_err()
         {
             self.retire();
             return Err(NativeError::Closed);
         }
+        self.discard_previous = false;
         self.in_flight = true;
         match self.receive(began) {
             Ok(turn) if began.elapsed() <= self.timeout => {
                 self.late_ticks = 0;
                 Ok(turn)
             }
-            Ok(_) | Err(NativeError::Deadline) => self.late(),
+            Ok(_) | Err(NativeError::Deadline) => {
+                self.discard_previous = true;
+                self.late()
+            },
             Err(error) => Err(error),
         }
     }
@@ -255,7 +266,7 @@ impl Drop for NativeTeam {
 fn build(
     config: NativeConfig,
     modules: ModuleBank,
-    input: &Receiver<Snapshot>,
+    input: &Receiver<Request>,
 ) -> Result<(LuaTeam, Vec<BotSeat>), NativeError> {
     let mut lua =
         LuaTeam::new(config.team, &config.seats, config.limits, config.keys).map_err(setup)?;
@@ -277,16 +288,26 @@ fn build(
     lua.load_pack().map_err(setup)?;
     Ok((lua, seats))
 }
-fn run(lua: &mut LuaTeam, input: Receiver<Snapshot>, output: SyncSender<Reply>) {
-    while let Ok(snapshot) = input.recv() {
+fn run(lua: &mut LuaTeam, input: Receiver<Request>, output: SyncSender<Reply>) {
+    run_with_reply_hook(lua, input, output, |_| {});
+}
+fn run_with_reply_hook(lua: &mut LuaTeam, input: Receiver<Request>, output: SyncSender<Reply>, mut before_reply: impl FnMut(&Reply)) {
+    let mut previous = None;
+    while let Ok(request) = input.recv() {
+        if let Some(checkpoint) = previous.take() {
+            if request.previous_discarded { lua.restore_once(checkpoint); }
+        }
+        let checkpoint = lua.once_checkpoint();
         let (reply, panicked) =
-            match catch_unwind(AssertUnwindSafe(|| lua.think_snapshot(snapshot))) {
+            match catch_unwind(AssertUnwindSafe(|| lua.think_snapshot(request.snapshot))) {
                 Ok(result) => (
                     result.map_err(|error| NativeError::Input(error.to_string())),
                     false,
                 ),
                 Err(_) => (Err(NativeError::Panicked), true),
             };
+        previous = Some(checkpoint);
+        before_reply(&reply);
         if output.send(reply).is_err() || panicked {
             break;
         }

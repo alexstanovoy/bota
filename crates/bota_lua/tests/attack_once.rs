@@ -2,76 +2,13 @@ mod support;
 
 use bota_client_core::{ClientSession, IssuedOrder};
 use bota_lua::{BotSeat, Keys, Limits, LuaTeam, ScriptKind};
-use bota_proto::{EntityId, EventKind, Fixed, HeroId, ModifierSpec, Order, SlotId, Target, Team};
-use bota_server::{
-    game::{ModifierDuration, SpawnCategory, SpawnModifier, SpawnSelector, SpawnTarget},
-    local::LocalMatch,
-};
+use bota_proto::{EntityId, EventKind, HeroId, Order, SlotId, Target, Team};
+use bota_server::local::LocalMatch;
 use std::collections::BTreeSet;
 
-fn a_durable_creep_in_solo_mid(hero: HeroId) -> (LocalMatch, Vec<ClientSession>, EntityId) {
-    let modifiers = vec![SpawnModifier {
-        select: SpawnSelector {
-            team: None,
-            targets: vec![
-                SpawnTarget::Category(SpawnCategory::LaneCreep),
-                SpawnTarget::Category(SpawnCategory::Hero),
-            ],
-        },
-        spec: ModifierSpec {
-            max_hp: 40_000,
-            ..ModifierSpec::NOMINAL
-        },
-        duration: ModifierDuration::MatchLong,
-    }];
-    let (mut local, mut sessions) = support::local_with_modifiers(
-        &[(Team::Radiant, hero), (Team::Dire, HeroId::SHADOW_FIEND)],
-        modifiers,
-    );
-    let tower = sessions[0]
-        .map()
-        .radiant_towers
-        .iter()
-        .find(|&&(lane, tier, _)| lane == bota_core::rules::LANE_MID && tier == 1)
-        .expect("tower")
-        .2;
-    let position = bota_core::move_towards(
-        tower,
-        bota_proto::Vec2::from_ints(9216, 9216),
-        Fixed::from_int(800),
-    );
-    for _ in 0..sessions[0].map().pregame_ticks + 1200 {
-        let order = sessions[0]
-            .issue(IssuedOrder::hero(Order::Move {
-                target: Target::Pos(position),
-            }))
-            .expect("move");
-        let streams = local.step(&[&[order], &[]]).expect("step");
-        for (session, stream) in sessions.iter_mut().zip(streams) {
-            support::fold(session, stream);
-        }
-        let own = sessions[0].own_hero().expect("hero");
-        let target = sessions[0]
-            .current()
-            .expect("view")
-            .units
-            .iter()
-            .filter(|unit| {
-                unit.team == Team::Dire
-                    && bota_core::kind_def(unit.kind).creep
-                    && unit.pos.within(own.pos, Fixed::from_int(1600))
-            })
-            .min_by_key(|unit| (unit.pos.distance_squared(own.pos), unit.id))
-            .map(|unit| unit.id);
-        if let Some(target) = target {
-            return (local, sessions, target);
-        }
-    }
-    panic!("no enemy creep reached the lane");
-}
 
 fn attack_one_creep_then_stop(hero: HeroId, ranged: bool) {
-    let (mut local, mut sessions, target) = a_durable_creep_in_solo_mid(hero);
+    let (mut local, mut sessions, target) = support::durable_creep_encounter(hero);
     let own = sessions[0]
         .own_player()
         .expect("player")
@@ -248,7 +185,7 @@ fn attack_once_retains_a_delivered_launch_after_unrelated_events_evict_recent_hi
 }
 
 fn attack_once_think_gap(evict: bool) {
-    let (mut local, mut sessions, target) = a_durable_creep_in_solo_mid(HeroId::SHADOW_FIEND);
+    let (mut local, mut sessions, target) = support::durable_creep_encounter(HeroId::SHADOW_FIEND);
     let source = sessions[0]
         .own_player()
         .expect("player")
@@ -357,7 +294,7 @@ fn attack_once_think_gap(evict: bool) {
 
 #[test]
 fn an_older_inflight_shot_cannot_complete_a_new_once_request() {
-    let (mut local, mut sessions, target) = a_durable_creep_in_solo_mid(HeroId::SHADOW_FIEND);
+    let (mut local, mut sessions, target) = support::durable_creep_encounter(HeroId::SHADOW_FIEND);
     let source = sessions[0]
         .own_player()
         .expect("player")
@@ -425,7 +362,7 @@ fn an_older_inflight_shot_cannot_complete_a_new_once_request() {
 
 #[test]
 fn a_continuous_attack_replaces_an_earlier_once_request() {
-    let (mut local, mut sessions, _) = a_durable_creep_in_solo_mid(HeroId::SHADOW_FIEND);
+    let (mut local, mut sessions, _) = support::durable_creep_encounter(HeroId::SHADOW_FIEND);
     let source = sessions[0]
         .own_player()
         .expect("player")
