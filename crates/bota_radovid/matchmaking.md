@@ -152,9 +152,8 @@ sequence numbers; consume `Incoming::Reply` as for `leaderboard()`.
 `Reply::Avatar { account, avatar: Option<Avatar> }` carries the image or absence.
 `Avatar { version: AvatarVersion([u8;32]), png: Vec<u8> }` contains a content hash
 and at most `MAX_AVATAR_BYTES` (512) bytes. `PublicAccount.avatar` and
-`LadderRow.avatar` carry the version only, including the own row. Fetch the own
-profile with `ClientMsg::Account { account: client.me().unwrap().id }` after
-checking that `me()` exists.
+`LadderRow.avatar` carry the version only, including the own row. After checking `Client::me()`, fetch the own
+profile with `ClientMsg::Account { account: me.id }`.
 
 Prepare a static, non-interlaced, eight-bit 32×32 PNG. Palette and transparency
 are supported. Strip all metadata; only IHDR/PLTE/tRNS/IDAT/IEND are accepted.
@@ -174,3 +173,8 @@ images and no-op removals. The limit survives reconnects and restarts; honor
 Other accounts' deleted or currently banned targets return `UnknownAccount`.
 Protocol 20 requires a coordinated rebuild; the screen implementation belongs to
 the consumer.
+
+The client control layer checks the bounded PNG envelope before exposing a fetched
+avatar to an image decoder. Treat image-decoder errors from an untrusted service
+as a missing image; full checksum/pixel validation is performed by a conforming
+service. Keep the image cache bounded and discard obsolete account/version entries.
