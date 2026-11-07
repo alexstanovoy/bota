@@ -63,9 +63,9 @@ queue places, admitted and cancelled together. `Searches::entries()` exposes the
 `Searches::groups()` gives one display row per search. A proposal reserves both places; accepting
 consumes them, and a failed proposal restores both original places. Other searches remain independent.
 
-## Protocol 15 coordination
+## Protocol 18 coordination
 
-Rebuild every matchmaking client with the service's version-15 protocol/client crates. Versions below 15 are
+Rebuild every matchmaking client with the service's version-18 protocol/client crates. Versions below 18 are
 refused at `Hello`; queue records gained appended audience/search fields and requests. Read
 `AccountGameLimit::Limited(n)` or `Unlimited`, rather than interpreting a numeric sentinel. Each account still
 holds one ladder rating per ruleset, shared across simultaneous matches.
@@ -73,7 +73,7 @@ holds one ladder rating per ruleset, shared across simultaneous matches.
 The service and rebuilt matchmaking clients need the same protocol boundary when they resume exchanging control
 messages. Keep game-server/client wire fingerprints matched separately: the control-protocol change does not alter
 bota's game wire or replay format. Existing source configurations keep working when their lobby layout is explicit.
-The service's [coordination note](../../../radovid/docs/protocol_15.md) describes the generic upgrade contract.
+The service's [coordination note](../../../radovid/docs/protocol_18.md) describes the generic upgrade contract.
 
 ## Integration tests
 
@@ -98,4 +98,26 @@ an unrated variant to its mode. The handoff and result retain the selected ID an
 `[ruleset.rating_window]` overrides individual values. Unranked must be at least as
 loose as its rated sibling, and every player must accept the group's full rating spread.
 The service serves these policies in the catalog and `Limits`; querying either sibling's
-limits returns both resolved mode policies. Rebuild clients with protocol 17 together.
+limits returns both resolved mode policies. Rebuild clients with protocol 18 together.
+
+## Leaderboards and profile ranks
+
+`Client::leaderboard(&ruleset, AccountKind::Human, prefix)` returns a sequence number;
+its normal reply is `Reply::LeaderboardPage { page }`. Select the mode's rated ruleset ID
+(the `rating_ruleset` parent for an unrated sibling). `page.rows` contains the configured
+top N, 100 by default, and preserves absolute category ranks during nickname-prefix search.
+`page.own` contains this account's position in its own category even when another category
+is selected or its nickname is outside the search. Highlight it if present among the rows,
+otherwise show it separately. `None` means no rated position exists in that mode.
+
+Prefixes are literal, case-insensitive ASCII letters, digits and underscores, at most 20 bytes.
+The SDK rejects invalid prefixes locally as `ClientError::Refused(BadLeaderboardSearch)`;
+the service validates raw requests too. Use the echoed mode, category and prefix to reject
+stale replies, coalesce edits, and keep at least 300 ms between queries with one in flight.
+`Throttled { retry_after_ms }` refuses a whole lookup and can be retried after that delay.
+
+`Client::limits(None).leaderboard_size` reports the configured limit. To read the profile,
+request `ClientMsg::Account { account: client.me().id }` through `Client::request`;
+`PublicAccount.ratings` holds the per-mode rating and game counts with the appended
+`RatingSummary.rank`. Missing records have no rated position. Every client and the service
+must rebuild together for protocol 18.

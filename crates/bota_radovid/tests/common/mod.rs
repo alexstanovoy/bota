@@ -220,6 +220,44 @@ impl Drop for Env {
 }
 
 impl Env {
+    /// Seed completed rated games through the real rating transaction, without playing a
+    /// game: leaderboard tests exercise account queries rather than game simulation.
+    pub fn rated_fixture(&self, winner: AccountId, loser: AccountId, mode: &str) {
+        self.runtime.block_on(async {
+            let db = radovid::db::Db::open(&self.dir.join("radovid.db")).expect("database");
+            let ruleset = RulesetId(mode.into());
+            let seats = vec![
+                radovid::db::NewSeat {
+                    account: winner,
+                    slot: 0,
+                    team: 0,
+                },
+                radovid::db::NewSeat {
+                    account: loser,
+                    slot: 1,
+                    team: 1,
+                },
+            ];
+            let match_id = db
+                .create_match(ruleset.clone(), true, seats.clone())
+                .await
+                .expect("match");
+            db.finish_match(radovid::db::Finish {
+                match_id,
+                ruleset,
+                rate: true,
+                outcome: Outcome::Winner { team: 0 },
+                reason: EndReason::Decided,
+                duration_ms: 1000,
+                report: vec![],
+                seats,
+                finished_at: radovid::db::now_ms(),
+            })
+            .await
+            .expect("rated result");
+        });
+    }
+
     /// A registered, logged-in account of `kind`.
     pub fn account(&self, login: &str, kind: AccountKind) -> Account {
         let mut account = Account {

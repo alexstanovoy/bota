@@ -2,8 +2,9 @@
 //! automatic answers.
 
 use radovid_client::proto::{
-    AccountInfo, AccountKind, Audience, ClientInfo, ClientMsg, Event, Limits, MatchId, ProposalId,
-    QueueEntryId, Reply, RulesetId, RulesetInfo, Secret, SessionToken,
+    AccountInfo, AccountKind, Audience, ClientInfo, ClientMsg, Error, Event, Limits, MatchId,
+    ProposalId, QueueEntryId, Reply, RulesetId, RulesetInfo, Secret, SessionToken,
+    valid_nickname_prefix,
 };
 use radovid_client::{ClientError, Incoming};
 
@@ -194,6 +195,24 @@ impl Client {
     /// connecting and on logging in; [`Client::limits`] has the answers.
     pub fn request_limits(&mut self, ruleset: Option<RulesetId>) -> Result<u32, ClientError> {
         self.request(ClientMsg::Limits { ruleset })
+    }
+
+    /// A mode's configured top-N Humans/Bots board, literal nickname-prefix search,
+    /// and this account's own position. The reply is LeaderboardPage.
+    pub fn leaderboard(
+        &mut self,
+        ruleset: &RulesetId,
+        kind: AccountKind,
+        prefix: &str,
+    ) -> Result<u32, ClientError> {
+        if !valid_nickname_prefix(prefix) {
+            return Err(ClientError::Refused(Error::BadLeaderboardSearch));
+        }
+        self.request(ClientMsg::Leaderboard {
+            ruleset: ruleset.clone(),
+            kind,
+            prefix: prefix.to_owned(),
+        })
     }
 
     /// The next message from the service, if any. The client has noted it

@@ -12,6 +12,77 @@ use bota_radovid::{Handoff, Tls, spectate, take_seat};
 use common::*;
 
 #[test]
+fn leaderboard_categories_search_own_rank_and_mode_profiles_cross_the_real_service() {
+    let env = start_configured(false, |config| {
+        config.limits.leaderboard_size = 1;
+        let mut other = config.rulesets[0].clone();
+        other.id = "other".into();
+        config.rulesets.push(other);
+    });
+    let alpha = env.account("alpha", AccountKind::Human);
+    let mut beta = env.account("beta", AccountKind::Human);
+    let bot = env.bot("bot");
+    let id = |account: &Account| account.client.me().expect("account").id;
+    let (alpha_id, beta_id, bot_id) = (id(&alpha), id(&beta), id(&bot));
+    env.rated_fixture(alpha_id, beta_id, RULESET);
+    env.rated_fixture(bot_id, alpha_id, RULESET);
+    env.rated_fixture(beta_id, bot_id, "other");
+    for (kind, prefix, expected_id) in [
+        (AccountKind::Human, "", alpha_id),
+        (AccountKind::Bot, "", bot_id),
+        (AccountKind::Human, "AL", alpha_id),
+    ] {
+        let seq = beta
+            .client
+            .leaderboard(&solo(), kind, prefix)
+            .expect("request");
+        let Reply::LeaderboardPage { page } = beta.reply(seq).expect("leaderboard") else {
+            panic!("board reply");
+        };
+        assert_eq!(page.limit, 1);
+        assert_eq!(beta.client.limits(None).expect("served limits").leaderboard_size,1);
+        assert_eq!(page.rows.len(), 1);
+        assert_eq!(page.rows[0].account, expected_id);
+        assert_eq!(page.rows[0].kind, kind);
+        let own = page
+            .own
+            .expect("own row independent of category, prefix and top N");
+        assert_eq!(
+            (own.account, own.kind, own.rank),
+            (beta_id, AccountKind::Human, 2)
+        );
+    }
+    let Reply::Account { account } = beta
+        .ask(bota_radovid::proto::ClientMsg::Account { account: beta_id })
+        .expect("profile")
+    else {
+        panic!("profile reply");
+    };
+    assert_eq!(
+        account
+            .ratings
+            .iter()
+            .find(|(mode, _)| *mode == solo())
+            .expect("mid")
+            .1
+            .rank,
+        Some(2)
+    );
+    assert_eq!(
+        account
+            .ratings
+            .iter()
+            .find(|(mode, _)| mode.0 == "other")
+            .expect("other mode")
+            .1
+            .rank,
+        Some(1)
+    );
+    assert!(matches!(beta.client.leaderboard(&solo(),AccountKind::Human,"%"),Err(bota_radovid::ClientError::Refused(Error::BadLeaderboardSearch))));
+    assert_eq!(beta.ask(bota_radovid::proto::ClientMsg::Leaderboard { ruleset:solo(),kind:AccountKind::Human,prefix:"%".into() }),Err(Error::BadLeaderboardSearch));
+}
+
+#[test]
 fn the_shipped_config_pairs_ranked_and_unranked_mid_and_full_queues() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("radovid.example.toml");
     let config = radovid::config::Config::load(&path).expect("shipped config");
