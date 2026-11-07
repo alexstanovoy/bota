@@ -3,7 +3,7 @@
 use std::sync::{Mutex, OnceLock};
 use bota_client_core::ClientSession;
 use bota_lua::{BotSeat, GcStress, Keys, Limits, LuaTeam, ModuleBank, ScriptKind};
-use bota_proto::{HeroId, ServerMsg, SlotId, Team};
+use bota_proto::{EventKind, HeroId, ServerMsg, SlotId, Team};
 use libfuzzer_sys::fuzz_target;
 #[path = "../../crates/bota_lua/tests/support/mod.rs"]
 mod support;
@@ -35,8 +35,14 @@ fuzz_target!(|data: &[u8]| {
             for ability in &mut unit.abilities { ability.cooldown_left = u32::from(byte % 3); }
         }
         let tick = view.tick;
+        let events = if data[31] & 2 != 0 {
+            view.units.iter().find(|unit| unit.hero.is_some()).map(|unit| {
+                EventKind::AttackLaunched { attacker: unit.id,
+                    target: if data[31] & 4 != 0 { view.units.last().map(|unit| unit.id) } else { None } }
+            }).into_iter().collect()
+        } else { Vec::new() };
         if session.ingest(ServerMsg::Snapshot { view }, &mut ()).is_err() { return; }
-        if session.ingest(ServerMsg::Events { tick, events: Vec::new() }, &mut ()).is_err() { return; }
+        if session.ingest(ServerMsg::Events { tick, events }, &mut ()).is_err() { return; }
         if let Ok(turn) = lua.think(&session) {
             assert_eq!(turn.bots.len(), 1);
             assert!(turn.bots[0].orders.len() <= 64);
@@ -45,8 +51,10 @@ fuzz_target!(|data: &[u8]| {
 });
 fn structured(data: &[u8]) -> Vec<u8> {
     let values = ["nil", "false", "true", "0", "-1", "1e308", "0/0", "math.huge", "'x'", "{}", "bot", "Vector(0,0,0)", "ability"];
-    let methods = ["GetHealth", "IsNull", "GetItemInSlot", "GetNearbyHeroes", "GetNearbyCreeps", "GetNearbyTowers", "FindAoELocation", "SetTarget", "SetNextItemPurchaseValue", "Action_MoveToLocation", "Action_AttackUnit", "Action_UseAbility", "Action_UseAbilityOnEntity", "ActionImmediate_PurchaseItem", "GetEstimatedDamageToTarget"];
+    let methods = ["GetHealth", "IsNull", "GetItemInSlot", "GetNearbyHeroes", "GetNearbyCreeps", "GetNearbyTowers", "FindAoELocation", "SetTarget", "SetNextItemPurchaseValue", "Action_MoveToLocation", "Action_AttackUnit", "Action_UseAbility", "Action_UseAbilityOnEntity", "ActionImmediate_PurchaseItem", "GetEstimatedDamageToTarget", "GetMaxHealth", "IsAlive", "GetLevel", "GetUnitName", "GetGold", "GetRespawnTime", "GetLocation", "DistanceFromFountain", "GetActiveMode", "GetActiveModeDesire", "GetTarget", "CanBeSeen", "IsHero", "IsInvulnerable", "IsMagicImmune", "HasScepter", "WasRecentlyDamagedByHero", "Action_ClearActions", "ActionImmediate_LevelAbility", "Action_AttackMove"];
     let value = |index: usize| values[usize::from(data[index]) % values.len()];
     let method = methods[usize::from(data[3]) % methods.len()];
-    format!("function Think() local bot=GetBot() local ability=bot:GetAbilityByName('nevermore_shadowraze1') local a,b,c={},{},{} pcall(function() bot:{}(a,b,c,a,b,c,a) end) pcall(function() ability:GetSpecialValueInt(a) end) pcall(function() return Vector(1,2,3)*a end) collectgarbage() assert(require('bots/module').number==17) end", value(4), value(5), value(6), method).into_bytes()
+    let ability_methods = ["GetName", "GetLevel", "GetCastRange", "GetAbilityDamage", "GetSpecialValueInt", "IsFullyCastable", "CanAbilityBeUpgraded"];
+    let ability_method = ability_methods[usize::from(data[7]) % ability_methods.len()];
+    format!("function Think() local bot=GetBot() local ability=bot:GetAbilityByName('nevermore_shadowraze1') local a,b,c={},{},{} pcall(function() bot:{}(a,b,c,a,b,c,a) end) pcall(function() ability:{}(a,b,c) end) pcall(function() return Vector(1,2,3)*a end) collectgarbage() assert(require('bots/module').number==17) end", value(4), value(5), value(6), method, ability_method).into_bytes()
 }

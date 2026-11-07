@@ -1,0 +1,1 @@
+00000000000000000000000000000006function Think() local bot=GetBot() bot:Action_AttackUnit(bot,true) collectgarbage() end

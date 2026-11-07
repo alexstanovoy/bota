@@ -1,0 +1,1 @@
+00000000000000000000000000000000function Think() local bot=GetBot() for i=1,8 do bot:ActionImmediate_PurchaseItem('item_branches') end end
