@@ -311,6 +311,10 @@ pub const FLAGBEARER_CREEP: UnitDef = UnitDef {
 };
 
 /// A ranged lane creep.
+///
+/// Normal ranged creeps retain the older level 1 / mana 0 approximation here, while the
+/// installed normal, super and mega rows all say 5 / 500. Upgraded forms below use those
+/// rows; correcting Normal is separate so this feature preserves the solo_mid pins.
 pub const RANGED_CREEP: UnitDef = UnitDef {
     kind: UnitKind::CreepRanged,
     max_hp: rules::RANGED_CREEP_HP,

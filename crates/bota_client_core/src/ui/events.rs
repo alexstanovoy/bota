@@ -71,6 +71,9 @@ impl App {
                     Team::Neutral => return,
                 };
                 self.cue(CueKind::MegaCreeps(team), 1.0, None);
+                // The installed Ancient sound-event names do not specify emitter coordinates.
+                // This losing-Ancient anchor is unverified in Dota, pending an in-game check;
+                // Valve 7.20 documents the horn's addition, not its placement.
                 let ancient = self.statics().and_then(|statics| {
                     bota_core::map_of(statics.metadata().map).ancients[bota_core::team_index(lost)]
                 });

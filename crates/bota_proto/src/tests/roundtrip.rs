@@ -304,3 +304,15 @@ fn a_snapshot_lair_list_is_bounded_before_it_is_folded() {
         Err(CodecError::Malformed)
     );
 }
+
+#[test]
+fn mega_creeps_use_claimed_event_tag_twenty_eight() {
+    for team in [Team::Radiant, Team::Dire] {
+        let event = EventKind::MegaCreeps { team };
+        assert_eq!(
+            postcard::to_allocvec(&event).expect("encode mega creeps")[0],
+            28
+        );
+        assert_eq!(roundtrip(&event), event);
+    }
+}

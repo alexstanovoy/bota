@@ -105,6 +105,10 @@ impl World {
     /// Ranged Barracks are destroyed"), and everything goes mega once every
     /// enemy barracks has fallen. A map with no barracks spawns plain waves
     /// for ever.
+    ///
+    /// The loss counts even on a deny: Liquipedia Buildings, "Lane Creep Upgrades"
+    /// and "Barracks Bounty", describe lost barracks and denial bounty separately.
+    /// https://liquipedia.net/dota2/Buildings#Lane_Creep_Upgrades
     fn wave_creep_tiers(&self, team: Team, lane: u8) -> [CreepTier; 3] {
         let their = match team {
             Team::Radiant => Team::Dire,

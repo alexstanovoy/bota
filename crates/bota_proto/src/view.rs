@@ -1,9 +1,9 @@
 //! What one side is allowed to know about the world right now.
 
 use crate::{
-    AbilityId, Aim, Angle, Attribute, Attributes, CreepTier, EffectId, EntityId, EventKind, Fixed, HeroId,
-    Inflictor, ItemId, NeutralId, Order, PlayerId, ProjectileModel, RuneKind, SlotId, StatusFlags,
-    Talents, Team, UnitKind, Vec2,
+    AbilityId, Aim, Angle, Attribute, Attributes, CreepTier, EffectId, EntityId, EventKind, Fixed,
+    HeroId, Inflictor, ItemId, NeutralId, Order, PlayerId, ProjectileModel, RuneKind, SlotId,
+    StatusFlags, Talents, Team, UnitKind, Vec2,
 };
 use serde::{Deserialize, Serialize};
 

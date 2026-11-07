@@ -673,6 +673,10 @@ pub const CREEP_ATTACK_TIME: u32 = 1000;
 pub const CREEP_VISION: i32 = 750;
 
 // Installed npc_units.txt rows; the mega scripts use the super base plus the full upgrade cap.
+// Liquipedia's Lane Creeps upgrade table still has pre-7.33 gold growth and pre-7.35 damage;
+// use the installed attack values and Valve's 7.33 bounty changes instead of reverting to it.
+// Mega gold growth uses the super family's post-7.33 values below by inference: that patch
+// does not separately specify mega growth. This remains an in-game parity cross-check.
 const SUPER_MELEE_DATA: crate::ScriptData = crate::creep_data::GOODGUYS_MELEE_UPGRADED;
 const SUPER_RANGED_DATA: crate::ScriptData = crate::creep_data::GOODGUYS_RANGED_UPGRADED;
 const SUPER_SIEGE_DATA: crate::ScriptData = crate::creep_data::GOODGUYS_SIEGE_UPGRADED;

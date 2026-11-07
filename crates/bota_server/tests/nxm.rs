@@ -510,3 +510,129 @@ fn a_side_holds_at_most_five_seats() {
         "the server never opens a lobby of six a side"
     );
 }
+
+fn siege_scenario() -> bota_server::local::LocalMatch {
+    use bota_core::Catalogue;
+    use bota_proto::{ObjectiveSet, Pick, RuneSet, SlotId};
+    use bota_server::game::{MatchConfig, OrderDelay};
+    let cfg = MatchConfig {
+        match_id: 324,
+        master_key: [3; 32],
+        stream: 324,
+        picks: vec![Pick {
+            slot: SlotId(0),
+            team: Team::Radiant,
+            hero: HeroId::SHADOW_FIEND,
+        }],
+        map: FULL_MAP,
+        mode: TickMode::Lockstep,
+        ack_timeout_ticks: 150,
+        cheats: true,
+        spawn_modifiers: Vec::new(),
+        immortal_structures: false,
+        immortal_heroes: true,
+        starting_gold_lost: Vec::new(),
+        objectives: ObjectiveSet::NONE,
+        runes: RuneSet::NONE,
+        catalogue: Catalogue::FULL,
+        economy_events: Vec::new(),
+    };
+    let (mut local, _) =
+        bota_server::local::LocalMatch::new(&cfg, &[OrderDelay::NONE]).expect("full-map match");
+    let world = local.world_mut();
+    world.creeps_halted = true;
+    world.tick = bota_core::wave_spawn_tick(rules::FIRST_SIEGE_WAVE, world.schedule());
+    local.restate();
+    local
+}
+
+fn destroy_siege_barracks(local: &mut bota_server::local::LocalMatch, all: bool) {
+    let world = local.world_mut();
+    let fallen = world
+        .entities
+        .iter()
+        .filter(|e| {
+            world.kind.get(*e) == Some(&UnitKind::Barracks)
+                && world.team.get(*e) == Some(&Team::Dire)
+                && (all
+                    || (world
+                        .lane
+                        .get(*e)
+                        .is_some_and(|lane| lane.0 == rules::LANE_MID)
+                        && world.rax.get(*e).is_some_and(|rax| rax.ranged)))
+        })
+        .map(|e| (e, None))
+        .collect();
+    world.bury(fallen, &mut Vec::new());
+    local.restate();
+}
+
+#[test]
+fn siege_spawn_orders_publish_normal_super_and_mega_tiers_on_the_right_lanes() {
+    use bota_proto::{CreepSide, OutgoingOrder};
+    let mut local = siege_scenario();
+    for stage in 0..3 {
+        if stage > 0 {
+            destroy_siege_barracks(&mut local, stage == 2);
+        }
+        let seen = local.tick();
+        let orders: Vec<_> = [
+            Cheat::KillCreeps {
+                which: CreepSide::All,
+            },
+            Cheat::SpawnCreeps,
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, cheat)| OutgoingOrder {
+            seq: stage * 2 + index as u32 + 1,
+            unit: None,
+            order: Order::Cheat { cheat },
+            seen,
+            queue: false,
+        })
+        .collect();
+        let streams = local.step(&[&orders]).expect("real spawn orders");
+        let view = streams[0]
+            .iter()
+            .find_map(|message| match message {
+                ServerMsg::Snapshot { view } => Some(view),
+                _ => None,
+            })
+            .expect("the seat receives its snapshot");
+        assert_siege_tiers(&view.units, stage);
+    }
+}
+
+fn assert_siege_tiers(units: &[bota_proto::UnitView], stage: u32) {
+    let mut lanes = [0; 3];
+    for creep in units
+        .iter()
+        .filter(|u| u.team == Team::Radiant && u.kind == UnitKind::CreepSiege)
+    {
+        let lane = (0..3u8)
+            .min_by_key(|lane| {
+                creep
+                    .pos
+                    .distance_squared(creep_spawn_pos(map_of(FULL_MAP), Team::Radiant, *lane))
+            })
+            .expect("three lanes");
+        let expected = if stage == 2 {
+            CreepTier::Mega
+        } else if stage == 1 && lane == rules::LANE_MID {
+            CreepTier::Super
+        } else {
+            CreepTier::Normal
+        };
+        assert_eq!(
+            creep.creep_tier,
+            Some(expected),
+            "stage={stage}, lane={lane}"
+        );
+        lanes[usize::from(lane)] += 1;
+    }
+    assert_eq!(
+        lanes, [1; 3],
+        "each assertion covers a newly spawned siege creep"
+    );
+}

@@ -641,3 +641,49 @@ fn normal_creeps_use_no_tier_hash_row_even_after_an_upgraded_slot_is_reused() {
         Some(CreepTier::Normal)
     );
 }
+
+#[test]
+fn a_barracks_denied_by_its_own_side_still_upgrades_the_enemy_lane() {
+    for ranged in [false, true] {
+        let mut world = a_match_with_nobody_in_it(324, MapId(0));
+        let at = rules::RADIANT_BARRACKS
+            .iter()
+            .find(|b| b.0 == rules::LANE_MID && b.1 == ranged)
+            .expect("mid barracks")
+            .2;
+        let barracks = structure_at(&world, at);
+        let killer = world.spawn_creep(
+            &bota_core::MELEE_CREEP,
+            Team::Radiant,
+            Vec2::from_ints(5000, 5000),
+            0,
+            0,
+        );
+        world.health.get_mut(barracks).expect("barracks health").hp = Fixed::ZERO;
+        let mut events = Vec::new();
+        world.bury(vec![(barracks, Some(killer))], &mut events);
+        assert!(events.iter().any(|event| matches!(
+            event.kind(),
+            bota_proto::EventKind::Died { denied: true, .. }
+        )));
+        world.spawn_wave(rules::FIRST_SIEGE_WAVE);
+        let kind = if ranged {
+            UnitKind::CreepRanged
+        } else {
+            UnitKind::CreepMelee
+        };
+        let creep = world
+            .entities
+            .iter()
+            .find(|e| {
+                world.team.get(*e) == Some(&Team::Dire)
+                    && world.kind.get(*e) == Some(&kind)
+                    && world.lane.get(*e) == Some(&Lane(rules::LANE_MID))
+            })
+            .expect("the opposing lane spawned");
+        assert_eq!(
+            shown(&world, None, creep).creep_tier,
+            Some(CreepTier::Super)
+        );
+    }
+}

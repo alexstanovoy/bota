@@ -35,7 +35,8 @@ const TICK_RATE: usize = 30;
 /// raising the prior budget including absent cast rates to 282 bytes. Item lifetime tags add four
 /// bytes to this inventory; an active 300-second Aegis countdown adds two more.
 /// Four physical item level bytes raise that budget to 292. The absent forced-movement
-/// and ability-channel option tags add two bytes; the absent creep tier adds one more. Transport burst limits are unchanged.
+/// and ability-channel option tags add two bytes; the absent creep tier adds one more.
+/// Transport burst limits are unchanged.
 #[test]
 fn a_hero_with_an_active_item_lifetime_stays_under_295_bytes() {
     let mut hero = hero_unit();
@@ -44,7 +45,8 @@ fn a_hero_with_an_active_item_lifetime_stays_under_295_bytes() {
     assert!(len <= 295, "hero unit grew to {len} bytes");
 }
 
-/// Absent cast rates, gathering, lit-side, forced-motion and channel tags bring this budget to 88 bytes; a present creep tier adds two.
+/// Absent cast rates, gathering, lit-side, forced-motion and channel tags bring this budget
+/// to 88 bytes; a present creep tier adds two.
 #[test]
 fn a_creep_stays_under_90_bytes() {
     let len = encoded_len(&creep_unit(1));

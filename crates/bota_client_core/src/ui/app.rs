@@ -294,7 +294,7 @@ pub enum CueKind {
     BossDeath(bota_proto::ObjectiveKind),
     /// A side gained mega creeps: the global stinger.
     MegaCreeps(Team),
-    /// The horn at the named side's public Ancient.
+    /// The horn's chosen public Ancient anchor; Dota placement remains unverified.
     MegaCreepsHorn(Team),
 }
 
