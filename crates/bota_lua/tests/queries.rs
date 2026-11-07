@@ -158,8 +158,14 @@ fn creep_crowd_session(count: usize) -> bota_client_core::ClientSession {
     let template = session.own_hero().expect("hero").clone();
     for index in 0..count {
         let mut creep = template.clone();
-        creep.id = bota_proto::EntityId { idx: 100_000 + u32::try_from(index).expect("bounded crowd"), generation: 0 };
-        assert!(!view.units.iter().any(|unit| unit.id == creep.id), "fixture ids are distinct");
+        creep.id = bota_proto::EntityId {
+            idx: 100_000 + u32::try_from(index).expect("bounded crowd"),
+            generation: 0,
+        };
+        assert!(
+            !view.units.iter().any(|unit| unit.id == creep.id),
+            "fixture ids are distinct"
+        );
         creep.kind = bota_proto::UnitKind::CreepMelee;
         creep.team = Team::Dire;
         creep.hero = None;
@@ -175,14 +181,35 @@ fn creep_crowd_session(count: usize) -> bota_client_core::ClientSession {
     }
     view.units.sort_by_key(|unit| unit.id);
     let tick = view.tick;
-    session.ingest(bota_proto::ServerMsg::Snapshot { view }, &mut ()).expect("visible crowd");
-    session.ingest(bota_proto::ServerMsg::Events { tick, events: Vec::new() }, &mut ()).expect("events");
+    session
+        .ingest(bota_proto::ServerMsg::Snapshot { view }, &mut ())
+        .expect("visible crowd");
+    session
+        .ingest(
+            bota_proto::ServerMsg::Events {
+                tick,
+                events: Vec::new(),
+            },
+            &mut (),
+        )
+        .expect("events");
     session
 }
 
 fn crowd_query(limits: Limits) -> LuaTeam {
-    let mut lua = LuaTeam::new(Team::Radiant, &[BotSeat { slot: SlotId(0), hero: HeroId::SHADOW_FIEND }],
-        limits, Keys { hash: [17,19], random:23 }).expect("team");
+    let mut lua = LuaTeam::new(
+        Team::Radiant,
+        &[BotSeat {
+            slot: SlotId(0),
+            hero: HeroId::SHADOW_FIEND,
+        }],
+        limits,
+        Keys {
+            hash: [17, 19],
+            random: 23,
+        },
+    )
+    .expect("team");
     lua.add_script(SlotId(0), ScriptKind::Takeover, "crowd_area", br#"
         function Think()
             local bot=GetBot()
@@ -199,18 +226,40 @@ fn crowd_query(limits: Limits) -> LuaTeam {
 #[test]
 fn forty_creeps_allow_an_aoe_query_and_following_orders_with_native_fuel() {
     let session = creep_crowd_session(40);
-    let mut lua = crowd_query(Limits { fuel_per_call: 125_000, fuel_per_tick: 500_000, ..Limits::DEFAULT });
+    let mut lua = crowd_query(Limits {
+        fuel_per_call: 125_000,
+        fuel_per_tick: 500_000,
+        ..Limits::DEFAULT
+    });
     let turn = lua.think(&session).expect("think");
     assert!(turn.failures.is_empty(), "{:?}", turn.failures);
-    assert_eq!(turn.bots[0].orders.len(), 2, "the query leaves fuel for the rest of the turn");
+    assert_eq!(
+        turn.bots[0].orders.len(),
+        2,
+        "the query leaves fuel for the rest of the turn"
+    );
 }
 
 #[test]
 fn an_aoe_query_still_exhausts_a_small_budget_and_discards_the_whole_outbox() {
     let session = creep_crowd_session(160);
-    let mut lua = crowd_query(Limits { fuel_per_call: 2_000, fuel_per_tick: 10_000, ..Limits::DEFAULT });
+    let mut lua = crowd_query(Limits {
+        fuel_per_call: 2_000,
+        fuel_per_tick: 10_000,
+        ..Limits::DEFAULT
+    });
     let turn = lua.think(&session).expect("think");
     assert_eq!(turn.failures.len(), 1);
-    assert!(matches!(turn.failures[0].error, luagee::Error::Limit(luagee::Limit::FuelPerCall)), "{:?}", turn.failures);
-    assert!(turn.bots[0].orders.is_empty(), "fuel exhaustion remains uncatchable by pcall");
+    assert!(
+        matches!(
+            turn.failures[0].error,
+            luagee::Error::Limit(luagee::Limit::FuelPerCall)
+        ),
+        "{:?}",
+        turn.failures
+    );
+    assert!(
+        turn.bots[0].orders.is_empty(),
+        "fuel exhaustion remains uncatchable by pcall"
+    );
 }

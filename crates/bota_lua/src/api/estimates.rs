@@ -46,8 +46,21 @@ fn estimate(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaE
         } else {
             0.0
         };
-        let snapshot = state.snapshot.as_ref().ok_or_else(|| vm.error("a current view is required"))?;
-        let (spells, mana) = spell_damage(AbilityObservation { actor, target, clock: snapshot.game_tick, schedule: rules::Schedule::of(snapshot.horn) }, seconds, mask, available);
+        let snapshot = state
+            .snapshot
+            .as_ref()
+            .ok_or_else(|| vm.error("a current view is required"))?;
+        let (spells, mana) = spell_damage(
+            AbilityObservation {
+                actor,
+                target,
+                clock: snapshot.game_tick,
+                schedule: rules::Schedule::of(snapshot.horn),
+            },
+            seconds,
+            mask,
+            available,
+        );
         attacks + spells + item_damage(actor, target, seconds, mask, available, mana)
     };
     if !damage.is_finite() {
@@ -97,7 +110,12 @@ fn mitigated(amount: f64, kind: DamageKind, target: &UnitView) -> f64 {
     amount * f64::from(reference) / 1_000_000.0
 }
 
-fn spell_damage(observation: AbilityObservation<'_>, seconds: f64, mask: i64, available: bool) -> (f64, i32) {
+fn spell_damage(
+    observation: AbilityObservation<'_>,
+    seconds: f64,
+    mask: i64,
+    available: bool,
+) -> (f64, i32) {
     let actor = observation.actor;
     let target = observation.target;
     let mut damage = 0.0;
@@ -118,8 +136,16 @@ fn spell_damage(observation: AbilityObservation<'_>, seconds: f64, mask: i64, av
         if duration == 0.0 {
             continue;
         }
-        let Some(projection) = bota_core::ability_damage_projection(ability.id, ability.level, duration, observation) else { continue };
-        if !accepts(mask, projection.kind) || projection.cadence != DamageCadence::Attack && !spell_reaches(definition, target) { continue; }
+        let Some(projection) =
+            bota_core::ability_damage_projection(ability.id, ability.level, duration, observation)
+        else {
+            continue;
+        };
+        if !accepts(mask, projection.kind)
+            || projection.cadence != DamageCadence::Attack && !spell_reaches(definition, target)
+        {
+            continue;
+        }
         let casts = match projection.cadence {
             DamageCadence::Cast => cast_count(ability, duration, available, mana),
             DamageCadence::Continuous => 1.0,
@@ -136,7 +162,8 @@ fn spell_damage(observation: AbilityObservation<'_>, seconds: f64, mask: i64, av
 }
 
 fn cast_count(ability: &AbilityView, duration: f64, available: bool, mana: i32) -> f64 {
-    let cooldown = f64::from(bota_core::ability_cooldown(ability.id, ability.level)) / f64::from(rules::TICKS_PER_SECOND);
+    let cooldown = f64::from(bota_core::ability_cooldown(ability.id, ability.level))
+        / f64::from(rules::TICKS_PER_SECOND);
     let casts = if cooldown > 0.0 {
         1.0 + (duration / cooldown).floor()
     } else {
@@ -213,7 +240,18 @@ mod tests {
         let mut target = actor.clone();
         target.kind = kind;
         target.statuses.bits = if immune { StatusFlags::MAGIC_IMMUNE } else { 0 };
-        spell_damage(AbilityObservation { actor: &actor, target: &target, clock: 0, schedule: rules::Schedule::of(0) }, 3.0, 7, false).0
+        spell_damage(
+            AbilityObservation {
+                actor: &actor,
+                target: &target,
+                clock: 0,
+                schedule: rules::Schedule::of(0),
+            },
+            3.0,
+            7,
+            false,
+        )
+        .0
     }
 
     #[test]

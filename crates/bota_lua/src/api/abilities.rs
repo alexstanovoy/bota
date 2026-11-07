@@ -174,7 +174,9 @@ fn handle(vm: &mut Vm, state: &mut State, identity: Option<Identity>) -> Result<
     let key = vm.new_string(b"__metatable")?;
     vm.raw_set(meta, key, Value::Boolean(false))?;
     vm.set_metatable(table, Some(meta))?;
-    state.ability_identities.remember(vm, table, meta, identity)?;
+    state
+        .ability_identities
+        .remember(vm, table, meta, identity)?;
     vm.pin(Value::Table(table))?;
     state.abilities.push((identity, table));
     Ok(Value::Table(table))
@@ -223,7 +225,9 @@ pub(super) fn install(lua: &mut Lua, units: TableId, state: Shared) -> Result<()
                         let level = view.as_ref().map_or(0, |view| view.level);
                         let value = if name == "GetAbilityDamage" {
                             ability_damage(identity, level)
-                        } else { special(identity, level, key) };
+                        } else {
+                            special(identity, level, key)
+                        };
                         Value::Number(f64::from(value))
                     }
                     "IsNull" => Value::Boolean(view.is_none()),
@@ -356,19 +360,31 @@ fn install_immediate(lua: &mut Lua, units: TableId, state: Shared) -> Result<(),
 
 fn ability_damage(identity: Identity, level: u8) -> i32 {
     match identity {
-        Identity::Ability { id, .. } | Identity::Innate { id, .. } => bota_core::ability_base_damage(id, level),
+        Identity::Ability { id, .. } | Identity::Innate { id, .. } => {
+            bota_core::ability_base_damage(id, level)
+        }
         Identity::Item { .. } => special(identity, level, b"damage"),
         Identity::Talent { .. } => 0,
     }
 }
 
 fn special(identity: Identity, level: u8, key: &[u8]) -> i32 {
-    let Ok(key) = std::str::from_utf8(key) else { return 0 };
+    let Ok(key) = std::str::from_utf8(key) else {
+        return 0;
+    };
     let value = match identity {
         Identity::Talent { .. } => None,
-        Identity::Item { id, .. } => bota_core::item_def(id).and_then(|item| item.value(key))
-            .and_then(|values| values.get(usize::from(level.saturating_sub(1))).or_else(|| values.last())).copied(),
-        Identity::Ability { id, .. } | Identity::Innate { id, .. } => bota_core::ability_value(id, level, key),
+        Identity::Item { id, .. } => bota_core::item_def(id)
+            .and_then(|item| item.value(key))
+            .and_then(|values| {
+                values
+                    .get(usize::from(level.saturating_sub(1)))
+                    .or_else(|| values.last())
+            })
+            .copied(),
+        Identity::Ability { id, .. } | Identity::Innate { id, .. } => {
+            bota_core::ability_value(id, level, key)
+        }
     };
     value.map_or(0, |value| value.0 / 1000)
 }

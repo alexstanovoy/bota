@@ -374,13 +374,17 @@ impl State {
         let tracked = self.tracked(id);
         if let Some(table) = self.unit_identities.table(vm, id)? {
             if tracked {
-                if self.units.len() >= MAX_HANDLES { return Err(vm.error("unit handle limit exceeded")); }
+                if self.units.len() >= MAX_HANDLES {
+                    return Err(vm.error("unit handle limit exceeded"));
+                }
                 vm.pin(Value::Table(table))?;
                 self.units.push((id, table));
             }
             return Ok(Value::Table(table));
         }
-        if !tracked { return Ok(Value::Nil); }
+        if !tracked {
+            return Ok(Value::Nil);
+        }
         if self.units.len() >= MAX_HANDLES {
             return Err(vm.error("unit handle limit exceeded"));
         }
@@ -403,8 +407,14 @@ impl State {
 
     fn tracked(&self, id: EntityId) -> bool {
         self.snapshot.as_ref().is_some_and(|snapshot| {
-            snapshot.units.binary_search_by_key(&id, |known| known.unit.id).is_ok()
-                || snapshot.players.iter().any(|player| player.unit == Some(id))
+            snapshot
+                .units
+                .binary_search_by_key(&id, |known| known.unit.id)
+                .is_ok()
+                || snapshot
+                    .players
+                    .iter()
+                    .any(|player| player.unit == Some(id))
         })
     }
 
@@ -412,13 +422,21 @@ impl State {
         let mut retired = Vec::new();
         let mut index = 0;
         while index < self.units.len() {
-            if self.tracked(self.units[index].0) { index += 1; }
-            else { retired.push(self.units.swap_remove(index).1); }
+            if self.tracked(self.units[index].0) {
+                index += 1;
+            } else {
+                retired.push(self.units.swap_remove(index).1);
+            }
         }
         let mut index = 0;
         while index < self.abilities.len() {
-            if self.tracked(self.abilities[index].0.owner()) && super::api::abilities::valid(self, self.abilities[index].0) { index += 1; }
-            else { retired.push(self.abilities.swap_remove(index).1); }
+            if self.tracked(self.abilities[index].0.owner())
+                && super::api::abilities::valid(self, self.abilities[index].0)
+            {
+                index += 1;
+            } else {
+                retired.push(self.abilities.swap_remove(index).1);
+            }
         }
         retired
     }

@@ -10,7 +10,11 @@ use std::time::{Duration, Instant};
 const MAX_CONSECUTIVE_LATE_TICKS: u8 = 3;
 // At the measured ~13ns/fuel, 600k leaves over four times the execution margin
 // inside 33ms, including snapshot copying, collection, and scheduling jitter.
-const NATIVE_LIMITS: Limits = Limits { fuel_per_call: 125_000, fuel_per_tick: 600_000, ..Limits::DEFAULT };
+const NATIVE_LIMITS: Limits = Limits {
+    fuel_per_call: 125_000,
+    fuel_per_tick: 600_000,
+    ..Limits::DEFAULT
+};
 
 #[derive(Clone, Debug)]
 pub struct NativeConfig {
@@ -158,53 +162,83 @@ impl NativeTeam {
         }
         let began = Instant::now();
         if session.team() != self.team {
-            return Err(NativeError::Input("worker needs its team's filtered session".to_owned()));
+            return Err(NativeError::Input(
+                "worker needs its team's filtered session".to_owned(),
+            ));
         }
-        let snapshot = Snapshot::capture(session).map_err(|error| NativeError::Input(error.to_string()))?;
+        let snapshot =
+            Snapshot::capture(session).map_err(|error| NativeError::Input(error.to_string()))?;
         if self.last_tick.is_some_and(|last| snapshot.tick <= last) {
             return Err(NativeError::Input("worker tick must increase".to_owned()));
         }
         self.last_tick = Some(snapshot.tick);
         if self.in_flight {
             match self.receive(began) {
-                Ok(_) => {}, // This reply belongs to the previously missed tick, never the new one.
+                Ok(_) => {} // This reply belongs to the previously missed tick, never the new one.
                 Err(NativeError::Deadline) => return self.late(),
                 Err(error) => return Err(error),
             }
         }
-        if self.remaining(began).is_none() { return self.late(); }
-        if self.requests.as_ref().expect("active worker").try_send(snapshot).is_err() {
+        if self.remaining(began).is_none() {
+            return self.late();
+        }
+        if self
+            .requests
+            .as_ref()
+            .expect("active worker")
+            .try_send(snapshot)
+            .is_err()
+        {
             self.retire();
             return Err(NativeError::Closed);
         }
         self.in_flight = true;
         match self.receive(began) {
-            Ok(turn) if began.elapsed() <= self.timeout => { self.late_ticks = 0; Ok(turn) },
+            Ok(turn) if began.elapsed() <= self.timeout => {
+                self.late_ticks = 0;
+                Ok(turn)
+            }
             Ok(_) | Err(NativeError::Deadline) => self.late(),
             Err(error) => Err(error),
         }
     }
 
     fn remaining(&self, began: Instant) -> Option<Duration> {
-        self.timeout.checked_sub(began.elapsed()).filter(|left| !left.is_zero())
+        self.timeout
+            .checked_sub(began.elapsed())
+            .filter(|left| !left.is_zero())
     }
 
     fn receive(&mut self, began: Instant) -> Reply {
-        let Some(remaining) = self.remaining(began) else { return Err(NativeError::Deadline); };
-        match self.replies.as_ref().expect("active worker").recv_timeout(remaining) {
+        let Some(remaining) = self.remaining(began) else {
+            return Err(NativeError::Deadline);
+        };
+        match self
+            .replies
+            .as_ref()
+            .expect("active worker")
+            .recv_timeout(remaining)
+        {
             Ok(result) => {
                 self.in_flight = false;
-                if result.is_err() { self.retire(); }
+                if result.is_err() {
+                    self.retire();
+                }
                 result
             }
             Err(RecvTimeoutError::Timeout) => Err(NativeError::Deadline),
-            Err(RecvTimeoutError::Disconnected) => { self.retire(); Err(NativeError::Closed) },
+            Err(RecvTimeoutError::Disconnected) => {
+                self.retire();
+                Err(NativeError::Closed)
+            }
         }
     }
 
     fn late(&mut self) -> Reply {
         self.late_ticks = self.late_ticks.saturating_add(1);
-        if self.late_ticks >= MAX_CONSECUTIVE_LATE_TICKS { self.retire(); }
+        if self.late_ticks >= MAX_CONSECUTIVE_LATE_TICKS {
+            self.retire();
+        }
         Err(NativeError::Deadline)
     }
     fn retire(&mut self) {

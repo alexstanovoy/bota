@@ -91,16 +91,29 @@ fuzz_target!(|data: &[u8]| {
     let mut session = fresh();
     for frame in 0..2u32 {
         let mut view = session.current().expect("fixture view").clone();
-        view.tick += if frame > 0 && data[29] & 1 != 0 { 20_000 } else { 1 };
-        view.units.retain(|unit| unit.kind != bota_proto::UnitKind::CreepMelee);
+        view.tick += if frame > 0 && data[29] & 1 != 0 {
+            20_000
+        } else {
+            1
+        };
+        view.units
+            .retain(|unit| unit.kind != bota_proto::UnitKind::CreepMelee);
         if let Some(actor) = session.own_hero() {
             for index in 0..u32::from(data[30] % 41) {
                 let mut creep = actor.clone();
-                creep.id = bota_proto::EntityId { idx: 100_000 + frame * 64 + index, generation: 0 };
+                creep.id = bota_proto::EntityId {
+                    idx: 100_000 + frame * 64 + index,
+                    generation: 0,
+                };
                 creep.kind = bota_proto::UnitKind::CreepMelee;
-                creep.team = Team::Dire; creep.hero = None; creep.owner = None;
-                creep.abilities.clear(); creep.items.clear(); creep.town_portal = None;
-                creep.effects.clear(); creep.queue.clear();
+                creep.team = Team::Dire;
+                creep.hero = None;
+                creep.owner = None;
+                creep.abilities.clear();
+                creep.items.clear();
+                creep.town_portal = None;
+                creep.effects.clear();
+                creep.queue.clear();
                 creep.pos.x.raw += (index as i32 % 7) * 40 * 65536;
                 creep.pos.y.raw += (index as i32 / 7) * 40 * 65536;
                 view.units.push(creep);
