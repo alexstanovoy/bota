@@ -40,7 +40,13 @@ fn leaderboard_categories_search_own_rank_and_mode_profiles_cross_the_real_servi
             panic!("board reply");
         };
         assert_eq!(page.limit, 1);
-        assert_eq!(beta.client.limits(None).expect("served limits").leaderboard_size,1);
+        assert_eq!(
+            beta.client
+                .limits(None)
+                .expect("served limits")
+                .leaderboard_size,
+            1
+        );
         assert_eq!(page.rows.len(), 1);
         assert_eq!(page.rows[0].account, expected_id);
         assert_eq!(page.rows[0].kind, kind);
@@ -78,8 +84,20 @@ fn leaderboard_categories_search_own_rank_and_mode_profiles_cross_the_real_servi
             .rank,
         Some(1)
     );
-    assert!(matches!(beta.client.leaderboard(&solo(),AccountKind::Human,"%"),Err(bota_radovid::ClientError::Refused(Error::BadLeaderboardSearch))));
-    assert_eq!(beta.ask(bota_radovid::proto::ClientMsg::Leaderboard { ruleset:solo(),kind:AccountKind::Human,prefix:"%".into() }),Err(Error::BadLeaderboardSearch));
+    assert!(matches!(
+        beta.client.leaderboard(&solo(), AccountKind::Human, "%"),
+        Err(bota_radovid::ClientError::Refused(
+            Error::BadLeaderboardSearch
+        ))
+    ));
+    assert_eq!(
+        beta.ask(bota_radovid::proto::ClientMsg::Leaderboard {
+            ruleset: solo(),
+            kind: AccountKind::Human,
+            prefix: "%".into()
+        }),
+        Err(Error::BadLeaderboardSearch)
+    );
 }
 
 #[test]
