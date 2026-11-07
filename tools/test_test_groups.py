@@ -41,8 +41,8 @@ class Routing(unittest.TestCase):
     def test_a_game_test_file_runs_its_group_and_the_pins(self):
         self.assertEqual(groups_of(f"{SERVER}/game/tests/runes.rs"), {"game_objectives", "game_determinism"})
 
-    def test_the_world_runs_every_server_group_and_radovid_which_launches_the_server(self):
-        expected = {g.name for g in GROUPS if g.name.startswith(("game_", "server_"))} | {"radovid"}
+    def test_the_world_runs_server_groups_and_consumers_with_real_matches(self):
+        expected = {g.name for g in GROUPS if g.name.startswith(("game_", "server_"))} | {"radovid", "lua"}
         self.assertEqual(groups_of(f"{SERVER}/game/world.rs"), expected)
 
     def test_a_proto_change_runs_everything_built_on_it(self):
@@ -71,8 +71,8 @@ class Routing(unittest.TestCase):
         for path in ("DEVELOPMENT.md", "crates/bota_radovid/src/lib.rs"):
             self.assertFalse(test_groups.plan(ROUTER, [path])[2], path)
 
-    def test_a_server_change_lints_the_server_only(self):
-        self.assertEqual(test_groups.plan(ROUTER, [f"{SERVER}/net/conn.rs"])[1], {"bota_server"})
+    def test_a_server_change_lints_the_server_and_the_lua_match_consumer(self):
+        self.assertEqual(test_groups.plan(ROUTER, [f"{SERVER}/net/conn.rs"])[1], {"bota_server", "bota_lua"})
 
     def test_the_test_certificate_runs_every_group_that_reads_it(self):
         self.assertTrue({"server_net", "server_launch", "server_transport"} <= groups_of("crates/bota_server/tests/tls/cert.pem"))
