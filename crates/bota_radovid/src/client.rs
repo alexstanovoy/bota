@@ -215,6 +215,24 @@ impl Client {
         })
     }
 
+    /// Fetches the public image separately from profile/leaderboard cache versions.
+    pub fn get_avatar(&mut self, account: radovid_client::proto::AccountId) -> Result<u32, ClientError> {
+        self.request(ClientMsg::GetAvatar { account })
+    }
+
+    /// Uploads a static 32x32 PNG. Full validation belongs to the service.
+    pub fn set_avatar(&mut self, png: &[u8]) -> Result<u32, ClientError> {
+        if png.len() > radovid_client::proto::MAX_AVATAR_BYTES {
+            return Err(ClientError::Refused(Error::BadAvatar));
+        }
+        self.request(ClientMsg::SetAvatar { png: png.to_vec() })
+    }
+
+    /// Removal shares the persisted per-account upload quota.
+    pub fn remove_avatar(&mut self) -> Result<u32, ClientError> {
+        self.request(ClientMsg::RemoveAvatar)
+    }
+
     /// The next message from the service, if any. The client has noted it
     /// before it comes out: the view and the limits are already up to date,
     /// and a proposal has already been accepted if that is automatic.

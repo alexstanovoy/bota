@@ -144,3 +144,33 @@ even when `games > 0`. Keep rendering the rating and game counts with an unavail
 rank. A later cheap mode can still return a rank. Board/own-row response semantics
 are unchanged. SQLite checkpoint maintenance can temporarily backpressure writes;
 a failed checkpoint refuses subsequent mutations before executing them.
+## Account avatars (protocol 20)
+
+`Client::set_avatar(&png)` and `Client::remove_avatar()` change only the signed-in
+account. `Client::get_avatar(account)` fetches an image. These return request
+sequence numbers; consume `Incoming::Reply` as for `leaderboard()`.
+`Reply::Avatar { account, avatar: Option<Avatar> }` carries the image or absence.
+`Avatar { version: AvatarVersion([u8;32]), png: Vec<u8> }` contains a content hash
+and at most `MAX_AVATAR_BYTES` (512) bytes. `PublicAccount.avatar` and
+`LadderRow.avatar` carry the version only, including the own row. Fetch the own
+profile with `ClientMsg::Account { account: client.me().unwrap().id }` after
+checking that `me()` exists.
+
+Prepare a static, non-interlaced, eight-bit 32×32 PNG. Palette and transparency
+are supported. Strip all metadata; only IHDR/PLTE/tRNS/IDAT/IEND are accepted.
+Resize and quantize before uploading; the service validates the image and never
+resizes it. Oversize input is refused locally with `BadAvatar`; a small invalid
+image is refused by the service with the same error.
+
+Cache by service, account and version. Cache a fetch under the version it returns
+(a simultaneous replacement may return a newer one). `None` clears the current
+reference. There are no image URLs or avatar broadcasts. Refresh profile/board
+metadata when opening those views. A row's version does not require an immediate
+fetch if that cache entry is already present.
+
+Uploads and removals share one attempt per minute per account, including invalid
+images and no-op removals. The limit survives reconnects and restarts; honor
+`Throttled.retry_after_ms`. Reads share the existing per-account lookup quota.
+Other accounts' deleted or currently banned targets return `UnknownAccount`.
+Protocol 20 requires a coordinated rebuild; the screen implementation belongs to
+the consumer.
