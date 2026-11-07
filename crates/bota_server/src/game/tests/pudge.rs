@@ -878,19 +878,6 @@ fn pudge_mends_only_the_mana_his_intelligence_gives_eight_in_ten_seconds() {
     );
 }
 
-/// A hero Pudge brings down feeds his heap however far off it falls (Liquipedia, *Pudge*:
-/// "Grants Pudge a stack if the enemy hero kill is credited to him, regardless of
-/// distance"; the dota2.com hero data: "every time he kills an enemy Hero").
-#[test]
-fn a_flesh_heap_keeps_an_enemy_hero_its_bearer_kills_however_far_off() {
-    let (mut world, pudge, hero) = pudge_and_a_hero_mark(rules::FLESH_HEAP_RANGE + 1000);
-    world.health.insert(hero, health(0));
-    let mut events = Vec::new();
-    world.bury(vec![(hero, Some(pudge))], &mut events);
-    world.step();
-    assert_eq!(heap(&world, pudge), 1, "his own kill feeds it");
-}
-
 /// A fallen Pudge keeps no stack, not even of a hero whose death is credited to him after his
 /// own, a blow he left landing late (Liquipedia, *Pudge*: stacks come "as long as Pudge is
 /// alive").

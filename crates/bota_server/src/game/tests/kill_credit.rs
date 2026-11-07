@@ -947,3 +947,20 @@ fn kill_credit_ten_hero_fight_event_budget_roundtrips_without_drops() {
         frame.len()
     );
 }
+
+/// A hero Pudge brings down feeds his Flesh Heap however far off he stands (Liquipedia,
+/// *Pudge*: a stack "if the enemy hero kill is credited to him, regardless of distance").
+#[test]
+fn kill_credit_feeds_flesh_heap_from_afar_for_pudge() {
+    let (mut world, ours, victim) = scene_for_hero(1, bota_proto::HeroId::PUDGE);
+    let pudge = ours[0];
+    world.transform.get_mut(pudge).unwrap().pos = FALL + Vec2::from_ints(-3000, 1000);
+    world.settle();
+    finish(&mut world, victim, pudge);
+    let count = world
+        .modifiers
+        .get(pudge)
+        .unwrap()
+        .count_of(ModifierKind::flesh_heap);
+    assert_eq!(count, 1, "his own kill feeds it");
+}
