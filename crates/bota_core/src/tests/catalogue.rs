@@ -87,10 +87,11 @@ fn drink(def: &mut ItemDef) -> &mut crate::Drink {
 fn adding_roshan_items_keeps_the_preexisting_catalogue_prefix_identical() {
     let previous = bota_proto::CataloguePrefix {
         items: 88,
-        // Independently measured on pristine landing main bc20dfbb, before Roshan, and moved once
-        // since by a rule of an item of that prefix: the Magic Wand waits under the Magic Stick's
-        // cooldown (`AbilitySharedCooldown` "magicwand"), which its digest carries as `wait_key`.
-        digest: 0xd7b1_8379_c465_3b6c,
+        // Independently measured on pristine landing main bc20dfbb, before Roshan, and moved since
+        // by two rules of items of that prefix: the Magic Wand waits under the Magic Stick's
+        // cooldown (`AbilitySharedCooldown` "magicwand", digested as its `wait_key`), and the
+        // orbs' attack passives open their part of the digest with a tag of their own.
+        digest: 0xb793_0c5b_328e_746b,
     };
     assert_eq!(
         crate::Catalogue::first(previous.items)
@@ -153,4 +154,30 @@ fn a_ward_dependency_must_fit_inside_its_containing_catalogue_prefix() {
         ticks,
     };
     assert!(crate::item_table::ward_sources_precede_item(&sentry));
+}
+
+/// Every optional part of an item's digest opens with a tag of its own, so that two different
+/// rows can never feed the digest the same words: no two parts share a tag (the Orb of Blight's
+/// attack passive and a pick-up range once both opened with 0xA2).
+#[test]
+fn every_digest_tag_opens_one_part_alone() {
+    let source = include_str!("../catalogue.rs");
+    let mut tags: Vec<&str> = source
+        .match_indices("u64(0x")
+        .map(|(at, _)| {
+            let tag = &source[at + 4..];
+            &tag[..tag.find(')').expect("a closed call")]
+        })
+        .collect();
+    assert!(tags.len() > 10, "the tags are found: {tags:?}");
+    tags.sort_unstable();
+    let shared: Vec<&&str> = tags
+        .windows(2)
+        .filter(|w| w[0] == w[1])
+        .map(|w| &w[0])
+        .collect();
+    assert!(
+        shared.is_empty(),
+        "tags opening more than one part: {shared:?}"
+    );
 }
