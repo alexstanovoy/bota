@@ -113,6 +113,12 @@ pub(crate) fn visible_events(events: &[Event], viewing: Option<Team>) -> Vec<Eve
 
 /// Blanks what an event tells that one side may not learn from it.
 fn told_as(kind: &mut EventKind, event: &Event, mine: Team) {
+    if let Event::AttackLaunched { target_told_to, .. } = event
+        && !target_told_to.tells(mine)
+        && let EventKind::AttackLaunched { target, .. } = kind
+    {
+        *target = None;
+    }
     if let Event::ItemUsed { point_told_to, .. } = event
         && !point_told_to.tells(mine)
         && let EventKind::ItemUsed { at, target, .. } = kind

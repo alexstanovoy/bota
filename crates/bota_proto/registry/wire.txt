@@ -742,3 +742,6 @@ field WorldView 18 lairs: Vec<LairView>
 field LairView 0 lair: u8
 field LairView 1 fell_at: Option<u32>
 field LairView 2 alive_known_by: SeenBy
+variant EventKind 26 AttackLaunched {}
+field EventKind::AttackLaunched 0 attacker: EntityId
+field EventKind::AttackLaunched 1 target: Option<EntityId>

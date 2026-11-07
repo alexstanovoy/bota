@@ -6,6 +6,10 @@ impl EventKind {
     /// Calls `visit` on every entity handle the event carries.
     pub fn visit_ids(&mut self, visit: &mut dyn FnMut(&mut EntityId)) {
         match self {
+            EventKind::AttackLaunched { attacker, target } => {
+                visit(attacker);
+                target.iter_mut().for_each(visit);
+            }
             EventKind::Damaged { source, target, .. }
             | EventKind::Missed { source, target }
             | EventKind::Healed { source, target, .. } => {

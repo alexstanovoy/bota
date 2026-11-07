@@ -445,6 +445,7 @@ paths = [
     "crates/bota_server/src/game/tests/ward_stacks.rs",
     "crates/bota_server/src/game/tests/view_bounds.rs",
     "crates/bota_server/src/game/tests/event_envelope.rs",
+    "crates/bota_server/src/game/tests/attack_launched.rs",
 ]
 tests = [{ crate = "bota_server", target = "lib", filters = [
     "game::tests::vision::",
@@ -452,6 +453,7 @@ tests = [{ crate = "bota_server", target = "lib", filters = [
     "game::tests::ward_stacks::",
     "game::tests::view_bounds::",
     "game::tests::event_envelope::",
+    "game::tests::attack_launched::",
 ] }]
 
 [[group]]

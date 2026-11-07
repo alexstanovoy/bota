@@ -301,11 +301,18 @@ pub enum Event {
         point_told_to: EventVisibility,
         source_told_to: EventVisibility,
     },
+    AttackLaunched {
+        attacker: bota_proto::EntityId,
+        target: bota_proto::EntityId,
+        visible_to: EventVisibility,
+        target_told_to: EventVisibility,
+    },
 }
 
 impl Event {
     pub fn kind(&self) -> EventKind {
         match self {
+            Self::AttackLaunched { attacker, target, .. } => EventKind::AttackLaunched { attacker: *attacker, target: Some(*target) },
             Self::Fact { kind, .. } => kind.clone(),
             Self::ItemUsed {
                 caster,
@@ -324,12 +331,13 @@ impl Event {
 
     pub fn visible_to(&self) -> EventVisibility {
         match self {
-            Self::Fact { visible_to, .. } | Self::ItemUsed { visible_to, .. } => *visible_to,
+            Self::Fact { visible_to, .. } | Self::ItemUsed { visible_to, .. } | Self::AttackLaunched { visible_to, .. } => *visible_to,
         }
     }
 
     pub fn source_told_to(&self) -> EventVisibility {
         match self {
+            Self::AttackLaunched { visible_to, .. } => *visible_to,
             Self::Fact { source_told_to, .. } | Self::ItemUsed { source_told_to, .. } => {
                 *source_told_to
             }
@@ -341,12 +349,13 @@ impl Event {
             Self::Fact {
                 gold_hidden_from, ..
             } => *gold_hidden_from,
-            Self::ItemUsed { .. } => None,
+            Self::ItemUsed { .. } | Self::AttackLaunched { .. } => None,
         }
     }
 
     pub fn tell_to(&mut self, told: EventVisibility) {
         match self {
+            Self::AttackLaunched { visible_to, .. } => *visible_to = told,
             Self::Fact {
                 visible_to,
                 source_told_to,

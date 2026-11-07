@@ -837,6 +837,10 @@ impl World {
 
         self.expose(attacker, on);
         self.reveal(attacker);
+        self.events.push(Event::AttackLaunched {
+            attacker: wire_id(attacker), target: wire_id(on),
+            visible_to: self.who_may_name(Some(attacker)), target_told_to: self.who_may_name(Some(on)),
+        });
         // What is carried against creeps is worth nothing against anything else.
         let damage = stats.damage
             + self.roll_damage(stats.damage_spread)

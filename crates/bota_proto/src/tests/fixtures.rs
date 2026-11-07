@@ -741,6 +741,7 @@ pub fn all_events() -> Vec<EventKind> {
             unit: Some(entity(7)),
             tier: LotusTier::Greater,
         },
+        EventKind::AttackLaunched { attacker: entity(7), target: Some(entity(9)) },
     ]
 }
 

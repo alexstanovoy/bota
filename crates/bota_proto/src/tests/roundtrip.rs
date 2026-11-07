@@ -31,6 +31,17 @@ fn server_messages_survive() {
 }
 
 #[test]
+fn attack_launch_appends_event_tag_twenty_six_and_maps_only_disclosed_handles() {
+    let mut event = EventKind::AttackLaunched { attacker: entity(7), target: Some(entity(9)) };
+    assert_eq!(postcard::to_allocvec(&event).expect("encode")[0], 26);
+    event.visit_ids(&mut |id| id.idx += 100);
+    assert_eq!(event, EventKind::AttackLaunched { attacker: entity(107), target: Some(entity(109)) });
+    assert_eq!(roundtrip(&event), event);
+    let concealed = EventKind::AttackLaunched { attacker: entity(7), target: None };
+    assert_eq!(roundtrip(&concealed), concealed);
+}
+
+#[test]
 fn orders_survive() {
     for order in all_orders() {
         assert_eq!(roundtrip(&order), order, "{order:?}");

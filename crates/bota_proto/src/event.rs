@@ -324,6 +324,13 @@ pub enum EventKind {
         objective: ObjectiveKind,
         team: Team,
     },
+    /// A unit reached its attack point: a melee strike or a ranged launch.
+    /// Told to sides that see the attacker at this Events envelope's tick.
+    AttackLaunched {
+        attacker: EntityId,
+        /// Absent when that side does not see the target.
+        target: Option<EntityId>,
+    },
 }
 
 /// The seats a [`EventKind::Died`] names as assisting, in seat order.

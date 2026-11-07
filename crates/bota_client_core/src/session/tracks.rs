@@ -391,6 +391,7 @@ impl Tracks {
             // recorded before any same-tick damage. A teleport's end names no entity, and a
             // landing is told by the blows it deals. A tree is no unit.
             EventKind::Missed { .. }
+            | EventKind::AttackLaunched { .. }
             | EventKind::AbilityCast { .. }
             | EventKind::LevelUp { .. }
             | EventKind::ItemBought { .. }
