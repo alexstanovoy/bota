@@ -130,3 +130,10 @@ throttle. Retry `Throttled { retry_after_ms }` after its delay; an unchanged req
 returns `LookupTooExpensive` needs a different request or service-side intervention.
 Lookup admission is per account across its sessions, with one in flight; another account
 cannot consume that quota. Active bans hide rows and other accounts' profile views.
+
+The protocol-19 service uses schema-4 materialised visibility and category totals.
+Reader admission has one shared FIFO queue. Its final per-request SQLite budget is
+five million instructions; `LookupTooExpensive` stays non-retryable. A bounded
+one-second sweep restores timed-ban ranks (at most 256 expired accounts per tick),
+so a large expiry backlog can temporarily leave an expired account unranked. The
+SDK DTOs and calls are unchanged.
