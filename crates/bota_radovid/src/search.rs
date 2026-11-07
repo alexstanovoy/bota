@@ -8,6 +8,8 @@ use radovid_client::proto::{
 
 use crate::clock::now_ms;
 
+const MAX_ACKNOWLEDGED: usize = 16;
+
 /// A pairing waiting for the answers of its players. The opponents are not
 /// named.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -71,6 +73,7 @@ pub struct SlotWait {
 /// matches waiting for a slot, and the cooldown after a decline.
 #[derive(Clone, Debug, Default)]
 pub struct Searches {
+    acknowledged: Vec<(QueueEntryId, ProposalId)>,
     entries: Vec<Search>,
     slot_waits: Vec<SlotWait>,
     cooldown_until_ms: u64,
@@ -115,7 +118,7 @@ impl Searches {
     }
 
     /// Forgets the searches and waits, which are no longer being told (the link is gone); the
-    /// cooldown after a decline is kept.
+    /// cooldown and the last acknowledged decisions are kept for a resumed snapshot.
     pub(crate) fn forget_live(&mut self) {
         self.entries.clear();
         self.slot_waits.clear();
@@ -124,6 +127,12 @@ impl Searches {
     /// Takes in what a login says is in flight.
     pub(crate) fn start(&mut self, activities: &Activities) {
         let now = now_ms();
+        self.acknowledged.retain(|(entry, id)| {
+            activities
+                .proposals
+                .iter()
+                .any(|offer| offer.entry == *entry && offer.proposal == *id)
+        });
         self.entries = activities
             .queued
             .iter()
@@ -163,6 +172,7 @@ impl Searches {
                 }
             }
             Event::ProposalFailed { proposal, .. } => {
+                self.acknowledged.retain(|(_, known)| known != proposal);
                 if let Some(search) = self.entries.iter_mut().find(|search| {
                     search
                         .offer
@@ -175,6 +185,7 @@ impl Searches {
             Event::QueueLeft {
                 entry, cooldown_ms, ..
             } => {
+                self.acknowledged.retain(|(known, _)| known != entry);
                 self.entries.retain(|search| search.entry != *entry);
                 if *cooldown_ms > 0 {
                     self.cooldown_until_ms = now + u64::from(*cooldown_ms);
@@ -197,9 +208,23 @@ impl Searches {
 
     /// This client accepted `proposal`.
     pub(crate) fn answered(&mut self, proposal: ProposalId) {
-        if let Some(offer) = self.offer_mut(proposal) {
+        let Some(search) = self.entries.iter_mut().find(|search| {
+            search
+                .offer
+                .as_ref()
+                .is_some_and(|offer| offer.proposal == proposal)
+        }) else {
+            return;
+        };
+        if let Some(offer) = &mut search.offer {
             offer.answered = true;
         }
+        let key = (search.entry, proposal);
+        self.acknowledged.retain(|known| *known != key);
+        if self.acknowledged.len() == MAX_ACKNOWLEDGED {
+            self.acknowledged.remove(0);
+        }
+        self.acknowledged.push(key);
     }
 
     /// QueueLeft(Matched) already consumed the exact entries. Repeated waiting
@@ -235,7 +260,9 @@ impl Searches {
             proposal: proposal.proposal,
             accepted: proposal.accepted,
             of: proposal.of,
-            answered: false,
+            answered: self
+                .acknowledged
+                .contains(&(proposal.entry, proposal.proposal)),
             deadline_ms: now + u64::from(proposal.accept_by_ms),
         };
         if let Some(search) = self.entries.iter_mut().find(|s| s.entry == proposal.entry) {

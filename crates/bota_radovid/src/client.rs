@@ -258,6 +258,9 @@ impl Client {
                 activities,
                 ..
             } => {
+                if self.session.is_some_and(|known| known != *session) {
+                    self.searches = Searches::default();
+                }
                 self.session = Some(*session);
                 self.searches.start(activities);
                 self.send(ClientMsg::Rulesets, true)?;

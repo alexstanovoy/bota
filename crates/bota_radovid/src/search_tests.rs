@@ -161,3 +161,41 @@ fn completion_then_failed_match_formation_then_new_offer_restores_the_entry() {
     assert_eq!(ids, vec![1, 2]);
     assert!(open_proposals(&searches).contains(&11));
 }
+
+#[test]
+fn a_reconnect_during_accept_restores_the_acknowledged_offer() {
+    let mut searches = Searches::default();
+    let snapshot = Activities {
+        queued: vec![entry(1, "solo_mid")],
+        proposals: vec![proposal(10, 1, 1)],
+        ..Default::default()
+    };
+    searches.start(&snapshot);
+    searches.answered(ProposalId(10));
+    searches.forget_live();
+    assert!(
+        searches.entries().is_empty(),
+        "no live offer is drawn while the link is gone"
+    );
+    searches.start(&snapshot);
+    assert!(
+        searches
+            .offers()
+            .next()
+            .expect("same proposal resumed")
+            .1
+            .answered,
+        "the acknowledged decision survives resuming the same proposal"
+    );
+}
+
+#[test]
+fn a_fresh_snapshot_does_not_treat_another_players_accept_as_ours() {
+    let mut searches = Searches::default();
+    searches.start(&Activities {
+        queued: vec![entry(1, "solo_mid")],
+        proposals: vec![proposal(10, 1, 1)],
+        ..Default::default()
+    });
+    assert!(!searches.offers().next().expect("offer").1.answered);
+}
