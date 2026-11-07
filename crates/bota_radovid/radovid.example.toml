@@ -16,15 +16,14 @@ lobby_ruleset = "full"                     # a new lobby is of these rules until
 # static_dir = "/srv/radovid/page"          # a web client served on this origin, beside /control
 # send_deadline_secs = 600                  # seconds a page has to be sent whole (1 to 3600); a slower peer is cut off
 
-# bota's full game: the default of a lobby (lobby_ruleset above). Ten slots, five a side, for
-# lobbies only (not rated, no queue); a lobby starts with the players it has.
+# bota's full game: ten slots, five a side. Queue games are rated; custom lobbies are not.
 [[ruleset]]
 id = "full"
 name = "Full rules"
 game = "bota"
 game_fingerprint = "0123456789abcdef"
 teams = [5, 5]
-rated = false
+rated = true
 
 [ruleset.launcher]
 kind = "docker"
@@ -127,4 +126,52 @@ version_probe = ["--wire-fingerprint"]
 args = ["--map", "0", "--match-id", "{match_id}", "--bind", "0.0.0.0", "--ws-port", "4456",
         "--tls-cert", "/certs/fullchain.pem", "--tls-key", "/certs/privkey.pem",
         "--cheats", "--tactical-secs", "0", "--abandon-unjoined", "--empty-after-secs", "60"]
+env = { BOTA_SEATS = "{seats}" }
+
+# Unranked counterparts use the same mode's ladder for skill matching only.
+# All window values are rating points. Each member must accept the group's full spread.
+[[ruleset]]
+id = "full_unranked"
+name = "Unranked full rules"
+game = "bota"
+game_fingerprint = "0123456789abcdef"
+teams = [5, 5]
+rated = false
+rating_ruleset = "full"
+[ruleset.launcher]
+kind = "docker"
+image = "bota_server:current"
+container_port = 4456
+public_url = "wss://game.example.org:{port}"
+mounts = ["/etc/radovid/game-cert:/certs:ro"]
+version_probe = ["--wire-fingerprint"]
+args = ["--map", "0", "--match-id", "{match_id}", "--bind", "0.0.0.0", "--ws-port", "4456",
+        "--tls-cert", "/certs/fullchain.pem", "--tls-key", "/certs/privkey.pem",
+        "--start-after-secs", "60", "--abandon-unjoined", "--empty-after-secs", "300"]
+env = { BOTA_SEATS = "{seats}" }
+cheats_args = ["--lobby-cheats"]
+
+[[ruleset]]
+id = "solo_mid_unranked"
+name = "Unranked mid"
+game = "bota"
+game_fingerprint = "0123456789abcdef"
+teams = [1, 1]
+rated = false
+rating_ruleset = "solo_mid"
+max_duration_secs = 1800
+[ruleset.rating_window]
+initial = 600
+widen_per_minute = 300
+maximum = 3000
+[ruleset.launcher]
+kind = "docker"
+image = "bota_server:current"
+container_port = 4456
+public_url = "wss://game.example.org:{port}"
+mounts = ["/etc/radovid/game-cert:/certs:ro"]
+version_probe = ["--wire-fingerprint"]
+args = ["--map", "2", "--match-id", "{match_id}", "--bind", "0.0.0.0", "--ws-port", "4456",
+        "--tls-cert", "/certs/fullchain.pem", "--tls-key", "/certs/privkey.pem",
+        "--heroes", "1", "--start-after-secs", "60", "--abandon-unjoined", "--empty-after-secs", "300"]
 env = { BOTA_SEATS = "{seats}" }

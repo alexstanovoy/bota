@@ -11,6 +11,27 @@ use bota_radovid::proto::*;
 use bota_radovid::{Handoff, Tls, spectate, take_seat};
 use common::*;
 
+#[test]
+fn the_shipped_config_pairs_ranked_and_unranked_mid_and_full_queues() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("radovid.example.toml");
+    let config = radovid::config::Config::load(&path).expect("shipped config");
+    for mode in ["solo_mid", "full"] {
+        let ranked = config
+            .rulesets
+            .iter()
+            .find(|r| r.id == mode)
+            .expect("ranked mode");
+        assert!(ranked.rated, "{mode} supports ranked play");
+        let casual = config
+            .rulesets
+            .iter()
+            .find(|r| r.rating_ruleset.as_deref() == Some(mode))
+            .expect("unranked counterpart");
+        assert!(!casual.rated);
+        assert_eq!(casual.teams, ranked.teams);
+    }
+}
+
 fn attack_move(session: &ClientSession) -> Option<IssuedOrder> {
     let enemy = fountain_pos(session.map(), session.enemy());
     Some(IssuedOrder::hero(Order::Attack {
@@ -251,6 +272,78 @@ fn consuming_one_linked_search_preserves_another_concurrent_search() {
 }
 
 #[test]
+fn two_bots_play_an_unranked_queue_with_served_windows_and_no_rating_change() {
+    let env = start_configured(false, |config| {
+        let mut casual = config.rulesets[0].clone();
+        casual.id = "casual_mid".into();
+        casual.name = "Unranked Mid".into();
+        casual.rated = false;
+        casual.rating_ruleset = Some(RULESET.into());
+        casual.rating_window.initial = Some(700);
+        config.rulesets.push(casual);
+    });
+    let (mut alpha, mut beta) = (env.bot("alpha"), env.bot("beta"));
+    settle(&mut [&mut alpha], |a| a.client.limits(None).is_some());
+    let casual = RulesetId("casual_mid".into());
+    let info = alpha
+        .client
+        .rulesets()
+        .find(|r| r.id == casual)
+        .expect("unranked catalog entry");
+    assert!(!info.rated);
+    assert_eq!(info.rating_ruleset, Some(solo()));
+    assert_eq!(info.rating_window.expect("queue policy").initial, 700);
+    let seq = alpha
+        .client
+        .request_limits(Some(casual.clone()))
+        .expect("query policy");
+    alpha.reply(seq).expect("limits");
+    assert_eq!(
+        alpha
+            .client
+            .limits(Some(&casual))
+            .expect("served mode policy")
+            .unranked_window
+            .initial,
+        700
+    );
+    for account in [&mut alpha, &mut beta] {
+        let seq = account.client.queue(&casual).expect("queue request");
+        account.reply(seq).expect("unranked queue");
+    }
+    let handoffs = found(&mut [&mut alpha, &mut beta]);
+    assert!(handoffs.iter().all(|h| !h.rated && h.ruleset == casual));
+    let first = play_seat(handoffs[0].clone(), HeroId::SHADOW_FIEND, env.tls.clone());
+    let second = play_seat(handoffs[1].clone(), HeroId::PUDGE, env.tls.clone());
+    assert_eq!(
+        first.join().expect("alpha").winner,
+        second.join().expect("beta").winner
+    );
+    settle(&mut [&mut alpha, &mut beta], |a| a.result().is_some());
+    let result = alpha.result().expect("result");
+    assert!(!result.rated);
+    assert!(matches!(result.outcome, Outcome::Winner { .. }));
+    assert!(
+        result
+            .seats
+            .iter()
+            .all(|s| s.before.is_none() && s.after.is_none())
+    );
+    let Reply::Account { account } = alpha
+        .ask(bota_radovid::proto::ClientMsg::Account {
+            account: alpha.client.me().expect("logged in").id,
+        })
+        .expect("profile")
+    else {
+        panic!("account reply");
+    };
+    assert!(
+        account.ratings.is_empty(),
+        "unranked play creates no ladder record"
+    );
+}
+
+#[test]
 fn a_decline_returns_the_other_to_its_place_and_costs_the_decliner_the_cooldown() {
     let env = start();
     let (mut alpha, mut beta, mut gamma) = (env.bot("alpha"), env.bot("beta"), env.bot("gamma"));
@@ -414,7 +507,13 @@ fn the_shipped_matchmaking_rulesets_fit_lobbies_and_bound_practice() {
             .iter()
             .map(|rules| rules.id.as_str())
             .collect::<Vec<_>>(),
-        ["full", "solo_mid", "demo"]
+        [
+            "full",
+            "solo_mid",
+            "demo",
+            "full_unranked",
+            "solo_mid_unranked"
+        ]
     );
     let practice = config
         .rulesets

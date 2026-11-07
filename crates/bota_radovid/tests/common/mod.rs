@@ -129,6 +129,10 @@ pub fn start() -> Env {
 /// The service with `[artifacts] save_replays` as given: on, the game server is told to record
 /// the match into the file the service keeps for its seats.
 pub fn start_with(replays: bool) -> Env {
+    start_configured(replays, |_| {})
+}
+
+pub fn start_configured(replays: bool, adjust: impl FnOnce(&mut Config)) -> Env {
     let binary = server_binary().to_owned();
     let dir = std::env::temp_dir().join(format!(
         "bota-radovid-test-{}-{}",
@@ -183,7 +187,9 @@ artifact_args = ["--replay", "{{artifact}}"]
     );
     let path = dir.join("radovid.toml");
     std::fs::write(&path, config).expect("config");
-    let config = Config::load(&path).expect("a valid configuration");
+    let mut config = Config::load(&path).expect("a valid configuration");
+    adjust(&mut config);
+    config.validate().expect("valid adjusted configuration");
     let identity = radovid::tls::self_signed(vec!["127.0.0.1".to_owned(), "localhost".to_owned()])
         .expect("certificate");
     let runtime = tokio::runtime::Builder::new_multi_thread()

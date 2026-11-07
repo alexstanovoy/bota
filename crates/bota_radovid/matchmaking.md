@@ -80,3 +80,22 @@ The service's [coordination note](../../../radovid/docs/protocol_15.md) describe
 Build the release game server, then run `cargo test --profile test-release -p bota_radovid --features e2e` with
 `BOTA_SERVER_BIN` pointing to it. These tests use a real service, actual launched servers and game clients, including
 ratings, reconnects and replay retrieval. The shipped configuration is loaded by the same integration suite.
+
+### Ranked and unranked modes
+
+The example offers a rated and an unrated queue for both full games and solo mid.
+An unrated ruleset names its rated sibling in `rating_ruleset`; they share one ladder
+for matching, and only the rated result changes it. Lobbies remain unrated with either
+ruleset. Demo has no queue.
+
+Select the desired ruleset ID with the same queue API. `RulesetInfo.rated` identifies
+ranked play; `rating_window` identifies queue availability, and `rating_ruleset` links
+an unrated variant to its mode. The handoff and result retain the selected ID and
+`rated = false` for unranked play, with no result rating deltas.
+
+`[limits.ranked_window]` defaults to `initial = 100`, `widen_per_minute = 100`,
+`maximum = 1000`; unranked defaults are `600`, `300`, `3000`. A per-ruleset
+`[ruleset.rating_window]` overrides individual values. Unranked must be at least as
+loose as its rated sibling, and every player must accept the group's full rating spread.
+The service serves these policies in the catalog and `Limits`; querying either sibling's
+limits returns both resolved mode policies. Rebuild clients with protocol 16 together.
