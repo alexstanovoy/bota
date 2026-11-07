@@ -313,14 +313,8 @@ fn aoe(vm: &mut Vm, args: Args, state: &State, vectors: Vectors) -> Result<usize
             points.push(position);
         }
     }
-    let length = points.len() as u64;
-    vm.charge_fuel(
-        1 + length
-            .saturating_mul(length)
-            .saturating_mul(length + 3)
-            .saturating_mul(8),
-    )?;
-    let (target, count) = super::geometry::best_circle(base, range, radius, &points);
+    let (target, count) = super::geometry::best_circle(base, range, radius, &points,
+        &mut |fuel| vm.charge_fuel(fuel))?;
     let table = vm.new_table()?;
     let key = vm.new_string(b"count")?;
     vm.raw_set(table, key, Value::Number(count as f64))?;

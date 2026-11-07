@@ -149,3 +149,68 @@ fn nearby_enemy_hero_queries_ignore_the_allied_mode_filter() {
     let turn = lua.think(&session).expect("think");
     assert!(turn.failures.is_empty(), "{:?}", turn.failures);
 }
+
+fn creep_crowd_session(count: usize) -> bota_client_core::ClientSession {
+    let (_, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let mut session = sessions.remove(0);
+    let mut view = session.current().expect("view").clone();
+    view.tick += 1;
+    let template = session.own_hero().expect("hero").clone();
+    for index in 0..count {
+        let mut creep = template.clone();
+        creep.id = bota_proto::EntityId { idx: 100_000 + u32::try_from(index).expect("bounded crowd"), generation: 0 };
+        assert!(!view.units.iter().any(|unit| unit.id == creep.id), "fixture ids are distinct");
+        creep.kind = bota_proto::UnitKind::CreepMelee;
+        creep.team = Team::Dire;
+        creep.hero = None;
+        creep.owner = None;
+        creep.abilities.clear();
+        creep.items.clear();
+        creep.town_portal = None;
+        creep.effects.clear();
+        creep.queue.clear();
+        creep.pos.x.raw += i32::try_from(index % 7).expect("column") * 40 * 65536;
+        creep.pos.y.raw += i32::try_from(index / 7).expect("row") * 40 * 65536;
+        view.units.push(creep);
+    }
+    view.units.sort_by_key(|unit| unit.id);
+    let tick = view.tick;
+    session.ingest(bota_proto::ServerMsg::Snapshot { view }, &mut ()).expect("visible crowd");
+    session.ingest(bota_proto::ServerMsg::Events { tick, events: Vec::new() }, &mut ()).expect("events");
+    session
+}
+
+fn crowd_query(limits: Limits) -> LuaTeam {
+    let mut lua = LuaTeam::new(Team::Radiant, &[BotSeat { slot: SlotId(0), hero: HeroId::SHADOW_FIEND }],
+        limits, Keys { hash: [17,19], random:23 }).expect("team");
+    lua.add_script(SlotId(0), ScriptKind::Takeover, "crowd_area", br#"
+        function Think()
+            local bot=GetBot()
+            bot:Action_MoveToLocation(bot:GetLocation())
+            local ok,area=pcall(function() return bot:FindAoELocation(true,false,bot:GetLocation(),600,250,0,0) end)
+            assert(ok, 'ordinary geometry does not fail')
+            assert(area.count==40, 'the complete visible group is found')
+            bot:Action_MoveToLocation(area.targetloc)
+        end
+    "#).expect("script");
+    lua
+}
+
+#[test]
+fn forty_creeps_allow_an_aoe_query_and_following_orders_with_native_fuel() {
+    let session = creep_crowd_session(40);
+    let mut lua = crowd_query(Limits { fuel_per_call: 125_000, fuel_per_tick: 500_000, ..Limits::DEFAULT });
+    let turn = lua.think(&session).expect("think");
+    assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+    assert_eq!(turn.bots[0].orders.len(), 2, "the query leaves fuel for the rest of the turn");
+}
+
+#[test]
+fn an_aoe_query_still_exhausts_a_small_budget_and_discards_the_whole_outbox() {
+    let session = creep_crowd_session(160);
+    let mut lua = crowd_query(Limits { fuel_per_call: 2_000, fuel_per_tick: 10_000, ..Limits::DEFAULT });
+    let turn = lua.think(&session).expect("think");
+    assert_eq!(turn.failures.len(), 1);
+    assert!(matches!(turn.failures[0].error, luagee::Error::Limit(luagee::Limit::FuelPerCall)), "{:?}", turn.failures);
+    assert!(turn.bots[0].orders.is_empty(), "fuel exhaustion remains uncatchable by pcall");
+}

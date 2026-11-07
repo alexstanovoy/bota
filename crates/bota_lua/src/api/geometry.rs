@@ -6,6 +6,7 @@
 )]
 
 use bota_proto::{Fixed, Vec2};
+use luagee::LuaError;
 
 pub(super) fn project(
     position: Vec2,
@@ -70,52 +71,56 @@ fn intersections(a: Point, ar: f64, b: Point, br: f64) -> Option<[Point; 2]> {
     ])
 }
 
-pub(super) fn best_circle(base: Vec2, range: f64, radius: f64, units: &[Vec2]) -> (Vec2, usize) {
-    let origin = point(base);
-    let mut best = (base, 0);
-    let mut consider = |candidate: Point| {
-        let Some(candidate) = fixed(candidate) else {
-            return;
-        };
+struct CircleSearch<'a> {
+    origin: Point,
+    range: f64,
+    radius: f64,
+    units: &'a [Vec2],
+    best: (Vec2, usize),
+}
+
+impl CircleSearch<'_> {
+    fn consider(&mut self, candidate: Point,
+        charge: &mut impl FnMut(u64) -> Result<(), LuaError>) -> Result<(), LuaError> {
+        charge(1)?;
+        let Some(candidate) = fixed(candidate) else { return Ok(()); };
         let candidate_point = point(candidate);
-        if squared(origin, candidate_point) > range * range {
-            return;
+        if squared(self.origin, candidate_point) > self.range * self.range { return Ok(()); }
+        // Only reachable candidates scan targets, and that scan is paid before it runs.
+        charge(self.units.len() as u64)?;
+        let count = self.units.iter().filter(|&&unit| squared(point(unit), candidate_point) <= self.radius * self.radius).count();
+        if count > self.best.1 || (count == self.best.1 && (candidate.x.raw, candidate.y.raw) < (self.best.0.x.raw, self.best.0.y.raw)) {
+            self.best = (candidate, count);
         }
-        let count = units
-            .iter()
-            .filter(|&&unit| squared(point(unit), candidate_point) <= radius * radius)
-            .count();
-        if count > best.1
-            || (count == best.1
-                && (candidate.x.raw, candidate.y.raw) < (best.0.x.raw, best.0.y.raw))
-        {
-            best = (candidate, count);
-        }
-    };
-    consider(origin);
+        Ok(())
+    }
+}
+
+pub(super) fn best_circle(base: Vec2, range: f64, radius: f64, units: &[Vec2],
+    charge: &mut impl FnMut(u64) -> Result<(), LuaError>) -> Result<(Vec2, usize), LuaError> {
+    let origin = point(base);
+    let mut search = CircleSearch { origin, range, radius, units, best: (base, 0) };
+    search.consider(origin, charge)?;
     for (index, &unit) in units.iter().enumerate() {
+        // Fixed-size intersection arithmetic is independent of the following containment scans.
+        charge(8)?;
         let center = point(unit);
-        consider(center);
+        search.consider(center, charge)?;
         let distance = squared(origin, center).sqrt();
         if distance > 0.0 {
             let ratio = (range / distance).min(1.0);
-            consider([
-                origin[0] + (center[0] - origin[0]) * ratio,
-                origin[1] + (center[1] - origin[1]) * ratio,
-            ]);
+            search.consider([origin[0] + (center[0] - origin[0]) * ratio,
+                origin[1] + (center[1] - origin[1]) * ratio], charge)?;
         }
         if let Some(points) = intersections(origin, range, center, radius) {
-            for point in points {
-                consider(point);
-            }
+            for point in points { search.consider(point, charge)?; }
         }
         for &other in &units[..index] {
+            charge(8)?;
             if let Some(points) = intersections(center, radius, point(other), radius) {
-                for point in points {
-                    consider(point);
-                }
+                for point in points { search.consider(point, charge)?; }
             }
         }
     }
-    best
+    Ok(search.best)
 }
