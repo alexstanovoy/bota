@@ -16,6 +16,7 @@ mod combining;
 mod core_rules;
 mod courier;
 mod creep_ai;
+mod dead_purchases;
 mod dead_shop;
 mod delay;
 mod determinism;

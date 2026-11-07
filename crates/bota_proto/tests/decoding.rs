@@ -82,6 +82,8 @@ fn kit_of_empty_slots(claimed: usize) -> Vec<u8> {
     payload.extend(varint(claimed));
     payload.resize(payload.len() + claimed, 0); // each slot None
     payload.push(0); // no town portal
+    payload.push(0); // no eligible sale slots
+    payload.push(0); // normal respawn
     payload
 }
 

@@ -12,6 +12,19 @@ fn hero_primary(hero: bota_proto::HeroId) -> Option<bota_proto::Attribute> {
 }
 
 impl App {
+    /// The hero may move items between its kit and stash at either base,
+    /// or while awaiting normal respawn. A dead courier gains no access.
+    pub fn stash_accessible(&self) -> bool {
+        self.my_standing_hero()
+            .is_some_and(|hero| self.unit_at_base_shop(hero))
+            || self
+                .my_slot
+                .and_then(|slot| self.player(slot))
+                .is_some_and(|player| {
+                    player.respawn_left > 0
+                        && player.kit.as_ref().is_some_and(|kit| !kit.reincarnating)
+                })
+    }
     /// Physical access by one's hero or personal courier to either neutral secret shop.
     pub fn at_secret_shop(&self) -> bool {
         self.shop_context().is_some_and(|context| {

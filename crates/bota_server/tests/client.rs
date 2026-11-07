@@ -167,11 +167,18 @@ fn the_attack_move_bot_plays_a_lockstep_match_to_its_end() {
     link.send(&ClientMsg::Compress(Codec::Deflate))
         .expect("the request goes out");
     // While the hero lies dead it still shops, as a Dota player does: one
-    // Tango a death, into the stash.
-    let (mut shopped, mut stashed) = (false, false);
+    // Tango a death, into its persistent inventory.
+    let (mut shopped, mut carried, mut stashed) = (false, false, false);
     let outcome = play(&mut link, seated, &mut (), |session| {
         let enemy = fountain_pos(session.map(), session.enemy());
-        let stash = session.own_player().and_then(|me| me.stash.as_ref());
+        let me = session.own_player();
+        carried |= me.and_then(|me| me.kit.as_ref()).is_some_and(|kit| {
+            kit.items
+                .iter()
+                .flatten()
+                .any(|item| item.id == ItemId::TANGO)
+        });
+        let stash = me.and_then(|me| me.stash.as_ref());
         stashed |=
             stash.is_some_and(|stash| stash.iter().flatten().any(|item| item.id == ItemId::TANGO));
         let dead = session.own_hero().is_none();
@@ -190,7 +197,11 @@ fn the_attack_move_bot_plays_a_lockstep_match_to_its_end() {
         .collect::<Vec<_>>()
     })
     .expect("the match is played to its end");
-    assert!(stashed, "a Tango bought while dead waits in the stash");
+    assert!(carried, "a Tango bought while dead enters the carried kit");
+    assert!(
+        !stashed,
+        "the available inventory takes priority over the stash"
+    );
     assert_eq!((outcome.slot, outcome.team), (SlotId(0), Team::Radiant));
     assert!(outcome.ticks > 0);
     assert_eq!(

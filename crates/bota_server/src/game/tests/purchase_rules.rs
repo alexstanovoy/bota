@@ -267,7 +267,7 @@ fn announced_home_shop_geometry_matches_server_execution_for_every_map_and_carri
 }
 
 #[test]
-fn a_dead_hero_at_home_still_buys_base_items_into_its_stash_through_orders() {
+fn a_dead_hero_at_home_buys_base_items_into_its_kit_through_orders() {
     let (mut local, mut session) = arranged(&STATES[0]);
     let world = local.world_mut();
     let hero = world.seats[0].unit.unwrap();
@@ -290,12 +290,23 @@ fn a_dead_hero_at_home_still_buys_base_items_into_its_stash_through_orders() {
         session
             .own_player()
             .unwrap()
+            .kit
+            .as_ref()
+            .unwrap()
+            .items
+            .iter()
+            .flatten()
+            .any(|item| item.id == ItemId::IRON_BRANCH),
+        "normal death purchases enter the persistent inventory"
+    );
+    assert!(
+        session
+            .own_player()
+            .unwrap()
             .stash
             .as_ref()
             .unwrap()
             .iter()
-            .flatten()
-            .any(|item| item.id == ItemId::IRON_BRANCH),
-        "death does not suppress purchases into the stash"
+            .all(Option::is_none)
     );
 }

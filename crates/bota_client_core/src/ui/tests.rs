@@ -2229,10 +2229,15 @@ fn a_dead_heros_bag_slots_read_its_kit() {
         abilities: Vec::new(),
         items: vec![Some(boots), None, None, None, None, None, None, None, None],
         town_portal: None,
+        sellable_slots: 1,
+        reincarnating: false,
     });
     app.handle(snapshot_of(1, Vec::new(), vec![dead]));
     assert_eq!(app.item_in(0), Some(boots), "its kit, while it lies dead");
     assert_eq!(app.item_in(1), None);
+    assert_eq!(app.dead_sale_allowed(0), Some(true));
+    assert_eq!(app.dead_sale_allowed(1), Some(false));
+    assert_eq!(app.dead_sale_allowed(u8::MAX), Some(false));
 }
 
 /// A link that is closed from its first poll on, and hands over the end of the match only at its
@@ -2282,7 +2287,7 @@ fn a_match_whose_end_is_still_on_the_way_when_the_link_closes_is_not_lost() {
 }
 
 #[test]
-fn dead_carriers_grant_neither_secret_shop_access_nor_purchase_space() {
+fn a_respawning_heros_kit_accepts_base_items_but_no_dead_carrier_grants_secret_access() {
     let mut hero = a_unit();
     hero.kind = UnitKind::Hero;
     hero.owner = Some(SlotId(0));
@@ -2290,8 +2295,19 @@ fn dead_carriers_grant_neither_secret_shop_access_nor_purchase_space() {
     hero.hp = 0;
     let mut player = a_player();
     player.unit = Some(hero.id);
-    player.stash = Some(vec![None; bota_core::rules::STASH_SLOTS]);
+    player.stash = Some(vec![
+        Some(an_item(None, 0, 0, None));
+        bota_core::rules::STASH_SLOTS
+    ]);
     for courier in [false, true] {
+        player.respawn_left = if courier { 0 } else { 90 };
+        player.kit = (!courier).then(|| bota_proto::Kit {
+            abilities: Vec::new(),
+            items: vec![None; usize::from(crate::BAG_SLOTS)],
+            town_portal: None,
+            sellable_slots: 0,
+            reincarnating: false,
+        });
         let mut body = hero.clone();
         if courier {
             body.kind = UnitKind::Courier;
@@ -2322,6 +2338,16 @@ fn dead_carriers_grant_neither_secret_shop_access_nor_purchase_space() {
             app.statics().expect("match statics"),
             ItemId::DEMON_EDGE
         ));
+        assert_eq!(
+            crate::shop::purchase_fits(
+                &view,
+                &player,
+                app.statics().expect("match statics"),
+                ItemId::BOOTS
+            ),
+            !courier,
+            "only the normal-respawn kit supplies inventory space with a full stash"
+        );
     }
 }
 
@@ -2670,6 +2696,10 @@ fn shop_context_home_indicator_includes_a_courier_without_the_hero() {
     let context = app.shop_context().unwrap();
     assert!(!context.hero.unwrap().shops.base);
     assert!(context.courier.unwrap().shops.base);
+    assert!(
+        !app.stash_accessible(),
+        "a courier at base does not let the remote living hero retrieve the stash"
+    );
 }
 
 #[test]

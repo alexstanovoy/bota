@@ -374,6 +374,8 @@ field WorldView 12 talents: Vec<TalentView>
 field UnitView 32 hp_regen: Fixed
 field UnitView 33 mana_regen: Fixed
 field Kit 2 town_portal: Option<ItemView>
+field Kit 3 sellable_slots: u32
+field Kit 4 reincarnating: bool
 variant RejectReason 23 Unsellable
 field TeleportView 0 slot: SlotId
 field TeleportView 1 team: Team

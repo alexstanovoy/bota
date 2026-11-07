@@ -246,9 +246,11 @@
 //! carrying its `seq`; a queued order refused when it comes up is dropped and
 //! the next one taken up. A seat whose hero is dead is refused every order for
 //! the hero with [`HeroDead`](crate::RejectReason::HeroDead), as in Dota but
-//! for its items: it may buy (into the stash; what the hero carries counts
-//! towards a recipe), swap what the hero carries between its slots, and sell
-//! what it bought since the hero fell (from the stash), and quick-buy is
+//! for its items: it may buy (into its persistent inventory, then stash;
+//! secret goods still need physical shop access), swap inventory and stash
+//! slots, and sell what it bought since the hero fell (the dedicated scroll
+//! slot still requires shop range). The private kit projects eligible sale
+//! slots without disclosing purchase history. Quick-buy is
 //! buying. Its courier still takes orders
 //! and carries the stash as ever. What a body or a courier carried when it
 //! fell sells back at the full price no more.

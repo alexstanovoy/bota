@@ -837,10 +837,9 @@ impl World {
         Ok(())
     }
 
-    /// What a seat whose hero lies dead may still do, as in Dota (checked in
-    /// the Dota 2 client, 7.41, 2026-10-24): buy (into the stash), swap what
-    /// the hero carried between its slots, and sell back what it bought since
-    /// the hero fell, which waits in the stash ("Items cannot be sold while
+    /// What a seat whose hero lies dead may still do: buy into its inventory
+    /// and overflow stash, swap its carried slots, and sell back what it bought
+    /// since the hero fell ("Items cannot be sold while
     /// dead, unless they were purchased during that death", against buyback
     /// abuse). Anything else waits for the hero.
     fn check_while_down(&self, seat: &Seat, order: &Order) -> Result<(), RejectReason> {
@@ -866,27 +865,20 @@ impl World {
         }
     }
 
-    /// The stash slot a seat whose hero lies dead may sell from: one holding
+    /// An inventory or stash slot a seat whose hero lies dead may sell from: one holding
     /// a stack of its own bought since the hero fell (Dota: "Items cannot be
     /// sold while dead, unless they were purchased during that death").
     pub(crate) fn sale_while_down(&self, seat: &Seat, at: usize) -> Result<usize, RejectReason> {
         let fell = seat.fell;
-        if !in_stash(at) {
-            return Err(RejectReason::HeroDead);
-        }
-        let stash_slot = at - BAG_SLOTS;
-        let held = seat.stash.slots.get(stash_slot).copied().flatten();
-        let held = held.ok_or(RejectReason::EmptySlot)?;
-        if held.owner != seat.slot {
-            return Err(RejectReason::NotYourItem);
-        }
-        if held.free_charges > 0 {
-            return Err(RejectReason::Unsellable);
-        }
+        let hero = seat.unit.ok_or(RejectReason::HeroDead)?;
+        self.check_sale(hero, seat, at)?;
+        let held = self
+            .stack_at(hero, seat, at)
+            .ok_or(RejectReason::EmptySlot)?;
         if held.bought_tick < fell {
             return Err(RejectReason::HeroDead);
         }
-        Ok(stash_slot)
+        Ok(at)
     }
 
     /// Whether a unit may lay what a bag slot holds on open ground, underfoot

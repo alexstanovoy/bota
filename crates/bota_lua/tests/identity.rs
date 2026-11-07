@@ -65,6 +65,8 @@ fn cached_ability_and_item_handles_read_the_owned_kit_after_death_and_track_expi
         abilities: hero.abilities,
         items: hero.items,
         town_portal: hero.town_portal,
+        sellable_slots: 0,
+        reincarnating: false,
     });
     let tick = view.tick;
     sessions[0]
@@ -187,6 +189,8 @@ fn respawn_time_converts_six_hundred_protocol_ticks_to_twenty_seconds() {
         abilities: hero.abilities,
         items: hero.items,
         town_portal: hero.town_portal,
+        sellable_slots: 0,
+        reincarnating: false,
     });
     let tick = view.tick;
     sessions[0]
@@ -232,6 +236,8 @@ fn bot_state_survives_the_dead_heros_unit_track_expiring() {
         abilities: hero.abilities,
         items: hero.items,
         town_portal: hero.town_portal,
+        sellable_slots: 0,
+        reincarnating: false,
     });
     let tick = view.tick;
     sessions[0]

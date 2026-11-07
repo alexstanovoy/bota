@@ -1,5 +1,5 @@
 //! The shop while a seat's hero lies dead, as in Dota: buying goes to the
-//! stash, with what the body carried counting towards a build; only what
+//! inventory, with what the body carried counting towards a build; only what
 //! was bought since the fall sells back; and what the body carried sells at
 //! the full price no more.
 
@@ -34,7 +34,7 @@ fn stash_items(world: &World) -> Vec<ItemId> {
 }
 
 #[test]
-fn a_seat_whose_hero_lies_dead_buys_into_the_stash_with_what_the_body_carried_counting() {
+fn a_dead_heros_purchases_enter_its_inventory_with_carried_parts_counting() {
     let mut world = fallen_with_boots();
     let walk = Order::Move {
         target: Target::Pos(bota_proto::Vec2::from_ints(5000, 5000)),
@@ -83,7 +83,15 @@ fn a_seat_whose_hero_lies_dead_buys_into_the_stash_with_what_the_body_carried_co
             item: ItemId::TANGO,
         },
     );
-    assert!(stash_items(&world).contains(&ItemId::TANGO));
+    assert!(
+        world
+            .inventory
+            .get(hero)
+            .expect("dead inventory")
+            .held()
+            .any(|stack| stack.id == ItemId::TANGO)
+    );
+    assert!(!stash_items(&world).contains(&ItemId::TANGO));
 }
 
 #[test]
@@ -107,7 +115,7 @@ fn while_the_hero_lies_dead_only_what_was_bought_since_it_fell_sells_back() {
     assert_eq!(
         world.validate_order(SlotId(0), None, &sell(0)),
         Err(RejectReason::HeroDead),
-        "the body's bag waits for the body"
+        "an inventory item held before the fall cannot be sold for buyback"
     );
     let before = world.seats[0].gold;
     seat_order(
@@ -118,18 +126,17 @@ fn while_the_hero_lies_dead_only_what_was_bought_since_it_fell_sells_back() {
     );
     let paid = before - world.seats[0].gold;
     assert!(paid > 0);
-    let at = world.seats[0]
-        .stash
+    let at = world
+        .inventory
+        .get(hero)
+        .expect("dead inventory")
         .slots
         .iter()
         .position(|slot| slot.is_some_and(|stack| stack.id == ItemId::TANGO))
-        .expect("bought into the stash");
+        .expect("bought into the dead hero's inventory");
     let gold = world.seats[0].gold;
-    assert_eq!(
-        world.validate_order(SlotId(0), None, &sell(BAG_SLOTS + at)),
-        Ok(())
-    );
-    seat_order(&mut world, sell(BAG_SLOTS + at));
+    assert_eq!(world.validate_order(SlotId(0), None, &sell(at)), Ok(()));
+    seat_order(&mut world, sell(at));
     assert_eq!(
         world.seats[0].gold - gold,
         paid,
@@ -157,12 +164,10 @@ fn what_a_body_carried_when_it_fell_sells_back_at_the_full_price_no_more() {
     assert_eq!(world.seats[0].fell, world.tick);
 }
 
-/// Checked in the Dota 2 client (7.41, 2026-10-24): a dead hero may swap its
-/// items between its slots, by its seat's order or by one naming the hero;
-/// the stash, at a shop it does not stand in, stays out of reach, and what it
-/// carries is where it was put when it stands again.
+/// Normal respawn keeps inventory and stash accessible (Valve's 6.81 Grab All
+/// change); moving by seat or by hero handle preserves the layout on respawn.
 #[test]
-fn a_dead_hero_swaps_what_it_carries_between_its_slots_and_reaches_no_stash() {
+fn a_dead_hero_swaps_inventory_and_stash_and_keeps_its_layout_on_respawn() {
     let mut world = fallen_with_boots();
     let to_backpack = Order::Swap {
         from: ItemSlot(0),
@@ -187,12 +192,15 @@ fn a_dead_hero_swaps_what_it_carries_between_its_slots_and_reaches_no_stash() {
         from: ItemSlot(6),
         to: ItemSlot(BAG_SLOTS as u8),
     };
+    assert_eq!(world.validate_order(SlotId(0), None, &to_stash), Ok(()));
+    seat_order(&mut world, to_stash);
+    assert_eq!(carried(&world, 6), None);
     assert_eq!(
-        world.validate_order(SlotId(0), None, &to_stash),
-        Err(RejectReason::NotAtShop)
+        world.seats[0].stash.slots[0].map(|stack| stack.id),
+        Some(ItemId::BOOTS)
     );
     let back = Order::Swap {
-        from: ItemSlot(6),
+        from: ItemSlot(BAG_SLOTS as u8),
         to: ItemSlot(2),
     };
     let named = world.seats[0].unit.map(crate::game::wire_id);
@@ -205,6 +213,7 @@ fn a_dead_hero_swaps_what_it_carries_between_its_slots_and_reaches_no_stash() {
         queue: false,
     }]);
     assert_eq!(carried(&world, 2), Some(ItemId::BOOTS));
+    assert!(world.seats[0].stash.slots[0].is_none());
     let hero = back_on_its_feet(&mut world);
     assert_eq!(
         slot_of(&world, hero, 2).map(|stack| stack.id),

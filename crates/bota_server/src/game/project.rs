@@ -10,6 +10,8 @@ use bota_proto::{
 use crate::game::{ActionPhase, ActionState, Entity, Seat, Stats, World, item_view, item_views};
 use crate::profile::Phase;
 
+const _: () = assert!(rules::TOWN_PORTAL_SLOT < u32::BITS as usize);
+
 /// The handle as it travels on the wire.
 pub fn wire_id(entity: Entity) -> bota_proto::EntityId {
     bota_proto::EntityId {
@@ -191,7 +193,7 @@ impl World {
             kit: seat
                 .unit
                 .filter(|_| own && seat.dead())
-                .map(|hero| self.kit_of(hero, mana_rate, &seat.item_clocks)),
+                .map(|hero| self.kit_of(hero, seat, mana_rate, &seat.item_clocks)),
             kills: seat.kills,
             deaths: seat.deaths,
             assists: seat.assists,
@@ -235,6 +237,7 @@ impl World {
     fn kit_of(
         &self,
         hero: Entity,
+        seat: &Seat,
         mana_rate: i32,
         clocks: &[(bota_proto::ItemId, u32)],
     ) -> bota_proto::Kit {
@@ -250,6 +253,11 @@ impl World {
             town_portal: bag
                 .and_then(|bag| bag.town_portal.flatten())
                 .map(|stack| item_view(&stack, mana_rate, clocks, self.tick)),
+            sellable_slots: (0..crate::game::BAG_SLOTS + seat.stash.slots.len())
+                .chain(core::iter::once(rules::TOWN_PORTAL_SLOT))
+                .filter(|at| self.sale_while_down(seat, *at).is_ok())
+                .fold(0u32, |mask, at| mask | (1u32 << at)),
+            reincarnating: seat.reincarnating_at.is_some(),
         }
     }
 

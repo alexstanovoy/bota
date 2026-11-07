@@ -338,9 +338,9 @@ pub enum Order {
         target: Target,
     },
     /// Buy an item, with any of its parts not already held. It goes into the
-    /// hero's bag while at the home shop and there is room, into the stash
-    /// otherwise. Needs no body: a seat whose hero lies dead buys into the
-    /// stash, what the hero carried counting as held, as in Dota.
+    /// hero's bag at either base shop or during normal respawn when there
+    /// is room, into the stash otherwise. Secret parts need physical shop
+    /// access. What the hero carries counts towards a recipe.
     Buy {
         /// What to buy.
         item: ItemId,
@@ -350,8 +350,8 @@ pub enum Order {
     /// The stash sells from anywhere. A bag away from the shop marks the stack
     /// for sale instead, and a second order on the same slot unmarks it; a
     /// marked stack is sold once it reaches the shop. While the hero lies
-    /// dead only what was bought since it fell sells, from the stash, as in
-    /// Dota; anything else is refused with
+    /// dead only what was bought since it fell sells; the dedicated scroll
+    /// slot still requires shop range. Anything else is refused with
     /// [`RejectReason::HeroDead`](crate::RejectReason::HeroDead).
     Sell {
         /// Which slot to empty.
@@ -359,7 +359,7 @@ pub enum Order {
     },
     /// Move an item between two slots, swapping whatever is in the way.
     ///
-    /// Stash slots take part only while standing in the home shop area.
+    /// Stash slots take part at either base shop or during normal respawn.
     Swap {
         /// The slot being moved from.
         from: ItemSlot,

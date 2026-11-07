@@ -323,3 +323,141 @@ fn replace_view(session: &mut bota_client_core::ClientSession, view: bota_proto:
         )
         .expect("events");
 }
+
+fn down_shopper(
+    reincarnating: bool,
+) -> (
+    bota_server::local::LocalMatch,
+    Vec<bota_client_core::ClientSession>,
+) {
+    use bota_proto::{Fixed, ItemId, Vec2};
+    let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let world = local.world_mut();
+    let hero = world.seats[0].unit.expect("hero");
+    world.creeps_halted = true;
+    world.seats[0].gold = 10_000;
+    world.seats[0].respawn_left = 90;
+    world.seats[0].reincarnating_at = reincarnating.then_some(Vec2::from_ints(9216, 9216));
+    assert!(world.transform.remove(hero).is_some());
+    world.health.get_mut(hero).expect("health").hp = Fixed::ZERO;
+    let blocker =
+        bota_server::game::ItemStack::bought(ItemId::QUELLING_BLADE, SlotId(0), world.tick)
+            .expect("owned item");
+    let bag = world.inventory.get_mut(hero).expect("inventory");
+    bag.slots.fill(Some(blocker));
+    let last = bag.slots.len() - 1;
+    bag.slots[last] = None;
+    world.seats[0].stash.slots.fill(Some(blocker));
+    let streams = local.step(&[&[], &[]]).expect("publish arranged respawn");
+    for (session, stream) in sessions.iter_mut().zip(streams) {
+        support::fold(session, stream);
+    }
+    assert!(sessions[0].own_hero().is_none());
+    let player = sessions[0].own_player().expect("player");
+    assert!(player.respawn_left > 0);
+    let kit = player.kit.as_ref().expect("private saved kit");
+    assert_eq!(kit.reincarnating, reincarnating);
+    assert!(kit.items.last().expect("last carried slot").is_none());
+    assert!(
+        player
+            .stash
+            .as_ref()
+            .expect("stash")
+            .iter()
+            .all(Option::is_some)
+    );
+    (local, sessions)
+}
+
+#[test]
+fn normal_respawn_purchases_reserve_the_saved_kit_before_reporting_success() {
+    use bota_proto::{EventKind, ItemId};
+    let (mut local, mut sessions) = down_shopper(false);
+    let gold = local.world().seats[0].gold;
+    let price = bota_core::item_def(ItemId::BOOTS).expect("boots").cost;
+    let source = format!(
+        "function Think() local b=GetBot() assert(b:ActionImmediate_PurchaseItem('item_boots')==PURCHASE_ITEM_SUCCESS,'normal respawn receives purchases in its saved kit') assert(b:GetGold()=={}) assert(b:ActionImmediate_PurchaseItem('item_boots')==PURCHASE_ITEM_OUT_OF_STOCK,'the saved kit slot is reserved') assert(b:GetGold()=={}) end",
+        gold - price,
+        gold - price
+    );
+    let turn = run_script(&sessions[0], source.as_bytes());
+    assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+    assert_eq!(turn.bots[0].orders.len(), 1);
+    assert!(matches!(
+        turn.bots[0].orders[0].order,
+        Order::Buy {
+            item: ItemId::BOOTS
+        }
+    ));
+    let orders: Vec<_> = turn.bots[0]
+        .orders
+        .iter()
+        .map(|&issued| sessions[0].issue(issued).expect("dead hero purchase order"))
+        .collect();
+    let streams = local.step(&[&orders, &[]]).expect("real server purchase");
+    assert!(
+        !streams[0]
+            .iter()
+            .any(|message| matches!(message, ServerMsg::OrderRejected { .. }))
+    );
+    assert!(streams[0].iter().any(|message| matches!(message,
+        ServerMsg::Events { events, .. } if events.iter().any(|event| matches!(event,
+            EventKind::ItemBought { item: ItemId::BOOTS, .. })))));
+    for (session, stream) in sessions.iter_mut().zip(streams) {
+        support::fold(session, stream);
+    }
+    let player = sessions[0].own_player().expect("player");
+    assert_eq!(player.gold, Some(gold - price));
+    assert_eq!(
+        player
+            .kit
+            .as_ref()
+            .expect("still respawning")
+            .items
+            .last()
+            .and_then(Option::as_ref)
+            .map(|item| item.id),
+        Some(ItemId::BOOTS)
+    );
+    assert!(
+        player
+            .stash
+            .as_ref()
+            .expect("stash")
+            .iter()
+            .flatten()
+            .all(|item| item.id == ItemId::QUELLING_BLADE)
+    );
+}
+
+#[test]
+fn reincarnation_does_not_grant_the_saved_kit_purchase_space() {
+    let (_, sessions) = down_shopper(true);
+    let gold = sessions[0]
+        .own_player()
+        .expect("player")
+        .gold
+        .expect("gold");
+    let source = format!(
+        "function Think() local b=GetBot() assert(b:ActionImmediate_PurchaseItem('item_boots')==PURCHASE_ITEM_OUT_OF_STOCK,'reincarnation still needs room in the stash') assert(b:GetGold()=={gold}) end"
+    );
+    let turn = run_script(&sessions[0], source.as_bytes());
+    assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+    assert!(turn.bots[0].orders.is_empty());
+}
+
+#[test]
+fn respawning_without_a_shop_does_not_allow_secret_shop_purchases() {
+    let (_, sessions) = down_shopper(false);
+    let gold = sessions[0]
+        .own_player()
+        .expect("player")
+        .gold
+        .expect("gold");
+    let source = format!(
+        "function Think() local b=GetBot() assert(b:ActionImmediate_PurchaseItem('item_demon_edge')==PURCHASE_ITEM_NOT_AT_SECRET_SHOP,'the saved kit is not a physical carrier') assert(b:GetGold()=={gold}) end"
+    );
+    let turn = run_script(&sessions[0], source.as_bytes());
+    assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+    assert!(turn.bots[0].orders.is_empty());
+}

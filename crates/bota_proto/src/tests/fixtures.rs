@@ -255,6 +255,8 @@ pub fn player_view(slot: u8) -> PlayerView {
             abilities: vec![ability_view(0)],
             items: vec![Some(item_view(55)), None],
             town_portal: Some(item_view(8)),
+            sellable_slots: 1,
+            reincarnating: false,
         }),
         kills: 3,
         deaths: 1,

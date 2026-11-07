@@ -126,12 +126,15 @@ pub struct PurchaseCarrier<'a, P> {
     pub shops: ShopAccess,
 }
 
-/// The buyer's storage and physical carriers; the stash is always at the base shop.
+/// The buyer's persistent hero inventory, physical carriers and base-shop stash.
 pub struct PurchaseContext<'a, P> {
     pub hero: Option<PurchaseCarrier<'a, P>>,
     pub courier: Option<PurchaseCarrier<'a, P>>,
     pub stash: Shelf<'a, P>,
     pub universal_shop: bool,
+    /// The hero is awaiting normal respawn, rather than reincarnating.
+    /// Base purchases may enter its persistent inventory without a physical shop.
+    pub respawning: bool,
 }
 
 impl HeldItem for bota_proto::ItemView {
@@ -230,7 +233,7 @@ pub fn place_shop_purchase<P: HeldItem>(
             context
                 .hero
                 .as_ref()
-                .filter(|carrier| carrier.shops.base)
+                .filter(|carrier| carrier.shops.base || context.respawning)
                 .and_then(|carrier| purchase_slot(buyer, item, &carrier.bag, Berth::Bag, &berths))
                 .or_else(|| purchase_slot(buyer, item, &context.stash, Berth::Stash, &berths))
         }

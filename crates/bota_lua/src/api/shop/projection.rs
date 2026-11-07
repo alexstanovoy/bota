@@ -118,6 +118,7 @@ struct Inventory {
     slot: SlotId,
     gold: i32,
     primary: Option<Attribute>,
+    respawning: bool,
     bag: Bag,
     stash: Bag,
     courier: Bag,
@@ -149,6 +150,8 @@ impl Inventory {
             slot: player.slot,
             gold: player.gold?,
             primary: bota_core::hero_def(player.hero).and_then(|hero| hero.unit.primary),
+            respawning: player.respawn_left > 0
+                && player.kit.as_ref().is_some_and(|kit| !kit.reincarnating),
             bag: Bag::observed(bag, portal),
             stash: Bag::observed(player.stash.as_deref()?, None),
             courier: Bag::observed(
@@ -166,16 +169,20 @@ impl Inventory {
 
     fn context(&self, universal_shop: bool) -> PurchaseContext<'_, StoredItem> {
         PurchaseContext {
-            hero: self.hero_shop.map(|shops| PurchaseCarrier {
-                bag: self.bag.shelf(true, true),
-                shops,
-            }),
+            hero: self
+                .hero_shop
+                .or(self.respawning.then_some(ShopAccess::default()))
+                .map(|shops| PurchaseCarrier {
+                    bag: self.bag.shelf(true, true),
+                    shops,
+                }),
             courier: self.courier_shop.map(|shops| PurchaseCarrier {
                 bag: self.courier.shelf(false, true),
                 shops,
             }),
             stash: self.stash.shelf(false, false),
             universal_shop,
+            respawning: self.respawning,
         }
     }
 

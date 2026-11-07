@@ -65,7 +65,8 @@ pub fn price_for(item: ItemId, held: &[ItemId], primary: Option<Attribute>) -> i
 }
 
 /// Whether the server finds room for what buying `item` still takes, whatever the seat can pay:
-/// base-shop parts go to the hero at either base or the stash; secret-shop parts require a physical
+/// Base purchases reach the hero at either base or during normal respawn, then overflow
+/// into the stash; secret-shop parts require a physical
 /// carrier there. Mergeable charges fill a stack first. A seat whose stash is not told
 /// (the other side's) has none to ask about.
 pub fn purchase_fits(
@@ -82,7 +83,7 @@ pub fn purchase_fits(
     place_shop_purchase(p.slot, &parts, &context).is_ok()
 }
 
-/// The buyer's living carriers and storage, with access to the shops this match announced.
+/// The buyer's receiving inventory, living courier and storage, with the announced shop access.
 /// An untold stash has no known space, but physical access remains available to indicators.
 pub fn purchase_context<'a>(
     view: &'a WorldView,
@@ -91,7 +92,18 @@ pub fn purchase_context<'a>(
 ) -> PurchaseContext<'a, bota_proto::ItemView> {
     let [hero, courier] = carriers(view, player);
     PurchaseContext {
-        hero: hero.and_then(|unit| purchase_carrier(unit, statics)),
+        hero: if player.respawn_left > 0 {
+            player.kit.as_ref().map(|kit| PurchaseCarrier {
+                bag: Shelf {
+                    slots: &kit.items,
+                    town_portal: Some(&kit.town_portal),
+                    combines: true,
+                },
+                shops: Default::default(),
+            })
+        } else {
+            hero.and_then(|unit| purchase_carrier(unit, statics))
+        },
         courier: courier.and_then(|unit| purchase_carrier(unit, statics)),
         stash: Shelf {
             slots: player.stash.as_deref().unwrap_or_default(),
@@ -99,6 +111,8 @@ pub fn purchase_context<'a>(
             combines: false,
         },
         universal_shop: statics.metadata().universal_shop,
+        respawning: player.respawn_left > 0
+            && player.kit.as_ref().is_some_and(|kit| !kit.reincarnating),
     }
 }
 

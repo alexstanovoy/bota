@@ -587,6 +587,21 @@ fn shopping_during_aegis_reincarnation_keeps_the_purchase_in_stash_after_return(
     world.push_hit(None, hero, 100000, DamageKind::Pure, None);
     world.step();
     assert!(world.seats[0].reincarnating_at.is_some());
+    let mut cfg = config();
+    cfg.map = MapId(0);
+    cfg.objectives = ObjectiveSet::of(ObjectiveKind::Roshan);
+    let statics = bota_client_core::MatchStatic::new(&cfg.info()).expect("match geometry");
+    let view = world.view_full();
+    let player = &view.players[0];
+    assert!(player.kit.as_ref().expect("own kit").reincarnating);
+    let context = bota_client_core::purchase_context(&view, player, &statics);
+    assert!(!context.respawning, "reincarnation is not normal respawn");
+    assert_eq!(
+        bota_core::place_shop_purchase(player.slot, &[ItemId::TANGO], &context),
+        Ok(vec![bota_core::Berth::Stash(0)]),
+        "client placement uses the stash during reincarnation"
+    );
+    assert!(world.view(bota_proto::Team::Dire).players[0].kit.is_none());
     let before = world.seats[0].gold;
     seat_order(
         &mut world,

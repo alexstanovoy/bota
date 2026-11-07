@@ -515,6 +515,12 @@ pub struct Kit {
     pub items: Vec<Option<ItemView>>,
     /// What the town portal slot holds. Absent when it is empty.
     pub town_portal: Option<ItemView>,
+    /// Slots whose Sell would be accepted during this death. Bit positions
+    /// are inventory/stash slot ids, including the dedicated town-portal id.
+    /// The whole kit is private to the owner's side and full views.
+    pub sellable_slots: u32,
+    /// Waiting for reincarnation at the fall position rather than normal respawn.
+    pub reincarnating: bool,
 }
 
 /// The scoreboard entry for one seat.

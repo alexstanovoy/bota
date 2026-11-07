@@ -126,6 +126,16 @@ impl App {
         }
     }
 
+    /// The server's eligibility for a sale from the commanded dead hero's
+    /// kit or stash. Purchase history stays on the server.
+    pub fn dead_sale_allowed(&self, slot: u8) -> Option<bool> {
+        let kit = self.dead_kit()?;
+        Some(
+            1u32.checked_shl(u32::from(slot))
+                .is_some_and(|bit| kit.sellable_slots & bit != 0),
+        )
+    }
+
     /// What sits in one item slot of the panel.
     ///
     /// The bag slots are the commanded unit's, a courier's as readily as the

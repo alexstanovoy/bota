@@ -511,8 +511,9 @@ impl World {
     ///
     /// Mergeable charges fill a compatible stack before taking an empty slot.
     /// A base-shop purchase goes to the hero's bag at either base shop, and
-    /// to the stash when that bag is full. Anywhere else, and while the hero
-    /// lies dead, it goes to the stash and waits there. Secret-shop parts
+    /// to the stash when that bag is full. A normally respawning hero also
+    /// receives base purchases in its inventory; a living hero elsewhere buys
+    /// into the stash. Secret-shop parts
     /// instead need a living hero or courier in that shop's trigger zone.
     /// [`bota_core::place_shop_purchase`] is the same rule a client asks.
     pub fn buy(&mut self, slot: SlotId, item: ItemId, events: &mut Vec<Event>) -> bool {
@@ -578,6 +579,7 @@ impl World {
             courier: self.purchase_carrier(self.seats[seat].courier),
             stash: self.seats[seat].stash.shelf(),
             universal_shop: self.map.universal_shop,
+            respawning: self.seats[seat].dead() && self.seats[seat].reincarnating_at.is_none(),
         };
         let berths = place_shop_purchase(slot, &parts, &context);
         Some(PurchasePlan {
@@ -589,14 +591,15 @@ impl World {
 
     fn purchase_carrier(&self, unit: Option<Entity>) -> Option<PurchaseCarrier<'_, ItemStack>> {
         let unit = unit?;
-        if !self.alive(unit) {
-            return None;
-        }
-        let pos = self.pos(unit)?;
-        let bound = self.hull.get(unit)?.bound;
+        let shops = self
+            .pos(unit)
+            .zip(self.hull.get(unit))
+            .filter(|_| self.alive(unit))
+            .map(|(pos, hull)| shop_access(self.map, pos, hull.bound))
+            .unwrap_or_default();
         Some(PurchaseCarrier {
             bag: self.inventory.get(unit)?.shelf(),
-            shops: shop_access(self.map, pos, bound),
+            shops,
         })
     }
 
@@ -1207,8 +1210,8 @@ impl World {
 
     /// Why two of a unit's slots may not swap what they hold, or nothing when
     /// they may: its bag's, a standing hero's or a dead one's, and the seat's
-    /// stash, which takes part only while the unit stands at a base shop (so
-    /// never while it lies dead). The town portal slot takes a scroll stack
+    /// stash, which is reachable at a base shop or during the hero's normal
+    /// respawn. The town portal slot takes a scroll stack
     /// from another slot, merging it, and gives nothing up: Dota's scrolls
     /// never leave it but to be read.
     pub(crate) fn swap_refusal(
@@ -1235,7 +1238,10 @@ impl World {
         let Some(held) = held else {
             return Some(RejectReason::EmptySlot);
         };
-        if (in_stash(from) || in_stash(to)) && !self.at_shop(unit) {
+        if (in_stash(from) || in_stash(to))
+            && !(self.at_shop(unit)
+                || (seat.dead() && seat.reincarnating_at.is_none() && seat.unit == Some(unit)))
+        {
             return Some(RejectReason::NotAtShop);
         }
         // A Bottle holding a rune stays among the items in hand, in whichever
@@ -1346,8 +1352,8 @@ impl World {
         true
     }
 
-    /// An order of a seat whose hero lies dead: a purchase, into the stash,
-    /// or the sale of a stack bought since the hero fell; nothing else is
+    /// An order of a seat whose hero lies dead: a purchase, into its inventory
+    /// or overflow stash, or the sale of a stack bought since the hero fell; nothing else is
     /// carried out without a body (see [`World::validate_order`]).
     pub(crate) fn take_order_while_down(
         &mut self,
@@ -1384,10 +1390,13 @@ impl World {
         let Some(seat) = self.seats.iter().position(|s| s.slot == slot) else {
             return;
         };
-        let Ok(stash_slot) = self.sale_while_down(&self.seats[seat], at) else {
+        let Ok(at) = self.sale_while_down(&self.seats[seat], at) else {
             return;
         };
-        let Some(stack) = self.seats[seat].stash.slots[stash_slot].take() else {
+        let Some(hero) = self.seats[seat].unit else {
+            return;
+        };
+        let Some(stack) = self.take_slot(hero, seat, at) else {
             return;
         };
         let back = self.sale_price(&stack);
