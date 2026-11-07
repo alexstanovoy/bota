@@ -148,6 +148,7 @@ fn snapshots_events_orders_and_match_end_remain_in_file_order_across_batches() {
         stats: MatchStats {
             duration: 99,
             slots: Vec::new(),
+            leaves: Vec::new(),
         },
     }));
     let mut player = ReplayPlayer::from_reader(Cursor::new(wire(&records)));

@@ -196,7 +196,7 @@ fn play_lineup(radiant: u8, dire: u8) {
             assert_eq!(winner, leaver.enemy(), "{radiant}v{dire}");
             assert!(left.is_some(), "{radiant}v{dire}: given away by a leaver");
         }
-        MatchEnd::Abandoned => panic!("{radiant}v{dire}: abandoned"),
+        MatchEnd::Abandoned { .. } => panic!("{radiant}v{dire}: abandoned"),
     }
 }
 
@@ -414,7 +414,7 @@ fn five_pushing_three_lanes_break_them_in_dotas_order_and_win_by_the_ancient() {
         MatchEnd::Over { winner, left, .. } => {
             assert_eq!((winner, left), (Team::Radiant, None));
         }
-        MatchEnd::Abandoned => panic!("abandoned"),
+        MatchEnd::Abandoned { .. } => panic!("abandoned"),
     }
     let seen = replayed(&replay);
     assert_eq!(

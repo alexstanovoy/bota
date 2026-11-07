@@ -3,7 +3,8 @@
 //! It reads only what the replay's records hold, the match's start, the whole-map views, the
 //! batches of events and the end, and never the clock, a connection or chat, so what it writes
 //! is a function of the records alone: the server runs it while the match goes on, and a tool
-//! running it over the replay afterwards writes the same bytes. It is read-only on the match.
+//! running it over a complete replay afterwards writes the same bytes. A capped replay yields
+//! only prefix metadata; the server can retain full-match metadata separately. It is read-only on the match.
 
 use std::collections::HashMap;
 
@@ -15,6 +16,9 @@ use bota_proto::{
 use super::record::{MetaHeader, MetaRecord, Who, stat};
 use super::write::Writer;
 use crate::limits::{MAX_MINUTES, MAX_TRACKED};
+
+#[cfg(test)]
+mod tests;
 
 const MINUTE_TICKS: u32 = 60 * bota_core::rules::TICKS_PER_SECOND;
 
@@ -35,6 +39,7 @@ struct Held {
     items: Vec<Option<u16>>,
 }
 
+#[derive(Clone)]
 pub struct Recorder {
     out: Writer,
     pregame: u32,
@@ -48,6 +53,9 @@ pub struct Recorder {
     heroes: HashMap<EntityId, Team>,
     /// The buildings of the first view, with their kind and side.
     structures: HashMap<EntityId, (UnitKind, Team)>,
+    structure_records: u32,
+    recorded_leaves: [bool; bota_proto::limits::MAX_SEATS],
+    recorded_names: [bool; bota_proto::limits::MAX_SEATS],
     tick: u32,
     next_minute: u32,
     started: bool,
@@ -64,6 +72,9 @@ impl Default for Recorder {
             bodies: HashMap::new(),
             heroes: HashMap::new(),
             structures: HashMap::new(),
+            structure_records: 0,
+            recorded_leaves: [false; bota_proto::limits::MAX_SEATS],
+            recorded_names: [false; bota_proto::limits::MAX_SEATS],
             tick: 0,
             next_minute: 0,
             started: false,
@@ -92,7 +103,41 @@ impl Recorder {
             ReplayRecord::Msg(ServerMsg::Snapshot { view }) => self.view(view),
             ReplayRecord::Msg(ServerMsg::Events { tick, events }) => self.events(*tick, events),
             ReplayRecord::Msg(ServerMsg::MatchOver { winner, stats }) => self.over(*winner, stats),
+            ReplayRecord::Leave { tick, slot } => self.leave(*tick, slot.0),
+            ReplayRecord::SeatName { slot, name, bot } => self.name(slot.0, name, *bot),
             _ => {}
+        }
+    }
+
+    fn leave(&mut self, tick: u32, slot: u8) {
+        let Some(recorded) = self.recorded_leaves.get_mut(usize::from(slot)) else {
+            return;
+        };
+        if self.started && !self.ended && !*recorded {
+            // A permanent departure must survive a full normal budget, including in an
+            // abandoned match with no result. At most MAX_SEATS facts use the end reserve.
+            *recorded = self.out.push(&MetaRecord::Leave { tick, slot }, true);
+        }
+    }
+
+    fn name(&mut self, slot: u8, name: &str, bot: bool) {
+        let Some(recorded) = self.recorded_names.get_mut(usize::from(slot)) else {
+            return;
+        };
+        if self.started
+            && !self.ended
+            && !*recorded
+            && !name.is_empty()
+            && name.len() <= bota_proto::MAX_SHOWN_NAME_BYTES
+        {
+            *recorded = self.out.push(
+                &MetaRecord::SeatName {
+                    slot,
+                    name: name.to_owned(),
+                    bot,
+                },
+                false,
+            );
         }
     }
 
@@ -297,9 +342,16 @@ impl Recorder {
                     );
                 }
             }
-            EventKind::StructureDestroyed { unit, team, .. } => {
+            EventKind::StructureDestroyed {
+                unit,
+                team,
+                lane,
+                tier,
+                ranged,
+                ..
+            } => {
                 if let (Some((kind, _)), Some(team)) = (self.structures.get(unit), side(*team)) {
-                    self.out.push(
+                    let written = self.out.push(
                         &MetaRecord::Structure {
                             tick,
                             kind: *kind as u8,
@@ -307,6 +359,18 @@ impl Recorder {
                         },
                         false,
                     );
+                    if written {
+                        self.out.push(
+                            &MetaRecord::StructureLocation {
+                                index: self.structure_records,
+                                lane: *lane,
+                                tier: *tier,
+                                ranged: *ranged,
+                            },
+                            false,
+                        );
+                        self.structure_records += 1;
+                    }
                 }
             }
             _ => {}
@@ -371,6 +435,11 @@ impl Recorder {
     }
 
     fn conclude(&mut self, over: Option<(Team, &MatchStats)>) {
+        if let Some((_, stats)) = over {
+            for left in &stats.leaves {
+                self.leave(left.tick, left.slot.0);
+            }
+        }
         self.ended = true;
         if let Some((_, stats)) = over {
             for earned in &stats.slots {

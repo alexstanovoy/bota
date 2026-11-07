@@ -2259,6 +2259,7 @@ impl crate::ui::app::LiveLink for HangingUp {
                 stats: bota_proto::MatchStats {
                     duration: 10,
                     slots: Vec::new(),
+                    leaves: Vec::new(),
                 },
             }],
         }

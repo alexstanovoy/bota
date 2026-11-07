@@ -449,6 +449,10 @@ pub fn lobby_slot() -> LobbySlot {
 pub fn match_stats() -> MatchStats {
     MatchStats {
         duration: 54_000,
+        leaves: vec![MatchLeave {
+            slot: SlotId(0),
+            tick: 53_999,
+        }],
         slots: vec![SlotStats {
             slot: SlotId(0),
             kills: 3,
@@ -931,6 +935,15 @@ pub fn all_replay_records() -> Vec<ReplayRecord> {
                 body: Body::Text("glhf".to_string()),
             },
         }),
+        ReplayRecord::Leave {
+            tick: 5400,
+            slot: SlotId(0),
+        },
+        ReplayRecord::SeatName {
+            slot: SlotId(0),
+            name: "recorded player".to_owned(),
+            bot: false,
+        },
     ]
 }
 

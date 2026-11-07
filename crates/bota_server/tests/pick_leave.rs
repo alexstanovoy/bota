@@ -100,7 +100,12 @@ fn a_seat_that_leaves_during_the_picks_cancels_the_match() {
         .expect("ran");
     assert_eq!(
         end,
-        MatchEnd::Abandoned,
+        MatchEnd::Abandoned {
+            leaves: vec![bota_proto::MatchLeave {
+                slot: bota_proto::SlotId(1),
+                tick: 0
+            }]
+        },
         "the match is cancelled: no result"
     );
     // The seat that stayed was never shown a match.

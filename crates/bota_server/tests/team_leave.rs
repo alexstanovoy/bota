@@ -89,6 +89,7 @@ impl Transport for Leaving {
                     .expect("the teammate's seat never came back");
             }
             self.link.send(&ClientMsg::LeaveGame)?;
+            self.link.send(&ClientMsg::LeaveGame)?;
         }
         Ok(())
     }
@@ -156,6 +157,42 @@ fn friend_dropping_then_back(address: &str, back: &Sender<()>) -> (Team, u32) {
     }
 }
 
+fn recorded_leaves(path: &std::path::Path) -> Vec<bota_proto::MatchLeave> {
+    use std::io::Read;
+    let mut stream =
+        bota_client_core::UnpackedReplay::new(std::fs::File::open(path).expect("replay"));
+    let mut reader = bota_proto::FrameReader::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    let mut last_snapshot = 0;
+    let mut leaves = Vec::new();
+    loop {
+        let count = stream.read(&mut buffer).expect("replay stream");
+        if count == 0 {
+            break;
+        }
+        reader.push(&buffer[..count]);
+        while let Some(record) = reader
+            .next_message::<bota_proto::ReplayRecord>()
+            .expect("frame")
+        {
+            match record {
+                bota_proto::ReplayRecord::Msg(ServerMsg::Snapshot { view }) => {
+                    last_snapshot = view.tick
+                }
+                bota_proto::ReplayRecord::Leave { tick, slot } => {
+                    assert_eq!(
+                        tick, last_snapshot,
+                        "a departure names its acceptance boundary before the next advance"
+                    );
+                    leaves.push(bota_proto::MatchLeave { slot, tick });
+                }
+                _ => {}
+            }
+        }
+    }
+    leaves
+}
+
 #[test]
 fn a_match_runs_on_for_a_teammate_after_a_seat_leaves_for_good() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
@@ -165,7 +202,16 @@ fn a_match_runs_on_for_a_teammate_after_a_seat_leaves_for_good() {
         seat(2, "friend", Team::Radiant),
         seat(3, "enemy", Team::Dire),
     ];
-    let server = thread::spawn(move || run(listener, opts(reserved)));
+    let directory =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/recording_tests");
+    std::fs::create_dir_all(&directory).expect("recording directory");
+    let meta = directory.join(format!("team-leave-{}.meta", std::process::id()));
+    let replay = meta.with_extension("brp");
+    let mut options = opts(reserved);
+    options.meta = Some(meta.clone());
+    options.replay = Some(replay.clone());
+    options.meta_trailer = true;
+    let server = thread::spawn(move || run(listener, options));
     // The friend's connection drops once the match is on, and its seat is taken back with the key
     // before the host leaves: a drop in the lobby, or a leave heard while the seat is empty, are
     // other scenarios.
@@ -195,6 +241,46 @@ fn a_match_runs_on_for_a_teammate_after_a_seat_leaves_for_good() {
             }
         ),
         "the side that stayed won when the other left: {end:?}"
+    );
+    let MatchEnd::Over { report, .. } = end else {
+        unreachable!()
+    };
+    assert_eq!(
+        report
+            .stats
+            .leaves
+            .iter()
+            .map(|left| left.slot.0)
+            .collect::<Vec<_>>(),
+        [0, 2],
+        "both permanent departures, not the dropped/reclaimed teammate"
+    );
+    assert!(report.stats.leaves[0].tick >= 60);
+    assert!(report.stats.leaves[0].tick < report.stats.leaves[1].tick);
+    assert!(report.stats.leaves[1].tick >= 240);
+    assert!(report.stats.leaves[1].tick < report.stats.duration);
+    assert_eq!(recorded_leaves(&replay), report.stats.leaves);
+    let bytes = std::fs::read(&meta).expect("metadata");
+    let rebuilt = bota_client_core::meta_of_replay(std::fs::File::open(&replay).expect("replay"))
+        .expect("offline metadata");
+    assert_eq!(rebuilt, bytes, "live and offline recording agree");
+    let recorded = bota_replay::meta::decode(&bytes).expect("read metadata");
+    let leaves: Vec<_> = recorded
+        .records
+        .iter()
+        .filter_map(|record| match record {
+            bota_replay::meta::MetaRecord::Leave { tick, slot } => Some((*slot, *tick)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        leaves,
+        report
+            .stats
+            .leaves
+            .iter()
+            .map(|left| (left.slot.0, left.tick))
+            .collect::<Vec<_>>()
     );
 }
 
@@ -233,6 +319,11 @@ fn a_match_everyone_dropped_ends_once_it_was_empty_long_enough() {
         seat(3, "enemy", Team::Dire),
     ]);
     opts.empty_after = Some(Duration::from_secs(1));
+    let directory =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/recording_tests");
+    std::fs::create_dir_all(&directory).expect("recording directory");
+    let meta = directory.join(format!("team-drop-{}.meta", std::process::id()));
+    opts.meta = Some(meta.clone());
     let (ended, end) = std::sync::mpsc::channel();
     thread::spawn(move || {
         let _ = ended.send(run(listener, opts));
@@ -265,7 +356,17 @@ fn a_match_everyone_dropped_ends_once_it_was_empty_long_enough() {
         .expect("it ran");
     assert_eq!(
         end,
-        MatchEnd::Abandoned,
+        MatchEnd::Abandoned { leaves: Vec::new() },
         "no result for a match nobody plays"
+    );
+    let recorded =
+        bota_replay::meta::decode(&std::fs::read(meta).expect("metadata")).expect("read metadata");
+    assert!(!recorded.complete);
+    assert!(
+        !recorded
+            .records
+            .iter()
+            .any(|record| matches!(record, bota_replay::meta::MetaRecord::Leave { .. })),
+        "ordinary disconnections remain reconnectable even when the server abandons an empty match"
     );
 }

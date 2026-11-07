@@ -106,6 +106,59 @@ fn empty_collections_survive() {
 }
 
 #[test]
+fn replay_seat_names_are_bounded_in_utf8_bytes() {
+    for name in [
+        String::new(),
+        "x".repeat(MAX_SHOWN_NAME_BYTES),
+        "🙂".repeat(MAX_SHOWN_NAME_BYTES / 4),
+    ] {
+        let record = ReplayRecord::SeatName {
+            slot: SlotId(0),
+            name,
+            bot: false,
+        };
+        assert_eq!(roundtrip(&record), record);
+    }
+    for name in [
+        "x".repeat(MAX_SHOWN_NAME_BYTES + 1),
+        "🙂".repeat(MAX_SHOWN_NAME_BYTES / 4 + 1),
+    ] {
+        let record = ReplayRecord::SeatName {
+            slot: SlotId(0),
+            name,
+            bot: true,
+        };
+        let bytes = encode_frame_to_vec(&record).expect("encode hostile record");
+        assert_eq!(
+            decode_payload::<ReplayRecord>(&bytes[LEN_PREFIX..]),
+            Err(CodecError::Malformed)
+        );
+    }
+}
+
+#[test]
+fn match_departures_cannot_allocate_more_entries_than_seats() {
+    let mut stats = match_stats();
+    stats.leaves = vec![
+        MatchLeave {
+            slot: SlotId(0),
+            tick: 12
+        };
+        MAX_SEATS
+    ];
+    assert_eq!(roundtrip(&stats), stats);
+    stats.leaves.push(MatchLeave {
+        slot: SlotId(0),
+        tick: 13,
+    });
+    let bytes = encode_frame_to_vec(&stats).expect("encode hostile result");
+    assert_eq!(
+        decode_payload::<MatchStats>(&bytes[LEN_PREFIX..]),
+        Err(CodecError::Malformed)
+    );
+}
+
+#[test]
 fn secret_shop_sequences_are_bounded_before_decoding() {
     for (shops, corners) in [(MAX_SECRET_SHOPS + 1, 3), (1, MAX_SHOP_ZONE_CORNERS + 1)] {
         let mut info = match_info();

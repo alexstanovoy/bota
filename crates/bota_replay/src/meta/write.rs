@@ -7,7 +7,7 @@ use crate::limits::{END_RESERVE_BYTES, MAX_META_BYTES, MAX_RECORD_BYTES};
 
 /// The frames of a file so far, held to [`MAX_META_BYTES`]: a record that would pass it is
 /// dropped and the file is marked cut, except the last ones, which may use the reserve.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Writer {
     bytes: Vec<u8>,
     cut: bool,

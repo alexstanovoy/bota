@@ -1,14 +1,13 @@
 //! The report of a finished match.
 
-use bota_proto::{MatchReport, decode_payload};
+use bota_proto::{MatchReport, MatchReportError, decode_match_report};
 use radovid_client::proto::MatchResult;
 
-/// The picks and final numbers the game server reported, or none when the
-/// match ended without a report (abandoned, crashed, stopped) or the bytes are
-/// not bota's.
-pub fn decode_report(result: &MatchResult) -> Option<MatchReport> {
+/// The picks and final numbers the game server reported. No report is distinct from
+/// a present report that is malformed or requires a different format version.
+pub fn decode_report(result: &MatchResult) -> Result<Option<MatchReport>, MatchReportError> {
     if result.game_report.is_empty() {
-        return None;
+        return Ok(None);
     }
-    decode_payload(&result.game_report).ok()
+    decode_match_report(&result.game_report).map(Some)
 }

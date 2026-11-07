@@ -50,5 +50,14 @@ fn a_leave_queued_behind_the_last_readiness_cancels_the_match_instead_of_forfeit
         .recv_timeout(HANG_GUARD)
         .expect("the server ended")
         .expect("it ran");
-    assert_eq!(end, MatchEnd::Abandoned, "cancelled, not forfeited");
+    assert_eq!(
+        end,
+        MatchEnd::Abandoned {
+            leaves: vec![bota_proto::MatchLeave {
+                slot: bota_proto::SlotId(1),
+                tick: 0
+            }]
+        },
+        "cancelled, not forfeited"
+    );
 }

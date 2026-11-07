@@ -209,6 +209,15 @@ impl DelayLine {
         Ok(())
     }
 
+    /// Cancels pending network requests when a seat leaves permanently. An order already
+    /// applied to its hero remains a world action, rather than a pending request here.
+    pub fn cancel_slot(&mut self, slot: SlotId) {
+        if let Some(line) = self.seats.iter_mut().find(|line| line.slot == slot) {
+            line.held.clear();
+            line.burst = None;
+        }
+    }
+
     /// Releases the next tick's player requests and advances the world,
     /// validating each immediately before application. The returned commands
     /// include admitted attempts refused at application, for the order tape;

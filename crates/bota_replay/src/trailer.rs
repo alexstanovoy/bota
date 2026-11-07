@@ -5,7 +5,8 @@
 //! that has never heard of the trailer plays the replay as before, and holds no record of it and
 //! no change of the wire. Its payload is the metadata file, byte for byte, then the file's
 //! length and [`MAGIC`]; a reader that wants the file reads the last bytes of the replay and
-//! finds it without unpacking anything.
+//! finds it without unpacking anything. A capped replay carries metadata of its recorded prefix;
+//! a separately recorded metadata file may continue through the full match.
 
 use std::io::{Read, Seek, SeekFrom};
 

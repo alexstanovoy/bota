@@ -1064,6 +1064,7 @@ mod chat;
 #[cfg(feature = "websocket")]
 mod limits;
 mod lobby_close;
+mod permanent_leave;
 mod pick_clock;
 mod picks;
 mod reserved;

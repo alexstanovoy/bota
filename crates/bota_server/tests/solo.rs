@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use std::path::{Path, PathBuf};
 
-use bota_client_core::{IssuedOrder, Link, UnpackedReplay};
+use bota_client_core::{IssuedOrder, Link, Transport, UnpackedReplay};
 use bota_proto::{
     Cheat, FrameReader, HeroId, ItemId, MapId, Order, ReplayRecord, ServerMsg, Target, Team,
     TickMode, UnitKind, Vec2,
@@ -139,16 +139,44 @@ const BOUGHT: [ItemId; 3] = [ItemId::CLARITY, ItemId::TANGO, ItemId::HEALING_SAL
 /// beside it, and walks on the enemy's fountain until the map ends the match; the server leaves
 /// its replay (with the metadata at its end) and the metadata file.
 fn scripted() -> Left {
-    let dir = std::env::temp_dir();
+    scripted_with_observer(false)
+}
+
+fn observer(address: &str) -> thread::JoinHandle<()> {
+    let mut link = Link::connect(address, Duration::from_secs(60)).expect("observer connected");
+    let lobby = bota_client_core::greet(&mut link, bota_proto::Role::Spectator, "not-a-seat", None)
+        .expect("observer welcomed");
+    assert_eq!(lobby.slot, None);
+    thread::spawn(move || {
+        while let Some(message) = link.recv().expect("observer feed") {
+            match message {
+                ServerMsg::Ping => link.send(&bota_proto::ClientMsg::Pong).expect("pong"),
+                ServerMsg::MatchOver { .. } => break,
+                _ => {}
+            }
+        }
+    })
+}
+
+fn scripted_with_observer(watched: bool) -> Left {
+    static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let sequence = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/recording_tests");
+    std::fs::create_dir_all(&dir).expect("recording directory");
     let id = std::process::id();
     let left = Left {
-        replay: dir.join(format!("bota-meta-{id}.brp")),
-        meta: dir.join(format!("bota-meta-{id}.meta")),
+        replay: dir.join(format!("bota-meta-{id}-{sequence}.brp")),
+        meta: dir.join(format!("bota-meta-{id}-{sequence}.meta")),
     };
     let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
     let address = listener.local_addr().expect("bound").to_string();
     let files = (left.replay.clone(), left.meta.clone());
-    let server = thread::spawn(move || run(listener, opts(MapId(2), Some(files))));
+    let mut options = opts(MapId(2), Some(files));
+    if watched {
+        options.spectators = Spectators::Open;
+    }
+    let server = thread::spawn(move || run(listener, options));
+    let watcher = watched.then(|| observer(&address));
     let map = bota_core::map_of(MapId(2));
     let middle = Vec2::from_ints(7500, 7500);
     let enemy_fountain = bota_core::fountain_pos(map, Team::Dire);
@@ -195,7 +223,92 @@ fn scripted() -> Left {
     .expect("the match is played to its end");
     assert_eq!(outcome.winner, Team::Radiant, "{outcome:?}");
     server.join().expect("the server ends").expect("it ran");
+    if let Some(watcher) = watcher {
+        watcher.join().expect("observer finished");
+    }
     left
+}
+
+#[test]
+fn metadata_keeps_the_seated_player_name_for_a_standalone_replay() {
+    let files = scripted_with_observer(true);
+    let bytes = std::fs::read(&files.meta).expect("metadata");
+    let meta = decode(&bytes).expect("read metadata");
+    let names: Vec<_> = meta
+        .records
+        .iter()
+        .filter_map(|record| match record {
+            MetaRecord::SeatName { slot, name, bot } => Some((*slot, name.as_str(), *bot)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        names,
+        [(0, "meta", true)],
+        "only the held seat, not the observer"
+    );
+    let rebuilt =
+        bota_client_core::meta_of_replay(std::fs::File::open(&files.replay).expect("replay"))
+            .expect("metadata from replay");
+    assert_eq!(rebuilt, bytes, "names survive offline extraction");
+}
+
+#[test]
+fn metadata_keeps_the_destroyed_towers_lane_and_tier() {
+    let files = scripted();
+    let bytes = std::fs::read(&files.meta).expect("metadata");
+    let meta = decode(&bytes).expect("read metadata");
+    assert!(
+        meta.records
+            .iter()
+            .any(|record| matches!(record, MetaRecord::Structure { .. })),
+        "the match actually destroyed a building"
+    );
+    let falls: Vec<_> = records(&files.replay)
+        .into_iter()
+        .filter_map(|record| match record {
+            ReplayRecord::Msg(ServerMsg::Events { tick, events }) => Some(
+                events
+                    .into_iter()
+                    .filter_map(move |event| match event {
+                        bota_proto::EventKind::StructureDestroyed {
+                            kind,
+                            team,
+                            lane,
+                            tier,
+                            ranged,
+                            ..
+                        } => Some((tick, kind as u8, team, lane, tier, ranged)),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>(),
+            ),
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    let locations: Vec<_> = meta
+        .records
+        .iter()
+        .filter_map(|record| match record {
+            MetaRecord::StructureLocation {
+                index,
+                lane,
+                tier,
+                ranged,
+            } => Some((*index, *lane, *tier, *ranged)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(locations.len(), falls.len());
+    for (index, (_, _, _, lane, tier, ranged)) in falls.iter().enumerate() {
+        assert_eq!(locations[index], (index as u32, *lane, *tier, *ranged));
+    }
+    assert!(
+        locations.iter().any(
+            |(_, lane, tier, _)| *lane == Some(bota_core::rules::LANE_MID) && *tier == Some(1)
+        )
+    );
 }
 
 #[test]

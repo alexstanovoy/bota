@@ -5,7 +5,7 @@
 //! numbers connections are told count seats and watchers apart, so a seat's
 //! own number never says how many came to watch.
 
-use bota_proto::{PlayerId, ServerMsg, SlotId};
+use bota_proto::{PlayerId, ReplayRecord, Role, ServerMsg, SlotId};
 
 use super::Server;
 
@@ -56,6 +56,22 @@ impl Told {
 }
 
 impl Server {
+    /// Keeps only the public identities of held seats, not the observer roster or credentials.
+    pub(super) fn record_seat_names(&self, replay: &mut crate::replay::ReplayWriter) {
+        for seat in &self.roster.seats {
+            if seat.player.is_some()
+                && !seat.name.is_empty()
+                && let Some(role @ (Role::Player | Role::Bot)) = seat.role
+            {
+                replay.record(&ReplayRecord::SeatName {
+                    slot: seat.slot,
+                    name: seat.name.clone(),
+                    bot: role == Role::Bot,
+                });
+            }
+        }
+    }
+
     /// Tells of a greeted connection that ended: every connection when it
     /// held a seat, the spectators alone when it watched. In the lobby the
     /// seats are told the lobby as it now stands instead, when a seat

@@ -150,6 +150,8 @@ pub fn message(record: ReplayRecord) -> ServerMsg {
         ReplayRecord::Msg(message) => message,
         ReplayRecord::Orders { tick, orders } => ServerMsg::Orders { tick, orders },
         ReplayRecord::Heard(heard) => ServerMsg::Heard(heard),
-        ReplayRecord::Header(_) => panic!("a header is no message"),
+        ReplayRecord::Header(_) | ReplayRecord::Leave { .. } | ReplayRecord::SeatName { .. } => {
+            panic!("a recording fact is no live message")
+        }
     }
 }

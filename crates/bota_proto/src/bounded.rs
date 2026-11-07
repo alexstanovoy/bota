@@ -18,6 +18,28 @@ use serde::de::{Deserialize, Deserializer, Error, SeqAccess, Visitor};
 /// a reader allocate before a single element has been read.
 const RESERVE_BYTES: usize = 4096;
 
+/// Reads a public seat name, rejecting an oversized borrowed string before copying it.
+pub fn seat_name<'de, D: Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+    struct Name;
+    impl Visitor<'_> for Name {
+        type Value = String;
+        fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(
+                f,
+                "a seat name of at most {} UTF-8 bytes",
+                crate::MAX_SHOWN_NAME_BYTES
+            )
+        }
+        fn visit_str<E: Error>(self, value: &str) -> Result<String, E> {
+            if value.len() > crate::MAX_SHOWN_NAME_BYTES {
+                return Err(E::invalid_length(value.len(), &self));
+            }
+            Ok(value.to_owned())
+        }
+    }
+    deserializer.deserialize_str(Name)
+}
+
 /// A sequence of at most `MAX` elements: the type the bounded fields read
 /// through.
 struct Capped<T, const MAX: usize>(Vec<T>);

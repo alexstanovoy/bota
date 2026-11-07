@@ -9,7 +9,7 @@ use std::time::Duration;
 use clap::{Parser, ValueEnum};
 
 use bota_core::rules;
-use bota_proto::{HeroId, Role, SeatKey, Team, encode_frame_to_vec};
+use bota_proto::{HeroId, Role, SeatKey, Team, encode_match_report};
 use bota_server::chat::{ChatOpts, SeatChat};
 use bota_server::game::OrderDelay;
 use bota_server::game_loop::{
@@ -279,7 +279,17 @@ fn main() -> ExitCode {
             );
             ExitCode::SUCCESS
         }
-        Ok(MatchEnd::Abandoned) => ExitCode::from(EXIT_ABANDONED),
+        Ok(MatchEnd::Abandoned { leaves }) => {
+            if !leaves.is_empty() {
+                let facts = leaves
+                    .iter()
+                    .map(|left| format!("{}@{}", left.slot.0, left.tick))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                println!("ABANDONED leaves={facts}");
+            }
+            ExitCode::from(EXIT_ABANDONED)
+        }
         Err(error) => {
             eprintln!("bota_server: {error}");
             ExitCode::FAILURE
@@ -315,7 +325,7 @@ fn secret_env(name: &str) -> Result<Option<String>, String> {
 
 /// The line a launcher reads the result from: the winning team (0 Radiant,
 /// 1 Dire) or a draw, the game time the match lasted, and the
-/// [`bota_proto::MatchReport`] as hex postcard bytes.
+/// [`bota_proto::MatchReport`] as hex versioned report bytes.
 fn result_line(
     winner: Team,
     report: &bota_proto::MatchReport,
@@ -331,11 +341,8 @@ fn result_line(
     let ms =
         u64::from(report.stats.duration) * 1000 / u64::from(bota_core::rules::TICKS_PER_SECOND);
     let duration_ms = u32::try_from(ms).unwrap_or(u32::MAX);
-    let frame = encode_frame_to_vec(report).expect("a report encodes");
-    let hex: String = frame[bota_proto::LEN_PREFIX..]
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect();
+    let bytes = encode_match_report(report).expect("a report encodes");
+    let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
     let left = left.map_or_else(String::new, |slot| format!(" left={slot}"));
     let truncated = if replay_truncated && result_version >= 2 {
         " replay=truncated"

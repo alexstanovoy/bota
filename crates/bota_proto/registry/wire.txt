@@ -772,3 +772,13 @@ variant CreepTier 2 Mega
 field UnitView 48 creep_tier: Option<CreepTier>
 variant EventKind 28 MegaCreeps {}
 field EventKind::MegaCreeps 0 team: Team
+field MatchStats 2 leaves: Vec<MatchLeave>
+field MatchLeave 0 slot: SlotId
+field MatchLeave 1 tick: u32
+variant ReplayRecord 4 Leave {}
+field ReplayRecord::Leave 0 tick: u32
+field ReplayRecord::Leave 1 slot: SlotId
+variant ReplayRecord 5 SeatName {}
+field ReplayRecord::SeatName 0 slot: SlotId
+field ReplayRecord::SeatName 1 name: String
+field ReplayRecord::SeatName 2 bot: bool

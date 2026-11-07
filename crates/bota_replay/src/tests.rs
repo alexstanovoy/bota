@@ -268,6 +268,31 @@ fn the_writer_stops_at_its_bound_and_keeps_room_to_close() {
 }
 
 #[test]
+fn an_oversized_optional_name_does_not_hide_the_legacy_match_end() {
+    let bytes = file(&[
+        MetaRecord::Header(header()),
+        MetaRecord::SeatName {
+            slot: 0,
+            name: "x".repeat(bota_proto::MAX_SHOWN_NAME_BYTES + 1),
+            bot: false,
+        },
+        MetaRecord::End {
+            tick: 900,
+            winner: Some(0),
+        },
+    ]);
+    let meta = decode(&bytes).expect("metadata");
+    assert!(meta.complete);
+    assert_eq!(meta.skipped, 1);
+    assert!(
+        !meta
+            .records
+            .iter()
+            .any(|record| matches!(record, MetaRecord::SeatName { .. }))
+    );
+}
+
+#[test]
 fn the_trailer_carries_the_file_whole_and_a_replay_without_one_gives_none() {
     let meta = file(&[MetaRecord::Header(header())]);
     let frame = trailer::frame(&meta).expect("a trailer");

@@ -12,7 +12,7 @@ use bota_client_core::{ClientSession, IssuedOrder, Link, Outcome, UnpackedReplay
 use bota_core::fountain_pos;
 use bota_proto::{
     FrameReader, HeroId, MatchReport, Order, ReplayRecord, SeatKey, ServerMsg, SlotId, Target,
-    Team, decode_payload,
+    Team, decode_match_report,
 };
 
 /// How long a test waits for the server binary to speak or exit. It guards against a hang
@@ -162,7 +162,11 @@ fn a_match_played_to_its_end_says_its_result_on_one_line_and_exits_0() {
     };
     assert_eq!(told_winner, winner);
     let report = hex_bytes(report.strip_prefix("report=").expect("the report"));
-    let report: MatchReport = decode_payload(&report).expect("a match report");
+    assert!(
+        report.starts_with(b"BMRP\x01"),
+        "RESULT report needs a versioned header"
+    );
+    let report: MatchReport = decode_match_report(&report).expect("a match report");
     let heroes: Vec<(SlotId, Team, HeroId)> = report
         .picks
         .iter()
@@ -345,5 +349,22 @@ fn a_launched_match_cannot_carry_economic_events() {
     assert!(
         !String::from_utf8_lossy(&refused.stdout).contains("READY"),
         "and no match is offered"
+    );
+}
+
+#[test]
+fn a_pick_phase_departure_is_reported_before_the_abandoned_server_exits() {
+    use bota_client_core::{Transport, greet};
+    use bota_proto::{ClientMsg, Role};
+    let mut server = start(&["--mode", "lockstep"]);
+    let mut link = Link::connect(&server.addr, WAIT).expect("connected");
+    greet(&mut link, Role::Player, "first", Some(KEYS[0])).expect("reserved seat");
+    link.send(&ClientMsg::LeaveGame)
+        .expect("permanent departure");
+    assert_eq!(server.exit(WAIT).code(), Some(3));
+    let output: Vec<_> = server.stdout.iter().collect();
+    assert!(
+        output.iter().any(|line| line == "ABANDONED leaves=0@0"),
+        "a pick-phase leaver must be reported, not silently cancelled: {output:?}"
     );
 }

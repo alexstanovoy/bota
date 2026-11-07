@@ -57,7 +57,9 @@ const TRAILER_RESERVE: u64 = (bota_replay::limits::MAX_META_BYTES
 /// Appends [`ReplayRecord`] frames to a `.brp` file, as one Zstandard stream, and runs the
 /// metadata recorder over the same records: its file is written at the end to `--meta`, and
 /// with `trailer` it is carried at the end of the replay (see [`bota_replay::trailer`]). The
-/// recorder goes on when the replay stops at its cap.
+/// recorder goes on when the replay stops at its cap. A capped trailer describes only the
+/// recorded prefix; a separate `--meta` file describes the full match at final shutdown.
+/// A trailer that cannot fit the whole-file cap is omitted with a warning.
 ///
 /// Recording stops, with a line on stderr, when a write fails or the file nears its size cap;
 /// the match goes on. At the cap the stream is closed whole, so the replay plays up to the
@@ -67,6 +69,8 @@ pub struct ReplayWriter {
     written: Arc<AtomicU64>,
     /// The file's size cap in bytes; absent for none.
     max_bytes: Option<u64>,
+    /// The original whole-file cap, including its optional trailer.
+    file_max_bytes: Option<u64>,
     truncated: bool,
     meta: Option<Meta>,
     trailer: bool,
@@ -110,6 +114,7 @@ impl ReplayWriter {
             writer.out = Some(encoder);
             writer.written = written;
             // The trailer is written after the stream, inside the cap.
+            writer.file_max_bytes = max_bytes;
             writer.max_bytes = max_bytes.map(|max| {
                 if trailer {
                     max.saturating_sub(TRAILER_RESERVE).max(max / 2)
@@ -137,6 +142,7 @@ impl ReplayWriter {
             out: None,
             written: Arc::new(AtomicU64::new(0)),
             max_bytes: None,
+            file_max_bytes: None,
             truncated: false,
             meta: None,
             trailer: false,
@@ -201,7 +207,14 @@ impl ReplayWriter {
         let margin = CLOSE_MARGIN.min(max / 4);
         if self.written.load(Ordering::Relaxed) + margin >= max {
             eprintln!("bota_server: the replay is closed here, at its size cap of {max} bytes");
-            self.end();
+            // Finish a bounded snapshot for the prefix, retaining the live recorder for
+            // departures and the result that arrive after the stream is closed.
+            let prefix = self
+                .meta
+                .as_ref()
+                .filter(|_| self.trailer)
+                .map(|meta| meta.recorder.clone().finish());
+            self.close_stream(prefix.as_deref());
             self.truncated = true;
         }
     }
@@ -217,25 +230,36 @@ impl ReplayWriter {
             .meta
             .take()
             .map(|meta| (meta.recorder.finish(), meta.file));
-        if let Some(out) = self.out.take() {
-            let trailer = meta
-                .as_ref()
-                .filter(|_| self.trailer)
-                .and_then(|(bytes, _)| bota_replay::trailer::frame(bytes));
-            let done = out.finish().and_then(|mut counted| {
-                if let Some(trailer) = trailer {
-                    counted.write_all(&trailer)?;
-                }
-                counted.flush()
-            });
-            if let Err(error) = done {
-                eprintln!("bota_server: the replay's end was not written ({error})");
-            }
-        }
+        self.close_stream(meta.as_ref().map(|(bytes, _)| bytes.as_slice()));
         if let Some((bytes, Some(path))) = meta
             && let Err(error) = std::fs::write(&path, bytes)
         {
             eprintln!("bota_server: the meta was not written ({error})");
+        }
+    }
+    /// Closes the stream once. Its optional trailer has the metadata of this exact prefix.
+    fn close_stream(&mut self, meta: Option<&[u8]>) {
+        let Some(out) = self.out.take() else {
+            return;
+        };
+        let trailer = meta
+            .filter(|_| self.trailer)
+            .and_then(bota_replay::trailer::frame);
+        let done = out.finish().and_then(|mut counted| {
+            counted.flush()?;
+            if let Some(trailer) = trailer {
+                let size = self.written.load(Ordering::Relaxed).saturating_add(trailer.len() as u64);
+                if self.file_max_bytes.is_none_or(|max| size <= max) {
+                    counted.write_all(&trailer)?;
+                } else {
+                    eprintln!("bota_server: the replay trailer does not fit its file size cap; keeping the recorded stream only");
+                }
+            }
+            counted.flush()
+        });
+        if let Err(error) = done {
+            eprintln!("bota_server: the replay's end was not written ({error})");
+            self.truncated = true;
         }
     }
 }

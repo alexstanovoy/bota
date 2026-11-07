@@ -47,3 +47,15 @@ variant Who 0 Hero(u8)
 variant Who 1 Other
 variant MetaRecord 9 RulesIdentity {}
 field MetaRecord::RulesIdentity 0 identity: u64
+variant MetaRecord 10 Leave {}
+field MetaRecord::Leave 0 tick: u32
+field MetaRecord::Leave 1 slot: u8
+variant MetaRecord 11 SeatName {}
+field MetaRecord::SeatName 0 slot: u8
+field MetaRecord::SeatName 1 name: String
+field MetaRecord::SeatName 2 bot: bool
+variant MetaRecord 12 StructureLocation {}
+field MetaRecord::StructureLocation 0 index: u32
+field MetaRecord::StructureLocation 1 lane: Option<u8>
+field MetaRecord::StructureLocation 2 tier: Option<u8>
+field MetaRecord::StructureLocation 3 ranged: Option<bool>

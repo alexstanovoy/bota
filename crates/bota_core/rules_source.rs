@@ -38,6 +38,7 @@ const PROTO_WIRE_MODULES: &[&str] = &[
     "msg",
     "peer",
     "registry",
+    "report",
     "unpack",
     "view",
 ];

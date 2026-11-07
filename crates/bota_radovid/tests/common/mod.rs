@@ -381,6 +381,7 @@ pub fn found(accounts: &mut [&mut Account]) -> Vec<Handoff> {
 /// The heroes of a result's report, by slot.
 pub fn heroes(result: &MatchResult) -> Vec<bota_proto::HeroId> {
     decode_report(result)
+        .expect("a supported report")
         .expect("a report")
         .picks
         .iter()

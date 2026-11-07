@@ -1071,6 +1071,7 @@ impl World {
     pub fn match_stats(&self) -> MatchStats {
         MatchStats {
             duration: self.tick,
+            leaves: Vec::new(),
             slots: self
                 .seats
                 .iter()

@@ -336,7 +336,15 @@ fn an_abandoned_socket_cannot_keep_an_empty_match_alive() {
             _ => {}
         }
     }
-    assert_eq!(server.end(), MatchEnd::Abandoned);
+    assert_eq!(
+        server.end(),
+        MatchEnd::Abandoned {
+            leaves: vec![bota_proto::MatchLeave {
+                slot: SlotId(0),
+                tick: first
+            }],
+        }
+    );
 }
 
 #[test]
@@ -391,7 +399,15 @@ fn a_leave_during_picks_cancels_even_with_another_hello_queued() {
     while let Some(msg) = stayer.recv_or_hangup() {
         assert!(!matches!(msg, ServerMsg::MatchStart { .. }), "{msg:?}");
     }
-    assert_eq!(server.end(), MatchEnd::Abandoned);
+    assert_eq!(
+        server.end(),
+        MatchEnd::Abandoned {
+            leaves: vec![bota_proto::MatchLeave {
+                slot: SlotId(0),
+                tick: 0
+            }],
+        }
+    );
 }
 
 fn a_disconnected_seat_can_rejoin_during_picks_or_a_running_match(wire: Wire) {

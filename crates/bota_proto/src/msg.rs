@@ -304,10 +304,23 @@ pub struct MatchStats {
     /// One entry per seat, sorted by [`SlotId`].
     #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_SEATS }>")]
     pub slots: Vec<SlotStats>,
+    /// Permanent departures, in server acceptance order. A disconnected seat may return and
+    /// is absent here unless its holder explicitly left the match.
+    #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_SEATS }>")]
+    pub leaves: Vec<MatchLeave>,
+}
+
+/// A seat's explicit permanent departure.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct MatchLeave {
+    pub slot: SlotId,
+    /// The server-world tick at which the departure was accepted, before the next advance.
+    /// Zero also represents a departure before the world starts.
+    pub tick: u32,
 }
 
 /// What a server that runs one match for a launcher reports when the match
-/// is over: postcard bytes, hex-encoded on its `RESULT` line.
+/// is over: the versioned bytes from [`crate::encode_match_report`], hex-encoded on its `RESULT` line.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct MatchReport {
     /// Every seat and the hero it played, sorted by [`SlotId`].
@@ -730,4 +743,13 @@ pub enum ReplayRecord {
     /// A line said in the lobby or the match, recorded as the server took it
     /// in, among the records of the tick it stood on.
     Heard(Heard),
+    /// A permanent departure accepted at this tick. Recorded even if the match has no result.
+    Leave { tick: u32, slot: SlotId },
+    /// The public identity of a seated player, when known. Never identifies an observer.
+    SeatName {
+        slot: SlotId,
+        #[serde(deserialize_with = "crate::deserialize_seat_name")]
+        name: String,
+        bot: bool,
+    },
 }

@@ -112,6 +112,27 @@ pub enum MetaRecord {
     RulesIdentity {
         identity: u64,
     },
+    /// A seated player explicitly left for good, at the server's acceptance tick.
+    Leave {
+        tick: u32,
+        slot: u8,
+    },
+    /// An optional public seat identity; absent in older files or when unknown.
+    SeatName {
+        slot: u8,
+        #[serde(deserialize_with = "bota_proto::deserialize_seat_name")]
+        name: String,
+        bot: bool,
+    },
+    /// Location of the zero-based `index`th successfully written `Structure` record.
+    /// A companion keeps the original building record readable by older metadata readers,
+    /// without ambiguously pairing simultaneous falls of the same side and kind.
+    StructureLocation {
+        index: u32,
+        lane: Option<u8>,
+        tier: Option<u8>,
+        ranged: Option<bool>,
+    },
 }
 
 /// The ids of the values of a [`MetaRecord::Sample`]. Append-only: a retired id stays reserved.

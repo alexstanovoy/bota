@@ -10,9 +10,9 @@ use std::time::{Duration, Instant};
 
 use bota_core::{Catalogue, WIRE_FINGERPRINT, rules};
 use bota_proto::{
-    CataloguePrefix, ClientMsg, Heard, HeroId, MapId, MatchReport, PlayerId, RejectReason,
-    ReplayRecord, Role, SeatKey, ServerMsg, SlotId, SlotOrder, Team, TickMode, WorldView,
-    encode_frame_to_vec,
+    CataloguePrefix, ClientMsg, Heard, HeroId, MapId, MatchLeave, MatchReport, PlayerId,
+    RejectReason, ReplayRecord, Role, SeatKey, ServerMsg, SlotId, SlotOrder, Team, TickMode,
+    WorldView, encode_frame_to_vec,
 };
 use rand_chacha::rand_core::Rng as _;
 
@@ -191,7 +191,10 @@ pub enum MatchEnd {
     /// left for good during the picks (Dota cancels a match abandoned in hero
     /// selection), or every seat was empty for good or for longer than allowed.
     /// There is no result.
-    Abandoned,
+    Abandoned {
+        /// Permanent departures accepted before abandonment; pick-phase ticks are zero.
+        leaves: Vec<MatchLeave>,
+    },
 }
 
 /// Runs one match on already-bound listeners and returns how it ended.
@@ -314,7 +317,9 @@ fn run_inner(
     };
     let Some(cfg) = server.lobby_phase() else {
         server.close_all();
-        return Ok(MatchEnd::Abandoned);
+        return Ok(MatchEnd::Abandoned {
+            leaves: server.left.clone(),
+        });
     };
     Ok(server.match_phase(cfg))
 }
@@ -514,9 +519,9 @@ struct Server {
     world_tick: Arc<AtomicU32>,
     /// The hero selection clock; runs in the lobby phase only.
     pick_clock: PickClock,
-    /// Seats whose holders left for good, in departure order. Admission and forfeits share
-    /// this record so a released connection never makes an abandoned seat available again.
-    left: Vec<SlotId>,
+    /// Permanent departures, shared by admission, input handling and the final report.
+    /// A pick-phase departure has tick zero because the world has not started.
+    left: Vec<MatchLeave>,
     /// What each connection may still say.
     rates: Rates,
     /// The lines the replay is yet to be given, in the order taken in.
@@ -533,7 +538,8 @@ struct Inbox {
     acked: Vec<u32>,
     /// What each side calls the entities it is told of.
     handles: Handles,
-    /// Which seats were held when the match began: only those can leave it.
+    /// Seats held at match start: the cohort used to decide a team forfeit. A later
+    /// claimant may still depart; holding a greeted seat authorizes its LeaveGame.
     seated: Vec<bool>,
 }
 
@@ -647,7 +653,7 @@ impl Server {
         let (id, broken) = match event {
             NetEvent::Msg(id, msg) => {
                 if let Some(seat) = self.roster.seat_of(id)
-                    && self.left.contains(&seat.slot)
+                    && self.has_left(seat.slot)
                 {
                     return None;
                 }
@@ -821,6 +827,9 @@ impl Server {
             Role::Player | Role::Bot if self.opts.reserved.is_empty() => Some(Admission::AnySeat),
             Role::Player | Role::Bot => {
                 let slot = self.roster.seat_for_key(&self.opts.reserved, key?)?;
+                if self.has_left(slot) {
+                    return None;
+                }
                 let kind = self.opts.reserved[usize::from(slot.0)].kind;
                 // The reservation knows what the account is; a client that says
                 // otherwise would bend the tactical phase rule, so it is refused.
@@ -840,7 +849,7 @@ impl Server {
             true => self.roster.seat_for_key(&self.opts.reserved, key),
             false => self.roster.seat_for_claim(key),
         });
-        if let Some(slot) = seat {
+        if let Some(slot) = seat.filter(|slot| !self.has_left(*slot)) {
             return Some(Watch::Seat(slot));
         }
         if reserved && key.is_some() {
@@ -1017,7 +1026,7 @@ impl Server {
             Watch::Live | Watch::Late => None,
         };
         if let Some(slot) = eyes {
-            if self.left.contains(&slot) {
+            if self.has_left(slot) {
                 return Err(RejectReason::NotAdmitted);
             }
             let watching = self
@@ -1074,7 +1083,7 @@ impl Server {
         slot: SlotId,
         name: String,
     ) -> Result<(), RejectReason> {
-        if self.left.contains(&slot) {
+        if self.has_left(slot) {
             return Err(RejectReason::NotAdmitted);
         }
         let forced = self.forced_hero();
@@ -1201,12 +1210,12 @@ impl Server {
 
     /// Whether a seat left for good during the picks: the match is cancelled.
     fn left_during_picks(&self) -> bool {
-        let Some(slot) = self.left.first() else {
+        let Some(left) = self.left.first() else {
             return false;
         };
         eprintln!(
             "bota_server: seat {} left for good during the picks; the match is cancelled",
-            slot.0
+            left.slot.0
         );
         true
     }
@@ -1271,22 +1280,16 @@ impl Server {
             ClientMsg::Catalogue(told) => self.hear_catalogue(id, told, None),
             // A seat left for good before the match begins: nobody plays it, as Dota cancels a
             // match abandoned during hero selection.
-            ClientMsg::LeaveGame => self.leave_game(id),
+            ClientMsg::LeaveGame => {
+                if let Some(seat) = self.roster.seat_of(id) {
+                    self.depart(seat.slot, 0);
+                }
+            }
             ClientMsg::Order { .. }
             | ClientMsg::Ack { .. }
             | ClientMsg::ViewAs { .. }
             | ClientMsg::Pong
             | ClientMsg::Probe { .. } => {}
-        }
-    }
-
-    /// Records an explicit departure; losing a connection never comes through here.
-    fn leave_game(&mut self, id: PlayerId) {
-        if let Some(seat) = self.roster.seat_of(id)
-            && !self.left.contains(&seat.slot)
-        {
-            self.left.push(seat.slot);
-            eprintln!("bota_server: seat {} left for good", seat.slot.0);
         }
     }
 
@@ -1476,6 +1479,7 @@ impl Server {
         let start = ServerMsg::MatchStart { info: cfg.info() };
         self.broadcast(&start);
         replay.record(&ReplayRecord::Msg(start));
+        self.record_seat_names(&mut replay);
         let period = Duration::from_nanos(1_000_000_000 / u64::from(self.opts.tick_rate.max(1)));
         let pace = Pace {
             started: Instant::now(),
@@ -1496,12 +1500,23 @@ impl Server {
         };
         let mut refused = Vec::new();
         let mut empty_since = None;
+        let mut recorded_leaves = 0;
         let end = loop {
             self.gather_input(&world, &cfg, &mut inbox, &pace);
             self.record_heard(&mut replay);
-            if self.deserted(&mut empty_since) && self.forfeit(&inbox).is_none() {
+            for left in &self.left[recorded_leaves..] {
+                replay.record(&ReplayRecord::Leave {
+                    tick: left.tick,
+                    slot: left.slot,
+                });
+            }
+            recorded_leaves = self.left.len();
+            let forfeit = self.forfeit(&inbox);
+            if world.victor().is_none() && forfeit.is_none() && self.deserted(&mut empty_since) {
                 eprintln!("bota_server: every seat is empty; the match is abandoned");
-                break MatchEnd::Abandoned;
+                break MatchEnd::Abandoned {
+                    leaves: self.left.clone(),
+                };
             }
             let before = world.tick;
             let (commands, events) = inbox.line.advance(&mut world, &mut refused);
@@ -1528,9 +1543,10 @@ impl Server {
             let decided = world
                 .victor()
                 .map(|winner| (winner, None))
-                .or_else(|| self.forfeit(&inbox).map(|(w, slot)| (w, Some(slot))));
+                .or_else(|| forfeit.map(|(winner, slot)| (winner, Some(slot))));
             if let Some((winner, left)) = decided {
-                let stats = world.match_stats();
+                let mut stats = world.match_stats();
+                stats.leaves = self.left.clone();
                 let over = ServerMsg::MatchOver {
                     winner,
                     stats: stats.clone(),
@@ -1577,20 +1593,21 @@ impl Server {
                 .zip(&inbox.seated)
                 .filter(|(seat, held)| **held && seat.team == team)
                 .peekable();
-            held.peek().is_some() && held.all(|(seat, _)| self.left.contains(&seat.slot))
+            held.peek().is_some()
+                && held.all(|(seat, _)| self.left.iter().any(|left| left.slot == seat.slot))
         };
         let (loser, winner) = match (team_gone(Team::Radiant), team_gone(Team::Dire)) {
             (true, false) => (Team::Radiant, Team::Dire),
             (false, true) => (Team::Dire, Team::Radiant),
             _ => return None,
         };
-        let leaver = self.left.iter().find(|slot| {
+        let leaver = self.left.iter().find(|left| {
             self.roster
                 .seats
                 .iter()
-                .any(|s| s.slot == **slot && s.team == loser)
+                .any(|s| s.slot == left.slot && s.team == loser)
         })?;
-        Some((winner, *leaver))
+        Some((winner, leaver.slot))
     }
 
     /// Ends every connection once what is queued for it has gone out.
@@ -1644,7 +1661,10 @@ impl Server {
             let Some(conn) = self.conn(watcher.id) else {
                 continue;
             };
-            let at = sight(self.sight_of(watcher.id).1);
+            let Some((_, viewing)) = self.sight_of(watcher.id) else {
+                continue;
+            };
+            let at = sight(viewing);
             if let Some(frame) = &held.frames[at] {
                 conn.send_tick(frame.clone(), held.tick, held.events[at].clone());
             }
@@ -1665,7 +1685,7 @@ impl Server {
         self.roster
             .seats
             .iter()
-            .filter(|seat| !self.left.contains(&seat.slot))
+            .filter(|seat| !self.has_left(seat.slot))
     }
 
     /// Whether any seat still in the match has a reserved or previously claimed key.
@@ -1692,11 +1712,7 @@ impl Server {
         let mut full = world.view_full();
         full.order_delays = line.views(None);
         let (full_frame, full_view) = snapshot_frame_and_view(full);
-        let open_eyes = |team| {
-            self.spectators.iter().any(|watcher| {
-                !watcher.late && !watcher.locked && self.sight_of(watcher.id).1 == team
-            })
-        };
+        let open_eyes = |team| has_open_eyes(&self.spectators, team, |id| self.sight_of(id));
         let open_full_frame = open_eyes(None)
             .then(|| open_snapshot_frame(full_view.clone()))
             .flatten();
@@ -1727,7 +1743,9 @@ impl Server {
         // seat's orders live; borrowed eyes lend fog, never orders.
         let locked = |id: PlayerId| self.spectators.iter().any(|w| w.id == id && w.locked);
         for conn in self.conns.iter().filter(|c| watching(c.id)) {
-            let (eyes, viewing) = self.sight_of(conn.id);
+            let Some((eyes, viewing)) = self.sight_of(conn.id) else {
+                continue;
+            };
             // Seats never sit on the jungle's side.
             let side = sides.iter().find(|(team, ..)| Some(*team) == viewing);
             let open = self.roster.seat_of(conn.id).is_none() && !locked(conn.id);
@@ -1778,19 +1796,21 @@ impl Server {
     /// A seated connection sees as its own side and borrows nothing; a
     /// spectator sees as the side of the seat it chose. No side sees
     /// everything.
-    fn sight_of(&self, id: PlayerId) -> (Option<SlotId>, Option<Team>) {
+    fn sight_of(&self, id: PlayerId) -> Option<(Option<SlotId>, Option<Team>)> {
         if let Some(seat) = self.roster.seat_of(id) {
-            return (None, Some(seat.team));
+            return Some((None, Some(seat.team)));
         }
-        let eyes = self
-            .spectators
-            .iter()
-            .find(|w| w.id == id)
-            .and_then(|w| w.eyes);
-        // Seats stand in slot order.
-        let team = eyes.and_then(|slot| self.roster.seats.get(usize::from(slot.0)));
-        let team = team.map(|seat| seat.team);
-        (eyes, team)
+        let watcher = self.spectators.iter().find(|watcher| watcher.id == id)?;
+        // Missing or revoked private eyes grant no feed, rather than falling back to
+        // the unrestricted view represented by a spectator's absent public eyes.
+        if watcher.locked && watcher.eyes.is_none_or(|slot| self.has_left(slot)) {
+            return None;
+        }
+        let eyes = watcher.eyes;
+        let team = eyes
+            .and_then(|slot| self.roster.seats.get(usize::from(slot.0)))
+            .map(|seat| seat.team);
+        Some((eyes, team))
     }
 
     /// Waits out the tick according to the mode, handling messages meanwhile.
@@ -1817,6 +1837,29 @@ impl Server {
         }
     }
 
+    fn has_left(&self, slot: SlotId) -> bool {
+        self.left.iter().any(|left| left.slot == slot)
+    }
+
+    /// Accepts a permanent departure once, preserving its first server tick.
+    fn depart(&mut self, slot: SlotId, tick: u32) -> bool {
+        if self.has_left(slot) {
+            return false;
+        }
+        assert!(self.left.len() < self.roster.seats.len());
+        self.left.push(MatchLeave { slot, tick });
+        let watchers: Vec<_> = self
+            .spectators
+            .iter()
+            .filter(|watcher| watcher.locked && watcher.eyes == Some(slot))
+            .map(|watcher| watcher.id)
+            .collect();
+        for watcher in watchers {
+            self.drop_conn(watcher);
+        }
+        true
+    }
+
     /// One message that arrives while the match runs.
     fn receive_in_match(
         &mut self,
@@ -1826,6 +1869,17 @@ impl Server {
         cfg: &MatchConfig,
         inbox: &mut Inbox,
     ) {
+        if self
+            .roster
+            .seat_of(id)
+            .is_some_and(|seat| self.has_left(seat.slot))
+            && matches!(
+                &msg,
+                ClientMsg::Order { .. } | ClientMsg::Ack { .. } | ClientMsg::Hello { .. }
+            )
+        {
+            return;
+        }
         match msg {
             ClientMsg::Hello {
                 role,
@@ -1876,7 +1930,8 @@ impl Server {
                 }
             }
             ClientMsg::ViewAs { seat } => {
-                // Only a seat that is in the match has eyes to lend.
+                // Public spectators may choose the team view of any match seat, including
+                // one that departed. Its key-locked access is revoked separately.
                 let eyes = seat.filter(|seat| self.roster.seats.iter().any(|s| s.slot == *seat));
                 if let Some(spectator) =
                     self.spectators.iter_mut().find(|w| w.id == id && !w.locked)
@@ -1886,7 +1941,14 @@ impl Server {
             }
             ClientMsg::Say(line) => self.say(id, line, Some((world, &inbox.handles))),
             ClientMsg::Compress(_) => self.compress(id),
-            ClientMsg::LeaveGame => self.leave_game(id),
+            ClientMsg::LeaveGame => {
+                if let Some(seat) = self.roster.seat_of(id) {
+                    let slot = seat.slot;
+                    if self.depart(slot, world.tick) {
+                        inbox.line.cancel_slot(slot);
+                    }
+                }
+            }
             ClientMsg::Catalogue(told) => self.hear_catalogue(id, told, Some(cfg.catalogue)),
             ClientMsg::PickHero { .. }
             | ClientMsg::SetReady(_)
@@ -1958,6 +2020,19 @@ fn encoded_snapshot(message: &ServerMsg) -> Option<Vec<u8>> {
         .ok()
 }
 
+/// Missing sight grants no open feed; an authorized full-map view is explicitly present.
+fn has_open_eyes(
+    watchers: &[Watcher],
+    team: Option<Team>,
+    sight_of: impl Fn(PlayerId) -> Option<(Option<SlotId>, Option<Team>)>,
+) -> bool {
+    watchers.iter().any(|watcher| {
+        !watcher.late
+            && !watcher.locked
+            && sight_of(watcher.id).is_some_and(|(_, viewed)| viewed == team)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use bota_proto::limits::{MAX_EFFECTS_PER_UNIT, MAX_PAYLOAD_LEN, MAX_VIEW_UNITS};
@@ -1965,6 +2040,37 @@ mod tests {
 
     use super::{draw_secrets, snapshot_frame};
     use crate::game::tests::support::match_hero;
+
+    #[test]
+    fn a_watcher_without_sight_never_enables_a_team_or_full_map_snapshot() {
+        use super::{Watcher, has_open_eyes};
+        use bota_proto::{PlayerId, Team};
+        let watchers = [Watcher {
+            id: PlayerId(7),
+            eyes: None,
+            locked: false,
+            late: false,
+            name: String::new(),
+        }];
+        for team in [None, Some(Team::Radiant), Some(Team::Dire)] {
+            assert!(
+                !has_open_eyes(&watchers, team, |_| None),
+                "a watcher without sight must not request an open snapshot for {team:?}"
+            );
+        }
+        assert!(
+            has_open_eyes(&watchers, None, |_| Some((None, None))),
+            "an explicitly authorized public full-map view remains valid"
+        );
+        assert!(has_open_eyes(&watchers, Some(Team::Radiant), |_| Some((
+            None,
+            Some(Team::Radiant)
+        ))));
+        assert!(!has_open_eyes(&watchers, Some(Team::Dire), |_| Some((
+            None,
+            Some(Team::Radiant)
+        ))));
+    }
 
     /// Per-field bounds do not guarantee that the aggregate snapshot fits a frame.
     #[test]

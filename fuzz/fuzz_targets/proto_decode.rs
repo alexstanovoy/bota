@@ -4,8 +4,9 @@
 #![no_main]
 
 use bota_proto::{
-    ClientMsg, FrameReader, LEN_PREFIX, ReplayRecord, ServerMsg, Unpacker, decode_payload,
-    encode_frame_to_vec,
+    ClientMsg, FrameReader, LEN_PREFIX, MATCH_REPORT_MAGIC, MATCH_REPORT_VERSION, MAX_PAYLOAD_LEN,
+    ReplayRecord, ServerMsg, Unpacker, decode_match_report, decode_payload, encode_frame_to_vec,
+    encode_match_report,
 };
 use libfuzzer_sys::fuzz_target;
 
@@ -22,10 +23,31 @@ where
     }
 }
 
+fn round_trip_report(data: &[u8]) {
+    if let Ok(report) = decode_match_report(data) {
+        let encoded = encode_match_report(&report).expect("a decoded report encodes");
+        let again = decode_match_report(&encoded).expect("and decodes");
+        assert_eq!(encoded, encode_match_report(&again).expect("and encodes"));
+    }
+}
+
 fuzz_target!(|data: &[u8]| {
     round_trip::<ClientMsg>(data);
     round_trip::<ServerMsg>(data);
     round_trip::<ReplayRecord>(data);
+    round_trip_report(data);
+    // Exercise arbitrary report bodies without requiring mutations to discover the magic.
+    if let Some(size) = data
+        .len()
+        .checked_add(MATCH_REPORT_MAGIC.len() + 1)
+        .filter(|size| *size <= MAX_PAYLOAD_LEN)
+    {
+        let mut versioned = Vec::with_capacity(size);
+        versioned.extend_from_slice(&MATCH_REPORT_MAGIC);
+        versioned.push(MATCH_REPORT_VERSION);
+        versioned.extend_from_slice(data);
+        round_trip_report(&versioned);
+    }
     let mut reader = FrameReader::new();
     for piece in bota_fuzz::frames(data) {
         reader.push(piece);

@@ -195,6 +195,7 @@ impl ReplayPlayer {
                 ReplayRecord::Orders { tick, .. } => Some(*tick),
                 ReplayRecord::Msg(ServerMsg::Snapshot { view }) => Some(view.tick),
                 ReplayRecord::Heard(heard) => heard.tick,
+                ReplayRecord::Leave { tick, .. } => Some(*tick),
                 _ => None,
             };
             if self.started && tick.is_some_and(|tick| f64::from(tick) > self.clock_ticks) {
@@ -206,7 +207,9 @@ impl ReplayPlayer {
                 ReplayRecord::Msg(message) => message,
                 ReplayRecord::Heard(heard) => ServerMsg::Heard(heard),
                 // The stream takes the one header in before any record comes out.
-                ReplayRecord::Header(_) => continue,
+                ReplayRecord::Header(_)
+                | ReplayRecord::Leave { .. }
+                | ReplayRecord::SeatName { .. } => continue,
             };
             if let ServerMsg::MatchStart { info } = &message {
                 self.tick_rate = f64::from(info.tick_rate.max(1));
