@@ -68,7 +68,7 @@ impl Snapshot {
         let players = players.and_then(|bytes| bytes.checked_add(view.talents.len().checked_mul(std::mem::size_of::<TalentView>())?)?
             .checked_add(view.stock.len().checked_mul(std::mem::size_of::<StockView>())?)?
             .checked_add(session.recent_events().len().checked_mul(std::mem::size_of::<(u32, EntityId, EntityId)>())?)?
-            .checked_add((session.recent_events().len().checked_add(view.projectiles.len())?).checked_mul(std::mem::size_of::<AttackFact>())?));
+            .checked_add((session.recent_events().len().checked_add(view.projectiles.len())?.checked_add(session.entities().len())?).checked_mul(std::mem::size_of::<AttackFact>())?));
         let bytes = session.entities().iter().try_fold(players.unwrap_or(usize::MAX), |bytes, track| {
             let unit = &track.unit;
             bytes.checked_add(std::mem::size_of::<KnownUnit>())?
@@ -99,7 +99,12 @@ impl Snapshot {
 
 fn attack_facts(session: &ClientSession, view: &bota_proto::WorldView) -> Vec<AttackFact> {
     let owned = |source| view.unit(source).is_some_and(|unit| unit.team == session.team()) || view.players.iter().any(|player| player.team == session.team() && player.unit == Some(source));
-    let mut facts = Vec::with_capacity(view.projectiles.len() + session.recent_events().len());
+    let mut facts = Vec::with_capacity(view.projectiles.len() + session.recent_events().len() + session.entities().len());
+    for track in session.entities() {
+        if owned(track.id) && let Some(launch) = track.last_attack_launched {
+            facts.push(AttackFact { tick: launch.tick, source: track.id, target: launch.target, kind: AttackFactKind::Launch });
+        }
+    }
     for projectile in &view.projectiles {
         let Some(source) = projectile.source.filter(|&source| owned(source)) else { continue };
         if projectile.inflictor.is_some() { continue; }
@@ -108,7 +113,6 @@ fn attack_facts(session: &ClientSession, view: &bota_proto::WorldView) -> Vec<At
     }
     for event in session.recent_events() {
         let (source, target, kind) = match event.kind {
-            bota_proto::EventKind::AttackLaunched { attacker, target } => (attacker, target, AttackFactKind::Launch),
             bota_proto::EventKind::Damaged { source: Some(source), target, inflictor: None, removal: false, .. }
             | bota_proto::EventKind::Missed { source: Some(source), target } => (source, Some(target), AttackFactKind::Impact),
             _ => continue,

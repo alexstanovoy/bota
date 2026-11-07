@@ -94,6 +94,15 @@ fn an_attack_arrived(session: &ClientSession, source: EntityId, target: EntityId
 
 #[test]
 fn attack_once_survives_a_think_gap_covering_the_projectiles_entire_flight() {
+    attack_once_think_gap(false);
+}
+
+#[test]
+fn attack_once_retains_a_delivered_launch_after_unrelated_events_evict_recent_history() {
+    attack_once_think_gap(true);
+}
+
+fn attack_once_think_gap(evict: bool) {
     let (mut local, mut sessions, target) = a_durable_creep_in_solo_mid(HeroId::SHADOW_FIEND);
     let source = sessions[0].own_player().expect("player").unit.expect("hero");
     let mut lua = once_script();
@@ -108,6 +117,13 @@ fn attack_once_survives_a_think_gap_covering_the_projectiles_entire_flight() {
     }
     assert!(arrived,"one attack arrived while no thinks ran");
     assert!(!sessions[0].current().expect("view").projectiles.iter().any(|shot| shot.source==Some(source) && shot.inflictor.is_none()));
+    if evict {
+        let mut view=sessions[0].current().expect("view").clone(); view.tick+=1;
+        let tick=view.tick;
+        sessions[0].ingest(bota_proto::ServerMsg::Snapshot{view}, &mut()).expect("snapshot");
+        sessions[0].ingest(bota_proto::ServerMsg::Events{tick, events:vec![EventKind::TreeGrew{at:bota_proto::Vec2::from_ints(9216,9216)};bota_client_core::MAX_RECENT_EVENTS]}, &mut()).expect("unrelated events");
+        assert!(!sessions[0].recent_events().iter().any(|event|matches!(event.kind,EventKind::AttackLaunched{..})),"the recent history really evicted the launch");
+    }
     let turn = lua.think(&sessions[0]).expect("resume");
     assert!(turn.failures.is_empty(),"{:?}",turn.failures);
     assert!(turn.bots[0].orders.iter().any(|order|order.order==(Order::Move{target:Target::None})),"a completed shot is not repeated after the gap");
