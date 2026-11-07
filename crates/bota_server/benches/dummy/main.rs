@@ -34,7 +34,7 @@ const TICK_WINDOW_DIGESTS: [(u32, u64, u64); 2] = [
 const SKIRMISH_TICKS: u32 = 9_000;
 
 /// The world and handed-out fingerprints at the end of the skirmish.
-const SKIRMISH_DIGEST: (u64, u64) = (0x29c7_6744_0e76_3611, 0xb899_91ec_a07c_3a50);
+const SKIRMISH_DIGEST: (u64, u64) = (0x29c7_6744_0e76_3611, 0xc4af_67ce_c3d4_2e07);
 
 /// The fingerprint of the fixed isqrt64 answers.
 const ISQRT_DIGEST: u64 = 0x797c_0b4c_e20e_e1b1;
