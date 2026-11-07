@@ -48,7 +48,7 @@ fn install_nearby(lua: &mut Lua, methods: TableId, state: Shared) -> Result<(), 
             let mut found: Vec<_> = snapshot.units.iter().filter(|known| {
                 let other = &known.unit;
                 let kind = match name { "GetNearbyHeroes" => other.kind == UnitKind::Hero, "GetNearbyCreeps" => bota_core::UNIT_KINDS[other.kind as usize].creep, _ => other.kind == UnitKind::Tower };
-                let matches_mode = mode == 0 || other.owner.and_then(|slot| state.seats.iter().position(|seat| seat.slot == slot)).is_some_and(|index| i64::from(state.bots[index].mode) == mode);
+                let matches_mode = enemies || mode == 0 || other.owner.and_then(|slot| state.seats.iter().position(|seat| seat.slot == slot)).is_some_and(|index| i64::from(state.bots[index].mode) == mode);
                 known.visible && other.id != own && other.hp > 0 && kind && matches_mode && (other.team != unit.team) == enemies && distance(other.pos, unit.pos) <= radius
             }).map(|known| (known.unit.pos.distance_squared(unit.pos), known.unit.id)).collect();
             found.sort_unstable();
@@ -139,12 +139,19 @@ fn aoe(vm: &mut Vm, args: Args, state: &State, vectors: Vectors) -> Result<usize
     let base = vector::position(vm, vm.arg(args, 3))?;
     let range = vector::number(vm, args, 4)?.clamp(0.0, 32767.0);
     let radius = vector::number(vm, args, 5)?.clamp(0.0, 1600.0);
-    vector::number(vm, args, 6)?;
+    let delay = vector::number(vm, args, 6)?.max(0.0);
     let health = integer(vm, args, 7)?;
     let unit = state.unit(own).ok_or_else(|| vm.error("unit is no longer known"))?;
     let snapshot = state.snapshot.as_ref().ok_or_else(|| vm.error("a current view is required"))?;
     vm.charge_fuel(1 + snapshot.units.len() as u64 / 4)?;
-    let points: Vec<Vec2> = snapshot.units.iter().filter(|known| known.visible && known.unit.id != own && known.unit.hp > 0 && (known.unit.team != unit.team) == enemies && (!heroes || known.unit.kind == UnitKind::Hero) && (health <= 0 || i64::from(known.unit.hp) <= health) && distance(base, known.unit.pos) <= range + radius).map(|known| known.unit.pos).collect();
+    let mut points = Vec::with_capacity(snapshot.units.len());
+    for known in &snapshot.units {
+        let other = &known.unit;
+        let kind = if heroes { other.kind == UnitKind::Hero } else { bota_core::kind_def(other.kind).creep };
+        if !known.visible || other.id == own || other.hp <= 0 || (other.team != unit.team) != enemies || !kind || (health > 0 && i64::from(other.hp) > health) { continue; }
+        let position = super::geometry::project(known.last_visible.1, known.velocity, delay).ok_or_else(|| vm.error("predicted location is outside protocol coordinates"))?;
+        if distance(base, position) <= range + radius { points.push(position); }
+    }
     let length = points.len() as u64;
     vm.charge_fuel(1 + length.saturating_mul(length).saturating_mul(length + 3).saturating_mul(8))?;
     let (target, count) = super::geometry::best_circle(base, range, radius, &points);
