@@ -11,6 +11,7 @@ mod globals;
 mod queries;
 mod geometry;
 mod estimates;
+mod unit_names;
 pub(crate) mod abilities;
 
 pub(crate) type Shared = Rc<RefCell<State>>;
@@ -81,7 +82,8 @@ fn install_unit_reads(lua: &mut Lua, methods: TableId, state: Shared) -> Result<
                 "GetTeam" => Value::Number(state.player(id).map_or_else(|| unit.map_or(4.0, |unit| team_number(unit.team)), |player| team_number(player.team))),
                 "CanBeSeen" => Value::Boolean(snapshot.is_some_and(|snapshot| snapshot.units.iter().any(|known| known.unit.id == id && known.visible))),
                 "GetUnitName" => {
-                    let key = state.hero(id).and_then(bota_core::hero_def).map_or("", |hero| hero.key);
+                    vm.charge_fuel(32)?;
+                    let key = unit_names::key(&state, id).unwrap_or_default();
                     vm.new_string(key.as_bytes())?
                 }
                 _ => unreachable!("registered unit read"),
