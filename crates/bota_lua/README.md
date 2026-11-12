@@ -61,6 +61,15 @@ server-style `key_hex:team:name[:kind]` reservations; only the selected team's b
 seats are used. Without credentials it joins one unreserved seat. Keys never belong
 on the command line.
 
+`bota_botscript --api-catalogue` prints the installed global, unit, ability and library names as TSV without
+loading sources or connecting. Save that output, then run `python3 -I tools/bot_api_census.py DIR --catalogue FILE`
+to inventory a preselected Shadow Fiend's entry/module closure. `--runtime DIR` includes runtime modules;
+`--hero KEY` chooses another short hero name and `--pack-selection` includes selection hooks. The JSON includes
+missing names with source locations, presence coverage, dialect features, unresolved imports and native mode
+hook dependencies. Shared-module branches are conservatively included: presence coverage is not execution,
+signature or behavior coverage, and unresolved imports prevent a complete-closure claim. Sources are read locally
+through bounded pinned descriptors; they are never copied into the repository or executed by the scanner.
+
 The normal test group runs original small scripts through complete matches.
 It reports local-source conformance separately as not run when no pack is configured;
 setting `BOTA_LUA_LOCAL_PACK` also enables that contract in the group.

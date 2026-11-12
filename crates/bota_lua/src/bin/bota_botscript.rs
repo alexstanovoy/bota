@@ -32,6 +32,10 @@ fn diagnostic(error: &dyn std::error::Error) -> String {
 }
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
+    if std::env::args_os().skip(1).eq([std::ffi::OsString::from("--api-catalogue")]) {
+        print!("{}", bota_lua::LuaTeam::api_catalogue()?);
+        return Ok(());
+    }
     let options = options()?;
     let credentials = credentials(options.team)?;
     let modules = load_modules(

@@ -99,6 +99,19 @@ pub struct LuaTeam {
 }
 
 impl LuaTeam {
+    /// Lists the actual installed API in an isolated interpreter, without loading a pack.
+    /// Each line is a tab-separated namespace and name; this is a presence inventory, not a signature check.
+    pub fn api_catalogue() -> Result<String, BindingError> {
+        let mut team = Self::new(Team::Radiant, &[BotSeat { slot: SlotId(0), hero: HeroId::SHADOW_FIEND }], Limits::DEFAULT, Keys { hash: [17, 19], random: 23 })?;
+        let state = team.state.borrow();
+        let arguments = [Value::Table(team.lua.globals()), state.unit_methods.map_or(Value::Nil, Value::Table), state.ability_methods.map_or(Value::Nil, Value::Table)];
+        drop(state);
+        let function = team.lua.load("=api_catalogue", include_bytes!("api_catalogue.lua"))?;
+        let values = team.lua.call(function, &arguments)?;
+        let bytes = values.first().and_then(|&value| team.lua.bytes(value)).ok_or(BindingError::Configuration("API catalogue did not return text"))?;
+        String::from_utf8(bytes.to_vec()).map_err(|_| BindingError::Configuration("API catalogue is not UTF-8"))
+    }
+
     pub fn new(
         team: Team,
         seats: &[BotSeat],
