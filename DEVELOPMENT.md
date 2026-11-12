@@ -9,6 +9,7 @@ bota_server       simulation, network, lobby, CLI          deps: bota_proto, bot
 bota_client_core  logic every client shares                deps: bota_proto, bota_core
 bota_replay       the match metadata format                deps: bota_proto, bota_core
 bota_radovid      optional matchmaking helper              deps: bota_client_core, bota_proto, radovid
+bota_gym          in-process training and evaluation       deps: bota_server, bota_client_core, bota_replay, bota_core, bota_proto
 bota_lua          optional bot-script host (outside the workspace)  deps: bota_client_core, bota_core, bota_proto, luagee
 ```
 
@@ -29,6 +30,10 @@ client library don't depend on each other (the server's tests and examples use t
 - `bota_radovid`: finds games through a radovid service (matchmaking, lobbies, tickets). Nothing else depends on it;
   it is outside the default members and behind its `radovid` feature. Its end-to-end tests
   (`cargo test -p bota_radovid --features e2e`) need a radovid checkout beside this one.
+- `bota_gym`: many in-process matches on a worker pool for training and evaluating bots: `Game` (a lockstep match,
+  the hidden state only behind `Game<Privileged>`), the caller's per-game `Episode` run on `Workers`, `VecEnv` and
+  `Tournament` drivers, seeding, opponent scheduling, statistics. Outside the default members; its crate docs are
+  the guide (`cargo doc -p bota_gym --open`).
 - `bota_lua`: the host for Lua bots (binary `bota_botscript`). It builds on `luagee`, a repository of its own, and is a
   workspace of its own (`crates/bota_lua/Cargo.toml`, with its own `Cargo.lock` and `target/`), not a member of this
   one: Cargo loads the manifest of every path dependency, an optional one included, so a member would stop every build

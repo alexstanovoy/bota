@@ -37,6 +37,8 @@ wasm_only_features = ["web"]
 features = ["e2e"]
 wasm_only_features = ["web"]
 
+[crate.bota_gym]
+
 [crate.bota_server]
 routed = true
 # bota_radovid's end-to-end tests launch the release bota_server.
@@ -83,6 +85,11 @@ tests = [{ crate = "bota_lua", features = ["native"] }]
 name = "client_core"
 about = "what clients share: sessions, sockets, replay files, the UI model"
 tests = [{ crate = "bota_client_core" }]
+
+[[group]]
+name = "gym"
+about = "in-process training and evaluation: real matches through the drivers, determinism over worker counts"
+tests = [{ crate = "bota_gym" }]
 
 [[group]]
 name = "radovid"

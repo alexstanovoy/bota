@@ -74,6 +74,16 @@ You need Rust (edition 2024).
 
 3. Record a match and watch it: add `--replay match.brp` to the server, then open the file in dbota.
 
+4. Train or evaluate a bot without a server: `bota_gym` runs many matches in your process, on a pool of workers,
+   deterministically from seeds, with your policy deciding for every seat:
+
+   ```sh
+   cargo run --release -p bota_gym --example random_duel
+   ```
+
+   Its crate docs (`cargo doc -p bota_gym --open`) walk through vectorised environments, evaluation tournaments,
+   opponent pools and what a policy may and may not see.
+
 `bota_server --help` lists every option: the map, the number of players, tick rate, spectators, chat, cheats for
 practice, TLS. What the server promises a bot (what it never tells, why it refuses an order, how ticks and chances
 work) is the rustdoc of `bota_proto::contract`: `cargo doc -p bota_proto --open`.

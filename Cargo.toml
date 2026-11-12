@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/bota_client_core",
     "crates/bota_core",
+    "crates/bota_gym",
     "crates/bota_proto",
     "crates/bota_radovid",
     "crates/bota_replay",
@@ -12,7 +13,7 @@ members = [
 # every path dependency, an optional one included, so a member depending on the separate luagee repository would stop
 # every build here when that checkout is absent. See crates/bota_lua/README.md for how to build it.
 exclude = ["crates/bota_lua"]
-# bota_radovid is a helper for client writers and stays out of a plain cargo build and test.
+# bota_radovid and bota_gym are helpers for client and bot writers and stay out of a plain cargo build and test.
 default-members = [
     "crates/bota_client_core",
     "crates/bota_core",
@@ -40,7 +41,7 @@ bota_core = { path = "crates/bota_core" }
 bota_proto = { path = "crates/bota_proto" }
 bota_radovid = { path = "crates/bota_radovid" }
 bota_replay = { path = "crates/bota_replay" }
-bota_server = { path = "crates/bota_server" }
+bota_server = { path = "crates/bota_server", default-features = false }
 criterion = { version = "=0.8.2", default-features = false }
 
 [workspace.lints.clippy]
