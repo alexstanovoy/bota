@@ -3,23 +3,29 @@ use bota_client_core::IssuedOrder;
 use bota_proto::{AbilityId, AbilitySlot, EffectId, Order, StatusFlags, TalentSlot, Target, UnitKind, UnitView, Vec2};
 use luagee::{Lua, Value};
 use crate::{BindingError, api::Shared, state::{Snapshot, State}};
-use super::{context, distance, enemy};
+use super::{context, distance, enemy, mode_is};
 
 #[derive(Clone, Copy)]
-pub(crate) enum AuxiliaryHook { Ability, Level }
+pub(crate) enum AuxiliaryHook { Ability, Level, Item }
 
 pub(crate) fn install(lua: &mut Lua, shared: Shared) -> Result<Value, BindingError> {
     Ok(lua.function("default_auxiliary", Rc::new(move |vm, args| {
         let phase = vm.check_number(args, 0)?;
-        if phase.fract() != 0.0 || !(0.0..=1.0).contains(&phase) { return Err(vm.arg_error(args, 0, "known auxiliary hook expected")); }
+        if phase.fract() != 0.0 || !(0.0..=2.0).contains(&phase) { return Err(vm.arg_error(args, 0, "known auxiliary hook expected")); }
         let mut state = shared.borrow_mut();
         let Some((snapshot, own)) = context(&state) else { return Ok(0); };
         let book = state.ability_book(own.id).unwrap_or(&[]);
         let work = if phase == 1.0 {
             snapshot.units.len() + book.len() + snapshot.talents.len() * 8
-        } else { snapshot.units.len() * (book.len() + 3) + book.len() };
+        } else if phase == 2.0 { snapshot.units.len() * (bota_proto::limits::INVENTORY_SLOTS + 1) + bota_proto::limits::INVENTORY_SLOTS * (own.effects.len() + 1) }
+        else { snapshot.units.len() * (book.len() + 3) + book.len() };
         vm.charge_fuel(8 + work as u64 + state.orders.len() as u64)?;
-        let order = if phase == 1.0 { learning(&state, snapshot, own) } else { casting(&state, snapshot, own) };
+        let order = match phase as u8 {
+            0 => casting(&state, snapshot, own),
+            1 => learning(&state, snapshot, own),
+            2 => super::items::use_item(&state, snapshot, own),
+            _ => None,
+        };
         if let Some(order) = order { state.order(vm, IssuedOrder::hero(order))?; }
         Ok(0)
     }))?)
@@ -39,7 +45,7 @@ fn learning(state: &State, snapshot: &Snapshot, own: &UnitView) -> Option<Order>
 }
 
 fn casting(state: &State, snapshot: &Snapshot, own: &UnitView) -> Option<Order> {
-    if state.bots[state.bot_index()].mode == 4 || !own.queue.is_empty()
+    if mode_is(state, "retreat") || !own.queue.is_empty()
         || own.statuses.bits & (StatusFlags::STUNNED | StatusFlags::FEARED | StatusFlags::CASTING | StatusFlags::CHANNELLING) != 0
         || state.orders.iter().any(|order| order.unit.is_none() && matches!(order.order, Order::Cast { .. } | Order::Use { .. })) { return None; }
     let hero = enemy(snapshot, own, UnitKind::Hero).filter(|target| target.statuses.bits & StatusFlags::MAGIC_IMMUNE == 0);

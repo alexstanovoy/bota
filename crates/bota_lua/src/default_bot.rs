@@ -2,6 +2,7 @@
 //! policy thresholds are explicit reconstruction assumptions, not recovered engine internals.
 
 mod auxiliary;
+mod items;
 pub(crate) use auxiliary::{AuxiliaryHook, install as install_auxiliary};
 
 use std::rc::Rc;
@@ -74,7 +75,7 @@ fn desire(state: &State, snapshot: &Snapshot, own: &UnitView, mode: &str) -> f64
     match mode {
         "laning" => 0.3,
         "retreat" if i64::from(own.hp) * 100 < i64::from(own.max_hp) * 35
-            || (state.bots[state.bot_index()].mode == 4 && i64::from(own.hp) * 100 < i64::from(own.max_hp) * 90) => 0.95,
+            || (mode_is(state, "retreat") && i64::from(own.hp) * 100 < i64::from(own.max_hp) * 90) => 0.95,
         "attack" if enemy(snapshot, own, UnitKind::Hero).is_some_and(|target| {
             distance(own.pos, target.pos) <= i128::from(900 * 65536i64).pow(2)
                 && i64::from(own.hp) * i64::from(target.max_hp) >= i64::from(target.hp) * i64::from(own.max_hp)
@@ -123,4 +124,9 @@ fn decision(snapshot: &Snapshot, own: &UnitView, mode: &str) -> Result<(Order, b
     if let Some((target, once)) = target { return Ok((Order::Attack { target: Target::Unit(target.id) }, once)); }
     let other = if own.team == Team::Radiant { Team::Dire } else { Team::Radiant };
     Ok((Order::Attack { target: Target::Pos(bota_core::fountain_pos(snapshot.map, other)) }, false))
+}
+
+fn mode_is(state: &State, name: &str) -> bool {
+    state.bots[state.bot_index()].mode.checked_sub(1)
+        .and_then(|index| BOT_MODES.get(usize::from(index))).is_some_and(|mode| *mode == name)
 }

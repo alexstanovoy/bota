@@ -629,6 +629,7 @@ impl LuaTeam {
             .iter()
             .position(|script| script.slot == slot && script.kind == ScriptKind::AbilityItemUsage)
         ;
+        let mut default_item = false;
         for (hook, default) in [
             ("AbilityUsageThink", Some(crate::default_bot::AuxiliaryHook::Ability)),
             ("ItemUsageThink", None),
@@ -639,7 +640,12 @@ impl LuaTeam {
             if let Some(index) = usage && self.has_hook(index, hook)? { self.call_hook(index, hook, &[])?; }
             else if takeover.is_none() && let Some(default) = default {
                 self.lua.call(self.default_auxiliary, &[Value::Number(f64::from(default as u8))])?;
+            } else if takeover.is_none() && hook == "ItemUsageThink" {
+                default_item = true;
             }
+        }
+        if default_item {
+            self.lua.call(self.default_auxiliary, &[Value::Number(f64::from(crate::default_bot::AuxiliaryHook::Item as u8))])?;
         }
         if let Some(index) = self
             .scripts
