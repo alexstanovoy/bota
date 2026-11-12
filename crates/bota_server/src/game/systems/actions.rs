@@ -796,10 +796,11 @@ impl World {
         )
     }
 
-    /// Milliseconds of a cast's point or backswing at an entity's cast speed: `100 / (100 +
-    /// cast speed)` of them, as Dota's cast speed is a rate (`cast_speed_pct` 100 at the base:
-    /// Shadow Fiend's Feast talent writes "+30" onto it), rounded up so that no length but none
-    /// becomes instant.
+    /// Milliseconds of a cast's point or backswing at an entity's cast speed, under bota's rate
+    /// model: `100 / (100 + cast speed)` of them. The model reads Dota's cast speed as a rate
+    /// (`cast_speed_pct` 100 at the base; Shadow Fiend's Feast talent writes "+30" onto it); no
+    /// Dota source states the formula, so it is a model, open to a measurement. Rounded up so that
+    /// no length but none becomes instant.
     fn cast_sped(&self, entity: Entity, ms: u32) -> u32 {
         let speed = self
             .stats

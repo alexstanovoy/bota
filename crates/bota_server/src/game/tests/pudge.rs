@@ -1829,8 +1829,8 @@ fn a_courier_is_spell_immune_rot_and_hook_pass_it_by_and_only_dismember_holds_it
     );
 }
 
-/// A Pudge carrying an Aether Lens at `level`, reached through Dota's cheats (`-lvlup`, `-item`), a
-/// tick on, his first `learned` ability slots learned once.
+/// A level-six Pudge, carrying an Aether Lens when `lens` says so, reached through Dota's cheats
+/// (`-lvlup`, `-item`), with the ability slots `learned` learned once each.
 fn lens_pudge(lens: bool, learned: &[u8]) -> (World, Entity) {
     let (mut world, pudge) = cheat_match(HeroId::PUDGE);
     cheat(&mut world, bota_proto::Cheat::Levels { count: 5 });

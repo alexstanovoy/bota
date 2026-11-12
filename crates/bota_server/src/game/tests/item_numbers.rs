@@ -567,10 +567,12 @@ fn kaya_and_sange_cuts_a_razes_mana_cost_by_a_quarter() {
     assert_eq!(cost(&[ItemId::KAYA_AND_SANGE]), bare * 75 / 100);
 }
 
-/// Yasha and Kaya's cast speed (`cast_speed_pct` 25) runs a cast point at 125% of its pace: a
-/// Shadowraze's 0.55 seconds go off in 0.44.
+/// Yasha and Kaya's cast speed (`cast_speed_pct` 25) under bota's rate model of cast speed (a
+/// cast point takes 100 / (100 + speed) of its length): a Shadowraze's 0.55 seconds go off in
+/// 0.44. The model is bota's reading of the hero scripts (a `cast_speed_pct` of 100 that a talent
+/// adds "+30" to); no Dota source states the formula, so this pins the model, not Dota.
 #[test]
-fn yasha_and_kaya_casts_a_raze_at_five_fourths_of_its_pace() {
+fn yasha_and_kaya_casts_a_raze_at_the_rate_models_pace() {
     let ticks_to_land = |items: &[ItemId]| {
         let (mut world, hero) = out_of_fountain_after_buying(items);
         set_level(&mut world, hero, 0, 1);
