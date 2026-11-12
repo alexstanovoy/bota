@@ -127,6 +127,14 @@ fuzz_target!(|data: &[u8]| {
             unit.max_hp = unit.max_hp.max(unit.hp);
             unit.mana = i32::from(byte);
             unit.max_mana = unit.max_mana.max(unit.mana);
+            if data[31] & 64 != 0 {
+                unit.armor = bota_proto::Fixed::MIN;
+                unit.attack_damage = i32::MAX;
+                unit.attack_damage_min = i32::MAX;
+                unit.attack_damage_max = i32::MAX;
+                unit.max_hp = 40_000;
+                unit.statuses.bits &= !bota_proto::StatusFlags::INVULNERABLE;
+            }
             for ability in &mut unit.abilities {
                 ability.cooldown_left = u32::from(byte % 3);
             }

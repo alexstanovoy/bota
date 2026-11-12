@@ -43,7 +43,7 @@ fn estimate(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaE
     } else {
         let available = available && actor.team == state.team;
         let attacks = if mask & 1 != 0 {
-            attack_damage(actor, target, seconds)
+            attack_damage(vm, actor, target, seconds)?
         } else {
             0.0
         };
@@ -72,13 +72,14 @@ fn estimate(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaE
     )])
 }
 
-fn attack_damage(actor: &UnitView, target: &UnitView, seconds: f64) -> f64 {
+fn attack_damage(vm: &mut Vm, actor: &UnitView, target: &UnitView, seconds: f64) -> Result<f64, LuaError> {
     let class = bota_core::attack_class_pct(actor.kind, target.kind);
     let amount = (i64::from(actor.attack_damage.max(0)) * i64::from(class) / 100)
         .min(i64::from(i32::MAX)) as i32;
-    let hit = bota_core::mitigate(amount, DamageKind::Physical, target.armor, 0);
+    let hit = crate::numeric::physical_damage(amount, target.armor)
+        .ok_or_else(|| vm.error("received attack statistics exceed projection range"))?;
     let evasion = f64::from(target.evasion.raw).clamp(0.0, 65536.0) / 65536.0;
-    f64::from(hit) * (1.0 - evasion) * seconds * 1000.0 / f64::from(actor.attack_time.max(1))
+    Ok(f64::from(hit) * (1.0 - evasion) * seconds * 1000.0 / f64::from(actor.attack_time.max(1)))
 }
 
 fn accepts(mask: i64, kind: DamageKind) -> bool {

@@ -6,6 +6,7 @@ mod api;
 mod default_bot;
 mod handles;
 mod modules;
+mod numeric;
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub mod native;
 mod state;

@@ -3,7 +3,7 @@
 
 use std::rc::Rc;
 use bota_client_core::IssuedOrder;
-use bota_proto::{DamageKind, Fixed, HeroId, Order, StatusFlags, Target, Team, UnitKind, UnitView, Vec2};
+use bota_proto::{HeroId, Order, StatusFlags, Target, Team, UnitKind, UnitView, Vec2};
 use luagee::{Lua, LuaError, Value, Vm};
 use crate::{BindingError, api::Shared, state::{PendingOnce, Snapshot, State}, team::BOT_MODES};
 
@@ -43,7 +43,7 @@ fn callback(vm: &mut Vm, shared: &Shared, mode: &str, thinking: bool) -> Result<
     }
     let pending = state.bots[state.bot_index()].pending_once;
     if mode != "retreat" && pending.is_some_and(|shot| !shot.launched && snapshot.units.iter().any(|known| known.unit.id == shot.target && known.visible && known.unit.hp > 0)) { return Ok(0); }
-    let (order, once) = decision(snapshot, own, mode);
+    let (order, once) = decision(snapshot, own, mode).map_err(|()| vm.error("received attack statistics exceed projection range"))?;
     let source = own.id;
     let tick = snapshot.tick;
     state.order(vm, IssuedOrder::hero(order))?;
@@ -81,27 +81,43 @@ fn desire(state: &State, snapshot: &Snapshot, own: &UnitView, mode: &str) -> f64
     }
 }
 
-fn last_hit<'a>(snapshot: &'a Snapshot, own: &UnitView) -> Option<&'a UnitView> {
-    snapshot.units.iter().filter(|known| known.visible && known.unit.hp > 0 && known.unit.statuses.bits & StatusFlags::INVULNERABLE == 0)
-        .map(|known| &known.unit).filter(|target| {
-            if !matches!(target.kind, UnitKind::CreepMelee | UnitKind::CreepFlagbearer | UnitKind::CreepRanged | UnitKind::CreepSiege) { return false; }
-            let range = i128::from(own.attack_range.raw.max(0)) + i128::from(own.bound.raw.max(0)) + i128::from(target.bound.raw.max(0));
-            if distance(own.pos, target.pos) > range * range { return false; }
-            let class = bota_core::attack_class_pct(own.kind, target.kind);
-            let damage = (i64::from(own.attack_damage_min.max(0)) * i64::from(class) / 100).clamp(0, i64::from(i32::MAX)) as i32;
-            let hit = bota_core::mitigate(damage, DamageKind::Physical, target.armor, 0);
-            target.hp <= hit && (target.team != own.team || bota_core::deniable(target.kind, Fixed::from_int(target.hp), Fixed::from_int(target.max_hp)))
-        }).min_by_key(|target| (target.team == own.team, target.hp, target.id))
+fn projected_hit(own: &UnitView, target: &UnitView) -> Result<i32, ()> {
+    let class = bota_core::attack_class_pct(own.kind, target.kind);
+    let amount = (i64::from(own.attack_damage_min.max(0)) * i64::from(class) / 100).clamp(0, i64::from(i32::MAX)) as i32;
+    crate::numeric::physical_damage(amount, target.armor).ok_or(())
 }
 
-fn decision(snapshot: &Snapshot, own: &UnitView, mode: &str) -> (Order, bool) {
-    if mode == "retreat" { return (Order::Move { target: Target::Pos(bota_core::fountain_pos(snapshot.map, own.team)) }, false); }
+fn deniable_observation(target: &UnitView) -> bool {
+    // Whole-point observations are i32, not necessarily representable in Q16.16.
+    bota_core::kind_def(target.kind).deny_below_pct.is_some_and(|share| {
+        i64::from(target.hp) * 100 < i64::from(target.max_hp) * i64::from(share)
+    })
+}
+
+fn last_hit<'a>(snapshot: &'a Snapshot, own: &UnitView) -> Result<Option<&'a UnitView>, ()> {
+    let mut best: Option<&UnitView> = None;
+    for known in &snapshot.units {
+        let target = &known.unit;
+        if !known.visible || target.hp <= 0 || target.statuses.bits & StatusFlags::INVULNERABLE != 0
+            || !matches!(target.kind, UnitKind::CreepMelee | UnitKind::CreepFlagbearer | UnitKind::CreepRanged | UnitKind::CreepSiege) { continue; }
+        let range = i128::from(own.attack_range.raw.max(0)) + i128::from(own.bound.raw.max(0)) + i128::from(target.bound.raw.max(0));
+        if distance(own.pos, target.pos) > range * range { continue; }
+        let hit = projected_hit(own, target)?;
+        if target.hp > hit || (target.team == own.team && !deniable_observation(target)) { continue; }
+        let rank = |unit: &UnitView| (unit.team == own.team, unit.hp, unit.id);
+        if best.is_none_or(|previous| rank(target) < rank(previous)) { best = Some(target); }
+    }
+    Ok(best)
+}
+
+fn decision(snapshot: &Snapshot, own: &UnitView, mode: &str) -> Result<(Order, bool), ()> {
+    if mode == "retreat" { return Ok((Order::Move { target: Target::Pos(bota_core::fountain_pos(snapshot.map, own.team)) }, false)); }
     let target = match mode {
         "attack" => enemy(snapshot, own, UnitKind::Hero).map(|target| (target, false)),
         "farm" => enemy(snapshot, own, UnitKind::CreepNeutral).map(|target| (target, false)),
-        _ => last_hit(snapshot, own).map(|target| (target, true)),
+        _ => last_hit(snapshot, own)?.map(|target| (target, true)),
     };
-    if let Some((target, once)) = target { return (Order::Attack { target: Target::Unit(target.id) }, once); }
+    if let Some((target, once)) = target { return Ok((Order::Attack { target: Target::Unit(target.id) }, once)); }
     let other = if own.team == Team::Radiant { Team::Dire } else { Team::Radiant };
-    (Order::Attack { target: Target::Pos(bota_core::fountain_pos(snapshot.map, other)) }, false)
+    Ok((Order::Attack { target: Target::Pos(bota_core::fountain_pos(snapshot.map, other)) }, false))
 }

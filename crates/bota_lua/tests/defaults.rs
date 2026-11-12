@@ -18,7 +18,7 @@ fn body(order: &IssuedOrder) -> bool {
 }
 
 fn observation(session: &mut bota_client_core::ClientSession, mut view: bota_proto::WorldView) {
-    view.tick += 1;
+    view.tick = session.current().expect("previous view").tick + 1;
     let tick = view.tick;
     session.ingest(bota_proto::ServerMsg::Snapshot { view }, &mut ()).expect("observation");
     session.ingest(bota_proto::ServerMsg::Events { tick, events: Vec::new() }, &mut ()).expect("events");
@@ -31,22 +31,53 @@ fn default_denies_are_strictly_below_the_core_health_boundary() {
     let own = sessions[0].own_hero().expect("hero").id;
     let creep = original.units.iter().find(|unit| unit.team == Team::Radiant && unit.kind == bota_proto::UnitKind::CreepMelee).expect("friendly creep");
     let (target, position) = (creep.id, creep.pos);
-    for (hp, expected) in [(100, false), (98, true)] {
+    for (hp, max_hp, damage, expected) in [(100, 200, 1000, false), (98, 200, 1000, true), (19000, 40000, 30000, true), (20000, 40000, 30000, false)] {
         let mut session = sessions[0].clone();
         let mut view = original.clone();
         let hero = view.units.iter_mut().find(|unit| unit.id == own).expect("hero");
         hero.pos = position;
-        hero.attack_damage_min = 1000;
-        hero.attack_damage_max = 1000;
-        hero.attack_damage = 1000;
+        hero.attack_damage_min = damage;
+        hero.attack_damage_max = damage;
+        hero.attack_damage = damage;
+        for unit in &mut view.units { if unit.id != target && bota_core::kind_def(unit.kind).creep { unit.hp = 100000; unit.max_hp = 100000; } }
         let creep = view.units.iter_mut().find(|unit| unit.id == target).expect("creep");
         creep.hp = hp;
-        creep.max_hp = 200;
+        creep.max_hp = max_hp;
         observation(&mut session, view);
         let turn = team(&[]).think(&session).expect("turn");
         assert!(turn.failures.is_empty(), "{:?}", turn.failures);
-        assert_eq!(turn.bots[0].orders.iter().any(|order| matches!(order.order, Order::Attack { target: Target::Unit(id) } if id == target)), expected, "observed health {hp}/200");
+        assert_eq!(turn.bots[0].orders.iter().any(|order| matches!(order.order, Order::Attack { target: Target::Unit(id) } if id == target)), expected, "observed health {hp}/{max_hp}");
     }
+}
+
+#[test]
+fn out_of_range_observations_are_rejected_without_retiring_the_interpreter() {
+    let (_, sessions, _) = support::durable_creep_encounter(HeroId::SHADOW_FIEND);
+    let mut session = sessions[0].clone();
+    let original = session.current().expect("view").clone();
+    let own = session.own_hero().expect("hero").id;
+    let target = original.units.iter().find(|unit| unit.team == Team::Radiant && unit.kind == bota_proto::UnitKind::CreepMelee).expect("creep");
+    let (id, position) = (target.id, target.pos);
+    let mut view = original.clone();
+    let own = view.units.iter_mut().find(|unit| unit.id == own).expect("hero");
+    own.pos = position;
+    own.attack_damage_min = i32::MAX;
+    own.attack_damage_max = i32::MAX;
+    own.attack_damage = i32::MAX;
+    let target = view.units.iter_mut().find(|unit| unit.id == id).expect("creep");
+    target.hp = 1;
+    target.max_hp = 200;
+    target.armor = bota_proto::Fixed::MIN;
+    observation(&mut session, view);
+    let mut lua = team(&[]);
+    let rejected = lua.think(&session).expect("bounded input error");
+    assert!(rejected.bots[0].orders.is_empty());
+    assert_eq!(rejected.failures.len(), 1);
+    assert!(matches!(&rejected.failures[0].error, luagee::Error::Runtime { message, .. } if message.contains("statistics")));
+    observation(&mut session, original);
+    let recovered = lua.think(&session).expect("next valid observation");
+    assert!(recovered.failures.is_empty(), "{:?}", recovered.failures);
+    assert!(recovered.bots[0].orders.iter().any(body));
 }
 
 #[test]
