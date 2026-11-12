@@ -115,22 +115,22 @@ pub struct Carried {
     /// `100 / (100 + percent)` of their length. Summed with every other cast speed; an item and
     /// what is built of it count once: Dota's Yasha and Kaya.
     pub cast_speed_pct: i32,
-    /// World units added to every reach of the carrier's casts ([`lengthened_reach`]). Of several
-    /// carried, the best counts (Dota 7.41: Dagon's "Cast Range Bonus does not stack with Aether
-    /// Lens or multiple Dagons").
+    /// World units added to every reach of the carrier's casts ([`lengthened_reach`]). Aether Lens
+    /// and Dagon share one bonus, the best (Dota 7.41: "Cast Range Bonus does not stack with Aether
+    /// Lens or multiple Dagons"); other sources add (`STACKING_STATS`).
     pub cast_range_bonus: i32,
     /// Share of every cooldown the carrier starts taken off, in basis points of
-    /// [`rules::NOMINAL_BP`], multiplying with every other cut. Of several carried, the best
-    /// counts: Dota's Octarine Core.
+    /// [`rules::NOMINAL_BP`]. Sources multiply (Dota 7.31); several of one lineage count once:
+    /// Dota's Octarine Core.
     pub cooldown_cut_bp: i32,
-    /// Attack range added to a ranged carrier and to nobody else. Of several carried, the best
-    /// counts: Dota's Dragon Lance and what is built of it.
+    /// Attack range added to a ranged carrier and to nobody else. Dragon Lance and what is built of
+    /// it count once.
     pub ranged_range: i32,
     /// Health regenerated a second, in basis points of the carrier's maximum health. Several
     /// carried add up: Dota's Heart of Tarrasque (`hp_regen`, "Max Health Regen").
     pub max_hp_regen_bp: i32,
-    /// Health regenerated a second, in basis points of the health the carrier is missing. Of
-    /// several carried, the best counts: Dota's Heart of Tarrasque's Behemoth's Blood ("Multiple
+    /// Health regenerated a second, in basis points of the health the carrier is missing. Several
+    /// of one lineage count once: Dota's Heart of Tarrasque's Behemoth's Blood ("Multiple
     /// instances of Behemoth's Blood don't stack", 7.40).
     pub missing_hp_regen_bp: i32,
 }
@@ -955,7 +955,7 @@ pub fn carried_bonus(items: impl Iterator<Item = CarriedItem>, ranged: bool) -> 
     // The items whose spell lifesteal is counted, each once; past an
     // inventory's worth, no more are.
     let mut spell_lifesteal_of = [None; bota_proto::INVENTORY_SLOTS];
-    let mut lineages = [Lineages::NONE; LINEAGE_STATS.len()];
+    let mut lineages = [Lineages::NONE; STACKING_STATS.len()];
     for stack in items {
         let Some(def) = item_def(stack.id) else {
             continue;
@@ -984,12 +984,7 @@ pub fn carried_bonus(items: impl Iterator<Item = CarriedItem>, ranged: bool) -> 
         total.melee_range += carried.melee_range;
         total.mana_pct += carried.mana_pct;
         total.magic_resist_bp = resist_both(total.magic_resist_bp, carried.magic_resist_bp);
-        total.aoe_bonus = total.aoe_bonus.max(carried.aoe_bonus);
-        total.cast_range_bonus = total.cast_range_bonus.max(carried.cast_range_bonus);
-        total.cooldown_cut_bp = total.cooldown_cut_bp.max(carried.cooldown_cut_bp);
-        total.ranged_range = total.ranged_range.max(carried.ranged_range);
         total.max_hp_regen_bp += carried.max_hp_regen_bp;
-        total.missing_hp_regen_bp = total.missing_hp_regen_bp.max(carried.missing_hp_regen_bp);
         total.lifesteal_pct += carried.lifesteal_pct;
         if carried.spell_lifesteal_pct > 0
             && !spell_lifesteal_of.contains(&Some(stack.id))
@@ -998,72 +993,149 @@ pub fn carried_bonus(items: impl Iterator<Item = CarriedItem>, ranged: bool) -> 
             *free = Some(stack.id);
             total.spell_lifesteal_pct += carried.spell_lifesteal_pct;
         }
-        for (stat, best) in LINEAGE_STATS.iter().zip(&mut lineages) {
-            best.add(lineage(stack.id, ranged, stat.get), (stat.get)(carried));
+        for (stat, best) in STACKING_STATS.iter().zip(&mut lineages) {
+            best.add(stat.source(stack.id, ranged), (stat.get)(carried));
         }
         // What an item is set to is worth points of that attribute alone.
         if let Some(mode) = stack.mode {
             total.attributes += points(mode, def.mode_bonus);
         }
     }
-    for (stat, best) in LINEAGE_STATS.iter().zip(&lineages) {
+    for (stat, best) in STACKING_STATS.iter().zip(&lineages) {
         let value = best.values().fold(0, stat.stack);
         (stat.set)(&mut total, value);
     }
     total
 }
 
-/// A carried stat of which an item and what is built of it count once, the best of them, and
-/// sources of different lineages combine by `stack`: Dota's "multiple sources of ... do not
-/// stack" of the Yasha-, Sange- and Kaya-based items.
-struct LineageStat {
-    get: fn(&Carried) -> i32,
+/// A carried stat whose sources do not all stack: of the items of one source, the best counts, and
+/// sources combine by `stack`. An item's source is its lineage ([`lineage`]: an item and what is
+/// built of it hold one bonus, Dota's "multiple sources of ... do not stack" of the Yasha-, Sange-
+/// and Kaya-based items), or the stacking group its lineage belongs to.
+pub(crate) struct StackingStat {
+    pub(crate) get: fn(&Carried) -> i32,
     set: fn(&mut Carried, i32),
-    /// Two values of different lineages as one.
-    stack: fn(i32, i32) -> i32,
+    /// Two values of different sources as one.
+    pub(crate) stack: fn(i32, i32) -> i32,
+    /// Items, by Dota key, whose lineages share one bonus of the stat although neither is built
+    /// of the other, as Dota's notes group them. A key bota does not carry yet names nothing.
+    groups: &'static [&'static [&'static str]],
 }
 
-/// Every carried stat that counts once a lineage.
-const LINEAGE_STATS: [LineageStat; 8] = [
-    LineageStat {
+/// Where one item's bonus of a stat counts: its lineage, or a stacking group.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Source {
+    Lineage(ItemId),
+    Group(usize),
+}
+
+impl StackingStat {
+    /// Where `item`'s bonus of this stat counts.
+    pub(crate) fn source(&self, item: ItemId, ranged: bool) -> Source {
+        let root = lineage(item, ranged, self.get);
+        let key = item_def(root).map(|def| def.key);
+        match self
+            .groups
+            .iter()
+            .position(|group| key.is_some_and(|key| group.contains(&key)))
+        {
+            Some(group) => Source::Group(group),
+            None => Source::Lineage(root),
+        }
+    }
+}
+
+/// Summed across sources.
+const fn add(first: i32, second: i32) -> i32 {
+    first + second
+}
+
+/// Every carried stat whose sources do not all stack, and how its sources combine.
+pub(crate) const STACKING_STATS: [StackingStat; 13] = [
+    StackingStat {
         get: |carried| carried.move_speed_pct,
         set: |carried, value| carried.move_speed_pct = value,
-        stack: |first, second| first + second,
+        stack: add,
+        groups: &[],
     },
-    LineageStat {
+    StackingStat {
         get: |carried| carried.slow_resist_bp,
         set: |carried, value| carried.slow_resist_bp = value,
         stack: resist_both,
+        groups: &[],
     },
-    LineageStat {
+    StackingStat {
         get: |carried| carried.restoration_amp_bp,
         set: |carried, value| carried.restoration_amp_bp = value,
         stack: resist_both,
+        groups: &[],
     },
-    LineageStat {
+    StackingStat {
         get: |carried| carried.spell_amp_pct,
         set: |carried, value| carried.spell_amp_pct = value,
-        stack: |first, second| first + second,
+        stack: add,
+        groups: &[],
     },
-    LineageStat {
+    StackingStat {
         get: |carried| carried.mana_regen_amp_pct,
         set: |carried, value| carried.mana_regen_amp_pct = value,
-        stack: |first, second| first + second,
+        stack: add,
+        groups: &[],
     },
-    LineageStat {
+    StackingStat {
         get: |carried| carried.status_resist_bp,
         set: |carried, value| carried.status_resist_bp = value,
         stack: resist_both,
+        groups: &[],
     },
-    LineageStat {
+    StackingStat {
         get: |carried| carried.mana_cost_cut_bp,
         set: |carried, value| carried.mana_cost_cut_bp = value,
         stack: resist_both,
+        groups: &[],
     },
-    LineageStat {
+    StackingStat {
         get: |carried| carried.cast_speed_pct,
         set: |carried, value| carried.cast_speed_pct = value,
-        stack: |first, second| first + second,
+        stack: add,
+        groups: &[],
+    },
+    // Dota 7.41, Dagon: "Cast Range Bonus does not stack with Aether Lens or multiple Dagons"; a
+    // source outside the group (a neutral enhancement, a talent) adds.
+    StackingStat {
+        get: |carried| carried.cast_range_bonus,
+        set: |carried, value| carried.cast_range_bonus = value,
+        stack: add,
+        groups: &[&["item_aether_lens", "item_dagon"]],
+    },
+    // Cooldown reductions of different sources multiply (Dota 7.31: "Cooldown Reduction stacking
+    // is now multiplicative"); several Octarine Cores count once.
+    StackingStat {
+        get: |carried| carried.cooldown_cut_bp,
+        set: |carried, value| carried.cooldown_cut_bp = value,
+        stack: resist_both,
+        groups: &[],
+    },
+    // Dragon Lance and what is built of it (Hurricane Pike, Hydra's Breath) count once.
+    StackingStat {
+        get: |carried| carried.ranged_range,
+        set: |carried, value| carried.ranged_range = value,
+        stack: add,
+        groups: &[],
+    },
+    // "Area of Effect bonuses from multiple Chasm Stones or its upgrades do not stack".
+    StackingStat {
+        get: |carried| carried.aoe_bonus,
+        set: |carried, value| carried.aoe_bonus = value,
+        stack: add,
+        groups: &[],
+    },
+    // "Multiple instances of Behemoth's Blood don't stack" (7.40).
+    StackingStat {
+        get: |carried| carried.missing_hp_regen_bp,
+        set: |carried, value| carried.missing_hp_regen_bp = value,
+        stack: add,
+        groups: &[],
     },
 ];
 
@@ -1090,11 +1162,11 @@ pub fn lineage(item: ItemId, ranged: bool, stat: fn(&Carried) -> i32) -> ItemId 
     panic!("{item:?}: a build deeper than {MAX_BUILD_DEPTH} parts");
 }
 
-/// The best value of one stat each lineage carried holds, for an inventory's worth of lineages;
-/// past that, no more are counted.
+/// The best value of one stat each source carried holds, for an inventory's worth of sources; past
+/// that, no more are counted.
 #[derive(Clone, Copy)]
 struct Lineages {
-    best: [Option<(ItemId, i32)>; bota_proto::INVENTORY_SLOTS],
+    best: [Option<(Source, i32)>; bota_proto::INVENTORY_SLOTS],
 }
 
 impl Lineages {
@@ -1102,7 +1174,7 @@ impl Lineages {
         best: [None; bota_proto::INVENTORY_SLOTS],
     };
 
-    fn add(&mut self, root: ItemId, value: i32) {
+    fn add(&mut self, root: Source, value: i32) {
         if value <= 0 {
             return;
         }
