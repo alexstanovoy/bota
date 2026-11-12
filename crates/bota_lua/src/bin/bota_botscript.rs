@@ -1,7 +1,7 @@
 use bota_client_core::{Link, Transport, greet};
 use bota_lua::{
     BotSeat, Limits,
-    native::{NativeConfig, NativeTeam, load_modules, play_team, random_keys},
+    native::{HeroSelection, NativeConfig, NativeTeam, load_modules, play_team, random_keys},
 };
 use bota_proto::{ClientMsg, HeroId, Role, SeatKey, Team};
 use std::{path::PathBuf, process::ExitCode, time::Duration};
@@ -17,6 +17,7 @@ struct Options {
     team: Team,
     hero: HeroId,
     think_ms: u64,
+    hero_selection: HeroSelection,
 }
 fn main() -> ExitCode {
     match run() {
@@ -60,6 +61,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         })
         .collect();
     let mut config = NativeConfig::new(options.team, seats, random_keys()?);
+    config.hero_selection = options.hero_selection;
     config.think_timeout = Duration::from_millis(options.think_ms);
     let mut worker = NativeTeam::new(config, modules)?;
     for (link, seated) in &mut joined {
@@ -86,7 +88,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 fn options() -> Result<Options, Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args_os().skip(1).take(33).collect();
     if args.len() > 32 || args.len() % 2 != 0 {
-        return Err("usage: bota_botscript --scripts DIR [--runtime-scripts DIR] [--address HOST:PORT] [--team radiant|dire] [--hero KEY] [--think-ms N]".into());
+        return Err("usage: bota_botscript --scripts DIR [--runtime-scripts DIR] [--address HOST:PORT] [--team radiant|dire] [--hero KEY] [--selection pack|fixed] [--think-ms N]".into());
     }
     let mut options = Options {
         scripts: PathBuf::new(),
@@ -95,9 +97,15 @@ fn options() -> Result<Options, Box<dyn std::error::Error>> {
         team: Team::Radiant,
         hero: HeroId::SHADOW_FIEND,
         think_ms: 33,
+        hero_selection: HeroSelection::Pack,
     };
     for pair in args.as_chunks::<2>().0 {
         match pair[0].to_str().ok_or("invalid option")? {
+            "--selection" => options.hero_selection = match pair[1].to_str() {
+                Some("fixed") => HeroSelection::Fixed,
+                Some("pack") => HeroSelection::Pack,
+                _ => return Err("invalid hero selection policy".into()),
+            },
             "--scripts" => options.scripts = PathBuf::from(&pair[1]),
             "--runtime-scripts" => options.runtime = Some(PathBuf::from(&pair[1])),
             "--address" => options.address = pair[1].to_str().ok_or("invalid address")?.to_owned(),

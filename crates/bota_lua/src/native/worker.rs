@@ -24,6 +24,15 @@ pub struct NativeConfig {
     pub keys: Keys,
     pub think_timeout: Duration,
     pub startup_timeout: Duration,
+    pub hero_selection: HeroSelection,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HeroSelection {
+    /// Run the pack's selection hook, retaining configured heroes as fallbacks.
+    Pack,
+    /// Use the configured seats without loading or executing selection hooks.
+    Fixed,
 }
 impl NativeConfig {
     pub fn new(team: Team, seats: Vec<BotSeat>, keys: Keys) -> Self {
@@ -34,6 +43,7 @@ impl NativeConfig {
             limits: NATIVE_LIMITS,
             think_timeout: Duration::from_millis(33),
             startup_timeout: Duration::from_secs(30),
+            hero_selection: HeroSelection::Pack,
         }
     }
 }
@@ -274,17 +284,19 @@ fn build(
     let mut lua =
         LuaTeam::new(config.team, &config.seats, config.limits, config.keys).map_err(setup)?;
     lua.set_modules(modules).map_err(setup)?;
-    lua.prepare_selection().map_err(setup)?;
-    for tick in 0..900 {
-        if matches!(input.try_recv(), Err(mpsc::TryRecvError::Disconnected)) {
-            return Err(NativeError::Closed);
-        }
-        let turn = lua.select_heroes(tick).map_err(setup)?;
-        if let Some(failure) = turn.failures.first() {
-            return Err(NativeError::Setup(failure.error.to_string()));
-        }
-        if turn.complete {
-            break;
+    if config.hero_selection == HeroSelection::Pack {
+        lua.prepare_selection().map_err(setup)?;
+        for tick in 0..900 {
+            if matches!(input.try_recv(), Err(mpsc::TryRecvError::Disconnected)) {
+                return Err(NativeError::Closed);
+            }
+            let turn = lua.select_heroes(tick).map_err(setup)?;
+            if let Some(failure) = turn.failures.first() {
+                return Err(NativeError::Setup(failure.error.to_string()));
+            }
+            if turn.complete {
+                break;
+            }
         }
     }
     let seats = lua.finish_selection();

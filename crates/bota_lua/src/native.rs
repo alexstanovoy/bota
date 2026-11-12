@@ -4,7 +4,7 @@ use std::path::Path;
 mod play;
 mod worker;
 pub use play::{TeamOutcome, play_team};
-pub use worker::{NativeConfig, NativeError, NativeTeam};
+pub use worker::{HeroSelection, NativeConfig, NativeError, NativeTeam};
 
 use crate::{BindingError, Limits, ModuleBank};
 

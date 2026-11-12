@@ -56,7 +56,9 @@ the `lua` test group) wherever the luagee checkout is present.
 
 Run `bota_botscript` (`crates/bota_lua/target/release/bota_botscript`) with `--scripts DIR --team radiant`.
 Options include `--runtime-scripts DIR`, `--address HOST:PORT`, `--hero KEY` and
-`--think-ms N`. It connects directly using `bota_client_core`. `BOTA_SEATS` accepts
+`--think-ms N`. `--selection fixed` uses the configured hero without loading draft hooks;
+the default `--selection pack` lets draft hooks choose and uses `--hero` as a fallback.
+It connects directly using `bota_client_core`. `BOTA_SEATS` accepts
 server-style `key_hex:team:name[:kind]` reservations; only the selected team's bot
 seats are used. Without credentials it joins one unreserved seat. Keys never belong
 on the command line.
