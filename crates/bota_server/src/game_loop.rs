@@ -937,7 +937,7 @@ impl Server {
         if self.greeted(id) {
             return true; // a second Hello changes nothing
         }
-        if wire_fingerprint != WIRE_FINGERPRINT {
+        if !bota_core::admits_wire(wire_fingerprint) {
             self.refuse_wire(id, wire_fingerprint);
             return false;
         }

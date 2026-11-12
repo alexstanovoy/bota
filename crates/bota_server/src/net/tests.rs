@@ -383,6 +383,23 @@ fn match_start_picks(msg: ServerMsg) -> Option<usize> {
 
 /// A client of other registries, or of the same registries and other rules
 /// (a balance change), is refused before it could misread anything.
+/// A client of an earlier build whose wire this one admits ([`bota_core::ADMITTED_WIRES`]: its
+/// rules unchanged for every item it holds) is greeted and seated as one of this build's.
+#[test]
+fn a_client_of_an_admitted_earlier_wire_takes_a_seat() {
+    let earlier = *bota_core::ADMITTED_WIRES.first().expect("an admitted wire");
+    assert_ne!(earlier, bota_core::WIRE_FINGERPRINT);
+    let addr = start_server(realtime(5));
+    let mut client = TestClient::connect(addr);
+    client.send(&ClientMsg::hello(Role::Bot, "earlier", None, earlier));
+    let slot = client.recv_until(|msg| match msg {
+        ServerMsg::Welcome { slot, .. } => Some(slot),
+        ServerMsg::WireMismatch { .. } => panic!("an admitted wire is refused"),
+        _ => None,
+    });
+    assert_eq!(slot, Some(SlotId(0)));
+}
+
 #[test]
 fn a_client_built_with_another_wire_or_other_rules_is_told_so_and_takes_no_seat() {
     use bota_core::WIRE_FINGERPRINT;

@@ -34,7 +34,7 @@ pub fn meta_of_replay(reader: impl Read + 'static) -> io::Result<Vec<u8>> {
             match &record {
                 ReplayRecord::Header(found) if !header => {
                     if found.magic != bota_proto::ReplayHeader::MAGIC
-                        || found.wire_fingerprint != bota_core::WIRE_FINGERPRINT
+                        || !bota_core::admits_wire(found.wire_fingerprint)
                     {
                         return Err(io::Error::new(
                             io::ErrorKind::InvalidData,

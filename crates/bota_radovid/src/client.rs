@@ -392,7 +392,7 @@ impl Client {
         };
         known
             .iter()
-            .filter(|r| r.game == GAME && r.game_fingerprint == fingerprint())
+            .filter(|r| r.game == GAME && bota_core::admits_wire(r.game_fingerprint))
     }
 
     /// The account, once logged in.

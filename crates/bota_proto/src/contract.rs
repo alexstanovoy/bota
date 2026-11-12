@@ -540,8 +540,11 @@
 //! module tree: shared rule and math helpers, world systems, validation,
 //! visibility and committed map inputs. Comments, layout and test-only
 //! modules do not count; item data uses catalogue prefix agreement. No
-//! author increments a number or renews a source pin. A server built with another
-//! fingerprint answers [`ServerMsg::WireMismatch`] with its own and closes the
+//! author increments a number or renews a source pin. A build may admit the wires of
+//! earlier builds whose rules it plays unchanged for the items they hold
+//! (`bota_core::ADMITTED_WIRES`, `bota_core::admits_wire`): their clients, servers and replays
+//! meet it on the shared catalogue. A server built with a fingerprint it does not admit
+//! answers [`ServerMsg::WireMismatch`] with its own and closes the
 //! connection, before anything else could be misread: a server whose
 //! balance moved (a new patch's numbers, a changed table) and a client
 //! built before it part at the hello instead of the client failing in

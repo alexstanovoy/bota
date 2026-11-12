@@ -34,7 +34,7 @@ pub fn check_handoff(handoff: &Handoff) -> std::io::Result<()> {
             handoff.game
         )));
     }
-    if handoff.game_fingerprint != fingerprint() {
+    if !bota_core::admits_wire(handoff.game_fingerprint) {
         return Err(std::io::Error::other(format!(
             "the match speaks wire {:016x} and this client {:016x}",
             handoff.game_fingerprint,

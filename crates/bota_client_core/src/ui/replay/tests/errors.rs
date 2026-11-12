@@ -230,3 +230,17 @@ fn reader_failure_keeps_the_io_kind_and_context() {
         "replay record 1 at byte 0: read crossed the permitted replay prefix"
     );
 }
+
+/// A replay recorded by a build whose wire this one admits ([`bota_core::ADMITTED_WIRES`]: an
+/// earlier build whose rules it plays unchanged) plays as one of this build's; a wire neither its
+/// own nor admitted is refused.
+#[test]
+fn a_replay_of_an_admitted_earlier_wire_plays() {
+    let earlier = *bota_core::ADMITTED_WIRES.first().expect("an admitted wire");
+    assert_ne!(earlier, WIRE_FINGERPRINT);
+    let header = ReplayRecord::Header(ReplayHeader::new(earlier));
+    let mut player = ReplayPlayer::from_reader(Cursor::new(frames(&[header, snapshot(0)])));
+    let messages = player.poll(0.0);
+    assert!(player.error().is_none(), "{:?}", player.error());
+    assert!(matches!(&messages[..], [ServerMsg::Snapshot { view }] if view.tick == 0));
+}

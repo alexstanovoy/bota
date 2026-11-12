@@ -270,7 +270,10 @@ impl std::error::Error for ReplayRefusal {}
 /// header, and no other may be a header.
 fn header_refusal(record: &ReplayRecord, first: bool) -> Option<ReplayRefusal> {
     match (record, first) {
-        (ReplayRecord::Header(header), true) if *header == ReplayHeader::new(WIRE_FINGERPRINT) => {
+        (ReplayRecord::Header(header), true)
+            if header.magic == ReplayHeader::MAGIC
+                && bota_core::admits_wire(header.wire_fingerprint) =>
+        {
             None
         }
         (ReplayRecord::Header(header), true) if header.magic != ReplayHeader::MAGIC => {
