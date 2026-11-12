@@ -137,9 +137,15 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         let slow_keep =
             resistance_keep(working(), Stat::SlowResistPct) * carried_slow_keep / rules::NOMINAL_BP;
         now.slow_resist_bp = rules::NOMINAL_BP - slow_keep;
+        let carried_status_keep = rules::NOMINAL_BP
+            - carried
+                .as_ref()
+                .map_or(0, |carried| carried.status_resist_bp);
         now.status_resist_bp = rules::NOMINAL_BP
             - (rules::NOMINAL_BP - now.status_resist_bp)
                 * resistance_keep(working(), Stat::StatusResistPct)
+                / rules::NOMINAL_BP
+                * carried_status_keep
                 / rules::NOMINAL_BP;
         now.illusion_attack_taken_bp = resistance_keep(working(), Stat::IllusionAttackReductionPct);
         let mut sums = Sums::of(modifiers.get(entity));
@@ -474,6 +480,9 @@ fn add_carried(now: &mut Stats, sums: &mut Sums, carried: &Carried, illusion: bo
     now.lifesteal_pct += carried.lifesteal_pct;
     now.spell_lifesteal_pct += carried.spell_lifesteal_pct;
     now.spell_amp_pct += carried.spell_amp_pct;
+    now.cast_speed_pct += carried.cast_speed_pct;
+    // A cut of the mana costs multiplies with every other.
+    now.mana_cost_rate_bp = cut_rate(now.mana_cost_rate_bp, carried.mana_cost_cut_bp);
     if now.projectile_speed.is_none() {
         now.attack_range += Fixed::from_int(carried.melee_range);
     }
@@ -825,6 +834,7 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32, night: bool) -> Stats {
         lifesteal_pct: 0,
         spell_lifesteal_pct: 0,
         spell_amp_pct: 0,
+        cast_speed_pct: 0,
         magic_taken_pct: 0,
         damage_taken_bp: rules::NOMINAL_BP,
         restoration_bp: rules::NOMINAL_BP,

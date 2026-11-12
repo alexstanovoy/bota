@@ -103,6 +103,18 @@ pub struct Carried {
     /// regeneration amplification; an item and what is built of it count once: Dota's Kaya-based
     /// items.
     pub mana_regen_amp_pct: i32,
+    /// Status resistance, in basis points of [`rules::NOMINAL_BP`]: the share taken off the
+    /// durations of what disables the carrier, stacking as resistances do; an item and what is
+    /// built of it count once ([`lineage`]): Dota's Sange-based items.
+    pub status_resist_bp: i32,
+    /// Share of every mana cost the carrier pays (and of every loss of its mana) taken off, in
+    /// basis points of [`rules::NOMINAL_BP`], stacking as cuts of a rate do; an item and what is
+    /// built of it count once: Dota's Kaya and Sange.
+    pub mana_cost_cut_bp: i32,
+    /// Percent added to the carrier's cast speed: its cast points and backswings take
+    /// `100 / (100 + percent)` of their length. Summed with every other cast speed; an item and
+    /// what is built of it count once: Dota's Yasha and Kaya.
+    pub cast_speed_pct: i32,
 }
 
 /// Nothing carried at all, so an entry names only what it adds.
@@ -134,6 +146,9 @@ pub(crate) const NOTHING: Carried = Carried {
     restoration_amp_bp: 0,
     spell_amp_pct: 0,
     mana_regen_amp_pct: 0,
+    status_resist_bp: 0,
+    mana_cost_cut_bp: 0,
+    cast_speed_pct: 0,
 };
 
 /// Whole points of one attribute and none of the others.
@@ -962,7 +977,7 @@ struct LineageStat {
 }
 
 /// Every carried stat that counts once a lineage.
-const LINEAGE_STATS: [LineageStat; 5] = [
+const LINEAGE_STATS: [LineageStat; 8] = [
     LineageStat {
         get: |carried| carried.move_speed_pct,
         set: |carried, value| carried.move_speed_pct = value,
@@ -986,6 +1001,21 @@ const LINEAGE_STATS: [LineageStat; 5] = [
     LineageStat {
         get: |carried| carried.mana_regen_amp_pct,
         set: |carried, value| carried.mana_regen_amp_pct = value,
+        stack: |first, second| first + second,
+    },
+    LineageStat {
+        get: |carried| carried.status_resist_bp,
+        set: |carried, value| carried.status_resist_bp = value,
+        stack: resist_both,
+    },
+    LineageStat {
+        get: |carried| carried.mana_cost_cut_bp,
+        set: |carried, value| carried.mana_cost_cut_bp = value,
+        stack: resist_both,
+    },
+    LineageStat {
+        get: |carried| carried.cast_speed_pct,
+        set: |carried, value| carried.cast_speed_pct = value,
         stack: |first, second| first + second,
     },
 ];

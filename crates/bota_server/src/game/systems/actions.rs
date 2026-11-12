@@ -731,7 +731,7 @@ impl World {
         };
         Some(Timing {
             point: self.cast_point_of(entity, point),
-            backswing,
+            backswing: self.cast_sped(entity, backswing),
             duration,
         })
     }
@@ -764,18 +764,38 @@ impl World {
 
     /// Milliseconds a cast point lasts for an entity: its own length, or
     /// [`rules::TALENT_FEAST_CAST_POINT_PCT`] of it while a feast runs on one
-    /// that has learned the level-25 talent. Read every tick of the point, so
-    /// a feast ending inside it lengthens what is left.
+    /// that has learned the level-25 talent, taken at its cast speed. Read
+    /// every tick of the point, so a feast ending inside it lengthens what is
+    /// left.
     pub(crate) fn cast_point_of(&self, entity: Entity, point: u32) -> u32 {
         let feasting = self.modifiers.get(entity).is_some_and(|on_it| {
             on_it
                 .active()
                 .any(|held| matches!(held.kind, ModifierKind::Feasting { .. }))
         });
-        cast_point_ms(
-            point,
-            feasting && self.has_talent(entity, Talent::FeastCastSpeed),
+        self.cast_sped(
+            entity,
+            cast_point_ms(
+                point,
+                feasting && self.has_talent(entity, Talent::FeastCastSpeed),
+            ),
         )
+    }
+
+    /// Milliseconds of a cast's point or backswing at an entity's cast speed: `100 / (100 +
+    /// cast speed)` of them, as Dota's cast speed is a rate (`cast_speed_pct` 100 at the base:
+    /// Shadow Fiend's Feast talent writes "+30" onto it), rounded up so that no length but none
+    /// becomes instant.
+    fn cast_sped(&self, entity: Entity, ms: u32) -> u32 {
+        let speed = self
+            .stats
+            .get(entity)
+            .map_or(0, |stats| stats.cast_speed_pct);
+        if speed <= 0 || ms == 0 {
+            return ms;
+        }
+        let rate = 100 + speed.unsigned_abs();
+        (ms * 100).div_ceil(rate)
     }
 
     /// Whether what runs on still has something to do.

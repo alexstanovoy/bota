@@ -262,6 +262,12 @@ impl ItemId {
     pub const SANGE: ItemId = ItemId(101);
     /// Dota's `item_kaya`: intelligence, spell amplification and mana regeneration amplification.
     pub const KAYA: ItemId = ItemId(103);
+    /// Dota's `item_sange_and_yasha`: Sange's and Yasha's stats and status resistance.
+    pub const SANGE_AND_YASHA: ItemId = ItemId(105);
+    /// Dota's `item_kaya_and_sange`: Kaya's and Sange's stats and a cut of mana costs.
+    pub const KAYA_AND_SANGE: ItemId = ItemId(106);
+    /// Dota's `item_yasha_and_kaya`: Yasha's and Kaya's stats and cast speed.
+    pub const YASHA_AND_KAYA: ItemId = ItemId(107);
 }
 
 /// What did something: the ability or the item a unit used, as Dota's combat

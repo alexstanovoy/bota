@@ -1194,7 +1194,74 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         },
         ..from(&ITEM_KAYA)
     },
+    // The three pairs: each holds the stats of the two it is built of, a lineage with each.
+    ItemDef {
+        name: "Sange and Yasha",
+        carried: sange_and_yasha("movement_speed_percent_bonus_melee"),
+        ranged: Some(sange_and_yasha("movement_speed_percent_bonus")),
+        ..from(&ITEM_SANGE_AND_YASHA)
+    },
+    ItemDef {
+        name: "Kaya and Sange",
+        carried: Carried {
+            attributes: Attributes {
+                strength: Fixed::from_int(int(&ITEM_KAYA_AND_SANGE, "bonus_strength")),
+                agility: Fixed::ZERO,
+                intelligence: Fixed::from_int(int(&ITEM_KAYA_AND_SANGE, "bonus_intellect")),
+            },
+            slow_resist_bp: bp(&ITEM_KAYA_AND_SANGE, "slow_resistance"),
+            restoration_amp_bp: bp(&ITEM_KAYA_AND_SANGE, "hp_regen_amp"),
+            spell_amp_pct: int(&ITEM_KAYA_AND_SANGE, "spell_amp"),
+            mana_regen_amp_pct: int(&ITEM_KAYA_AND_SANGE, "mana_regen_multiplier"),
+            mana_cost_cut_bp: bp(&ITEM_KAYA_AND_SANGE, "manacost_reduction"),
+            ..NOTHING
+        },
+        ..from(&ITEM_KAYA_AND_SANGE)
+    },
+    ItemDef {
+        name: "Yasha and Kaya",
+        carried: yasha_and_kaya("movement_speed_percent_bonus_melee"),
+        ranged: Some(yasha_and_kaya("movement_speed_percent_bonus")),
+        ..from(&ITEM_YASHA_AND_KAYA)
+    },
 ];
+
+/// What Sange and Yasha carries, its movement speed of the key a melee or a ranged carrier
+/// reads.
+const fn sange_and_yasha(move_speed_key: &str) -> Carried {
+    let d = &ITEM_SANGE_AND_YASHA;
+    Carried {
+        attributes: Attributes {
+            strength: Fixed::from_int(int(d, "bonus_strength")),
+            agility: Fixed::from_int(int(d, "bonus_agility")),
+            intelligence: Fixed::ZERO,
+        },
+        attack_speed: int(d, "bonus_attack_speed"),
+        move_speed_pct: int(d, move_speed_key),
+        status_resist_bp: bp(d, "status_resistance"),
+        slow_resist_bp: bp(d, "slow_resistance"),
+        restoration_amp_bp: bp(d, "hp_regen_amp"),
+        ..NOTHING
+    }
+}
+
+/// What Yasha and Kaya carries, its movement speed of the key a melee or a ranged carrier reads.
+const fn yasha_and_kaya(move_speed_key: &str) -> Carried {
+    let d = &ITEM_YASHA_AND_KAYA;
+    Carried {
+        attributes: Attributes {
+            strength: Fixed::ZERO,
+            agility: Fixed::from_int(int(d, "bonus_agility")),
+            intelligence: Fixed::from_int(int(d, "bonus_intellect")),
+        },
+        attack_speed: int(d, "bonus_attack_speed"),
+        move_speed_pct: int(d, move_speed_key),
+        spell_amp_pct: int(d, "spell_amp"),
+        mana_regen_amp_pct: int(d, "mana_regen_multiplier"),
+        cast_speed_pct: int(d, "cast_speed_pct"),
+        ..NOTHING
+    }
+}
 
 /// One kind of lotus, as its script gives it.
 const fn lotus(name: &'static str, d: &ItemData) -> ItemDef {

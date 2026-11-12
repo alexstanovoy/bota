@@ -90,6 +90,9 @@ pub struct Stats {
     /// Percent more damage its spells deal ([`Hit::spell`](crate::game::Hit::spell)), on top of
     /// every other amplification of what it deals.
     pub spell_amp_pct: i32,
+    /// Percent added to how fast it casts: a cast point and a backswing take
+    /// `100 / (100 + this)` of their length.
+    pub cast_speed_pct: i32,
     /// Percent more magical damage it takes.
     pub magic_taken_pct: i32,
     /// Share of the damage that reaches it, after armor and resistance, that

@@ -391,6 +391,9 @@ fn every_stat_upgrade_bought_whole_adds_what_its_script_says_and_nothing_else() 
         ItemId::YASHA,
         ItemId::SANGE,
         ItemId::KAYA,
+        ItemId::SANGE_AND_YASHA,
+        ItemId::KAYA_AND_SANGE,
+        ItemId::YASHA_AND_KAYA,
     ] {
         assert_carries_its_values(item, bare);
     }
@@ -485,6 +488,109 @@ fn a_kaya_amplifies_the_mana_a_clarity_mends_by_a_fifth() {
     );
 }
 
+/// The stats of a hero out of the fountain carrying `items` in its first slots, put there whole
+/// (buying an upgrade would take a part already carried into it).
+fn stats_carrying(items: &[ItemId]) -> Stats {
+    let (world, hero) = carrying_world(items);
+    *world.stats.get(hero).expect("derived")
+}
+
+/// A hero out of the fountain carrying `items` in its first slots, put there whole, a tick on.
+fn carrying_world(items: &[ItemId]) -> (World, Entity) {
+    let (mut world, hero) = out_of_fountain_after_buying(&[]);
+    let bag = world.inventory.get_mut(hero).expect("a bag");
+    for (at, &item) in items.iter().enumerate() {
+        bag.slots[at] = Some(fresh_stack(item, 0));
+    }
+    world.step();
+    (world, hero)
+}
+
+/// An item and what is built of it hold one bonus of a stat, the best (Liquipedia: "Multiple sources
+/// of movement speed do not stack" for Yasha-based items, of slow resistance for Sange-based ones,
+/// of spell amplification for Kaya-based ones): a Yasha and a Sange and Yasha hasten by the pair's
+/// 12%, a Sange and a Sange and Yasha keep the pair's 30% of a slow off, and a Kaya and a Kaya and
+/// Sange amplify a raze by the pair's 12%.
+#[test]
+fn an_item_and_what_is_built_of_it_count_once_the_better() {
+    let bare = stats_after_buying(&[]).move_speed;
+    let both = stats_carrying(&[ItemId::YASHA, ItemId::SANGE_AND_YASHA]);
+    assert_eq!(both.move_speed, hastened(bare, 12));
+    let both = stats_carrying(&[ItemId::SANGE, ItemId::SANGE_AND_YASHA]);
+    assert_eq!(both.slow_resist_bp, 3_000);
+    let creep = |world: &mut World, at| world.spawn_unit(&bota_core::MELEE_CREEP, Team::Dire, at);
+    let (bare, _) = raze_of_a_buyer(&[], creep);
+    let (world, hero) = carrying_world(&[ItemId::KAYA, ItemId::KAYA_AND_SANGE]);
+    let (both, _) = raze_from(world, hero, creep);
+    assert!((both - bare * 112 / 100).abs() <= 1, "{both} of {bare}");
+}
+
+/// Items of different lineages each count: a Yasha and a Kaya and Sange, neither built of the
+/// other, carry the Yasha's movement speed and the pair's spell amplification side by side, and
+/// Sange and Yasha's status resistance (16%) shortens a stun of 100 ticks to 84.
+#[test]
+fn items_of_different_lineages_each_count() {
+    let stats = stats_carrying(&[ItemId::YASHA, ItemId::KAYA_AND_SANGE]);
+    assert_eq!(
+        stats.move_speed,
+        hastened(stats_after_buying(&[]).move_speed, 10)
+    );
+    assert_eq!(stats.spell_amp_pct, 12);
+    let (mut world, hero) = out_of_fountain_after_buying(&[ItemId::SANGE_AND_YASHA]);
+    put_on(&mut world, hero, ModifierKind::Stunned, 100);
+    let left = world
+        .modifiers
+        .get(hero)
+        .and_then(|on_it| {
+            on_it
+                .active()
+                .find(|held| held.kind == ModifierKind::Stunned)
+        })
+        .and_then(|held| held.ticks_left);
+    assert_eq!(left, Some(84));
+}
+
+/// Kaya and Sange cuts the mana its carrier pays by a quarter (`manacost_reduction`): a
+/// Shadowraze's cost comes to three quarters.
+#[test]
+fn kaya_and_sange_cuts_a_razes_mana_cost_by_a_quarter() {
+    let cost = |items: &[ItemId]| {
+        let (world, hero) = out_of_fountain_after_buying(items);
+        world.ability_mana_cost(hero, bota_proto::AbilityId::RAZE_NEAR, 1)
+    };
+    let bare = cost(&[]);
+    assert!(bare > 0);
+    assert_eq!(cost(&[ItemId::KAYA_AND_SANGE]), bare * 75 / 100);
+}
+
+/// Yasha and Kaya's cast speed (`cast_speed_pct` 25) runs a cast point at 125% of its pace: a
+/// Shadowraze's 0.55 seconds go off in 0.44.
+#[test]
+fn yasha_and_kaya_casts_a_raze_at_five_fourths_of_its_pace() {
+    let ticks_to_land = |items: &[ItemId]| {
+        let (mut world, hero) = out_of_fountain_after_buying(items);
+        set_level(&mut world, hero, 0, 1);
+        world.transform.get_mut(hero).expect("standing").facing = bota_proto::Angle { brads: 0 };
+        let at = world.transform.get(hero).expect("standing").pos
+            + Vec2::from_ints(rules::RAZE_DISTANCE[0], 0);
+        let mark = world.spawn_unit(&bota_core::MELEE_CREEP, Team::Dire, at);
+        cast(&mut world, 0, Target::None);
+        (1..60)
+            .find(|_| !burns_on(&world.step(), mark).is_empty())
+            .expect("the raze lands")
+    };
+    let ms = |ticks: u32| ticks * 1000 / rules::TICKS_PER_SECOND;
+    let (bare, quick) = (ticks_to_land(&[]), ticks_to_land(&[ItemId::YASHA_AND_KAYA]));
+    assert!(
+        ms(bare).abs_diff(550) <= 1000 / rules::TICKS_PER_SECOND,
+        "{bare} ticks"
+    );
+    assert!(
+        ms(quick).abs_diff(440) <= 1000 / rules::TICKS_PER_SECOND,
+        "{quick} ticks"
+    );
+}
+
 /// A Yasha's percent is summed with every other percent change of the pace and taken once, as
 /// Dota sums movement speed bonuses: with Phase Boots' phase of a ranged hero (ten percent) the
 /// pace is twenty percent above the walk, not 1.1 times 1.1.
@@ -546,6 +652,16 @@ fn assert_carries_its_values(item: ItemId, bare: Stats) {
             }
             "hp_regen_amp" => restoration_amp_bp += value.int() * 100,
             "spell_amp" => expected.spell_amp_pct += value.int(),
+            "cast_speed_pct" => expected.cast_speed_pct += value.int(),
+            "status_resistance" => {
+                let through = (10_000 - expected.status_resist_bp) * (100 - value.int()) / 100;
+                expected.status_resist_bp = 10_000 - through;
+            }
+            "manacost_reduction" => {
+                expected.mana_cost_rate_bp = expected.mana_cost_rate_bp * (100 - value.int()) / 100;
+            }
+            // The buyer is a ranged hero: it reads `movement_speed_percent_bonus`.
+            "movement_speed_percent_bonus_melee" => {}
             "mana_regen_multiplier" => mana_regen_amp_pct += value.int(),
             "movement_speed_percent_bonus" => {
                 // A percent of the pace, on a hero nothing else hastes or slows.
@@ -720,7 +836,16 @@ fn a_morbid_mask_heals_eighteen_percent_of_a_blow_on_a_hero_and_less_on_a_creep(
 /// What the near Shadowraze of a hero that bought `items` deals `on`, standing where it lands,
 /// and what the hero heals back in that tick, regeneration aside.
 fn raze_of_a_buyer(items: &[ItemId], on: impl FnOnce(&mut World, Vec2) -> Entity) -> (i32, Fixed) {
-    let (mut world, hero) = out_of_fountain_after_buying(items);
+    let (world, hero) = out_of_fountain_after_buying(items);
+    raze_from(world, hero, on)
+}
+
+/// What the first raze of `hero` deals to the one `on` stands in its way, and what it healed.
+fn raze_from(
+    mut world: World,
+    hero: Entity,
+    on: impl FnOnce(&mut World, Vec2) -> Entity,
+) -> (i32, Fixed) {
     set_level(&mut world, hero, 0, 1);
     let transform = world.transform.get_mut(hero).expect("standing");
     transform.facing = bota_proto::Angle { brads: 0 };

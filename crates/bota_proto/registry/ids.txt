@@ -202,6 +202,9 @@ item 101 live item_sange
 item 102 live item_recipe_sange
 item 103 live item_kaya
 item 104 live item_recipe_kaya
+item 105 live item_sange_and_yasha
+item 106 live item_kaya_and_sange
+item 107 live item_yasha_and_kaya
 
 effect 0 retired bota_haste
 effect 1 live modifier_flask_healing

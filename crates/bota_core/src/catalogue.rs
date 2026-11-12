@@ -241,6 +241,9 @@ impl Fnv {
             restoration_amp_bp,
             spell_amp_pct,
             mana_regen_amp_pct,
+            status_resist_bp,
+            mana_cost_cut_bp,
+            cast_speed_pct,
         } = value;
         let fnv = self
             .attributes(attributes)
@@ -290,10 +293,25 @@ impl Fnv {
         } else {
             fnv.u64(0xC3).int(spell_amp_pct as i64)
         };
-        if mana_regen_amp_pct == 0 {
+        let fnv = if mana_regen_amp_pct == 0 {
             fnv
         } else {
             fnv.u64(0xC4).int(mana_regen_amp_pct as i64)
+        };
+        let fnv = if status_resist_bp == 0 {
+            fnv
+        } else {
+            fnv.u64(0xC5).int(status_resist_bp as i64)
+        };
+        let fnv = if mana_cost_cut_bp == 0 {
+            fnv
+        } else {
+            fnv.u64(0xC6).int(mana_cost_cut_bp as i64)
+        };
+        if cast_speed_pct == 0 {
+            fnv
+        } else {
+            fnv.u64(0xC7).int(cast_speed_pct as i64)
         }
     }
 
