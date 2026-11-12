@@ -85,7 +85,7 @@ impl World {
             || !def.targets.takes(kind, own)
             || !self.spell_reaches(ability, on)
             || self.stats.get(on).is_none_or(|s| s.invulnerable)
-            || !self.within_reach(caster, on, rules::units(def.range))
+            || !self.within_reach(caster, on, rules::units(self.reach_of(caster, def.range)))
         {
             return None;
         }

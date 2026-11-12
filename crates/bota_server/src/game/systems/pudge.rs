@@ -67,7 +67,11 @@ impl World {
         if !self.hostile(caster, on)
             || !ability_def(AbilityId::DISMEMBER).is_some_and(|def| self.aimable(caster, def, on))
             || !self.spell_reaches(AbilityId::DISMEMBER, on)
-            || !self.within_reach(caster, on, rules::units(rules::DISMEMBER_RANGE))
+            || !self.within_reach(
+                caster,
+                on,
+                rules::units(self.reach_of(caster, rules::DISMEMBER_RANGE)),
+            )
         {
             return false;
         }
@@ -194,7 +198,11 @@ impl World {
         if !held
             || untouchable
             || !self.alive(on)
-            || !self.within_reach(caster, on, rules::units(rules::DISMEMBER_RANGE))
+            || !self.within_reach(
+                caster,
+                on,
+                rules::units(self.reach_of(caster, rules::DISMEMBER_RANGE)),
+            )
         {
             return false;
         }

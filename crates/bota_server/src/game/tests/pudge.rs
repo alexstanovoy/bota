@@ -1828,3 +1828,96 @@ fn a_courier_is_spell_immune_rot_and_hook_pass_it_by_and_only_dismember_holds_it
         Some(Fixed::from_int(rules::COURIER_HP))
     );
 }
+
+/// A Pudge carrying an Aether Lens at `level`, reached through Dota's cheats (`-lvlup`, `-item`), a
+/// tick on, his first `learned` ability slots learned once.
+fn lens_pudge(lens: bool, learned: &[u8]) -> (World, Entity) {
+    let (mut world, pudge) = cheat_match(HeroId::PUDGE);
+    cheat(&mut world, bota_proto::Cheat::Levels { count: 5 });
+    for &slot in learned {
+        advance_validated(
+            &mut world,
+            None,
+            Order::Learn {
+                slot: AbilitySlot(slot),
+            },
+        );
+    }
+    if lens {
+        cheat(
+            &mut world,
+            bota_proto::Cheat::Item {
+                item: ItemId::AETHER_LENS,
+            },
+        );
+    }
+    (world, pudge)
+}
+
+/// The cast range bonus of an Aether Lens (`cast_range_bonus`, 225) reaches every check of a cast:
+/// Pudge carrying one dismembers an enemy hero 300 off (Dismember's cast range is 160) without
+/// walking in, takes hold, and keeps it while the hold pulls; without the lens he walks first.
+#[test]
+fn an_aether_lens_lets_pudge_dismember_a_hero_300_off_without_walking_in() {
+    for lens in [true, false] {
+        let (mut world, pudge) = lens_pudge(lens, &[3]);
+        let stood = world.pos(pudge).expect("standing");
+        let at = stood + Vec2::from_ints(300, 0);
+        cheat(
+            &mut world,
+            bota_proto::Cheat::CreateHero {
+                hero: HeroId::SHADOW_FIEND,
+                enemy: true,
+                at,
+            },
+        );
+        let enemy = created_enemy(&world);
+        // Idle, he may have turned to the enemy already: what counts is where the cast finds him.
+        let stood = world.pos(pudge).expect("standing");
+        cast(&mut world, 3, Target::Unit(wire_id(enemy)));
+        let mut held = 0;
+        let mut walked = false;
+        for _ in 0..90 {
+            world.step();
+            walked |= world.pos(pudge) != Some(stood);
+            if carries(&world, enemy, ModifierKind::Stunned) {
+                held += 1;
+            }
+        }
+        assert!(
+            held >= 60,
+            "lens {lens}: it takes hold and keeps it ({held} ticks)"
+        );
+        assert_eq!(
+            walked, !lens,
+            "lens {lens}: a walk in only without the lens"
+        );
+    }
+}
+
+/// A hook flies as far as its cast reaches: with an Aether Lens, its full range and the lens's 225
+/// (the reach the client draws).
+#[test]
+fn an_aether_lens_lengthens_the_hooks_flight_by_its_cast_range_bonus() {
+    let (mut world, pudge) = lens_pudge(true, &[0]);
+    let home = world.pos(pudge).expect("standing");
+    // Past the hook's own 1,300 and within the lens's reach: thrown from where he stands.
+    cast(&mut world, 0, Target::Pos(home + Vec2::from_ints(1400, 0)));
+    let mut furthest = 0;
+    for _ in 0..120 {
+        world.step();
+        for entity in world
+            .entities
+            .iter()
+            .filter(|e| world.hook.get(*e).is_some())
+        {
+            furthest = furthest.max(home.distance_squared(world.pos(entity).expect("flying")));
+        }
+    }
+    let reach = rules::HOOK_RANGE + 225;
+    assert!(
+        furthest >= Fixed::from_int(reach - 1).squared_raw()
+            && furthest <= Fixed::from_int(reach + 1).squared_raw(),
+        "the hook flies {reach} from where he stood"
+    );
+}

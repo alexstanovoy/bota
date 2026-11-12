@@ -119,7 +119,9 @@ impl World {
                     .is_some_and(|stats| stats.projectile_speed.is_some());
                 self.walk_through(user, if ranged { ranged_pct } else { pct }, ticks, with)
             }
-            UseSpec::Blink { range, overshoot } => self.blink_to(user, target, range, overshoot),
+            UseSpec::Blink { range, overshoot } => {
+                self.blink_to(user, target, self.reach_of(user, range), overshoot)
+            }
             UseSpec::Restore {
                 hp_per_charge,
                 mana_per_charge,

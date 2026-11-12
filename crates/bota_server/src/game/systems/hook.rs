@@ -21,7 +21,9 @@ impl World {
         else {
             return false;
         };
-        let reach = rules::units(rules::HOOK_RANGE);
+        // The hook flies as far as its cast reaches, a cast range bonus included (Liquipedia,
+        // Meat Hook: cast range bonuses lengthen it).
+        let reach = rules::units(self.reach_of(caster, rules::HOOK_RANGE));
         let aim = if pos == from {
             point_ahead(from, facing, reach)
         } else {

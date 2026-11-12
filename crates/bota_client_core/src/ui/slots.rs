@@ -190,22 +190,13 @@ impl App {
     }
 
     /// How far one slot reaches, in world units: its own reach lengthened by the cast range bonus
-    /// of what the unit is shown carrying, as the server lengthens it. An item let overshoot (a
-    /// Blink Dagger) keeps its own.
+    /// of what the unit is shown carrying, as the server lengthens every reach (a Blink Dagger's
+    /// and a hook's travel too).
     pub fn reach_of(&self, slot: Slot) -> i32 {
         let bonus = self
             .slot_unit()
             .map_or(0, |unit| crate::lasthit::carried_of(unit).cast_range_bonus);
-        let overshoots = matches!(slot, Slot::Item(at) if self
-            .item_in(at)
-            .and_then(|item| bota_core::item_def(item.id))
-            .is_some_and(|def| def.behavior.has(bota_core::Behavior::OVERSHOOT)));
-        let own = self.own_reach_of(slot);
-        if overshoots {
-            own
-        } else {
-            bota_core::lengthened_reach(own, bonus)
-        }
+        bota_core::lengthened_reach(self.own_reach_of(slot), bonus)
     }
 
     fn own_reach_of(&self, slot: Slot) -> i32 {

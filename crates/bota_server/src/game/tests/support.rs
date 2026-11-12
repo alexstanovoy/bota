@@ -654,6 +654,38 @@ pub(crate) fn hook_flying(world: &World) -> bool {
     world.entities.iter().any(|e| world.hook.get(e).is_some())
 }
 
+/// A one-seat match with cheats on, its hero `hero` moved to open ground away from everything by
+/// Dota's `-teleport`, a tick on.
+pub(crate) fn cheat_match(hero: HeroId) -> (World, Entity) {
+    let mut cfg = config();
+    cfg.cheats = true;
+    cfg.picks[0].hero = hero;
+    let mut world = World::for_match(&cfg, cfg.rng());
+    world.settle();
+    let unit = world.seats[0].unit.expect("stood up");
+    let at = an_empty_spot(&world);
+    cheat(&mut world, bota_proto::Cheat::Teleport { at });
+    world.step();
+    (world, unit)
+}
+
+/// Seat 0 gives a cheat, validated as any order, and the world advances one tick.
+pub(crate) fn cheat(world: &mut World, cheat: bota_proto::Cheat) -> Vec<Event> {
+    advance_validated(world, None, Order::Cheat { cheat })
+}
+
+/// The hero Dota's `-createhero` stood up on the other side of a one-seat match.
+pub(crate) fn created_enemy(world: &World) -> Entity {
+    world
+        .entities
+        .iter()
+        .find(|&entity| {
+            world.kind.get(entity) == Some(&UnitKind::Hero)
+                && world.team.get(entity) == Some(&Team::Dire)
+        })
+        .expect("a created enemy hero")
+}
+
 /// Lays one item in a hero's first slot.
 pub(crate) fn hand_item(world: &mut World, hero: Entity, item: ItemId, charges: u8) {
     if let Some(bag) = world.inventory.get_mut(hero) {

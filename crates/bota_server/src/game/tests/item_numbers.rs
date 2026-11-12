@@ -1300,3 +1300,35 @@ fn a_cloak_keeps_out_nothing_for_an_illusion() {
     };
     assert_eq!(resist(&[ItemId::CLOAK]), resist(&[]));
 }
+
+/// An Aether Lens lengthens a Blink Dagger's reach by its 225: aimed 1,300 off (past the dagger's
+/// own 1,200, within 1,425), the blink lands there rather than at the clamp of a blink past its
+/// range. The items are handed over by Dota's `-item`.
+#[test]
+fn an_aether_lens_lets_a_blink_dagger_land_1300_off() {
+    let (mut world, hero) = cheat_match(HeroId::SHADOW_FIEND);
+    for item in [ItemId::BLINK_DAGGER, ItemId::AETHER_LENS] {
+        cheat(&mut world, bota_proto::Cheat::Item { item });
+    }
+    let from = world.transform.get(hero).expect("standing").pos;
+    let aim = from + Vec2::from_ints(1300, 0);
+    assert!(world.clearance.stands_clear(aim), "open ground to land on");
+    let slot = world
+        .inventory
+        .get(hero)
+        .and_then(|bag| {
+            bag.slots
+                .iter()
+                .position(|held| held.is_some_and(|s| s.id == ItemId::BLINK_DAGGER))
+        })
+        .expect("the dagger in the bag");
+    seat_order(
+        &mut world,
+        Order::Use {
+            slot: ItemSlot(slot as u8),
+            target: Target::Pos(aim),
+        },
+    );
+    run(&mut world, 3);
+    assert_eq!(world.transform.get(hero).expect("standing").pos, aim);
+}

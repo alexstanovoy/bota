@@ -3003,3 +3003,34 @@ fn mega_creeps_sound_globally_and_at_the_public_enemy_ancient() {
         "no hidden unit handles"
     );
 }
+
+/// The reach drawn for a Blink Dagger takes the cast range bonus of an Aether Lens shown carried,
+/// as the server lengthens the blink: 1,200 and 225.
+#[test]
+fn an_aether_lens_lengthens_the_drawn_reach_of_a_blink_dagger() {
+    use crate::ui::slots::Slot;
+    let (mut app, ..) = an_app_with_an_item_and_allies(ItemId::BLINK_DAGGER);
+    let blink = bota_core::item_def(ItemId::BLINK_DAGGER)
+        .expect("a dagger")
+        .cast_range;
+    assert_eq!(app.reach_of(Slot::Item(0)), blink, "the dagger's own");
+    let mut hero = owned(1, UnitKind::Hero, Some(SlotId(0)));
+    hero.items = [ItemId::BLINK_DAGGER, ItemId::AETHER_LENS]
+        .into_iter()
+        .map(|item| {
+            Some(ItemView {
+                id: item,
+                aim: bota_core::item_def(item).and_then(|def| def.aim),
+                range: bota_core::item_def(item).map_or(0, |def| def.cast_range),
+                ..an_item(None, 0, 0, None)
+            })
+        })
+        .collect();
+    let id = hero.id;
+    app.handle(snapshot_of(
+        11,
+        vec![hero],
+        vec![a_seat(SlotId(0), Some(id))],
+    ));
+    assert_eq!(app.reach_of(Slot::Item(0)), blink + 225);
+}

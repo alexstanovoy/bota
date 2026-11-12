@@ -148,8 +148,8 @@ pub fn share_regen(carried: &Carried, max: Fixed, missing: Fixed) -> Fixed {
 }
 
 /// How far a cast whose own reach is `reach` goes for a caster with a cast range bonus of
-/// `bonus`: Dota adds the bonus to every cast range. A cast that reaches nowhere, aimed at the
-/// caster or let overshoot (a Blink Dagger's), takes none.
+/// `bonus`: Dota adds the bonus to every cast range, a Blink Dagger's and a Meat Hook's travel
+/// among them. A cast that reaches nowhere (aimed at the caster) takes none.
 pub const fn lengthened_reach(reach: i32, bonus: i32) -> i32 {
     if reach > 0 { reach + bonus } else { reach }
 }
