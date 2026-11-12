@@ -485,9 +485,12 @@ fn add_carried(now: &mut Stats, sums: &mut Sums, carried: &Carried, illusion: bo
     // A cut of the mana costs or of the cooldowns multiplies with every other.
     now.mana_cost_rate_bp = cut_rate(now.mana_cost_rate_bp, carried.mana_cost_cut_bp);
     now.cooldown_rate_bp = cut_rate(now.cooldown_rate_bp, carried.cooldown_cut_bp);
-    if now.projectile_speed.is_none() {
-        now.attack_range += Fixed::from_int(carried.melee_range);
-    }
+    let range = if now.projectile_speed.is_none() {
+        carried.melee_range
+    } else {
+        carried.ranged_range
+    };
+    now.attack_range += Fixed::from_int(range);
 }
 
 /// What the flesh heap has kept, worth strength by the stack, what the

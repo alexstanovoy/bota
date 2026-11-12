@@ -123,6 +123,9 @@ pub struct Carried {
     /// [`rules::NOMINAL_BP`], multiplying with every other cut. Of several carried, the best
     /// counts: Dota's Octarine Core.
     pub cooldown_cut_bp: i32,
+    /// Attack range added to a ranged carrier and to nobody else. Of several carried, the best
+    /// counts: Dota's Dragon Lance and what is built of it.
+    pub ranged_range: i32,
 }
 
 /// How far a cast whose own reach is `reach` goes for a caster with a cast range bonus of
@@ -166,6 +169,7 @@ pub(crate) const NOTHING: Carried = Carried {
     cast_speed_pct: 0,
     cast_range_bonus: 0,
     cooldown_cut_bp: 0,
+    ranged_range: 0,
 };
 
 /// Whole points of one attribute and none of the others.
@@ -962,6 +966,7 @@ pub fn carried_bonus(items: impl Iterator<Item = CarriedItem>, ranged: bool) -> 
         total.aoe_bonus = total.aoe_bonus.max(carried.aoe_bonus);
         total.cast_range_bonus = total.cast_range_bonus.max(carried.cast_range_bonus);
         total.cooldown_cut_bp = total.cooldown_cut_bp.max(carried.cooldown_cut_bp);
+        total.ranged_range = total.ranged_range.max(carried.ranged_range);
         total.lifesteal_pct += carried.lifesteal_pct;
         if carried.spell_lifesteal_pct > 0
             && !spell_lifesteal_of.contains(&Some(stack.id))

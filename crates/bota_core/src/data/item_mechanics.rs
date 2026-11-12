@@ -1256,6 +1256,26 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         },
         ..from(&ITEM_OCTARINE_CORE)
     },
+    ItemDef {
+        name: "Recipe: Dragon Lance",
+        ..from(&ITEM_RECIPE_DRAGON_LANCE)
+    },
+    // Dragon Lance: attack range for a ranged carrier (`base_attack_range`) and for a melee one
+    // (`base_attack_range_melee`), the best of several counting.
+    ItemDef {
+        name: "Dragon Lance",
+        carried: Carried {
+            attributes: Attributes {
+                strength: Fixed::from_int(int(&ITEM_DRAGON_LANCE, "bonus_strength")),
+                agility: Fixed::from_int(int(&ITEM_DRAGON_LANCE, "bonus_agility")),
+                intelligence: Fixed::ZERO,
+            },
+            melee_range: int(&ITEM_DRAGON_LANCE, "base_attack_range_melee"),
+            ranged_range: int(&ITEM_DRAGON_LANCE, "base_attack_range"),
+            ..NOTHING
+        },
+        ..from(&ITEM_DRAGON_LANCE)
+    },
 ];
 
 /// What Sange and Yasha carries, its movement speed of the key a melee or a ranged carrier

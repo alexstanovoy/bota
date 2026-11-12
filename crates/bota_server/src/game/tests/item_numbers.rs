@@ -396,6 +396,7 @@ fn every_stat_upgrade_bought_whole_adds_what_its_script_says_and_nothing_else() 
         ItemId::YASHA_AND_KAYA,
         ItemId::AETHER_LENS,
         ItemId::OCTARINE_CORE,
+        ItemId::DRAGON_LANCE,
     ] {
         assert_carries_its_values(item, bare);
     }
@@ -614,6 +615,36 @@ fn an_octarine_core_cuts_a_razes_and_an_items_cooldown_by_a_quarter() {
     );
 }
 
+/// A Dragon Lance lengthens a ranged hero's attack range by 130 (`base_attack_range`; Dota 7.41:
+/// "Ranged Attack Range bonus decreased from +140 to +130") and a melee hero's by nothing
+/// (`base_attack_range_melee` 0); a second one adds nothing.
+#[test]
+fn a_dragon_lance_lengthens_a_ranged_attack_alone_and_once() {
+    let range = |hero: HeroId, items: &[ItemId]| {
+        let (mut world, unit) = hero_out_of_fountain(hero);
+        let bag = world.inventory.get_mut(unit).expect("a bag");
+        for (at, &item) in items.iter().enumerate() {
+            bag.slots[at] = Some(fresh_stack(item, 0));
+        }
+        world.step();
+        world.stats.get(unit).expect("derived").attack_range
+    };
+    let lance = [ItemId::DRAGON_LANCE];
+    let fiend = range(HeroId::SHADOW_FIEND, &[]);
+    assert_eq!(
+        range(HeroId::SHADOW_FIEND, &lance),
+        fiend + Fixed::from_int(130)
+    );
+    assert_eq!(
+        range(
+            HeroId::SHADOW_FIEND,
+            &[ItemId::DRAGON_LANCE, ItemId::DRAGON_LANCE]
+        ),
+        fiend + Fixed::from_int(130)
+    );
+    assert_eq!(range(HeroId::PUDGE, &lance), range(HeroId::PUDGE, &[]));
+}
+
 /// A Yasha's percent is summed with every other percent change of the pace and taken once, as
 /// Dota sums movement speed bonuses: with Phase Boots' phase of a ranged hero (ten percent) the
 /// pace is twenty percent above the walk, not 1.1 times 1.1.
@@ -677,6 +708,9 @@ fn assert_carries_its_values(item: ItemId, bare: Stats) {
             "spell_amp" => expected.spell_amp_pct += value.int(),
             "cast_speed_pct" => expected.cast_speed_pct += value.int(),
             "cast_range_bonus" => expected.cast_range_bonus += value.int(),
+            // The buyer is a ranged hero: a melee one's range is another test's.
+            "base_attack_range" => expected.attack_range += points(*value),
+            "base_attack_range_melee" => {}
             "bonus_cooldown" => {
                 expected.cooldown_rate_bp = expected.cooldown_rate_bp * (100 - value.int()) / 100;
             }

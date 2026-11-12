@@ -272,6 +272,8 @@ impl ItemId {
     pub const AETHER_LENS: ItemId = ItemId(108);
     /// Dota's `item_octarine_core`: health, mana, mana regeneration and a cut of cooldowns.
     pub const OCTARINE_CORE: ItemId = ItemId(110);
+    /// Dota's `item_dragon_lance`: strength, agility and a ranged carrier's attack range.
+    pub const DRAGON_LANCE: ItemId = ItemId(112);
 }
 
 /// What did something: the ability or the item a unit used, as Dota's combat

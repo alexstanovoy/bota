@@ -209,6 +209,8 @@ item 108 live item_aether_lens
 item 109 live item_recipe_aether_lens
 item 110 live item_octarine_core
 item 111 live item_recipe_octarine_core
+item 112 live item_dragon_lance
+item 113 live item_recipe_dragon_lance
 
 effect 0 retired bota_haste
 effect 1 live modifier_flask_healing

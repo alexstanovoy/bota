@@ -246,6 +246,7 @@ impl Fnv {
             cast_speed_pct,
             cast_range_bonus,
             cooldown_cut_bp,
+            ranged_range,
         } = value;
         let fnv = self
             .attributes(attributes)
@@ -320,10 +321,15 @@ impl Fnv {
         } else {
             fnv.u64(0xC8).int(cast_range_bonus as i64)
         };
-        if cooldown_cut_bp == 0 {
+        let fnv = if cooldown_cut_bp == 0 {
             fnv
         } else {
             fnv.u64(0xC9).int(cooldown_cut_bp as i64)
+        };
+        if ranged_range == 0 {
+            fnv
+        } else {
+            fnv.u64(0xCA).int(ranged_range as i64)
         }
     }
 
