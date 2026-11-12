@@ -482,8 +482,9 @@ fn add_carried(now: &mut Stats, sums: &mut Sums, carried: &Carried, illusion: bo
     now.spell_lifesteal_pct += carried.spell_lifesteal_pct;
     now.spell_amp_pct += carried.spell_amp_pct;
     now.cast_speed_pct += carried.cast_speed_pct;
-    // A cut of the mana costs multiplies with every other.
+    // A cut of the mana costs or of the cooldowns multiplies with every other.
     now.mana_cost_rate_bp = cut_rate(now.mana_cost_rate_bp, carried.mana_cost_cut_bp);
+    now.cooldown_rate_bp = cut_rate(now.cooldown_rate_bp, carried.cooldown_cut_bp);
     if now.projectile_speed.is_none() {
         now.attack_range += Fixed::from_int(carried.melee_range);
     }

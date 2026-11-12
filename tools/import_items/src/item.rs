@@ -278,7 +278,8 @@ fn behavior(text: &str) -> Result<Vec<&'static str>, String> {
 }
 
 /// A recipe's ways to build, in file order: `"item_boots*;item_gloves"` is two parts (the
-/// star, which part's state the build keeps, is not modelled).
+/// star, which part's state the build keeps, is not modelled), and a trailing semicolon names
+/// none.
 fn requirements(block: &Kv) -> Result<Vec<Vec<String>>, String> {
     let ways = block
         .get("ItemRequirements")
@@ -289,6 +290,7 @@ fn requirements(block: &Kv) -> Result<Vec<Vec<String>>, String> {
             Kv::Text(parts) => Ok(parts
                 .split(';')
                 .map(|part| part.trim().trim_end_matches('*').to_owned())
+                .filter(|part| !part.is_empty())
                 .collect()),
             Kv::Block(_) => Err("a requirement is a block".to_owned()),
         })
@@ -330,7 +332,7 @@ pub(crate) fn values(block: &Kv) -> Result<Vec<(String, Vec<Milli>)>, String> {
 mod tests {
     use crate::install::Source;
 
-    use super::read;
+    use super::{read, requirements};
 
     #[test]
     fn secret_shop_flag_is_read_and_rejects_values_other_than_zero_or_one() {
@@ -352,6 +354,22 @@ mod tests {
         assert_eq!(
             parse(r#""SecretShop" "2""#).expect_err("invalid flag"),
             "item_x: SecretShop must be 0 or 1"
+        );
+    }
+
+    /// A requirement list may end in a semicolon (7.41f's Octarine Core recipe:
+    /// `"item_soul_booster;item_tiara_of_selemene;"`): no part is named after it.
+    #[test]
+    fn a_trailing_semicolon_names_no_part() {
+        let source = Source::new(
+            "fixture".into(),
+            r#""DOTAAbilities" { "item_recipe_x" { "ItemRequirements" { "01" "item_a;item_b*;" } } }"#,
+        )
+        .expect("KV");
+        let recipe = source.items().get("item_recipe_x").expect("a recipe");
+        assert_eq!(
+            requirements(recipe),
+            Ok(vec![vec!["item_a".to_owned(), "item_b".to_owned()]])
         );
     }
 

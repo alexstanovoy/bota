@@ -395,6 +395,7 @@ fn every_stat_upgrade_bought_whole_adds_what_its_script_says_and_nothing_else() 
         ItemId::KAYA_AND_SANGE,
         ItemId::YASHA_AND_KAYA,
         ItemId::AETHER_LENS,
+        ItemId::OCTARINE_CORE,
     ] {
         assert_carries_its_values(item, bare);
     }
@@ -592,6 +593,27 @@ fn yasha_and_kaya_casts_a_raze_at_five_fourths_of_its_pace() {
     );
 }
 
+/// An Octarine Core cuts every cooldown its carrier starts by a quarter (`bonus_cooldown`): a
+/// Shadowraze's and a Phase Boots' alike; a second one adds nothing.
+#[test]
+fn an_octarine_core_cuts_a_razes_and_an_items_cooldown_by_a_quarter() {
+    let cooldowns = |items: &[ItemId]| {
+        let (world, hero) = carrying_world(items);
+        (
+            world.ability_cooldown(hero, bota_proto::AbilityId::RAZE_NEAR, 1),
+            world.item_cooldown(hero, ItemId::PHASE_BOOTS),
+        )
+    };
+    let (raze, phase) = cooldowns(&[]);
+    assert!(raze > 0 && phase > 0);
+    let cut = |ticks: u32| bota_core::cooldown_after(ticks, 7_500);
+    assert_eq!(cooldowns(&[ItemId::OCTARINE_CORE]), (cut(raze), cut(phase)));
+    assert_eq!(
+        cooldowns(&[ItemId::OCTARINE_CORE, ItemId::OCTARINE_CORE]),
+        (cut(raze), cut(phase))
+    );
+}
+
 /// A Yasha's percent is summed with every other percent change of the pace and taken once, as
 /// Dota sums movement speed bonuses: with Phase Boots' phase of a ranged hero (ten percent) the
 /// pace is twenty percent above the walk, not 1.1 times 1.1.
@@ -655,6 +677,9 @@ fn assert_carries_its_values(item: ItemId, bare: Stats) {
             "spell_amp" => expected.spell_amp_pct += value.int(),
             "cast_speed_pct" => expected.cast_speed_pct += value.int(),
             "cast_range_bonus" => expected.cast_range_bonus += value.int(),
+            "bonus_cooldown" => {
+                expected.cooldown_rate_bp = expected.cooldown_rate_bp * (100 - value.int()) / 100;
+            }
             "status_resistance" => {
                 let through = (10_000 - expected.status_resist_bp) * (100 - value.int()) / 100;
                 expected.status_resist_bp = 10_000 - through;

@@ -1239,6 +1239,23 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         },
         ..from(&ITEM_AETHER_LENS)
     },
+    ItemDef {
+        name: "Recipe: Octarine Core",
+        ..from(&ITEM_RECIPE_OCTARINE_CORE)
+    },
+    // Octarine Core: a cut of every cooldown, the best of several counting.
+    ItemDef {
+        name: "Octarine Core",
+        carried: Carried {
+            hp: int(&ITEM_OCTARINE_CORE, "bonus_health"),
+            mana: int(&ITEM_OCTARINE_CORE, "bonus_mana"),
+            hp_regen: regen(&ITEM_OCTARINE_CORE, "bonus_health_regen"),
+            mana_regen: regen(&ITEM_OCTARINE_CORE, "bonus_mana_regen"),
+            cooldown_cut_bp: bp(&ITEM_OCTARINE_CORE, "bonus_cooldown"),
+            ..NOTHING
+        },
+        ..from(&ITEM_OCTARINE_CORE)
+    },
 ];
 
 /// What Sange and Yasha carries, its movement speed of the key a melee or a ranged carrier

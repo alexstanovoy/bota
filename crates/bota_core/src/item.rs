@@ -119,6 +119,10 @@ pub struct Carried {
     /// carried, the best counts (Dota 7.41: Dagon's "Cast Range Bonus does not stack with Aether
     /// Lens or multiple Dagons").
     pub cast_range_bonus: i32,
+    /// Share of every cooldown the carrier starts taken off, in basis points of
+    /// [`rules::NOMINAL_BP`], multiplying with every other cut. Of several carried, the best
+    /// counts: Dota's Octarine Core.
+    pub cooldown_cut_bp: i32,
 }
 
 /// How far a cast whose own reach is `reach` goes for a caster with a cast range bonus of
@@ -161,6 +165,7 @@ pub(crate) const NOTHING: Carried = Carried {
     mana_cost_cut_bp: 0,
     cast_speed_pct: 0,
     cast_range_bonus: 0,
+    cooldown_cut_bp: 0,
 };
 
 /// Whole points of one attribute and none of the others.
@@ -956,6 +961,7 @@ pub fn carried_bonus(items: impl Iterator<Item = CarriedItem>, ranged: bool) -> 
         total.magic_resist_bp = resist_both(total.magic_resist_bp, carried.magic_resist_bp);
         total.aoe_bonus = total.aoe_bonus.max(carried.aoe_bonus);
         total.cast_range_bonus = total.cast_range_bonus.max(carried.cast_range_bonus);
+        total.cooldown_cut_bp = total.cooldown_cut_bp.max(carried.cooldown_cut_bp);
         total.lifesteal_pct += carried.lifesteal_pct;
         if carried.spell_lifesteal_pct > 0
             && !spell_lifesteal_of.contains(&Some(stack.id))

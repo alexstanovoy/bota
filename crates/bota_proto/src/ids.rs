@@ -270,6 +270,8 @@ impl ItemId {
     pub const YASHA_AND_KAYA: ItemId = ItemId(107);
     /// Dota's `item_aether_lens`: mana, mana regeneration and a cast range bonus.
     pub const AETHER_LENS: ItemId = ItemId(108);
+    /// Dota's `item_octarine_core`: health, mana, mana regeneration and a cut of cooldowns.
+    pub const OCTARINE_CORE: ItemId = ItemId(110);
 }
 
 /// What did something: the ability or the item a unit used, as Dota's combat
