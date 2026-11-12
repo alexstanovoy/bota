@@ -3,7 +3,7 @@
 
 use std::rc::Rc;
 use bota_client_core::IssuedOrder;
-use bota_proto::{DamageKind, HeroId, Order, StatusFlags, Target, Team, UnitKind, UnitView, Vec2};
+use bota_proto::{DamageKind, Fixed, HeroId, Order, StatusFlags, Target, Team, UnitKind, UnitView, Vec2};
 use luagee::{Lua, LuaError, Value, Vm};
 use crate::{BindingError, api::Shared, state::{PendingOnce, Snapshot, State}, team::BOT_MODES};
 
@@ -42,7 +42,7 @@ fn callback(vm: &mut Vm, shared: &Shared, mode: &str, thinking: bool) -> Result<
         return Ok(0);
     }
     let pending = state.bots[state.bot_index()].pending_once;
-    if pending.is_some_and(|shot| !shot.launched && snapshot.units.iter().any(|known| known.unit.id == shot.target && known.visible && known.unit.hp > 0)) { return Ok(0); }
+    if mode != "retreat" && pending.is_some_and(|shot| !shot.launched && snapshot.units.iter().any(|known| known.unit.id == shot.target && known.visible && known.unit.hp > 0)) { return Ok(0); }
     let (order, once) = decision(snapshot, own, mode);
     let source = own.id;
     let tick = snapshot.tick;
@@ -90,7 +90,7 @@ fn last_hit<'a>(snapshot: &'a Snapshot, own: &UnitView) -> Option<&'a UnitView> 
             let class = bota_core::attack_class_pct(own.kind, target.kind);
             let damage = (i64::from(own.attack_damage_min.max(0)) * i64::from(class) / 100).clamp(0, i64::from(i32::MAX)) as i32;
             let hit = bota_core::mitigate(damage, DamageKind::Physical, target.armor, 0);
-            target.hp <= hit && (target.team != own.team || i64::from(target.hp) * 100 <= i64::from(target.max_hp) * i64::from(bota_core::rules::DENY_HP_PCT))
+            target.hp <= hit && (target.team != own.team || bota_core::deniable(target.kind, Fixed::from_int(target.hp), Fixed::from_int(target.max_hp)))
         }).min_by_key(|target| (target.team == own.team, target.hp, target.id))
 }
 
