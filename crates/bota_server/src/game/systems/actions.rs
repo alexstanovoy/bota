@@ -121,6 +121,20 @@ impl World {
     /// its user, and an item Dota lets overshoot (`OVERSHOOT`: a Blink
     /// Dagger lands short of a spot past its range instead of walking to it).
     pub fn cast_reach(&self, entity: Entity, pending: PendingCast) -> i32 {
+        self.reach_of(entity, self.own_reach(entity, pending))
+    }
+
+    /// A cast range of `range` lengthened by what `entity` carries ([`bota_core::lengthened_reach`]).
+    pub(crate) fn reach_of(&self, entity: Entity, range: i32) -> i32 {
+        let bonus = self
+            .stats
+            .get(entity)
+            .map_or(0, |stats| stats.cast_range_bonus);
+        bota_core::lengthened_reach(range, bonus)
+    }
+
+    /// How far a pending cast is walked into before what the caster carries lengthens it.
+    fn own_reach(&self, entity: Entity, pending: PendingCast) -> i32 {
         match pending {
             PendingCast::Ability { slot, .. } => {
                 ability_def(self.ability_in(entity, slot)).map_or(0, |def| def.range)

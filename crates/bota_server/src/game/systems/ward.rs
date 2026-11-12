@@ -82,6 +82,7 @@ impl World {
         else {
             return false;
         };
+        let range = self.reach_of(user, range);
         if !self.stand_ward(user, target, (ward, units[0].unit()), ticks, range) {
             return false;
         }

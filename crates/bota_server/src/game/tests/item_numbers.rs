@@ -394,6 +394,7 @@ fn every_stat_upgrade_bought_whole_adds_what_its_script_says_and_nothing_else() 
         ItemId::SANGE_AND_YASHA,
         ItemId::KAYA_AND_SANGE,
         ItemId::YASHA_AND_KAYA,
+        ItemId::AETHER_LENS,
     ] {
         assert_carries_its_values(item, bare);
     }
@@ -653,6 +654,7 @@ fn assert_carries_its_values(item: ItemId, bare: Stats) {
             "hp_regen_amp" => restoration_amp_bp += value.int() * 100,
             "spell_amp" => expected.spell_amp_pct += value.int(),
             "cast_speed_pct" => expected.cast_speed_pct += value.int(),
+            "cast_range_bonus" => expected.cast_range_bonus += value.int(),
             "status_resistance" => {
                 let through = (10_000 - expected.status_resist_bp) * (100 - value.int()) / 100;
                 expected.status_resist_bp = 10_000 - through;

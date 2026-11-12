@@ -244,6 +244,7 @@ impl Fnv {
             status_resist_bp,
             mana_cost_cut_bp,
             cast_speed_pct,
+            cast_range_bonus,
         } = value;
         let fnv = self
             .attributes(attributes)
@@ -308,10 +309,15 @@ impl Fnv {
         } else {
             fnv.u64(0xC6).int(mana_cost_cut_bp as i64)
         };
-        if cast_speed_pct == 0 {
+        let fnv = if cast_speed_pct == 0 {
             fnv
         } else {
             fnv.u64(0xC7).int(cast_speed_pct as i64)
+        };
+        if cast_range_bonus == 0 {
+            fnv
+        } else {
+            fnv.u64(0xC8).int(cast_range_bonus as i64)
         }
     }
 

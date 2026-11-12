@@ -133,6 +133,9 @@ pub struct Stats {
     /// World units added to every radius of its that an AoE bonus widens: what it carries
     /// ([`Carried::aoe_bonus`](bota_core::Carried::aoe_bonus)).
     pub aoe_bonus: i32,
+    /// World units added to the reach of its casts: what it carries
+    /// ([`Carried::cast_range_bonus`](bota_core::Carried::cast_range_bonus)).
+    pub cast_range_bonus: i32,
     /// Whether it is ethereal ([`ModifierKind::Ethereal`](bota_core::ModifierKind::Ethereal)):
     /// no attack lands on it or leaves it, and physical damage passes it by.
     pub ethereal: bool,

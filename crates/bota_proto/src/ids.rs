@@ -268,6 +268,8 @@ impl ItemId {
     pub const KAYA_AND_SANGE: ItemId = ItemId(106);
     /// Dota's `item_yasha_and_kaya`: Yasha's and Kaya's stats and cast speed.
     pub const YASHA_AND_KAYA: ItemId = ItemId(107);
+    /// Dota's `item_aether_lens`: mana, mana regeneration and a cast range bonus.
+    pub const AETHER_LENS: ItemId = ItemId(108);
 }
 
 /// What did something: the ability or the item a unit used, as Dota's combat

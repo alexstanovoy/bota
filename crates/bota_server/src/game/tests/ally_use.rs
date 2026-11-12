@@ -266,3 +266,40 @@ fn a_mango_cast_on_an_ally_out_of_reach_walks_up_to_it_first() {
     );
     assert!(slot_of(&world, hero, 0).is_none(), "the charge is spent");
 }
+
+/// An Aether Lens lengthens every cast range of its carrier by 225 (`cast_range_bonus`): a Healing
+/// Salve (cast range 250) reaches an ally 400 off from where its user stands, while without the
+/// lens its user walks in first.
+#[test]
+fn an_aether_lens_lets_a_salve_reach_an_ally_without_walking_in() {
+    let salve_from_afar = |lens: bool| {
+        let (mut world, hero, ally) = a_hero_and_an_ally(ItemId::HEALING_SALVE, 1, 400);
+        if lens {
+            world.inventory.get_mut(hero).expect("a bag").slots[1] =
+                Some(fresh_stack(ItemId::AETHER_LENS, 0));
+        }
+        world.step();
+        let stood = world.transform.get(hero).expect("standing").pos;
+        let order = Order::Use {
+            slot: ItemSlot(0),
+            target: Target::Unit(wire_id(ally)),
+        };
+        advance_validated(&mut world, Some(hero), order);
+        run(&mut world, 3);
+        let mending = ModifierKind::Mending {
+            per_tick: bota_proto::Fixed::ZERO,
+            breaks: false,
+        };
+        let mending = carries(&world, ally, mending);
+        (
+            world.transform.get(hero).expect("standing").pos == stood,
+            mending,
+        )
+    };
+    assert_eq!(
+        salve_from_afar(true),
+        (true, true),
+        "with the lens: no walk, the salve lands"
+    );
+    assert!(!salve_from_afar(false).0, "without it: a walk in");
+}

@@ -88,19 +88,22 @@ impl World {
             return false;
         }
         let with = Inflictor::Item(item);
+        // What the user carries lengthens the reach the use is checked against, as it lengthened
+        // the walk in.
+        let reach = self.reach_of(user, def.cast_range);
         match def.effect {
             UseSpec::Refresh { items } => self.refresh_cooldowns(user, items),
             UseSpec::None => false,
             UseSpec::Mend(drink) => {
                 let drink = self.shared_with_ally(user, def, target, drink);
-                self.mend_with(user, target, (drink, def.cast_range), with)
+                self.mend_with(user, target, (drink, reach), with)
             }
-            UseSpec::PlantTree { ticks } => self.plant_a_tree(user, target, ticks, def.cast_range),
-            UseSpec::FellTree => self.fell_a_tree(user, target, def.cast_range),
+            UseSpec::PlantTree { ticks } => self.plant_a_tree(user, target, ticks, reach),
+            UseSpec::FellTree => self.fell_a_tree(user, target, reach),
             UseSpec::Ward { units, ticks } => {
                 let level = self.held_in_bag(user, slot).map_or(1, |s| s.level);
                 let unit = units[usize::from(level.saturating_sub(1)).min(units.len() - 1)].unit();
-                self.stand_ward(user, target, (item, unit), ticks, def.cast_range)
+                self.stand_ward(user, target, (item, unit), ticks, reach)
             }
             UseSpec::Dispense => self.dispense_ward(user, slot, target),
             UseSpec::Teleport(scroll) => self.begin_teleport(user, target, scroll, def.duration),
@@ -128,7 +131,7 @@ impl World {
             }
             UseSpec::Replenish { mana } => {
                 let mana = self.shared_replenish(user, def, target, mana);
-                self.replenish_mana(user, target, mana, (with, def.cast_range))
+                self.replenish_mana(user, target, mana, (with, reach))
             }
             UseSpec::Grenade(_) => self.throw_grenade(user, target, item),
             UseSpec::Ethereal { ticks, magic_pct } => {
@@ -151,7 +154,7 @@ impl World {
                     }
                     _ => (health, mana),
                 };
-                self.eat_item(user, target, (health, mana), with, def.cast_range)
+                self.eat_item(user, target, (health, mana), with, reach)
             }
         }
     }

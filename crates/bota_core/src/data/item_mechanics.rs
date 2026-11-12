@@ -1224,6 +1224,21 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ranged: Some(yasha_and_kaya("movement_speed_percent_bonus")),
         ..from(&ITEM_YASHA_AND_KAYA)
     },
+    ItemDef {
+        name: "Recipe: Aether Lens",
+        ..from(&ITEM_RECIPE_AETHER_LENS)
+    },
+    // Aether Lens: every cast of its carrier's reaches further, the best of several counting.
+    ItemDef {
+        name: "Aether Lens",
+        carried: Carried {
+            mana: int(&ITEM_AETHER_LENS, "bonus_mana"),
+            mana_regen: regen(&ITEM_AETHER_LENS, "bonus_mana_regen"),
+            cast_range_bonus: int(&ITEM_AETHER_LENS, "cast_range_bonus"),
+            ..NOTHING
+        },
+        ..from(&ITEM_AETHER_LENS)
+    },
 ];
 
 /// What Sange and Yasha carries, its movement speed of the key a melee or a ranged carrier

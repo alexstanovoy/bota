@@ -56,6 +56,7 @@ pub(crate) fn stats() -> Stats {
         invulnerable: false,
         spell_immune: false,
         aoe_bonus: 0,
+        cast_range_bonus: 0,
         ethereal: false,
         hit_count: None,
         glyph: false,

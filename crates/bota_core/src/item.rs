@@ -115,6 +115,17 @@ pub struct Carried {
     /// `100 / (100 + percent)` of their length. Summed with every other cast speed; an item and
     /// what is built of it count once: Dota's Yasha and Kaya.
     pub cast_speed_pct: i32,
+    /// World units added to every reach of the carrier's casts ([`lengthened_reach`]). Of several
+    /// carried, the best counts (Dota 7.41: Dagon's "Cast Range Bonus does not stack with Aether
+    /// Lens or multiple Dagons").
+    pub cast_range_bonus: i32,
+}
+
+/// How far a cast whose own reach is `reach` goes for a caster with a cast range bonus of
+/// `bonus`: Dota adds the bonus to every cast range. A cast that reaches nowhere, aimed at the
+/// caster or let overshoot (a Blink Dagger's), takes none.
+pub const fn lengthened_reach(reach: i32, bonus: i32) -> i32 {
+    if reach > 0 { reach + bonus } else { reach }
 }
 
 /// Nothing carried at all, so an entry names only what it adds.
@@ -149,6 +160,7 @@ pub(crate) const NOTHING: Carried = Carried {
     status_resist_bp: 0,
     mana_cost_cut_bp: 0,
     cast_speed_pct: 0,
+    cast_range_bonus: 0,
 };
 
 /// Whole points of one attribute and none of the others.
@@ -943,6 +955,7 @@ pub fn carried_bonus(items: impl Iterator<Item = CarriedItem>, ranged: bool) -> 
         total.mana_pct += carried.mana_pct;
         total.magic_resist_bp = resist_both(total.magic_resist_bp, carried.magic_resist_bp);
         total.aoe_bonus = total.aoe_bonus.max(carried.aoe_bonus);
+        total.cast_range_bonus = total.cast_range_bonus.max(carried.cast_range_bonus);
         total.lifesteal_pct += carried.lifesteal_pct;
         if carried.spell_lifesteal_pct > 0
             && !spell_lifesteal_of.contains(&Some(stack.id))
