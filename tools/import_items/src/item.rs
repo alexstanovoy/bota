@@ -278,23 +278,34 @@ fn behavior(text: &str) -> Result<Vec<&'static str>, String> {
 }
 
 /// A recipe's ways to build, in file order: `"item_boots*;item_gloves"` is two parts (the
-/// star, which part's state the build keeps, is not modelled), and a trailing semicolon names
-/// none.
+/// star, which part's state the build keeps, is not modelled). One semicolon may end the list
+/// (7.41f's Octarine Core: `"item_soul_booster;item_tiara_of_selemene;"`); an empty list or an
+/// empty part anywhere else is refused.
 fn requirements(block: &Kv) -> Result<Vec<Vec<String>>, String> {
     let ways = block
         .get("ItemRequirements")
         .and_then(Kv::block)
         .ok_or("a recipe without ItemRequirements")?;
     ways.iter()
-        .map(|(_, way)| match way {
-            Kv::Text(parts) => Ok(parts
-                .split(';')
-                .map(|part| part.trim().trim_end_matches('*').to_owned())
-                .filter(|part| !part.is_empty())
-                .collect()),
+        .map(|(key, way)| match way {
+            Kv::Text(parts) => parts_of(parts).map_err(|why| format!("requirement {key:?}: {why}")),
             Kv::Block(_) => Err("a requirement is a block".to_owned()),
         })
         .collect()
+}
+
+/// The parts one way to build names, its single terminal semicolon allowed.
+fn parts_of(list: &str) -> Result<Vec<String>, String> {
+    let list = list.trim();
+    let list = list.strip_suffix(';').unwrap_or(list);
+    let parts: Vec<String> = list
+        .split(';')
+        .map(|part| part.trim().trim_end_matches('*').to_owned())
+        .collect();
+    if parts.iter().any(String::is_empty) {
+        return Err(format!("{list:?} names an empty part"));
+    }
+    Ok(parts)
 }
 
 /// `AbilityValues`: each a number a level, written alone or as the `value` of a block.
@@ -357,20 +368,34 @@ mod tests {
         );
     }
 
-    /// A requirement list may end in a semicolon (7.41f's Octarine Core recipe:
-    /// `"item_soul_booster;item_tiara_of_selemene;"`): no part is named after it.
+    /// A requirement list may end in one semicolon (7.41f's Octarine Core recipe:
+    /// `"item_soul_booster;item_tiara_of_selemene;"`): no part is named after it. An empty part
+    /// anywhere else, or an empty list, is refused by name rather than dropped.
     #[test]
-    fn a_trailing_semicolon_names_no_part() {
-        let source = Source::new(
-            "fixture".into(),
-            r#""DOTAAbilities" { "item_recipe_x" { "ItemRequirements" { "01" "item_a;item_b*;" } } }"#,
-        )
-        .expect("KV");
-        let recipe = source.items().get("item_recipe_x").expect("a recipe");
-        assert_eq!(
-            requirements(recipe),
-            Ok(vec![vec!["item_a".to_owned(), "item_b".to_owned()]])
-        );
+    fn a_trailing_semicolon_names_no_part_and_an_empty_part_elsewhere_is_refused() {
+        let parse = |list: &str| {
+            let text = format!(
+                r#""DOTAAbilities" {{ "item_recipe_x" {{ "ItemRequirements" {{ "01" "{list}" }} }} }}"#
+            );
+            let source = Source::new("fixture".into(), &text).expect("KV");
+            requirements(source.items().get("item_recipe_x").expect("a recipe"))
+        };
+        let both = Ok(vec![vec!["item_a".to_owned(), "item_b".to_owned()]]);
+        assert_eq!(parse("item_a;item_b*;"), both);
+        assert_eq!(parse("item_a;item_b"), both);
+        for (list, empty) in [
+            ("item_a;;item_b", "item_a;;item_b"),
+            (";item_a", ";item_a"),
+            ("item_a;;", "item_a;"),
+            ("", ""),
+            (";", ""),
+        ] {
+            assert_eq!(
+                parse(list),
+                Err(format!(r#"requirement "01": "{empty}" names an empty part"#)),
+                "{list:?}"
+            );
+        }
     }
 
     /// A patch that brings a key or a behaviour this tool does not know fails the import.
