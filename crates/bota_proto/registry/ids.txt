@@ -191,6 +191,11 @@ item 90 live item_roshans_banner
 item 91 live item_infused_raindrop
 item 92 live item_ghost
 item 93 live item_chasm_stone
+item 94 live item_oblivion_staff
+item 95 live item_pers
+item 96 live item_soul_booster
+item 97 live item_falcon_blade
+item 98 live item_recipe_falcon_blade
 
 effect 0 retired bota_haste
 effect 1 live modifier_flask_healing

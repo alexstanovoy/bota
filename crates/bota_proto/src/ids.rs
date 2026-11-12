@@ -248,6 +248,14 @@ impl ItemId {
     pub const GHOST_SCEPTER: ItemId = ItemId(92);
     /// Dota's `item_chasm_stone`: its carrier's radii grow by its AoE bonus.
     pub const CHASM_STONE: ItemId = ItemId(93);
+    /// Dota's `item_oblivion_staff`: intelligence, attack speed and mana regeneration.
+    pub const OBLIVION_STAFF: ItemId = ItemId(94);
+    /// Dota's `item_pers` (public name Perseverance): health and mana regeneration.
+    pub const PERSEVERANCE: ItemId = ItemId(95);
+    /// Dota's `item_soul_booster`: health and mana.
+    pub const SOUL_BOOSTER: ItemId = ItemId(96);
+    /// Dota's `item_falcon_blade`: health, mana regeneration and damage.
+    pub const FALCON_BLADE: ItemId = ItemId(97);
 }
 
 /// What did something: the ability or the item a unit used, as Dota's combat

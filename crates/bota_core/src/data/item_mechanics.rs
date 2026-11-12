@@ -1096,6 +1096,52 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         },
         ..from(&ITEM_CHASM_STONE)
     },
+    // Upgrades that carry stats and nothing else, built of their parts as the install says.
+    ItemDef {
+        name: "Oblivion Staff",
+        carried: Carried {
+            attributes: points(
+                Attribute::Intelligence,
+                int(&ITEM_OBLIVION_STAFF, "bonus_intellect"),
+            ),
+            attack_speed: int(&ITEM_OBLIVION_STAFF, "bonus_attack_speed"),
+            mana_regen: regen(&ITEM_OBLIVION_STAFF, "bonus_mana_regen"),
+            ..NOTHING
+        },
+        ..from(&ITEM_OBLIVION_STAFF)
+    },
+    ItemDef {
+        name: "Perseverance",
+        carried: Carried {
+            hp_regen: regen(&ITEM_PERS, "bonus_health_regen"),
+            mana_regen: regen(&ITEM_PERS, "bonus_mana_regen"),
+            ..NOTHING
+        },
+        ..from(&ITEM_PERS)
+    },
+    ItemDef {
+        name: "Soul Booster",
+        carried: Carried {
+            hp: int(&ITEM_SOUL_BOOSTER, "bonus_health"),
+            mana: int(&ITEM_SOUL_BOOSTER, "bonus_mana"),
+            ..NOTHING
+        },
+        ..from(&ITEM_SOUL_BOOSTER)
+    },
+    ItemDef {
+        name: "Recipe: Falcon Blade",
+        ..from(&ITEM_RECIPE_FALCON_BLADE)
+    },
+    ItemDef {
+        name: "Falcon Blade",
+        carried: Carried {
+            hp: int(&ITEM_FALCON_BLADE, "bonus_health"),
+            mana_regen: regen(&ITEM_FALCON_BLADE, "bonus_mana_regen"),
+            damage: int(&ITEM_FALCON_BLADE, "bonus_damage"),
+            ..NOTHING
+        },
+        ..from(&ITEM_FALCON_BLADE)
+    },
 ];
 
 /// One kind of lotus, as its script gives it.

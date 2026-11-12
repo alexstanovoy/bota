@@ -359,9 +359,6 @@ const STAT_ITEMS_TESTED_APART: [ItemId; 5] = [
 #[test]
 fn every_stat_item_bought_adds_what_its_script_says_and_nothing_else() {
     let bare = stats_after_buying(&[]);
-    let per_tick = |per_second: bota_core::Dec| {
-        Fixed::from_ratio(per_second.0, 1000 * rules::TICKS_PER_SECOND as i32)
-    };
     let mut checked = 0;
     for (id, def) in bota_core::ITEMS.iter().enumerate() {
         let item = ItemId(id as u16);
@@ -375,59 +372,86 @@ fn every_stat_item_bought_adds_what_its_script_says_and_nothing_else() {
         if !stat_stick || STAT_ITEMS_TESTED_APART.contains(&item) {
             continue;
         }
-        let got = stats_after_buying(&[item]);
-        let mut expected = bare;
-        let mut attributes = Attributes::ZERO;
-        for (key, levels) in def.values {
-            if key.starts_with("tooltip_") {
-                // A number only the tooltip shows: another of the item's, as Dota words it.
-                continue;
-            }
-            let [value] = levels else {
-                panic!("{}: {key} has levels", def.key);
-            };
-            let points = |value: bota_core::Dec| Fixed::from_ratio(value.0, 1000);
-            match *key {
-                "bonus_all_stats" => attributes += Attributes::all(value.int()),
-                "bonus_strength" => attributes.strength += points(*value),
-                "bonus_agility" => attributes.agility += points(*value),
-                "bonus_intellect" => attributes.intelligence += points(*value),
-                "bonus_damage" => expected.damage += value.int(),
-                "bonus_attack_speed" => expected.attack_speed += value.int(),
-                "bonus_armor" => expected.armor += points(*value),
-                "bonus_health" => expected.max_hp += points(*value),
-                "bonus_mana" => expected.max_mana += points(*value),
-                "bonus_health_regen" | "bonus_regen" => expected.hp_regen += per_tick(*value),
-                "bonus_mana_regen" => expected.mana_regen += per_tick(*value),
-                "lifesteal_percent" => expected.lifesteal_pct += value.int(),
-                "spell_lifesteal" => expected.spell_lifesteal_pct += value.int(),
-                "aoe_bonus" => expected.aoe_bonus += value.int(),
-                "bonus_magical_armor" => {
-                    // Of what the hero's own resistance lets through, the item keeps out its
-                    // percent.
-                    let through = (10_000 - expected.magic_resist_bp) * (100 - value.int()) / 100;
-                    expected.magic_resist_bp = 10_000 - through;
-                }
-                other => panic!("{}: a value this test does not know: {other}", def.key),
-            }
-        }
+        assert_carries_its_values(item, bare);
         checked += 1;
-        add_worth_of_attributes(&mut expected, attributes);
-        assert!(
-            near(got.hp_regen, expected.hp_regen),
-            "{}: health regeneration",
-            def.key
-        );
-        assert!(
-            near(got.mana_regen, expected.mana_regen),
-            "{}: mana regeneration",
-            def.key
-        );
-        expected.hp_regen = got.hp_regen;
-        expected.mana_regen = got.mana_regen;
-        assert_eq!(got, expected, "{}", def.key);
     }
     assert_eq!(checked, 46, "the shop's stat items");
+}
+
+/// The upgrades that carry stats and nothing else, each bought whole through the seat (its
+/// parts and recipe assembled into it): the buyer gains what its values say, and nothing else.
+#[test]
+fn every_stat_upgrade_bought_whole_adds_what_its_script_says_and_nothing_else() {
+    let bare = stats_after_buying(&[]);
+    for item in [
+        ItemId::OBLIVION_STAFF,
+        ItemId::PERSEVERANCE,
+        ItemId::SOUL_BOOSTER,
+        ItemId::FALCON_BLADE,
+    ] {
+        assert_carries_its_values(item, bare);
+    }
+}
+
+/// Buys `item` whole through the seat and checks that the buyer gains what its values in the
+/// catalogue say, each as the stat its Dota key names (mapped here, apart from the rows of
+/// `data/item_mechanics.rs`), with what its attributes are worth, and nothing else. A value this
+/// does not know fails it, so no value goes unread.
+fn assert_carries_its_values(item: ItemId, bare: Stats) {
+    let def = bota_core::item_def(item).expect("an item");
+    let per_tick = |per_second: bota_core::Dec| {
+        Fixed::from_ratio(per_second.0, 1000 * rules::TICKS_PER_SECOND as i32)
+    };
+    let got = stats_after_buying(&[item]);
+    let mut expected = bare;
+    let mut attributes = Attributes::ZERO;
+    for (key, levels) in def.values {
+        if key.starts_with("tooltip_") {
+            // A number only the tooltip shows: another of the item's, as Dota words it.
+            continue;
+        }
+        let [value] = levels else {
+            panic!("{}: {key} has levels", def.key);
+        };
+        let points = |value: bota_core::Dec| Fixed::from_ratio(value.0, 1000);
+        match *key {
+            "bonus_all_stats" => attributes += Attributes::all(value.int()),
+            "bonus_strength" => attributes.strength += points(*value),
+            "bonus_agility" => attributes.agility += points(*value),
+            "bonus_intellect" => attributes.intelligence += points(*value),
+            "bonus_damage" => expected.damage += value.int(),
+            "bonus_attack_speed" => expected.attack_speed += value.int(),
+            "bonus_armor" => expected.armor += points(*value),
+            "bonus_health" => expected.max_hp += points(*value),
+            "bonus_mana" => expected.max_mana += points(*value),
+            "bonus_health_regen" | "bonus_regen" => expected.hp_regen += per_tick(*value),
+            "bonus_mana_regen" => expected.mana_regen += per_tick(*value),
+            "lifesteal_percent" => expected.lifesteal_pct += value.int(),
+            "spell_lifesteal" => expected.spell_lifesteal_pct += value.int(),
+            "aoe_bonus" => expected.aoe_bonus += value.int(),
+            "bonus_magical_armor" => {
+                // Of what the hero's own resistance lets through, the item keeps out its
+                // percent.
+                let through = (10_000 - expected.magic_resist_bp) * (100 - value.int()) / 100;
+                expected.magic_resist_bp = 10_000 - through;
+            }
+            other => panic!("{}: a value this test does not know: {other}", def.key),
+        }
+    }
+    add_worth_of_attributes(&mut expected, attributes);
+    assert!(
+        near(got.hp_regen, expected.hp_regen),
+        "{}: health regeneration",
+        def.key
+    );
+    assert!(
+        near(got.mana_regen, expected.mana_regen),
+        "{}: mana regeneration",
+        def.key
+    );
+    expected.hp_regen = got.hp_regen;
+    expected.mana_regen = got.mana_regen;
+    assert_eq!(got, expected, "{}", def.key);
 }
 
 /// `stats` with `more` attributes and what they are worth: health, mana and their regeneration,
