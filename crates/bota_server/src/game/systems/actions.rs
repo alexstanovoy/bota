@@ -944,7 +944,8 @@ impl World {
             accurate: boost.accurate,
             pierced: self.roll_pierces(attacker, on, stats, class_pct),
             physical_amp_bp: stats.damage_amp_bp(DamageKind::Physical),
-            magical_amp_bp: stats.damage_amp_bp(DamageKind::Magical),
+            // The magic riding with a swing (a pierce's) takes spell amplification as a spell's.
+            magical_amp_bp: stats.spell_damage_amp_bp(DamageKind::Magical),
             effect: self.attack_effect(attacker),
             laid: self.laid_by(attacker),
         };

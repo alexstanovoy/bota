@@ -1332,3 +1332,18 @@ fn an_aether_lens_lets_a_blink_dagger_land_1300_off() {
     run(&mut world, 3);
     assert_eq!(world.transform.get(hero).expect("standing").pos, aim);
 }
+
+/// Spell amplifications stack additively (Liquipedia, *Damage Manipulation*: spell damage
+/// amplification "stacks additively"): an Amplify Damage Rune's 15% and a Kaya's 10% amplify a
+/// spell's magic by 25%, not 1.15 × 1.10.
+#[test]
+fn an_amplify_damage_runes_and_a_kayas_spell_amplification_add() {
+    let (mut world, hero) = carrying_world(&[ItemId::KAYA]);
+    put_on(&mut world, hero, ModifierKind::RuneAmplifyDamage, 300);
+    world.step();
+    let stats = world.stats.get(hero).expect("derived");
+    assert_eq!(
+        stats.spell_damage_amp_bp(bota_proto::DamageKind::Magical),
+        12_500
+    );
+}

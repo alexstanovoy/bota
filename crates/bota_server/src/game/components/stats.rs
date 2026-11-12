@@ -162,10 +162,13 @@ impl Stats {
         }
     }
 
-    /// Its outgoing amplification of a kind of damage a spell of its deals: the kind's, and its
-    /// spell amplification on top, in basis points.
+    /// Its outgoing amplification of a kind of damage a spell of its deals, or magic riding with
+    /// its attacks: the kind's with its spell amplification added (Dota's spell amplifications
+    /// stack additively: an Amplify Damage Rune's 15% and a Kaya's 10% amplify by 25%), in basis
+    /// points.
     pub fn spell_damage_amp_bp(&self, kind: DamageKind) -> i32 {
-        let amp = i64::from(self.damage_amp_bp(kind)) * i64::from(100 + self.spell_amp_pct) / 100;
-        amp.clamp(0, i64::from(i32::MAX)) as i32
+        self.damage_amp_bp(kind)
+            .saturating_add(self.spell_amp_pct.saturating_mul(100))
+            .max(0)
     }
 }

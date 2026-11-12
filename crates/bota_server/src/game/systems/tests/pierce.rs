@@ -230,3 +230,26 @@ fn a_monkey_king_bar_reaches_further_in_melee_hands_only() {
     assert_eq!(reach(armed) - reach(bare), Fixed::from_int(50));
     assert_eq!(reach(armed_archer), reach(archer));
 }
+
+/// A pierce's magic rides with the swing and takes the attacker's spell amplification as a spell's
+/// would (the Monkey King Bar's Mystic Strike, `bonus_chance_damage` 70): a Kaya's 10% makes it
+/// 77, in melee and ranged hands alike.
+#[test]
+fn a_kayas_spell_amplification_amplifies_a_pierces_magic_in_melee_and_ranged_hands() {
+    for hero in [HeroId::PUDGE, HeroId::SHADOW_FIEND] {
+        let mut world = World::new();
+        let striker = hero_holding(&mut world, hero, &[ItemId::MONKEY_KING_BAR, ItemId::KAYA]);
+        let anvil = world.spawn_unit(&ANVIL, Team::Dire, Vec2::from_ints(5100, 5000));
+        world.settle();
+        world.set_target(striker, anvil);
+        let bonuses: Vec<i32> = swings(&mut world, striker, anvil, 20)
+            .into_iter()
+            .flat_map(|told| told.bonuses)
+            .collect();
+        assert!(!bonuses.is_empty(), "{hero:?}: the bar pierces");
+        assert!(
+            bonuses.iter().all(|&bonus| bonus == 77),
+            "{hero:?}: {bonuses:?}"
+        );
+    }
+}
