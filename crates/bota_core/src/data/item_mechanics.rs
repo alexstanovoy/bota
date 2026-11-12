@@ -107,6 +107,13 @@ const fn pierces_immunity(d: &ItemData) -> bool {
     matches!(d.immunity, Immunity::Pierced)
 }
 
+/// A value's first level, a percent, in basis points of [`rules::NOMINAL_BP`].
+const fn bp(d: &ItemData, key: &str) -> i32 {
+    let value = int(d, key);
+    assert!(value >= 0 && value < 100, "a share past all of it");
+    value * rules::NOMINAL_BP / 100
+}
+
 /// A value's first level as armor.
 const fn armor(d: &ItemData, key: &str) -> Fixed {
     let value: Dec = d.first(key);
@@ -1156,6 +1163,21 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
             ..NOTHING
         },
         ..from(&ITEM_YASHA)
+    },
+    ItemDef {
+        name: "Recipe: Sange",
+        ..from(&ITEM_RECIPE_SANGE)
+    },
+    // Sange: its slow resistance and Health Restoration count once with what is built of it.
+    ItemDef {
+        name: "Sange",
+        carried: Carried {
+            attributes: points(Attribute::Strength, int(&ITEM_SANGE, "bonus_strength")),
+            slow_resist_bp: bp(&ITEM_SANGE, "slow_resistance"),
+            restoration_amp_bp: bp(&ITEM_SANGE, "hp_regen_amp"),
+            ..NOTHING
+        },
+        ..from(&ITEM_SANGE)
     },
 ];
 

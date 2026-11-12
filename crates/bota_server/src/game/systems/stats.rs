@@ -131,7 +131,11 @@ pub fn derive_stats(cx: StatsCx<'_>) {
                 .chain(journey.iter())
                 .filter(|held| !disabled_in(modifiers, held))
         };
-        let slow_keep = resistance_keep(working(), Stat::SlowResistPct);
+        // What the items carried keep off a slow, of what the modifiers on it let through.
+        let carried_slow_keep =
+            rules::NOMINAL_BP - carried.as_ref().map_or(0, |carried| carried.slow_resist_bp);
+        let slow_keep =
+            resistance_keep(working(), Stat::SlowResistPct) * carried_slow_keep / rules::NOMINAL_BP;
         now.slow_resist_bp = rules::NOMINAL_BP - slow_keep;
         now.status_resist_bp = rules::NOMINAL_BP
             - (rules::NOMINAL_BP - now.status_resist_bp)
@@ -184,7 +188,14 @@ pub fn derive_stats(cx: StatsCx<'_>) {
             now.ethereal = true;
             let_more_magic_through(&mut now, pct);
         }
-        now.restoration_bp = rules::NOMINAL_BP * (100 - sums.restoration_cut_pct) / 100;
+        // Amplifications and cuts of Health Restoration are each stacked apart, then summed, and
+        // the sum held between none and twice of it (Dota 7.39).
+        let restoration_amp_bp = carried
+            .as_ref()
+            .map_or(0, |carried| carried.restoration_amp_bp);
+        now.restoration_bp = rules::NOMINAL_BP
+            + (restoration_amp_bp - sums.restoration_cut_pct * rules::NOMINAL_BP / 100)
+                .clamp(-rules::NOMINAL_BP, rules::NOMINAL_BP);
         if working().any(|held| held.kind.reveals()) {
             now.hides = false;
         }

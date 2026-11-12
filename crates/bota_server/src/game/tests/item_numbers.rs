@@ -389,6 +389,7 @@ fn every_stat_upgrade_bought_whole_adds_what_its_script_says_and_nothing_else() 
         ItemId::SOUL_BOOSTER,
         ItemId::FALCON_BLADE,
         ItemId::YASHA,
+        ItemId::SANGE,
     ] {
         assert_carries_its_values(item, bare);
     }
@@ -410,6 +411,42 @@ fn two_yashas_carried_hasten_by_one_yashas_percent() {
     let two = stats_after_buying(&[ItemId::YASHA, ItemId::YASHA]).move_speed;
     assert_eq!(one, hastened(bare, 10), "one Yasha: ten percent");
     assert_eq!(two, one, "a second Yasha adds nothing");
+}
+
+/// A Sange keeps a quarter of a slow off its carrier (`slow_resistance`; Dota 7.41: "Slow
+/// Resistance bonus increased from +20% to +25%"): slowed by 40%, it walks at 70% of its pace.
+#[test]
+fn a_sange_keeps_a_quarter_of_a_slow_off_its_carrier() {
+    let pace_slowed = |items: &[ItemId]| {
+        let (mut world, hero) = out_of_fountain_after_buying(items);
+        let walking = world.stats.get(hero).expect("derived").move_speed;
+        put_on(&mut world, hero, ModifierKind::Slowed { pct: 40 }, 100);
+        world.step();
+        (walking, world.stats.get(hero).expect("derived").move_speed)
+    };
+    let (walking, slowed) = pace_slowed(&[]);
+    assert_eq!(slowed, hastened(walking, -40), "no Sange: the whole slow");
+    let (walking, slowed) = pace_slowed(&[ItemId::SANGE]);
+    assert_eq!(
+        slowed,
+        hastened(walking, -30),
+        "a Sange keeps 10 of the 40 off"
+    );
+    let (_, twice) = pace_slowed(&[ItemId::SANGE, ItemId::SANGE]);
+    assert_eq!(twice, slowed, "a second Sange keeps nothing more off");
+}
+
+/// A Sange's Health Restoration (`hp_regen_amp`, 12% since Dota 7.41b) comes through every heal its
+/// carrier takes as well as its regeneration (7.41: "Now also modifies incoming healing"); a
+/// second Sange adds nothing.
+#[test]
+fn a_sange_amplifies_a_heal_its_carrier_takes_by_twelve_percent() {
+    for items in [&[ItemId::SANGE][..], &[ItemId::SANGE, ItemId::SANGE]] {
+        let (mut world, hero) = out_of_fountain_after_buying(items);
+        world.health.get_mut(hero).expect("alive").hp = Fixed::from_int(100);
+        let (restored, _) = world.refill_pools(hero, 200, 0);
+        assert_eq!(restored, 224, "{items:?}");
+    }
 }
 
 /// A Yasha's percent is summed with every other percent change of the pace and taken once, as
@@ -440,6 +477,7 @@ fn assert_carries_its_values(item: ItemId, bare: Stats) {
     let got = stats_after_buying(&[item]);
     let mut expected = bare;
     let mut attributes = Attributes::ZERO;
+    let mut restoration_amp_bp = 0;
     for (key, levels) in def.values {
         if key.starts_with("tooltip_") {
             // A number only the tooltip shows: another of the item's, as Dota words it.
@@ -464,6 +502,12 @@ fn assert_carries_its_values(item: ItemId, bare: Stats) {
             "lifesteal_percent" => expected.lifesteal_pct += value.int(),
             "spell_lifesteal" => expected.spell_lifesteal_pct += value.int(),
             "aoe_bonus" => expected.aoe_bonus += value.int(),
+            "slow_resistance" => {
+                // A resistance: of what the slows let through, the item keeps off its percent.
+                let through = (10_000 - expected.slow_resist_bp) * (100 - value.int()) / 100;
+                expected.slow_resist_bp = 10_000 - through;
+            }
+            "hp_regen_amp" => restoration_amp_bp += value.int() * 100,
             "movement_speed_percent_bonus" => {
                 // A percent of the pace, on a hero nothing else hastes or slows.
                 expected.move_speed = hastened(bare.move_speed, value.int());
@@ -478,6 +522,9 @@ fn assert_carries_its_values(item: ItemId, bare: Stats) {
         }
     }
     add_worth_of_attributes(&mut expected, attributes);
+    // Health Restoration takes its share of all the health regenerated.
+    expected.restoration_bp += restoration_amp_bp;
+    expected.hp_regen = expected.hp_regen * Fixed::from_ratio(expected.restoration_bp, 10_000);
     assert!(
         near(got.hp_regen, expected.hp_regen),
         "{}: health regeneration",

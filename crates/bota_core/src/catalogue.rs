@@ -237,6 +237,8 @@ impl Fnv {
             spell_lifesteal_pct,
             aoe_bonus,
             move_speed_pct,
+            slow_resist_bp,
+            restoration_amp_bp,
         } = value;
         let fnv = self
             .attributes(attributes)
@@ -266,10 +268,20 @@ impl Fnv {
         } else {
             fnv.u64(0xB0).int(aoe_bonus as i64)
         };
-        if move_speed_pct == 0 {
+        let fnv = if move_speed_pct == 0 {
             fnv
         } else {
             fnv.u64(0xC0).int(move_speed_pct as i64)
+        };
+        let fnv = if slow_resist_bp == 0 {
+            fnv
+        } else {
+            fnv.u64(0xC1).int(slow_resist_bp as i64)
+        };
+        if restoration_amp_bp == 0 {
+            fnv
+        } else {
+            fnv.u64(0xC2).int(restoration_amp_bp as i64)
         }
     }
 

@@ -198,6 +198,8 @@ item 97 live item_falcon_blade
 item 98 live item_recipe_falcon_blade
 item 99 live item_yasha
 item 100 live item_recipe_yasha
+item 101 live item_sange
+item 102 live item_recipe_sange
 
 effect 0 retired bota_haste
 effect 1 live modifier_flask_healing

@@ -710,6 +710,27 @@ fn status_resistance_shortens_frost_and_leaves_its_slow_as_strong() {
     assert_eq!(resisted_pace, bare_pace);
 }
 
+/// Amplifications and cuts of Health Restoration stack apart and then add (Dota 7.39): Frost's 15%
+/// cut on a Sange carrier's 12% amplification leaves 97%, and a heal of 200 comes through as 194.
+#[test]
+fn frost_on_a_sange_carrier_leaves_the_difference_of_its_cut_and_amplification() {
+    let (mut world, hero, mark, _) = first_landing(&[ItemId::ORB_OF_FROST], |world, at| {
+        let foe = foe_hero(world, at);
+        world.inventory.get_mut(foe).expect("a bag").slots[0] = Some(fresh_stack(ItemId::SANGE, 0));
+        foe
+    });
+    world.set_order(hero, crate::game::UnitOrder::Stand);
+    world.step();
+    assert_eq!(laid_on(&world, mark, ItemId::ORB_OF_FROST).0, 1, "frosted");
+    assert_eq!(
+        world.stats.get(mark).expect("derived").restoration_bp,
+        9_700
+    );
+    world.health.get_mut(mark).expect("alive").hp = Fixed::from_int(100);
+    let (restored, _) = world.refill_pools(mark, 200, 0);
+    assert_eq!(restored, 194);
+}
+
 /// Frost lands on enemy units alone (Liquipedia, Orb of Frost: not "Buildings", "Ward-type units",
 /// "Couriers"; Dota 7.41e: "Frost no longer applies when attacking allies"), and spell immunity
 /// keeps it off (no `SpellImmunityType`).

@@ -85,6 +85,16 @@ pub struct Carried {
     /// percent change of it. An item and what is built of it count once, the
     /// best of them ([`lineage`]): Dota's Yasha-based items.
     pub move_speed_pct: i32,
+    /// Slow resistance, in basis points of [`rules::NOMINAL_BP`]: the share of every slow of the
+    /// carrier's pace kept off. Lineages stack as resistances do, each keeping off its share of
+    /// what the others let through; an item and what is built of it count once ([`lineage`]):
+    /// Dota's Sange-based items.
+    pub slow_resist_bp: i32,
+    /// Health Restoration amplification, in basis points of [`rules::NOMINAL_BP`]: more of what
+    /// the carrier regenerates, steals back and is healed. Lineages stack diminishingly (Dota
+    /// 7.39: "the final value will be calculated as: 1 - (1 - n0) * (1 - n1)"); an item and what
+    /// is built of it count once: Dota's Sange-based items.
+    pub restoration_amp_bp: i32,
 }
 
 /// Nothing carried at all, so an entry names only what it adds.
@@ -112,6 +122,8 @@ pub(crate) const NOTHING: Carried = Carried {
     spell_lifesteal_pct: 0,
     aoe_bonus: 0,
     move_speed_pct: 0,
+    slow_resist_bp: 0,
+    restoration_amp_bp: 0,
 };
 
 /// Whole points of one attribute and none of the others.
@@ -940,11 +952,23 @@ struct LineageStat {
 }
 
 /// Every carried stat that counts once a lineage.
-const LINEAGE_STATS: [LineageStat; 1] = [LineageStat {
-    get: |carried| carried.move_speed_pct,
-    set: |carried, value| carried.move_speed_pct = value,
-    stack: |first, second| first + second,
-}];
+const LINEAGE_STATS: [LineageStat; 3] = [
+    LineageStat {
+        get: |carried| carried.move_speed_pct,
+        set: |carried, value| carried.move_speed_pct = value,
+        stack: |first, second| first + second,
+    },
+    LineageStat {
+        get: |carried| carried.slow_resist_bp,
+        set: |carried, value| carried.slow_resist_bp = value,
+        stack: resist_both,
+    },
+    LineageStat {
+        get: |carried| carried.restoration_amp_bp,
+        set: |carried, value| carried.restoration_amp_bp = value,
+        stack: resist_both,
+    },
+];
 
 /// Most parts down a build tree [`lineage`] walks; Dota's deepest build is far shallower.
 const MAX_BUILD_DEPTH: usize = 8;
