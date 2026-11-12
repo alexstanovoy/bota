@@ -1,8 +1,10 @@
 """Contracts for the bounded, source-only bot API census."""
 import importlib.util
+import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location("bot_api_census", Path(__file__).with_name("bot_api_census.py"))
 census = importlib.util.module_from_spec(spec)
@@ -10,6 +12,90 @@ spec.loader.exec_module(census)
 
 
 class Census(unittest.TestCase):
+    def test_catalogue_fifo_and_malformed_text_are_refused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'catalogue'
+            os.mkfifo(path)
+            with self.assertRaisesRegex(ValueError, 'nonregular'):
+                census.read_catalogue(path)
+            path.unlink()
+            path.write_bytes(b'global\tGetBot\tbad\n')
+            with self.assertRaises(ValueError):
+                census.read_catalogue(path)
+            path.write_bytes(b'\xff')
+            with self.assertRaises(UnicodeError):
+                census.read_catalogue(path)
+
+    def test_import_work_and_token_budgets_are_enforced(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'bot_generic.lua').write_text('require(GetScriptDirectory().."/helper")')
+            with patch.object(census, 'MAX_ANALYSIS_WORK', 8):
+                with self.assertRaisesRegex(ValueError, 'work limit'):
+                    census.scan(root, {})
+            with patch.object(census, 'MAX_TOKENS', 4):
+                with self.assertRaisesRegex(ValueError, 'tokens limit'):
+                    census.scan(root, {})
+    def test_strings_are_not_syntax_and_escaped_imports_are_resolved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "bot_generic.lua").write_text(r'local s="function" MissingGlobal(); require("he\108per"); require(")")')
+            (root / "helper.lua").write_text('MissingHelperApi()')
+            report = census.scan(root, {})
+            self.assertIn("MissingGlobal", report["missing_globals"])
+            self.assertIn("MissingHelperApi", report["missing_globals"])
+            self.assertEqual(len(report["unresolved_dependencies"]), 1)
+
+    def test_nested_import_analysis_is_bounded_before_quadratic_work(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "bot_generic.lua").write_text('require(' * 1000 + '"helper"' + ')' * 1000)
+            with self.assertRaisesRegex(ValueError, "import expression limit"):
+                census.scan(root, {})
+
+    def test_pack_and_runtime_share_the_source_budget(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "pack"
+            runtime = Path(directory) / "runtime"
+            root.mkdir()
+            runtime.mkdir()
+            (root / "bot_generic.lua").write_text('123456')
+            (runtime / "shared.lua").write_text('123456')
+            with patch.object(census, 'MAX_TOTAL', 8):
+                with self.assertRaisesRegex(ValueError, "source size"):
+                    census.scan(root, {}, runtime=runtime)
+
+    def test_loader_alias_prevents_a_false_complete_closure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "bot_generic.lua").write_text('local import=require; import("hidden")')
+            (root / "hidden.lua").write_text('MissingHiddenApi()')
+            report = census.scan(root, {})
+            self.assertFalse(report["closure_complete"])
+            self.assertTrue(report["unresolved_dependencies"])
+
+    def test_helper_definition_cannot_hide_an_unrelated_engine_member_gap(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "bot_generic.lua").write_text('local M=require("helper"); GetBot():MissingMethod()')
+            (root / "helper.lua").write_text('local M={} function M.MissingMethod() end return M')
+            report = census.scan(root, {"global": {"GetBot"}})
+            self.assertIn("MissingMethod", report["missing_members"])
+
+    def test_runtime_and_pack_modules_keep_distinct_namespaces(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "pack"
+            runtime = Path(directory) / "runtime"
+            (root / "game").mkdir(parents=True)
+            runtime.mkdir()
+            (root / "bot_generic.lua").write_text('require("bots/game/shared"); require("game/shared")')
+            (root / "game/shared.lua").write_text('MissingPackApi()')
+            (runtime / "shared.lua").write_text('GetBot()')
+            report = census.scan(root, {"global": {"GetBot"}}, runtime=runtime)
+            self.assertIn("MissingPackApi", report["missing_globals"])
+            self.assertIn("bots/game/shared.lua", report["files"])
+            self.assertIn("game/shared.lua", report["files"])
+
     def test_sf_entry_closure_excludes_other_heroes_and_resolves_hero_imports(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -18,7 +104,7 @@ class Census(unittest.TestCase):
             (root / "bot_lina.lua").write_text('OtherHeroOnly()')
             (root / "hero/nevermore.lua").write_text('-- FakeComment()\nlocal s="FakeString()"\nGetBot():MissingMethod()')
             report = census.scan(root, {"global": {"GetBot", "GetScriptDirectory"}, "unit": {"GetHealth", "GetUnitName"}, "string": {"gsub"}})
-            self.assertEqual(report["files"], ["bot_nevermore.lua", "hero/nevermore.lua"])
+            self.assertEqual(report["files"], ["bots/bot_nevermore.lua", "bots/hero/nevermore.lua"])
             self.assertEqual(set(report["missing_globals"]), {"MissingGlobal"})
             self.assertEqual(set(report["missing_members"]), {"MissingMethod"})
             self.assertFalse(report["unresolved_dependencies"])

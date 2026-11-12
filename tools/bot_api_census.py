@@ -18,17 +18,55 @@ MAX_SOURCE = 1 << 20
 MAX_TOTAL = 32 << 20
 MAX_ENTRIES = 16384
 MAX_MODULES = 2048
+MAX_TOKENS = 1_000_000
+MAX_ANALYSIS_WORK = 8_000_000
+MAX_IMPORT_EXPRESSION = 512
 MODES = "laning attack roam retreat secret_shop side_shop rune push_tower_top push_tower_mid push_tower_bot defend_tower_top defend_tower_mid defend_tower_bot assemble team_roam farm defend_ally evasive_maneuvers roshan item ward outpost".split()
 HOOKS = {"Think", "GetDesire", "OnStart", "OnEnd", "MinionThink", "ItemPurchaseThink", "AbilityUsageThink", "ItemUsageThink", "CourierUsageThink", "BuybackUsageThink", "AbilityLevelUpThink", "TeamThink", "UpdatePushLaneDesires", "UpdateDefendLaneDesires", "UpdateFarmLaneDesires", "UpdateRoamDesire", "UpdateRoshanDesire", "UpdateLaneAssignments", "GetBotNames"}
 LONG = re.compile(r"\[(=*)\[")
 IDENT = re.compile(r"[A-Za-z_][A-Za-z_0-9]*")
 
 
-def tokens(source):
+def spend(budget, kind, amount):
+    budget[kind] -= amount
+    if budget[kind] < 0:
+        raise ValueError(f"analysis {kind} limit")
+
+
+def quoted(source, index):
+    quote, value, opaque = source[index], [], False
+    index += 1
+    escapes = {"a": "\a", "b": "\b", "f": "\f", "n": "\n", "r": "\r", "t": "\t", "v": "\v", "\\": "\\", '"': '"', "'": "'", "\n": "\n"}
+    while index < len(source) and source[index] != quote:
+        if source[index] != "\\":
+            value.append(source[index])
+            index += 1
+            continue
+        index += 1
+        if index >= len(source):
+            break
+        if source[index] in "0123456789":
+            end = index
+            while end < min(index + 3, len(source)) and source[end] in "0123456789":
+                end += 1
+            number = int(source[index:end])
+            opaque |= number > 255
+            value.append(chr(min(number, 255)))
+            index = end
+        else:
+            opaque |= source[index] not in escapes
+            value.append(escapes.get(source[index], source[index]))
+            index += 1
+    return min(index + 1, len(source)), ("opaque_string" if opaque else "string"), "".join(value)
+
+
+def tokens(source, budget=None):
     """Linear lexer; comments never produce calls, string contents stay opaque."""
     result, index, line = [], 0, 1
+    budget = budget if budget is not None else {"tokens": MAX_TOKENS, "work": MAX_ANALYSIS_WORK}
     while index < len(source):
         start = index
+        before = len(result)
         comment = source.startswith("--", index)
         begin = index + 2 if comment else index
         long = LONG.match(source, begin)
@@ -42,15 +80,8 @@ def tokens(source):
             end = source.find("\n", begin)
             index = len(source) if end < 0 else end
         elif source[index] in "\"'":
-            quote, value = source[index], []
-            index += 1
-            while index < len(source) and source[index] != quote:
-                if source[index] == "\\" and index + 1 < len(source):
-                    index += 1
-                value.append(source[index])
-                index += 1
-            index = min(index + 1, len(source))
-            result.append(("string", "".join(value), line))
+            index, kind, value = quoted(source, index)
+            result.append((kind, value, line))
         elif source[index].isspace():
             index += 1
         else:
@@ -63,22 +94,53 @@ def tokens(source):
                 index += len(punctuation)
                 result.append(("symbol", punctuation, line))
         line += source.count("\n", start, index)
+        spend(budget, "tokens", len(result) - before)
     return result
 
 
-def sources(root):
+def read_pinned(pinned, name, maximum):
+    info = os.fstat(pinned)
+    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+        raise ValueError(f"nonregular or linked source: {name!r}")
+    if info.st_size > maximum:
+        raise ValueError(f"source size limit: {name!r}")
+    with open(f"/proc/self/fd/{pinned}", "rb") as source:
+        data = source.read(maximum + 1)
+        if len(data) > maximum or os.fstat(source.fileno()).st_nlink != 1:
+            raise ValueError(f"source size or link limit: {name!r}")
+    return data
+
+
+def read_catalogue(path):
+    pinned = os.open(path, os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        text = read_pinned(pinned, "catalogue", MAX_SOURCE).decode("utf-8")
+    finally:
+        os.close(pinned)
+    catalogue = defaultdict(set)
+    for line in text.splitlines():
+        namespace, name = line.split("\t")
+        if not namespace or not name or len(namespace) > 64 or len(name) > 256:
+            raise ValueError("invalid catalogue name")
+        catalogue[namespace].add(name)
+    return catalogue
+
+
+def sources(root, budget=None):
     """Pin directories and classify files before reading; never follow pack links."""
-    result, total, entries = {}, 0, 0
+    result = {}
+    budget = budget if budget is not None else {"bytes": MAX_TOTAL, "entries": MAX_ENTRIES, "modules": MAX_MODULES}
     def walk(directory, prefix, depth):
-        nonlocal total, entries
         if depth > 16:
             raise ValueError("directory depth limit")
         with os.scandir(directory) as listing:
             for entry in listing:
-                entries += 1
-                if entries > MAX_ENTRIES:
+                budget["entries"] -= 1
+                if budget["entries"] < 0:
                     raise ValueError("directory entry limit")
                 name = prefix + entry.name
+                if len(name.encode("utf-8")) > 256:
+                    raise ValueError("module path limit")
                 pinned = os.open(entry.name, os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=directory)
                 try:
                     info = os.fstat(pinned)
@@ -91,17 +153,11 @@ def sources(root):
                         finally:
                             os.close(readable)
                     elif name.endswith(".lua"):
-                        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
-                            raise ValueError(f"nonregular or linked source: {name!r}")
-                        if info.st_size > MAX_SOURCE or total + info.st_size > MAX_TOTAL:
-                            raise ValueError(f"source size limit: {name!r}")
-                        if len(result) >= MAX_MODULES:
+                        if budget["modules"] <= 0:
                             raise ValueError("module count limit")
-                        with open(f"/proc/self/fd/{pinned}", "rb") as source:
-                            data = source.read(MAX_SOURCE + 1)
-                        total += len(data)
-                        if len(data) > MAX_SOURCE or total > MAX_TOTAL:
-                            raise ValueError(f"source size limit: {name!r}")
+                        data = read_pinned(pinned, name, min(MAX_SOURCE, budget["bytes"]))
+                        budget["bytes"] -= len(data)
+                        budget["modules"] -= 1
                         result[name] = data.decode("utf-8-sig", errors="replace")
                 finally:
                     os.close(pinned)
@@ -116,13 +172,18 @@ def sources(root):
 def argument(stream, index):
     if index >= len(stream):
         return []
-    if stream[index][0] == "string":
+    if stream[index][0] in ("string", "opaque_string"):
         return [stream[index]]
-    if stream[index][1] != "(":
+    if stream[index][:2] != ("symbol", "("):
         return []
     depth, end = 1, index + 1
     while end < len(stream):
-        value = stream[end][1]
+        if end - index > MAX_IMPORT_EXPRESSION:
+            raise ValueError("import expression limit")
+        kind, value, _ = stream[end]
+        if kind != "symbol":
+            end += 1
+            continue
         if value == "(":
             depth += 1
         elif value == ")":
@@ -146,100 +207,115 @@ def module_name(expression, hero):
             if text[index:index + len(pattern)] == pattern:
                 text[index:index + len(pattern)] = [("string", replacement)]
             index += 1
-    if not text or any(kind != "string" if index % 2 == 0 else value != ".." for index, (kind, value) in enumerate(text)):
+    if not text or len(text) % 2 == 0 or any(kind != "string" if index % 2 == 0 else (kind, value) != ("symbol", "..") for index, (kind, value) in enumerate(text)):
         return None
     name = "".join(value for kind, value in text if kind == "string").replace("\\", "/")
     if name.endswith(".lua"):
         name = name[:-4]
-    if name.startswith("bots/"):
-        name = name[5:]
-    elif "/" not in name:
+    if "/" not in name:
         name = name.replace(".", "/")
     if name.startswith("/") or any(part in ("", ".", "..") for part in name.split("/")):
         return None
-    return name + ".lua"
+    return (name if name.startswith(("bots/", "game/")) else "bots/" + name) + ".lua"
 
 
 def declarations(stream):
     names = set()
-    for index, (_, value, _) in enumerate(stream):
-        if value == "function" and index + 1 < len(stream) and stream[index + 1][0] == "name":
+    for index, (kind, value, _) in enumerate(stream):
+        if kind == "name" and value == "function" and index + 1 < len(stream) and stream[index + 1][0] == "name":
             end = index + 1
-            while end + 2 < len(stream) and stream[end + 1][1] in (".", ":"):
+            while end + 2 < len(stream) and stream[end + 1][:2] in (("symbol", "."), ("symbol", ":")):
                 end += 2
             names.add(stream[end][1])
-        elif value == "=" and index and index + 1 < len(stream) and stream[index + 1][1] == "function":
+        elif kind == "symbol" and value == "=" and index and index + 1 < len(stream) and stream[index + 1][:2] == ("name", "function"):
             names.add(stream[index - 1][1])
     return names
 
 
 def local_bindings(stream):
     names = set()
-    for index, (_, value, _) in enumerate(stream):
-        if value != "local" or index + 1 >= len(stream):
+    for index, (kind, value, _) in enumerate(stream):
+        if kind != "name" or value != "local" or index + 1 >= len(stream):
             continue
         index += 1
-        if stream[index][1] == "function":
+        if stream[index][:2] == ("name", "function"):
             index += 1
         while index < len(stream) and stream[index][0] == "name":
             names.add(stream[index][1])
             index += 1
-            if index >= len(stream) or stream[index][1] != ",":
+            if index >= len(stream) or stream[index][:2] != ("symbol", ","):
                 break
             index += 1
     return names
 
 
+def bare_functions(stream):
+    return {stream[index + 1][1] for index, token in enumerate(stream[:-2])
+            if token[:2] == ("name", "function") and stream[index + 1][0] == "name"
+            and stream[index + 2][:2] == ("symbol", "(")}
+
+
 def scan(root, catalogue, hero="nevermore", runtime=None, pack_selection=False):
-    files = sources(root)
+    storage = {"bytes": MAX_TOTAL, "entries": MAX_ENTRIES, "modules": MAX_MODULES}
+    analysis = {"tokens": MAX_TOKENS, "work": MAX_ANALYSIS_WORK, "imports": 8192}
+    files = {"bots/" + name: source for name, source in sources(root, storage).items()}
     if runtime:
-        files.update({"game/" + name: source for name, source in sources(runtime).items()})
+        files.update({"game/" + name: source for name, source in sources(runtime, storage).items()})
     def override(stem):
-        return next((name for name in (f"{stem}_{hero}.lua", f"{stem}_generic.lua") if name in files), None)
+        return next((name for name in (f"bots/{stem}_{hero}.lua", f"bots/{stem}_generic.lua") if name in files), None)
     takeover = override("bot")
-    entries = [name for name in (("hero_selection.lua", "team_desires.lua") if pack_selection else ("team_desires.lua",)) if name in files]
+    entries = [name for name in (("bots/hero_selection.lua", "bots/team_desires.lua") if pack_selection else ("bots/team_desires.lua",)) if name in files]
     entries += [name for name in (takeover, override("ability_item_usage"), override("item_purchase")) if name]
     mode_files = {} if takeover else {mode: override("mode_" + mode) for mode in MODES}
     entries += [name for name in mode_files.values() if name]
-    reachable, unresolved, module_variables = {}, [], set()
+    reachable, unresolved, module_variables = {}, [], defaultdict(set)
     pending = list(entries)
     while pending:
         name = pending.pop()
         if name in reachable:
             continue
-        stream = tokens(files[name])
+        stream = tokens(files[name], analysis)
         reachable[name] = stream
         for index, (kind, value, line) in enumerate(stream):
-            if kind != "name" or value not in ("require", "dofile"):
+            if value not in ("require", "dofile", "load", "loadstring") or kind not in ("name", "string"):
                 continue
+            spend(analysis, "imports", 1)
             expression = argument(stream, index + 1)
-            if not expression:
+            if kind != "name" or not expression or value in ("load", "loadstring"):
+                unresolved.append({"file": name, "line": line, "module": None, "reason": "indirect loader or dynamic code"})
                 continue
-            if index >= 2 and stream[index - 1][1] == "=":
-                module_variables.add(stream[index - 2][1])
+            if index >= 2 and stream[index - 1][:2] == ("symbol", "="):
+                module_variables[name].add(stream[index - 2][1])
+            spend(analysis, "work", len(expression) ** 2)
             dependency = module_name(expression, hero)
             if dependency in files:
                 pending.append(dependency)
             else:
                 unresolved.append({"file": name, "line": line, "module": dependency, "reason": "source absent" if dependency else "dynamic module expression"})
-    defined = set().union(HOOKS, *(declarations(stream) for stream in reachable.values()))
     calls, dialect = defaultdict(list), defaultdict(list)
     for name, stream in sorted(reachable.items()):
         bound = local_bindings(stream)
+        defined = bare_functions(stream) | HOOKS
+        helpers = defined | bound
         for index, (kind, value, line) in enumerate(stream):
             location = f"{name}:{line}"
-            previous = stream[index - 1][1] if index else ""
-            following = stream[index + 1][1] if index + 1 < len(stream) else ""
-            if value in ("goto", "::"):
+            previous = stream[index - 1][1] if index and stream[index - 1][0] in ("name", "symbol") else ""
+            following = stream[index + 1][:2] if index + 1 < len(stream) else None
+            if (kind, value) in (("name", "goto"), ("symbol", "::")):
                 dialect[value].append(location)
-            if kind != "name" or following != "(" or previous == "function":
+            if kind != "name" or following != ("symbol", "(") or previous == "function":
                 continue
-            receiver = stream[index - 2][1] if index >= 2 else ""
+            root = index
+            while root >= 2 and stream[root - 1][:2] in (("symbol", "."), ("symbol", ":")) and stream[root - 2][0] == "name":
+                root -= 2
+            if root and stream[root - 1][:2] == ("name", "function"):
+                continue
+            receiver = stream[root][1] if root != index else ""
             if previous == "." and receiver in ("bit", "jit", "ffi", "os", "io", "debug", "math", "table", "string", "coroutine"):
                 dialect[receiver + "." + value].append(location)
             elif value in ("require", "dofile", "load", "loadstring", "module", "getfenv", "setfenv", "pcall", "xpcall", "collectgarbage"):
                 dialect[value].append(location)
-            elif value[:1].isupper() and value not in defined and receiver not in module_variables and not (previous not in (":", ".") and value in bound):
+            elif value[:1].isupper() and receiver not in module_variables[name] and not (previous not in (":", ".") and value in helpers):
                 category = "member" if previous in (":", ".") else "global"
                 calls[(category, value)].append(location)
     used = {category: {} for category in ("global", "member")}
@@ -253,7 +329,7 @@ def scan(root, catalogue, hero="nevermore", runtime=None, pack_selection=False):
     for mode, name in mode_files.items():
         declared = declarations(reachable[name]) if name else set()
         absent = [hook for hook in ("GetDesire", "Think") if hook not in declared]
-        if name and any(left[1] == "return" and right[1] == "nil" for left, right in zip(reachable[name], reachable[name][1:])) and "GetDesire" not in absent:
+        if name and any(left[:2] == ("name", "return") and right[:2] == ("name", "nil") for left, right in zip(reachable[name], reachable[name][1:])) and "GetDesire" not in absent:
             absent.append("GetDesire")
         if absent:
             default_hooks[mode] = sorted(absent)
@@ -274,17 +350,10 @@ def main():
     parser.add_argument("--hero", default="nevermore")
     parser.add_argument("--pack-selection", action="store_true", help="include selection hooks; default assumes a preselected hero")
     options = parser.parse_args()
-    catalogue = defaultdict(set)
-    with options.catalogue.open() as source:
-        text = source.read(MAX_SOURCE + 1)
-        if len(text) > MAX_SOURCE:
-            parser.error("catalogue size limit")
-        for line in text.splitlines():
-            namespace, name = line.rstrip("\n").split("\t")
-            catalogue[namespace].add(name)
     try:
+        catalogue = read_catalogue(options.catalogue)
         report = scan(options.pack, catalogue, options.hero, options.runtime, options.pack_selection)
-    except (ValueError, OSError) as error:
+    except (ValueError, OSError, UnicodeError) as error:
         parser.exit(2, f"census refused input: {error}\n")
     print(json.dumps(report, indent=2, sort_keys=True))
 
