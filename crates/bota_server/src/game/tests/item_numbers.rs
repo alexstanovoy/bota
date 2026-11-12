@@ -1347,3 +1347,22 @@ fn an_amplify_damage_runes_and_a_kayas_spell_amplification_add() {
         12_500
     );
 }
+
+/// Cooldown reductions of different sources multiply (Dota 7.31: "Cooldown Reduction stacking is
+/// now multiplicative"): an Octarine Core's 25% under a frostbitten golem's Time Warp Aura (8% at
+/// its first level) leaves 0.75 × 0.92 = 69% of a cooldown, not 67%.
+#[test]
+fn an_octarine_core_and_a_time_warp_aura_multiply() {
+    let (mut world, hero) = carrying_world(&[ItemId::OCTARINE_CORE]);
+    let aura = ModifierKind::Spell {
+        ability: bota_core::NeutralAbility::TimeWarpAura,
+        level: 0,
+        amount: 0,
+    };
+    put_on(&mut world, hero, aura, 300);
+    world.step();
+    assert_eq!(
+        world.stats.get(hero).expect("derived").cooldown_rate_bp,
+        6_900
+    );
+}

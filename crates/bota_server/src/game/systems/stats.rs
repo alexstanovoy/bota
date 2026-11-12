@@ -227,6 +227,13 @@ pub fn derive_stats(cx: StatsCx<'_>) {
                 .max(scaled_bp(Fixed::from_int(HASTE_RUNE_SPEED), pace_scale_bp));
         }
         attack_damage(&mut now, &sums);
+        // What the items carried cut off the mana costs and the cooldowns multiplies with every
+        // other source (Dota 7.31: cooldown reduction stacks multiplicatively), so it is taken
+        // once the modifiers (a Time Warp aura) have had their say.
+        if let Some(carried) = &carried {
+            now.mana_cost_rate_bp = cut_rate(now.mana_cost_rate_bp, carried.mana_cost_cut_bp);
+            now.cooldown_rate_bp = cut_rate(now.cooldown_rate_bp, carried.cooldown_cut_bp);
+        }
         // An Arcane Rune shortens what is left once every other source has
         // had its say: its cut stacks multiplicatively [LIQ Runes].
         if working().any(|held| held.kind == ModifierKind::RuneArcane) {
@@ -487,9 +494,6 @@ fn add_carried(now: &mut Stats, sums: &mut Sums, carried: &Carried, illusion: bo
     now.spell_lifesteal_pct += carried.spell_lifesteal_pct;
     now.spell_amp_pct += carried.spell_amp_pct;
     now.cast_speed_pct += carried.cast_speed_pct;
-    // A cut of the mana costs or of the cooldowns multiplies with every other.
-    now.mana_cost_rate_bp = cut_rate(now.mana_cost_rate_bp, carried.mana_cost_cut_bp);
-    now.cooldown_rate_bp = cut_rate(now.cooldown_rate_bp, carried.cooldown_cut_bp);
     let range = if now.projectile_speed.is_none() {
         carried.melee_range
     } else {
