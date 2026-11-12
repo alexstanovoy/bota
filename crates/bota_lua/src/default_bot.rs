@@ -1,6 +1,9 @@
 //! Deterministic SF Solo Mid fallback policy. Hook semantics follow the engine API;
 //! policy thresholds are explicit reconstruction assumptions, not recovered engine internals.
 
+mod auxiliary;
+pub(crate) use auxiliary::{AuxiliaryHook, install as install_auxiliary};
+
 use std::rc::Rc;
 use bota_client_core::IssuedOrder;
 use bota_proto::{HeroId, Order, StatusFlags, Target, Team, UnitKind, UnitView, Vec2};

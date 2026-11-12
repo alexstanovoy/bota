@@ -10,6 +10,14 @@ arbitrate every nine ticks with transition hooks. Team, ability/item, purchase a
 courier hooks use the same scheduler. A failed bot turn discards that bot's orders.
 Repeated fuel diagnostics are eligible once per thirty ticks.
 
+For a preselected two-player Shadow Fiend Solo Mid match, missing mode desires (or a nil desire)
+use the native fallback; missing mode Think hooks use its actions. Explicit empty Think functions
+remain overrides. The current native slice covers laning, visible attacks, retreat, nearby farming,
+legal skill/talent learning and raze/Requiem use. A full takeover receives no competing native
+fallback actions. Policy thresholds are documented reconstruction assumptions; this does not claim
+the closed engine's exact policy. Item/economy, courier/buyback and queued-action completion are
+separate capabilities. Native work enters through hidden pinned callbacks under the same tick fuel.
+
 Defaults are 500,000 fuel per call, 2,000,000 per team tick and 256 MiB memory.
 Host storage reserves 16 MiB against that cap, including bounded snapshot replacement
 and handle maps. Snapshots hold at most 4 MiB of copied facts; unit and ability caches

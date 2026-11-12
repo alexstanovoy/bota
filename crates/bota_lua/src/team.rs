@@ -100,6 +100,7 @@ pub struct LuaTeam {
     modules: Option<Arc<crate::modules::Sources>>,
     module_root: Option<Value>,
     default_mode: Value,
+    default_auxiliary: Value,
 }
 
 impl LuaTeam {
@@ -162,6 +163,8 @@ impl LuaTeam {
         api::install(&mut lua, state.clone(), vectors)?;
         let default_mode = crate::default_bot::install(&mut lua, state.clone())?;
         lua.pin(default_mode)?;
+        let default_auxiliary = crate::default_bot::install_auxiliary(&mut lua, state.clone())?;
+        lua.pin(default_auxiliary)?;
         let set_environment = lua.global("setfenv")?;
         let get_environment = lua.global("getfenv")?;
         lua.pin(set_environment)?;
@@ -181,6 +184,7 @@ impl LuaTeam {
             modules: None,
             module_root: None,
             default_mode,
+            default_auxiliary,
         })
     }
 
@@ -620,19 +624,21 @@ impl LuaTeam {
         } else {
             self.run_mode(seat, slot, tick)?;
         }
-        if let Some(index) = self
+        let usage = self
             .scripts
             .iter()
             .position(|script| script.slot == slot && script.kind == ScriptKind::AbilityItemUsage)
-        {
-            for hook in [
-                "AbilityUsageThink",
-                "ItemUsageThink",
-                "CourierUsageThink",
-                "BuybackUsageThink",
-                "AbilityLevelUpThink",
-            ] {
-                self.call_hook(index, hook, &[])?;
+        ;
+        for (hook, default) in [
+            ("AbilityUsageThink", Some(crate::default_bot::AuxiliaryHook::Ability)),
+            ("ItemUsageThink", None),
+            ("CourierUsageThink", None),
+            ("BuybackUsageThink", None),
+            ("AbilityLevelUpThink", Some(crate::default_bot::AuxiliaryHook::Level)),
+        ] {
+            if let Some(index) = usage && self.has_hook(index, hook)? { self.call_hook(index, hook, &[])?; }
+            else if takeover.is_none() && let Some(default) = default {
+                self.lua.call(self.default_auxiliary, &[Value::Number(f64::from(default as u8))])?;
             }
         }
         if let Some(index) = self
