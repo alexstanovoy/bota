@@ -12,6 +12,28 @@ spec.loader.exec_module(census)
 
 
 class Census(unittest.TestCase):
+    def test_block_local_helpers_do_not_hide_calls_after_their_scope(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'helper.lua').write_text('return {}')
+            (root / 'bot_generic.lua').write_text('do local bot=require("helper") end; local bot=GetBot(); bot:MissingMethod(); do local MissingGlobal=function() end end; MissingGlobal()')
+            report = census.scan(root, {'global': {'GetBot'}})
+            self.assertIn('MissingMethod', report['missing_members'])
+            self.assertIn('MissingGlobal', report['missing_globals'])
+
+    def test_computed_environment_dispatch_is_reported_without_a_completeness_claim(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'bot_generic.lua').write_text('_G["req".."uire"]("hidden")')
+            report = census.scan(root, {})
+            self.assertNotIn('closure_complete', report)
+            self.assertFalse(report['imports_resolved'])
+
+    def test_hero_substitutions_have_a_small_identifier_bound(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, 'short ASCII key'):
+                census.scan(Path(directory), {}, hero='a' * 10000)
+
     def test_catalogue_fifo_and_malformed_text_are_refused(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'catalogue'
@@ -71,7 +93,7 @@ class Census(unittest.TestCase):
             (root / "bot_generic.lua").write_text('local import=require; import("hidden")')
             (root / "hidden.lua").write_text('MissingHiddenApi()')
             report = census.scan(root, {})
-            self.assertFalse(report["closure_complete"])
+            self.assertFalse(report["imports_resolved"])
             self.assertTrue(report["unresolved_dependencies"])
 
     def test_helper_definition_cannot_hide_an_unrelated_engine_member_gap(self):
@@ -127,11 +149,12 @@ class Census(unittest.TestCase):
             root = Path(directory)
             (root / "bot_generic.lua").write_text('local Util=require("bots/helper")\nfunction Think() Util:GetSomething(); require(prefix..name); GetBot():GetHealth() end')
             (root / "helper.lua").write_text('local M={} function M:GetSomething() end local Deferred=Factory(function() end) function M.Run() Deferred() end return M')
-            report = census.scan(root, {"global": {"GetBot"}, "unit": {"GetHealth"}})
+            report = census.scan(root, {"global": {"GetBot"}, "unit": {"GetHealth"}}, reference={"global": {"GetBot"}, "unit": {"GetHealth"}})
             self.assertEqual(report["missing_members"], {})
             self.assertNotIn("Deferred", report["missing_globals"])
+            self.assertIn("Deferred", report["unclassified_calls"]["global"])
             self.assertTrue(report["unresolved_dependencies"])
-            self.assertFalse(report["closure_complete"])
+            self.assertFalse(report["imports_resolved"])
 
     def test_symlink_and_oversized_sources_are_refused_before_reading(self):
         with tempfile.TemporaryDirectory() as directory:

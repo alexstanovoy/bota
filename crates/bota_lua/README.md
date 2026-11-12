@@ -66,8 +66,10 @@ loading sources or connecting. Save that output, then run `python3 -I tools/bot_
 to inventory a preselected Shadow Fiend's entry/module closure. `--runtime DIR` includes runtime modules;
 `--hero KEY` chooses another short hero name and `--pack-selection` includes selection hooks. The JSON includes
 missing names with source locations, presence coverage, dialect features, unresolved imports and native mode
-hook dependencies. Shared-module branches are conservatively included: presence coverage is not execution,
-signature or behavior coverage, and unresolved imports prevent a complete-closure claim. Sources are read locally
+hook dependencies. A function-name reference separates engine API candidates from unclassified script helpers;
+`--api-reference FILE` can replace it. Shared branches and ambiguous receivers are conservatively included.
+Presence coverage is not execution, signature or behavior coverage; static analysis does not prove complete
+dynamic reachability. Unclassified calls and unresolved imports require separate validation. Sources are read locally
 through bounded pinned descriptors; they are never copied into the repository or executed by the scanner.
 
 The normal test group runs original small scripts through complete matches.

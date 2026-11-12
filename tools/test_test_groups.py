@@ -30,6 +30,10 @@ def groups_of(*paths):
 
 
 class Routing(unittest.TestCase):
+    def test_script_api_census_tool_and_reference_run_the_tooling_contract(self):
+        self.assertEqual(groups_of("tools/bot_api_census.py"), {"tooling"})
+        self.assertEqual(groups_of("tools/bot_api_reference.tsv"), {"tooling"})
+
     def test_a_game_system_runs_its_group_the_pins_and_the_whole_matches_but_not_the_practice_map(self):
         self.assertEqual(groups_of(f"{SERVER}/game/systems/walk.rs"), {"game_movement", "game_determinism", "server_matches"})
 

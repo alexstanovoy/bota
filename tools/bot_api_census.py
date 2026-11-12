@@ -3,7 +3,7 @@
 
 The catalogue comes from `bota_botscript --api-catalogue`, not a copied API list.
 This is a conservative static closure: branches in shared helpers are included.
-Unresolved imports are explicit and prevent a completeness claim. Presence coverage
+Unresolved detected imports are explicit; dynamic reachability is not proven. Presence coverage
 does not claim signature, gameplay or native-behavior parity.
 """
 import argparse
@@ -119,6 +119,8 @@ def read_catalogue(path):
         os.close(pinned)
     catalogue = defaultdict(set)
     for line in text.splitlines():
+        if not line or line.startswith("#"):
+            continue
         namespace, name = line.split("\t")
         if not namespace or not name or len(namespace) > 64 or len(name) > 256:
             raise ValueError("invalid catalogue name")
@@ -232,35 +234,7 @@ def declarations(stream):
     return names
 
 
-def local_bindings(stream):
-    names = set()
-    for index, (kind, value, _) in enumerate(stream):
-        if kind != "name" or value != "local" or index + 1 >= len(stream):
-            continue
-        index += 1
-        if stream[index][:2] == ("name", "function"):
-            index += 1
-        while index < len(stream) and stream[index][0] == "name":
-            names.add(stream[index][1])
-            index += 1
-            if index >= len(stream) or stream[index][:2] != ("symbol", ","):
-                break
-            index += 1
-    return names
-
-
-def bare_functions(stream):
-    return {stream[index + 1][1] for index, token in enumerate(stream[:-2])
-            if token[:2] == ("name", "function") and stream[index + 1][0] == "name"
-            and stream[index + 2][:2] == ("symbol", "(")}
-
-
-def scan(root, catalogue, hero="nevermore", runtime=None, pack_selection=False):
-    storage = {"bytes": MAX_TOTAL, "entries": MAX_ENTRIES, "modules": MAX_MODULES}
-    analysis = {"tokens": MAX_TOKENS, "work": MAX_ANALYSIS_WORK, "imports": 8192}
-    files = {"bots/" + name: source for name, source in sources(root, storage).items()}
-    if runtime:
-        files.update({"game/" + name: source for name, source in sources(runtime, storage).items()})
+def entrypoints(files, hero, pack_selection):
     def override(stem):
         return next((name for name in (f"bots/{stem}_{hero}.lua", f"bots/{stem}_generic.lua") if name in files), None)
     takeover = override("bot")
@@ -268,7 +242,11 @@ def scan(root, catalogue, hero="nevermore", runtime=None, pack_selection=False):
     entries += [name for name in (takeover, override("ability_item_usage"), override("item_purchase")) if name]
     mode_files = {} if takeover else {mode: override("mode_" + mode) for mode in MODES}
     entries += [name for name in mode_files.values() if name]
-    reachable, unresolved, module_variables = {}, [], defaultdict(set)
+    return entries, mode_files
+
+
+def module_closure(files, entries, hero, analysis):
+    reachable, unresolved = {}, []
     pending = list(entries)
     while pending:
         name = pending.pop()
@@ -277,6 +255,8 @@ def scan(root, catalogue, hero="nevermore", runtime=None, pack_selection=False):
         stream = tokens(files[name], analysis)
         reachable[name] = stream
         for index, (kind, value, line) in enumerate(stream):
+            if (kind, value) == ("name", "_G") and index + 1 < len(stream) and stream[index + 1][:2] == ("symbol", "["):
+                unresolved.append({"file": name, "line": line, "module": None, "reason": "dynamic environment lookup"})
             if value not in ("require", "dofile", "load", "loadstring") or kind not in ("name", "string"):
                 continue
             spend(analysis, "imports", 1)
@@ -284,19 +264,18 @@ def scan(root, catalogue, hero="nevermore", runtime=None, pack_selection=False):
             if kind != "name" or not expression or value in ("load", "loadstring"):
                 unresolved.append({"file": name, "line": line, "module": None, "reason": "indirect loader or dynamic code"})
                 continue
-            if index >= 2 and stream[index - 1][:2] == ("symbol", "="):
-                module_variables[name].add(stream[index - 2][1])
             spend(analysis, "work", len(expression) ** 2)
             dependency = module_name(expression, hero)
             if dependency in files:
                 pending.append(dependency)
             else:
                 unresolved.append({"file": name, "line": line, "module": dependency, "reason": "source absent" if dependency else "dynamic module expression"})
+    return reachable, unresolved
+
+
+def call_inventory(reachable):
     calls, dialect = defaultdict(list), defaultdict(list)
     for name, stream in sorted(reachable.items()):
-        bound = local_bindings(stream)
-        defined = bare_functions(stream) | HOOKS
-        helpers = defined | bound
         for index, (kind, value, line) in enumerate(stream):
             location = f"{name}:{line}"
             previous = stream[index - 1][1] if index and stream[index - 1][0] in ("name", "symbol") else ""
@@ -315,16 +294,29 @@ def scan(root, catalogue, hero="nevermore", runtime=None, pack_selection=False):
                 dialect[receiver + "." + value].append(location)
             elif value in ("require", "dofile", "load", "loadstring", "module", "getfenv", "setfenv", "pcall", "xpcall", "collectgarbage"):
                 dialect[value].append(location)
-            elif value[:1].isupper() and receiver not in module_variables[name] and not (previous not in (":", ".") and value in helpers):
+            elif value[:1].isupper() and value not in HOOKS:
                 category = "member" if previous in (":", ".") else "global"
                 calls[(category, value)].append(location)
+    return calls, dialect
+
+
+def classify_calls(calls, catalogue, reference):
     used = {category: {} for category in ("global", "member")}
     missing = {category: {} for category in ("global", "member")}
+    unclassified = {category: {} for category in ("global", "member")}
     for (category, name), locations in sorted(calls.items()):
-        used[category][name] = sorted(set(locations))
         supported = catalogue.get("global", set()) if category == "global" else catalogue.get("unit", set()) | catalogue.get("ability", set())
+        known = supported | ((reference.get("global", set()) if category == "global" else reference.get("unit", set()) | reference.get("ability", set())) if reference is not None else set())
+        if reference is not None and name not in known:
+            unclassified[category][name] = sorted(set(locations))
+            continue
+        used[category][name] = sorted(set(locations))
         if name not in supported:
             missing[category][name] = sorted(set(locations))
+    return used, missing, unclassified
+
+
+def native_mode_dependencies(mode_files, reachable):
     default_hooks = {}
     for mode, name in mode_files.items():
         declared = declarations(reachable[name]) if name else set()
@@ -333,13 +325,52 @@ def scan(root, catalogue, hero="nevermore", runtime=None, pack_selection=False):
             absent.append("GetDesire")
         if absent:
             default_hooks[mode] = sorted(absent)
-    total = sum(map(len, used.values()))
-    gaps = sum(map(len, missing.values()))
+    return default_hooks
+
+
+def dialect_inventory(dialect, catalogue):
     language = {}
     for name, locations in sorted(dialect.items()):
         namespace, member = name.split(".", 1) if "." in name else ("syntax" if name in ("goto", "::") else "global", name)
         language[name] = {"sites": sorted(set(locations)), "supported": member in catalogue.get(namespace, set())}
-    return {"hero": hero, "scope": "conservative entry/module closure; shared branches included", "selection": "pack" if pack_selection else "preselected", "files": sorted(reachable), "entrypoints": sorted(entries), "closure_complete": not unresolved, "unresolved_dependencies": unresolved, "used_globals": used["global"], "used_members": used["member"], "missing_globals": missing["global"], "missing_members": missing["member"], "api_coverage_percent": round(100 * (total - gaps) / total, 2) if total else 100.0, "api_names": total, "default_hooks": default_hooks, "dialect": language, "missing_dialect": sorted(name for name, data in language.items() if not data["supported"]), "coverage_note": "presence only; unresolved imports and native fallback behavior are not counted as covered"}
+    return language
+
+
+def scan(root, catalogue, hero="nevermore", runtime=None, pack_selection=False, reference=None):
+    if not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", hero):
+        raise ValueError("hero must be a short ASCII key")
+    storage = {"bytes": MAX_TOTAL, "entries": MAX_ENTRIES, "modules": MAX_MODULES}
+    analysis = {"tokens": MAX_TOKENS, "work": MAX_ANALYSIS_WORK, "imports": 8192}
+    files = {"bots/" + name: source for name, source in sources(root, storage).items()}
+    if runtime:
+        files.update({"game/" + name: source for name, source in sources(runtime, storage).items()})
+    entries, mode_files = entrypoints(files, hero, pack_selection)
+    reachable, unresolved = module_closure(files, entries, hero, analysis)
+    calls, dialect = call_inventory(reachable)
+    used, missing, unclassified = classify_calls(calls, catalogue, reference)
+    total = sum(map(len, used.values()))
+    gaps = sum(map(len, missing.values()))
+    language = dialect_inventory(dialect, catalogue)
+    return {
+        "hero": hero,
+        "scope": "conservative named-import closure; shared branches included; dynamic dispatch is not proven",
+        "selection": "pack" if pack_selection else "preselected",
+        "files": sorted(reachable),
+        "entrypoints": sorted(entries),
+        "imports_resolved": not unresolved,
+        "unresolved_dependencies": unresolved,
+        "used_globals": used["global"],
+        "used_members": used["member"],
+        "missing_globals": missing["global"],
+        "missing_members": missing["member"],
+        "unclassified_calls": unclassified,
+        "api_coverage_percent": round(100 * (total - gaps) / total, 2) if total else None,
+        "api_names": total,
+        "default_hooks": native_mode_dependencies(mode_files, reachable),
+        "dialect": language,
+        "missing_dialect": sorted(name for name, data in language.items() if not data["supported"]),
+        "coverage_note": "named API presence only; unclassified calls, dynamic dispatch, unresolved imports and native fallback behavior need separate conformance",
+    }
 
 
 def main():
@@ -347,12 +378,14 @@ def main():
     parser.add_argument("pack", type=Path)
     parser.add_argument("--catalogue", required=True, type=Path, help="TSV emitted by bota_botscript --api-catalogue")
     parser.add_argument("--runtime", type=Path)
+    parser.add_argument("--api-reference", type=Path, default=Path(__file__).with_name("bot_api_reference.tsv"), help="engine function-name reference; unknown calls remain unclassified")
     parser.add_argument("--hero", default="nevermore")
     parser.add_argument("--pack-selection", action="store_true", help="include selection hooks; default assumes a preselected hero")
     options = parser.parse_args()
     try:
         catalogue = read_catalogue(options.catalogue)
-        report = scan(options.pack, catalogue, options.hero, options.runtime, options.pack_selection)
+        reference = read_catalogue(options.api_reference)
+        report = scan(options.pack, catalogue, options.hero, options.runtime, options.pack_selection, reference)
     except (ValueError, OSError, UnicodeError) as error:
         parser.exit(2, f"census refused input: {error}\n")
     print(json.dumps(report, indent=2, sort_keys=True))
