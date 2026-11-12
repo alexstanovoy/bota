@@ -397,6 +397,7 @@ fn every_stat_upgrade_bought_whole_adds_what_its_script_says_and_nothing_else() 
         ItemId::AETHER_LENS,
         ItemId::OCTARINE_CORE,
         ItemId::DRAGON_LANCE,
+        ItemId::HEART,
     ] {
         assert_carries_its_values(item, bare);
     }
@@ -645,6 +646,32 @@ fn a_dragon_lance_lengthens_a_ranged_attack_alone_and_once() {
     assert_eq!(range(HeroId::PUDGE, &lance), range(HeroId::PUDGE, &[]));
 }
 
+/// A Heart of Tarrasque regenerates 1.5% of its carrier's missing health a second
+/// (`missing_health_regen`, Behemoth's Blood) on top of what it mends at full health (its 1% of the
+/// maximum is `every_stat_upgrade_bought_whole_adds_what_its_script_says_and_nothing_else`'s); a
+/// second Heart adds none of it ("Multiple instances of Behemoth's Blood don't stack", 7.40).
+#[test]
+fn a_heart_regenerates_a_share_of_the_missing_health_once() {
+    let missing_share = |items: &[ItemId]| {
+        let (mut world, hero) = carrying_world(items);
+        let full = *world.stats.get(hero).expect("derived");
+        world.health.get_mut(hero).expect("alive").hp = Fixed::from_int(100);
+        world.step();
+        let hurt = world.stats.get(hero).expect("derived").hp_regen;
+        (hurt - full.hp_regen, full.max_hp - Fixed::from_int(100))
+    };
+    let per_tick =
+        |of: Fixed| Fixed::from_ratio(of.to_int() * 150, 10_000 * rules::TICKS_PER_SECOND as i32);
+    for items in [&[ItemId::HEART][..], &[ItemId::HEART, ItemId::HEART]] {
+        let (share, missing) = missing_share(items);
+        assert!(
+            near(share, per_tick(missing)),
+            "{items:?}: {share:?} of {missing:?}"
+        );
+    }
+    assert_eq!(missing_share(&[]).0, Fixed::ZERO, "no Heart: nothing of it");
+}
+
 /// A Yasha's percent is summed with every other percent change of the pace and taken once, as
 /// Dota sums movement speed bonuses: with Phase Boots' phase of a ranged hero (ten percent) the
 /// pace is twenty percent above the walk, not 1.1 times 1.1.
@@ -675,6 +702,7 @@ fn assert_carries_its_values(item: ItemId, bare: Stats) {
     let mut attributes = Attributes::ZERO;
     let mut restoration_amp_bp = 0;
     let mut mana_regen_amp_pct = 0;
+    let mut max_hp_regen_bp = 0;
     for (key, levels) in def.values {
         if key.starts_with("tooltip_") {
             // A number only the tooltip shows: another of the item's, as Dota words it.
@@ -711,6 +739,9 @@ fn assert_carries_its_values(item: ItemId, bare: Stats) {
             // The buyer is a ranged hero: a melee one's range is another test's.
             "base_attack_range" => expected.attack_range += points(*value),
             "base_attack_range_melee" => {}
+            "hp_regen" => max_hp_regen_bp += value.hundredths(),
+            // The buyer is at full health: none of it is missing.
+            "missing_health_regen" => {}
             "bonus_cooldown" => {
                 expected.cooldown_rate_bp = expected.cooldown_rate_bp * (100 - value.int()) / 100;
             }
@@ -738,6 +769,11 @@ fn assert_carries_its_values(item: ItemId, bare: Stats) {
         }
     }
     add_worth_of_attributes(&mut expected, attributes);
+    // A share of the maximum health, strength's included, a second.
+    expected.hp_regen += Fixed::from_ratio(
+        expected.max_hp.to_int() * max_hp_regen_bp,
+        10_000 * rules::TICKS_PER_SECOND as i32,
+    );
     // Health Restoration takes its share of all the health regenerated.
     expected.restoration_bp += restoration_amp_bp;
     expected.hp_regen = expected.hp_regen * Fixed::from_ratio(expected.restoration_bp, 10_000);

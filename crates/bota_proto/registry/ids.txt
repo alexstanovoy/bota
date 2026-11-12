@@ -211,6 +211,8 @@ item 110 live item_octarine_core
 item 111 live item_recipe_octarine_core
 item 112 live item_dragon_lance
 item 113 live item_recipe_dragon_lance
+item 114 live item_heart
+item 115 live item_recipe_heart
 
 effect 0 retired bota_haste
 effect 1 live modifier_flask_healing

@@ -274,6 +274,9 @@ impl ItemId {
     pub const OCTARINE_CORE: ItemId = ItemId(110);
     /// Dota's `item_dragon_lance`: strength, agility and a ranged carrier's attack range.
     pub const DRAGON_LANCE: ItemId = ItemId(112);
+    /// Dota's `item_heart` (public name Heart of Tarrasque): strength and a share of the maximum
+    /// and of the missing health regenerated.
+    pub const HEART: ItemId = ItemId(114);
 }
 
 /// What did something: the ability or the item a unit used, as Dota's combat

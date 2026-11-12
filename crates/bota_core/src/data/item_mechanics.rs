@@ -114,6 +114,11 @@ const fn bp(d: &ItemData, key: &str) -> i32 {
     value * rules::NOMINAL_BP / 100
 }
 
+/// A value's first level, a percent with up to two decimals, in basis points.
+const fn hundredths_bp(d: &ItemData, key: &str) -> i32 {
+    d.first(key).hundredths()
+}
+
 /// A value's first level as armor.
 const fn armor(d: &ItemData, key: &str) -> Fixed {
     let value: Dec = d.first(key);
@@ -1275,6 +1280,21 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
             ..NOTHING
         },
         ..from(&ITEM_DRAGON_LANCE)
+    },
+    ItemDef {
+        name: "Recipe: Heart of Tarrasque",
+        ..from(&ITEM_RECIPE_HEART)
+    },
+    // Heart of Tarrasque: a share of the maximum health and of the missing health regenerated.
+    ItemDef {
+        name: "Heart of Tarrasque",
+        carried: Carried {
+            attributes: points(Attribute::Strength, int(&ITEM_HEART, "bonus_strength")),
+            max_hp_regen_bp: hundredths_bp(&ITEM_HEART, "hp_regen"),
+            missing_hp_regen_bp: hundredths_bp(&ITEM_HEART, "missing_health_regen"),
+            ..NOTHING
+        },
+        ..from(&ITEM_HEART)
     },
 ];
 

@@ -247,6 +247,8 @@ impl Fnv {
             cast_range_bonus,
             cooldown_cut_bp,
             ranged_range,
+            max_hp_regen_bp,
+            missing_hp_regen_bp,
         } = value;
         let fnv = self
             .attributes(attributes)
@@ -326,10 +328,20 @@ impl Fnv {
         } else {
             fnv.u64(0xC9).int(cooldown_cut_bp as i64)
         };
-        if ranged_range == 0 {
+        let fnv = if ranged_range == 0 {
             fnv
         } else {
             fnv.u64(0xCA).int(ranged_range as i64)
+        };
+        let fnv = if max_hp_regen_bp == 0 {
+            fnv
+        } else {
+            fnv.u64(0xCB).int(max_hp_regen_bp as i64)
+        };
+        if missing_hp_regen_bp == 0 {
+            fnv
+        } else {
+            fnv.u64(0xCC).int(missing_hp_regen_bp as i64)
         }
     }
 

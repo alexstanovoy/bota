@@ -126,6 +126,25 @@ pub struct Carried {
     /// Attack range added to a ranged carrier and to nobody else. Of several carried, the best
     /// counts: Dota's Dragon Lance and what is built of it.
     pub ranged_range: i32,
+    /// Health regenerated a second, in basis points of the carrier's maximum health. Several
+    /// carried add up: Dota's Heart of Tarrasque (`hp_regen`, "Max Health Regen").
+    pub max_hp_regen_bp: i32,
+    /// Health regenerated a second, in basis points of the health the carrier is missing. Of
+    /// several carried, the best counts: Dota's Heart of Tarrasque's Behemoth's Blood ("Multiple
+    /// instances of Behemoth's Blood don't stack", 7.40).
+    pub missing_hp_regen_bp: i32,
+}
+
+/// What a carrier with `max` health, of which `missing` is missing, regenerates a tick by the
+/// shares of them it carries ([`Carried::max_hp_regen_bp`], [`Carried::missing_hp_regen_bp`]).
+pub fn share_regen(carried: &Carried, max: Fixed, missing: Fixed) -> Fixed {
+    let per_second = |of: Fixed, bp: i32| i64::from(of.raw.max(0)) * i64::from(bp);
+    let raw = (per_second(max, carried.max_hp_regen_bp)
+        + per_second(missing, carried.missing_hp_regen_bp))
+        / (i64::from(rules::NOMINAL_BP) * i64::from(rules::TICKS_PER_SECOND));
+    Fixed {
+        raw: raw.clamp(0, i64::from(i32::MAX)) as i32,
+    }
 }
 
 /// How far a cast whose own reach is `reach` goes for a caster with a cast range bonus of
@@ -170,6 +189,8 @@ pub(crate) const NOTHING: Carried = Carried {
     cast_range_bonus: 0,
     cooldown_cut_bp: 0,
     ranged_range: 0,
+    max_hp_regen_bp: 0,
+    missing_hp_regen_bp: 0,
 };
 
 /// Whole points of one attribute and none of the others.
@@ -967,6 +988,8 @@ pub fn carried_bonus(items: impl Iterator<Item = CarriedItem>, ranged: bool) -> 
         total.cast_range_bonus = total.cast_range_bonus.max(carried.cast_range_bonus);
         total.cooldown_cut_bp = total.cooldown_cut_bp.max(carried.cooldown_cut_bp);
         total.ranged_range = total.ranged_range.max(carried.ranged_range);
+        total.max_hp_regen_bp += carried.max_hp_regen_bp;
+        total.missing_hp_regen_bp = total.missing_hp_regen_bp.max(carried.missing_hp_regen_bp);
         total.lifesteal_pct += carried.lifesteal_pct;
         if carried.spell_lifesteal_pct > 0
             && !spell_lifesteal_of.contains(&Some(stack.id))

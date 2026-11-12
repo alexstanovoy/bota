@@ -252,7 +252,18 @@ pub fn derive_stats(cx: StatsCx<'_>) {
             mana: now.max_mana,
         };
         let kinds = working().map(|held| held.kind);
-        let regen = settled_regen(kind, carried, now.attributes, max, kinds);
+        let mut regen = settled_regen(kind, carried, now.attributes, max, kinds);
+        follow_pools(
+            stats.get(entity).copied(),
+            &now,
+            health.get_mut(entity),
+            mana.get_mut(entity),
+        );
+        // A share of the missing health reads the pool as it follows the new maximum.
+        if let Some(carried) = &carried {
+            let hp = health.get(entity).map_or(now.max_hp, |health| health.hp);
+            regen.hp += bota_core::share_regen(carried, now.max_hp, now.max_hp - hp);
+        }
         // Health Restoration takes its share of what is regenerated, never of
         // a loss.
         let hp_regen = if regen.hp > Fixed::ZERO {
@@ -261,12 +272,6 @@ pub fn derive_stats(cx: StatsCx<'_>) {
             regen.hp
         };
         (now.hp_regen, now.mana_regen) = (hp_regen, regen.mana);
-        follow_pools(
-            stats.get(entity).copied(),
-            &now,
-            health.get_mut(entity),
-            mana.get_mut(entity),
-        );
         stats.insert(entity, now);
     }
 }
