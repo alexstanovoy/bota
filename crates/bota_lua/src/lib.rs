@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 
 mod api;
+mod default_bot;
 mod handles;
 mod modules;
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]

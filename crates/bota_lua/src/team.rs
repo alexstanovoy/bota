@@ -74,11 +74,14 @@ pub struct SelectionTurn {
 
 #[derive(Default)]
 struct Schedule {
-    active: Option<usize>,
+    active: Option<ActiveMode>,
     evaluated: Option<u32>,
     fuel_exhaustions: u64,
     last_warning: Option<u32>,
 }
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct ActiveMode { mode: u8, script: Option<usize> }
 
 /// One team's interpreter. It consumes filtered sessions and returns ordinary orders, without I/O or threads.
 /// Call it once per increasing simulation tick; the native worker supplies wall-time enforcement.
@@ -96,6 +99,7 @@ pub struct LuaTeam {
     get_environment: Value,
     modules: Option<Arc<crate::modules::Sources>>,
     module_root: Option<Value>,
+    default_mode: Value,
 }
 
 impl LuaTeam {
@@ -156,6 +160,8 @@ impl LuaTeam {
             )?;
         }
         api::install(&mut lua, state.clone(), vectors)?;
+        let default_mode = crate::default_bot::install(&mut lua, state.clone())?;
+        lua.pin(default_mode)?;
         let set_environment = lua.global("setfenv")?;
         let get_environment = lua.global("getfenv")?;
         lua.pin(set_environment)?;
@@ -174,6 +180,7 @@ impl LuaTeam {
             get_environment,
             modules: None,
             module_root: None,
+            default_mode,
         })
     }
 
@@ -645,15 +652,11 @@ impl LuaTeam {
         {
             let mut best = None;
             let mut desire = 0.0;
-            for index in 0..self.scripts.len() {
-                if self.scripts[index].slot != slot
-                    || !matches!(self.scripts[index].kind, ScriptKind::Mode(_))
-                {
-                    continue;
-                }
-                let values = self.call_hook(index, "GetDesire", &[])?;
+            for mode in 1..=BOT_MODES.len() as u8 {
+                let index = self.scripts.iter().position(|script| script.slot == slot && script.kind == ScriptKind::Mode(mode));
+                let values = if let Some(index) = index { self.call_hook(index, "GetDesire", &[])? } else { Vec::new() };
                 let value = match values.first() {
-                    None | Some(Value::Nil) => 0.0,
+                    None | Some(Value::Nil) => self.call_default(mode, false)?,
                     Some(Value::Number(value))
                         if value.is_finite() && (0.0..=1.0).contains(value) =>
                     {
@@ -666,35 +669,46 @@ impl LuaTeam {
                     }
                 };
                 if value > desire {
-                    best = Some(index);
+                    best = Some(ActiveMode { mode, script: index });
                     desire = value;
                 }
             }
             self.transition(seat, best, desire)?;
             self.schedules[seat].evaluated = Some(tick);
         }
-        if let Some(index) = self.schedules[seat].active {
-            self.call_hook(index, "Think", &[])?;
+        if let Some(active) = self.schedules[seat].active {
+            if let Some(index) = active.script && self.has_hook(index, "Think")? {
+                self.call_hook(index, "Think", &[])?;
+            } else { self.call_default(active.mode, true)?; }
         }
         Ok(())
     }
 
-    fn transition(&mut self, seat: usize, next: Option<usize>, desire: f64) -> Result<(), Error> {
+    fn call_default(&mut self, mode: u8, thinking: bool) -> Result<f64, Error> {
+        let result = self.lua.call(self.default_mode, &[Value::Number(f64::from(mode)), Value::Boolean(thinking)])?;
+        Ok(match result.first() { Some(Value::Number(value)) => *value, _ => 0.0 })
+    }
+
+    fn has_hook(&mut self, index: usize, hook: &str) -> Result<bool, Error> {
+        self.initialize(index)?;
+        let environment = self.scripts[index].environment;
+        let key = self.lua.string(hook.as_bytes())?;
+        Ok(self.lua.vm().raw_get(environment, key).map_err(callback_error)? != Value::Nil)
+    }
+
+    fn transition(&mut self, seat: usize, next: Option<ActiveMode>, desire: f64) -> Result<(), Error> {
         if self.schedules[seat].active != next {
-            if let Some(index) = self.schedules[seat].active {
+            if let Some(ActiveMode { script: Some(index), .. }) = self.schedules[seat].active {
                 self.call_hook(index, "OnEnd", &[])?;
             }
             self.schedules[seat].active = None;
             self.state.borrow_mut().bots[seat].mode = 0;
-            if let Some(index) = next {
+            if let Some(ActiveMode { script: Some(index), .. }) = next {
                 self.call_hook(index, "OnStart", &[])?;
             }
             self.schedules[seat].active = next;
         }
-        let mode = next.map_or(0, |index| match self.scripts[index].kind {
-            ScriptKind::Mode(mode) => mode,
-            _ => unreachable!("a mode is active"),
-        });
+        let mode = next.map_or(0, |active| active.mode);
         self.state.borrow_mut().bots[seat].mode = mode;
         self.state.borrow_mut().bots[seat].desire = desire;
         Ok(())
