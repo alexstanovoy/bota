@@ -390,6 +390,7 @@ fn every_stat_upgrade_bought_whole_adds_what_its_script_says_and_nothing_else() 
         ItemId::FALCON_BLADE,
         ItemId::YASHA,
         ItemId::SANGE,
+        ItemId::KAYA,
     ] {
         assert_carries_its_values(item, bare);
     }
@@ -449,6 +450,41 @@ fn a_sange_amplifies_a_heal_its_carrier_takes_by_twelve_percent() {
     }
 }
 
+/// A Kaya amplifies its carrier's spells by 10% (`spell_amp`): a Shadowraze's magical blow on a
+/// creep lands for a tenth more; a second Kaya adds nothing (Liquipedia, *Kaya*: "Multiple sources
+/// of spell damage amplification do not stack").
+#[test]
+fn a_kaya_amplifies_a_raze_by_a_tenth_and_a_second_one_adds_nothing() {
+    let creep = |world: &mut World, at| world.spawn_unit(&bota_core::MELEE_CREEP, Team::Dire, at);
+    let (bare, _) = raze_of_a_buyer(&[], creep);
+    let (one, _) = raze_of_a_buyer(&[ItemId::KAYA], creep);
+    let (two, _) = raze_of_a_buyer(&[ItemId::KAYA, ItemId::KAYA], creep);
+    assert!((one - bare * 110 / 100).abs() <= 1, "{one} of {bare}");
+    assert_eq!(two, one);
+}
+
+/// A Kaya amplifies all the mana its carrier regenerates by 20% (`mana_regen_multiplier`; Dota
+/// 7.41e: "decreased from 30% to 20%"), a Clarity's drink among it.
+#[test]
+fn a_kaya_amplifies_the_mana_a_clarity_mends_by_a_fifth() {
+    let drinking = |items: &[ItemId]| {
+        let (mut world, hero) = out_of_fountain_after_buying(items);
+        let walking = world.stats.get(hero).expect("derived").mana_regen;
+        let slot = items.len();
+        world.inventory.get_mut(hero).expect("a bag").slots[slot] =
+            Some(fresh_stack(ItemId::CLARITY, 1));
+        assert!(world.use_item(hero, slot, Target::Unit(wire_id(hero)), &mut Vec::new()));
+        world.step();
+        world.stats.get(hero).expect("derived").mana_regen - walking
+    };
+    let (bare, kaya) = (drinking(&[]), drinking(&[ItemId::KAYA]));
+    assert!(bare > Fixed::ZERO, "the Clarity mends");
+    assert!(
+        (kaya.raw - bare.raw * 120 / 100).abs() <= 2,
+        "{kaya:?} of {bare:?}"
+    );
+}
+
 /// A Yasha's percent is summed with every other percent change of the pace and taken once, as
 /// Dota sums movement speed bonuses: with Phase Boots' phase of a ranged hero (ten percent) the
 /// pace is twenty percent above the walk, not 1.1 times 1.1.
@@ -478,6 +514,7 @@ fn assert_carries_its_values(item: ItemId, bare: Stats) {
     let mut expected = bare;
     let mut attributes = Attributes::ZERO;
     let mut restoration_amp_bp = 0;
+    let mut mana_regen_amp_pct = 0;
     for (key, levels) in def.values {
         if key.starts_with("tooltip_") {
             // A number only the tooltip shows: another of the item's, as Dota words it.
@@ -508,6 +545,8 @@ fn assert_carries_its_values(item: ItemId, bare: Stats) {
                 expected.slow_resist_bp = 10_000 - through;
             }
             "hp_regen_amp" => restoration_amp_bp += value.int() * 100,
+            "spell_amp" => expected.spell_amp_pct += value.int(),
+            "mana_regen_multiplier" => mana_regen_amp_pct += value.int(),
             "movement_speed_percent_bonus" => {
                 // A percent of the pace, on a hero nothing else hastes or slows.
                 expected.move_speed = hastened(bare.move_speed, value.int());
@@ -525,6 +564,8 @@ fn assert_carries_its_values(item: ItemId, bare: Stats) {
     // Health Restoration takes its share of all the health regenerated.
     expected.restoration_bp += restoration_amp_bp;
     expected.hp_regen = expected.hp_regen * Fixed::from_ratio(expected.restoration_bp, 10_000);
+    // A mana regeneration amplification takes its share of all the mana regenerated.
+    expected.mana_regen = expected.mana_regen * Fixed::from_ratio(100 + mana_regen_amp_pct, 100);
     assert!(
         near(got.hp_regen, expected.hp_regen),
         "{}: health regeneration",

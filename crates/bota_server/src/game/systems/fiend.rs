@@ -40,7 +40,7 @@ impl World {
             })
             .collect();
         let amount = raze_damage(level, self.souls_of(caster));
-        let damage_amp_bp = self.outgoing_damage_amp_bp(Some(caster), DamageKind::Magical);
+        let damage_amp_bp = self.outgoing_spell_amp_bp(Some(caster), DamageKind::Magical);
         let stack_damage =
             raze_stack_damage(level, self.has_talent(caster, Talent::RazeStackDamage));
         let swings = self.has_talent(caster, Talent::RazeAttackDamage);
@@ -95,7 +95,7 @@ impl World {
             target: mark,
             amount: damage * class_pct / 100,
             kind: DamageKind::Physical,
-            damage_amp_bp: stats.damage_amp_bp(DamageKind::Physical),
+            damage_amp_bp: stats.spell_damage_amp_bp(DamageKind::Physical),
             attack: false,
             spell: true,
             striker: None,
@@ -143,7 +143,7 @@ impl World {
         ) else {
             return false;
         };
-        let damage_amp_bp = self.outgoing_damage_amp_bp(Some(caster), DamageKind::Magical);
+        let damage_amp_bp = self.outgoing_spell_amp_bp(Some(caster), DamageKind::Magical);
         let (line, most) = requiem_fear_ticks(self.has_talent(caster, Talent::RequiemFear));
         let fear = Fear { line, most };
         // How far the lines fly and how wide they catch both take the caster's AoE bonus.

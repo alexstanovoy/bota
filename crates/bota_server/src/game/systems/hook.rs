@@ -27,7 +27,7 @@ impl World {
         } else {
             point_along(from, pos, reach)
         };
-        let damage_amp_bp = self.outgoing_damage_amp_bp(Some(caster), DamageKind::Pure);
+        let damage_amp_bp = self.outgoing_spell_amp_bp(Some(caster), DamageKind::Pure);
         let with = Some(Inflictor::Ability(AbilityId::MEAT_HOOK));
         self.put_modifier(
             caster,

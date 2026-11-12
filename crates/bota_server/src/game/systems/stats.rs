@@ -309,7 +309,7 @@ fn settled_regen(
     max: Regen,
     working: impl Iterator<Item = ModifierKind>,
 ) -> Regen {
-    regen(
+    let mut regen = regen(
         Regen {
             hp: kind.hp_regen,
             mana: kind.mana_regen,
@@ -321,7 +321,14 @@ fn settled_regen(
         attributes,
         max,
         working,
-    )
+    );
+    // A mana regeneration amplification takes its share of all the mana regenerated, never of a
+    // loss.
+    let amp_pct = carried.map_or(0, |carried| carried.mana_regen_amp_pct);
+    if amp_pct != 0 && regen.mana > Fixed::ZERO {
+        regen.mana = scaled(regen.mana, 100 + amp_pct);
+    }
+    regen
 }
 
 /// Moves the pools with their maximums: each keeps its filled fraction, and
@@ -466,6 +473,7 @@ fn add_carried(now: &mut Stats, sums: &mut Sums, carried: &Carried, illusion: bo
     now.evasion = carried.evasion;
     now.lifesteal_pct += carried.lifesteal_pct;
     now.spell_lifesteal_pct += carried.spell_lifesteal_pct;
+    now.spell_amp_pct += carried.spell_amp_pct;
     if now.projectile_speed.is_none() {
         now.attack_range += Fixed::from_int(carried.melee_range);
     }
@@ -816,6 +824,7 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32, night: bool) -> Stats {
         evasion: Odds::NEVER,
         lifesteal_pct: 0,
         spell_lifesteal_pct: 0,
+        spell_amp_pct: 0,
         magic_taken_pct: 0,
         damage_taken_bp: rules::NOMINAL_BP,
         restoration_bp: rules::NOMINAL_BP,

@@ -1179,6 +1179,21 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         },
         ..from(&ITEM_SANGE)
     },
+    ItemDef {
+        name: "Recipe: Kaya",
+        ..from(&ITEM_RECIPE_KAYA)
+    },
+    // Kaya: its spell and mana regeneration amplifications count once with what is built of it.
+    ItemDef {
+        name: "Kaya",
+        carried: Carried {
+            attributes: points(Attribute::Intelligence, int(&ITEM_KAYA, "bonus_intellect")),
+            spell_amp_pct: int(&ITEM_KAYA, "spell_amp"),
+            mana_regen_amp_pct: int(&ITEM_KAYA, "mana_regen_multiplier"),
+            ..NOTHING
+        },
+        ..from(&ITEM_KAYA)
+    },
 ];
 
 /// One kind of lotus, as its script gives it.

@@ -278,6 +278,20 @@ fn poison_beats(world: &mut World, mark: Entity, ticks: u32) -> Vec<(u32, i32)> 
     beats
 }
 
+/// Spell amplification leaves HP Removal alone (Liquipedia, *Damage Manipulation*: it "does not
+/// amplify damage flagged as HP removal"): a Kaya carrier's poison beats as much as a bare one's.
+#[test]
+fn a_kaya_leaves_the_poisons_health_removal_unamplified() {
+    let beats = |items: &[ItemId]| {
+        let (mut world, hero, mark, _) = first_landing(items, foe_hero);
+        world.set_order(hero, crate::game::UnitOrder::Stand);
+        poison_beats(&mut world, mark, 2 * rules::TICKS_PER_SECOND)
+    };
+    let bare = beats(&[ItemId::ORB_OF_VENOM]);
+    assert!(!bare.is_empty(), "the poison beats");
+    assert_eq!(beats(&[ItemId::ORB_OF_VENOM, ItemId::KAYA]), bare);
+}
+
 /// An Orb of Venom bought through the shop poisons what its carrier's attack strikes: three
 /// beats of 12 magical damage a second apart, the first a second after the blow (`damage`,
 /// `tick_interval`, `poison_duration`; Liquipedia: "starting 1 second after the debuff is applied,

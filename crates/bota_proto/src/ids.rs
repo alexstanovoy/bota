@@ -260,6 +260,8 @@ impl ItemId {
     pub const YASHA: ItemId = ItemId(99);
     /// Dota's `item_sange`: strength, slow resistance and Health Restoration.
     pub const SANGE: ItemId = ItemId(101);
+    /// Dota's `item_kaya`: intelligence, spell amplification and mana regeneration amplification.
+    pub const KAYA: ItemId = ItemId(103);
 }
 
 /// What did something: the ability or the item a unit used, as Dota's combat

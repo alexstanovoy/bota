@@ -95,6 +95,14 @@ pub struct Carried {
     /// 7.39: "the final value will be calculated as: 1 - (1 - n0) * (1 - n1)"); an item and what
     /// is built of it count once: Dota's Sange-based items.
     pub restoration_amp_bp: i32,
+    /// Percent added to the damage of the carrier's spells, summed with every other spell
+    /// amplification; an item and what is built of it count once ([`lineage`]): Dota's
+    /// Kaya-based items.
+    pub spell_amp_pct: i32,
+    /// Percent added to all the mana the carrier regenerates, summed with every other mana
+    /// regeneration amplification; an item and what is built of it count once: Dota's Kaya-based
+    /// items.
+    pub mana_regen_amp_pct: i32,
 }
 
 /// Nothing carried at all, so an entry names only what it adds.
@@ -124,6 +132,8 @@ pub(crate) const NOTHING: Carried = Carried {
     move_speed_pct: 0,
     slow_resist_bp: 0,
     restoration_amp_bp: 0,
+    spell_amp_pct: 0,
+    mana_regen_amp_pct: 0,
 };
 
 /// Whole points of one attribute and none of the others.
@@ -952,7 +962,7 @@ struct LineageStat {
 }
 
 /// Every carried stat that counts once a lineage.
-const LINEAGE_STATS: [LineageStat; 3] = [
+const LINEAGE_STATS: [LineageStat; 5] = [
     LineageStat {
         get: |carried| carried.move_speed_pct,
         set: |carried, value| carried.move_speed_pct = value,
@@ -967,6 +977,16 @@ const LINEAGE_STATS: [LineageStat; 3] = [
         get: |carried| carried.restoration_amp_bp,
         set: |carried, value| carried.restoration_amp_bp = value,
         stack: resist_both,
+    },
+    LineageStat {
+        get: |carried| carried.spell_amp_pct,
+        set: |carried, value| carried.spell_amp_pct = value,
+        stack: |first, second| first + second,
+    },
+    LineageStat {
+        get: |carried| carried.mana_regen_amp_pct,
+        set: |carried, value| carried.mana_regen_amp_pct = value,
+        stack: |first, second| first + second,
     },
 ];
 

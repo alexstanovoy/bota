@@ -87,6 +87,9 @@ pub struct Stats {
     ///
     /// [`rules::SPELL_LIFESTEAL_CREEP_PCT`]: bota_core::rules::SPELL_LIFESTEAL_CREEP_PCT
     pub spell_lifesteal_pct: i32,
+    /// Percent more damage its spells deal ([`Hit::spell`](crate::game::Hit::spell)), on top of
+    /// every other amplification of what it deals.
+    pub spell_amp_pct: i32,
     /// Percent more magical damage it takes.
     pub magic_taken_pct: i32,
     /// Share of the damage that reaches it, after armor and resistance, that
@@ -151,5 +154,12 @@ impl Stats {
             DamageKind::Magical => self.magic_amp_bp,
             DamageKind::Pure => self.pure_amp_bp,
         }
+    }
+
+    /// Its outgoing amplification of a kind of damage a spell of its deals: the kind's, and its
+    /// spell amplification on top, in basis points.
+    pub fn spell_damage_amp_bp(&self, kind: DamageKind) -> i32 {
+        let amp = i64::from(self.damage_amp_bp(kind)) * i64::from(100 + self.spell_amp_pct) / 100;
+        amp.clamp(0, i64::from(i32::MAX)) as i32
     }
 }

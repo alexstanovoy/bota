@@ -50,7 +50,7 @@ impl World {
                     other_damage
                 },
                 kind: DamageKind::Magical,
-                damage_amp_bp: self.outgoing_damage_amp_bp(Some(cast.caster), DamageKind::Magical),
+                damage_amp_bp: self.outgoing_spell_amp_bp(Some(cast.caster), DamageKind::Magical),
                 launch_tier: self.ground.tier(from.pos),
                 can_miss_uphill: false,
                 pierces: true,

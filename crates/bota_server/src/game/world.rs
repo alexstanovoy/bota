@@ -413,7 +413,13 @@ impl World {
         inflictor: Option<Inflictor>,
         removes: bool,
     ) {
-        let damage_amp_bp = self.outgoing_damage_amp_bp(source, kind);
+        // Spell amplification leaves HP Removal alone (Liquipedia, *Damage Manipulation*: it
+        // "does not amplify damage flagged as HP removal").
+        let damage_amp_bp = if removes {
+            self.outgoing_damage_amp_bp(source, kind)
+        } else {
+            self.outgoing_spell_amp_bp(source, kind)
+        };
         self.hits.push_back(Hit {
             proc: None,
             blockable_source_team: None,
@@ -477,7 +483,7 @@ impl World {
         effect: crate::game::HitEffect,
         inflictor: Option<Inflictor>,
     ) {
-        let damage_amp_bp = self.outgoing_damage_amp_bp(source, kind);
+        let damage_amp_bp = self.outgoing_spell_amp_bp(source, kind);
         self.hits.push_back(Hit {
             proc: None,
             blockable_source_team: None,

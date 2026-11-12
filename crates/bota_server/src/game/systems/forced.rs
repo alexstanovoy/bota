@@ -154,7 +154,7 @@ impl World {
             level,
             kind: DamageKind::Pure,
             stun: spec.stun,
-            damage_amp_bp: self.outgoing_damage_amp_bp(Some(push.source), DamageKind::Pure),
+            damage_amp_bp: self.outgoing_spell_amp_bp(Some(push.source), DamageKind::Pure),
         };
         push.phase = PushPhase::Arc {
             from: at,

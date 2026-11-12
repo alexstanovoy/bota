@@ -54,6 +54,15 @@ impl World {
             .map_or(rules::NOMINAL_BP, |stats| stats.damage_amp_bp(kind))
     }
 
+    /// As [`World::outgoing_damage_amp_bp`], for damage a spell of the source deals: its spell
+    /// amplification on top.
+    pub fn outgoing_spell_amp_bp(&self, source: Option<Entity>, kind: DamageKind) -> i32 {
+        source
+            .filter(|source| self.entities.contains(*source))
+            .and_then(|source| self.stats.get(source))
+            .map_or(rules::NOMINAL_BP, |stats| stats.spell_damage_amp_bp(kind))
+    }
+
     /// Mana one cast of an ability costs an entity, after its mana cost rate.
     pub fn ability_mana_cost(&self, entity: Entity, id: AbilityId, level: u8) -> i32 {
         let pool_less = self

@@ -109,7 +109,7 @@ impl World {
         if !self.alive(user) || !from.within(aim, rules::units(reach)) {
             return false;
         }
-        let damage_amp_bp = self.outgoing_damage_amp_bp(Some(user), DamageKind::Magical);
+        let damage_amp_bp = self.outgoing_spell_amp_bp(Some(user), DamageKind::Magical);
         let grenade = self.spawn_placed(from, facing_towards(from, aim), side);
         self.grenade.insert(
             grenade,
