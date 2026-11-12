@@ -236,6 +236,7 @@ impl Fnv {
             lifesteal_pct,
             spell_lifesteal_pct,
             aoe_bonus,
+            move_speed_pct,
         } = value;
         let fnv = self
             .attributes(attributes)
@@ -259,11 +260,16 @@ impl Fnv {
             .int(magic_resist_bp as i64)
             .int(lifesteal_pct as i64)
             .int(spell_lifesteal_pct as i64);
-        // What carries no AoE bonus digests as it did before the bonus was.
-        if aoe_bonus == 0 {
+        // What carries none of a later stat digests as it did before the stat was.
+        let fnv = if aoe_bonus == 0 {
             fnv
         } else {
             fnv.u64(0xB0).int(aoe_bonus as i64)
+        };
+        if move_speed_pct == 0 {
+            fnv
+        } else {
+            fnv.u64(0xC0).int(move_speed_pct as i64)
         }
     }
 

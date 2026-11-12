@@ -81,6 +81,10 @@ pub struct Carried {
     /// ([`widened`](crate::widened)): Dota's Chasm Stone. Of several carried, the best counts ("Area of Effect
     /// bonuses from multiple Chasm Stones or its upgrades do not stack").
     pub aoe_bonus: i32,
+    /// Percent added to the carrier's movement speed, summed with every other
+    /// percent change of it. An item and what is built of it count once, the
+    /// best of them ([`lineage`]): Dota's Yasha-based items.
+    pub move_speed_pct: i32,
 }
 
 /// Nothing carried at all, so an entry names only what it adds.
@@ -107,6 +111,7 @@ pub(crate) const NOTHING: Carried = Carried {
     lifesteal_pct: 0,
     spell_lifesteal_pct: 0,
     aoe_bonus: 0,
+    move_speed_pct: 0,
 };
 
 /// Whole points of one attribute and none of the others.
@@ -871,6 +876,7 @@ pub fn carried_bonus(items: impl Iterator<Item = CarriedItem>, ranged: bool) -> 
     // The items whose spell lifesteal is counted, each once; past an
     // inventory's worth, no more are.
     let mut spell_lifesteal_of = [None; bota_proto::INVENTORY_SLOTS];
+    let mut lineages = [Lineages::NONE; LINEAGE_STATS.len()];
     for stack in items {
         let Some(def) = item_def(stack.id) else {
             continue;
@@ -908,12 +914,87 @@ pub fn carried_bonus(items: impl Iterator<Item = CarriedItem>, ranged: bool) -> 
             *free = Some(stack.id);
             total.spell_lifesteal_pct += carried.spell_lifesteal_pct;
         }
+        for (stat, best) in LINEAGE_STATS.iter().zip(&mut lineages) {
+            best.add(lineage(stack.id, ranged, stat.get), (stat.get)(carried));
+        }
         // What an item is set to is worth points of that attribute alone.
         if let Some(mode) = stack.mode {
             total.attributes += points(mode, def.mode_bonus);
         }
     }
+    for (stat, best) in LINEAGE_STATS.iter().zip(&lineages) {
+        let value = best.values().fold(0, stat.stack);
+        (stat.set)(&mut total, value);
+    }
     total
+}
+
+/// A carried stat of which an item and what is built of it count once, the best of them, and
+/// sources of different lineages combine by `stack`: Dota's "multiple sources of ... do not
+/// stack" of the Yasha-, Sange- and Kaya-based items.
+struct LineageStat {
+    get: fn(&Carried) -> i32,
+    set: fn(&mut Carried, i32),
+    /// Two values of different lineages as one.
+    stack: fn(i32, i32) -> i32,
+}
+
+/// Every carried stat that counts once a lineage.
+const LINEAGE_STATS: [LineageStat; 1] = [LineageStat {
+    get: |carried| carried.move_speed_pct,
+    set: |carried, value| carried.move_speed_pct = value,
+    stack: |first, second| first + second,
+}];
+
+/// Most parts down a build tree [`lineage`] walks; Dota's deepest build is far shallower.
+const MAX_BUILD_DEPTH: usize = 8;
+
+/// The item whose bonus of a stat `item`'s bonus of it is: the first of its parts, down the build
+/// tree, that carries the stat (`stat` above zero), or `item` itself. Two items of one lineage
+/// hold the same bonus, which Dota counts once (Sange and Yasha's movement speed is its Yasha's).
+pub fn lineage(item: ItemId, ranged: bool, stat: fn(&Carried) -> i32) -> ItemId {
+    let mut root = item;
+    for _ in 0..MAX_BUILD_DEPTH {
+        let part = item_def(root).and_then(|def| {
+            def.components
+                .iter()
+                .copied()
+                .find(|part| item_def(*part).is_some_and(|part| stat(part.carried_by(ranged)) > 0))
+        });
+        match part {
+            Some(part) => root = part,
+            None => return root,
+        }
+    }
+    panic!("{item:?}: a build deeper than {MAX_BUILD_DEPTH} parts");
+}
+
+/// The best value of one stat each lineage carried holds, for an inventory's worth of lineages;
+/// past that, no more are counted.
+#[derive(Clone, Copy)]
+struct Lineages {
+    best: [Option<(ItemId, i32)>; bota_proto::INVENTORY_SLOTS],
+}
+
+impl Lineages {
+    const NONE: Lineages = Lineages {
+        best: [None; bota_proto::INVENTORY_SLOTS],
+    };
+
+    fn add(&mut self, root: ItemId, value: i32) {
+        if value <= 0 {
+            return;
+        }
+        if let Some((_, best)) = self.best.iter_mut().flatten().find(|(of, _)| *of == root) {
+            *best = (*best).max(value);
+        } else if let Some(free) = self.best.iter_mut().find(|entry| entry.is_none()) {
+            *free = Some((root, value));
+        }
+    }
+
+    fn values(&self) -> impl Iterator<Item = i32> + '_ {
+        self.best.iter().flatten().map(|(_, value)| *value)
+    }
 }
 
 /// Maximum-pool recovery over time, used by expired reincarnation items.

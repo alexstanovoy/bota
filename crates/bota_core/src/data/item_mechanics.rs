@@ -1142,6 +1142,21 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         },
         ..from(&ITEM_FALCON_BLADE)
     },
+    ItemDef {
+        name: "Recipe: Yasha",
+        ..from(&ITEM_RECIPE_YASHA)
+    },
+    // Yasha: its movement speed counts once with what is built of it (`lineage`).
+    ItemDef {
+        name: "Yasha",
+        carried: Carried {
+            attributes: points(Attribute::Agility, int(&ITEM_YASHA, "bonus_agility")),
+            attack_speed: int(&ITEM_YASHA, "bonus_attack_speed"),
+            move_speed_pct: int(&ITEM_YASHA, "movement_speed_percent_bonus"),
+            ..NOTHING
+        },
+        ..from(&ITEM_YASHA)
+    },
 ];
 
 /// One kind of lotus, as its script gives it.

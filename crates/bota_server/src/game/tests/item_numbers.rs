@@ -388,9 +388,44 @@ fn every_stat_upgrade_bought_whole_adds_what_its_script_says_and_nothing_else() 
         ItemId::PERSEVERANCE,
         ItemId::SOUL_BOOSTER,
         ItemId::FALCON_BLADE,
+        ItemId::YASHA,
     ] {
         assert_carries_its_values(item, bare);
     }
+}
+
+/// `speed` hastened by `pct` percent, rounded as the pace is.
+fn hastened(speed: Fixed, pct: i32) -> Fixed {
+    Fixed {
+        raw: (i64::from(speed.raw) * i64::from(100 + pct) / 100) as i32,
+    }
+}
+
+/// Dota's Yasha-based items: "multiple sources of movement speed do not stack". Two Yashas
+/// carried hasten their carrier by one Yasha's ten percent.
+#[test]
+fn two_yashas_carried_hasten_by_one_yashas_percent() {
+    let bare = stats_after_buying(&[]).move_speed;
+    let one = stats_after_buying(&[ItemId::YASHA]).move_speed;
+    let two = stats_after_buying(&[ItemId::YASHA, ItemId::YASHA]).move_speed;
+    assert_eq!(one, hastened(bare, 10), "one Yasha: ten percent");
+    assert_eq!(two, one, "a second Yasha adds nothing");
+}
+
+/// A Yasha's percent is summed with every other percent change of the pace and taken once, as
+/// Dota sums movement speed bonuses: with Phase Boots' phase of a ranged hero (ten percent) the
+/// pace is twenty percent above the walk, not 1.1 times 1.1.
+#[test]
+fn a_yashas_percent_adds_to_a_phase_rather_than_multiplying() {
+    let (mut world, hero) = out_of_fountain_after_buying(&[ItemId::PHASE_BOOTS, ItemId::YASHA]);
+    let boots_only = {
+        let (world, hero) = out_of_fountain_after_buying(&[ItemId::PHASE_BOOTS]);
+        world.stats.get(hero).expect("derived").move_speed
+    };
+    assert!(world.use_item(hero, 0, Target::None, &mut Vec::new()));
+    world.step();
+    let phased = world.stats.get(hero).expect("derived").move_speed;
+    assert_eq!(phased, hastened(boots_only, 20));
 }
 
 /// Buys `item` whole through the seat and checks that the buyer gains what its values in the
@@ -429,6 +464,10 @@ fn assert_carries_its_values(item: ItemId, bare: Stats) {
             "lifesteal_percent" => expected.lifesteal_pct += value.int(),
             "spell_lifesteal" => expected.spell_lifesteal_pct += value.int(),
             "aoe_bonus" => expected.aoe_bonus += value.int(),
+            "movement_speed_percent_bonus" => {
+                // A percent of the pace, on a hero nothing else hastes or slows.
+                expected.move_speed = hastened(bare.move_speed, value.int());
+            }
             "bonus_magical_armor" => {
                 // Of what the hero's own resistance lets through, the item keeps out its
                 // percent.

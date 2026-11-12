@@ -256,6 +256,8 @@ impl ItemId {
     pub const SOUL_BOOSTER: ItemId = ItemId(96);
     /// Dota's `item_falcon_blade`: health, mana regeneration and damage.
     pub const FALCON_BLADE: ItemId = ItemId(97);
+    /// Dota's `item_yasha`: agility, attack speed and a percent of movement speed.
+    pub const YASHA: ItemId = ItemId(99);
 }
 
 /// What did something: the ability or the item a unit used, as Dota's combat

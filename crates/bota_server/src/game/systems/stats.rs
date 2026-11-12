@@ -451,6 +451,7 @@ fn add_carried(now: &mut Stats, sums: &mut Sums, carried: &Carried, illusion: bo
     now.attack_speed += carried.attack_speed;
     now.armor += kept(illusion, carried.armor);
     now.move_speed += Fixed::from_int(carried.move_speed + carried.lace_speed);
+    sums.pace.change(carried.move_speed_pct);
     now.evasion = carried.evasion;
     now.lifesteal_pct += carried.lifesteal_pct;
     now.spell_lifesteal_pct += carried.spell_lifesteal_pct;
