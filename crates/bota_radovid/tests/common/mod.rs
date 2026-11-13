@@ -2,70 +2,25 @@
 //! `bota_server`, and bota_radovid clients to talk to it.
 #![allow(dead_code)]
 
+pub mod port_lease;
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
-use std::sync::atomic::{AtomicU16, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
 use bota_radovid::proto::*;
 use bota_radovid::{Client, Handoff, Incoming, Tls, decode_report, fingerprint};
+use port_lease::PortLease;
 use radovid::config::Config;
 use radovid::service::Service;
 
 pub const PASSWORD: &str = "correct horse battery";
 
 static NEXT_DIR: AtomicU32 = AtomicU32::new(0);
-static NEXT_PORTS: AtomicU16 = AtomicU16::new(0);
 /// Host ports per service.
 const PORTS: u16 = 4;
-/// The blocks of `PORTS` ports services may take, below the range the system hands out to
-/// outgoing connections.
-const BLOCKS: u16 = 12_000 / PORTS;
-const BLOCKS_FROM: u16 = 20_000;
-
-/// A block of `PORTS` consecutive loopback ports for one service, held while it runs. Test
-/// processes run at once (debug and release, several worktrees, the parallel test runner), and
-/// a service binds its game ports only when it launches a match, so a free port says nothing
-/// about whether another process means to use it: each process takes the block's lock file
-/// first and keeps it until its service is stopped, so two processes never take one block.
-/// Each starts looking at a block its process id picks, so they rarely even meet.
-fn free_ports() -> (u16, std::fs::File) {
-    let start = std::process::id() % u32::from(BLOCKS);
-    let taken = u32::from(NEXT_PORTS.fetch_add(1, Ordering::Relaxed));
-    free_ports_from(start + taken)
-}
-
-/// The first block from `block` on (round the blocks) no other process has taken and nobody
-/// listens on, with its lock.
-pub fn free_ports_from(block: u32) -> (u16, std::fs::File) {
-    for step in 0..u32::from(BLOCKS) {
-        let first = first_port((block + step) % u32::from(BLOCKS));
-        let Some(lock) = take_block(first) else {
-            continue;
-        };
-        let held: Result<Vec<_>, _> = (first..first + PORTS)
-            .map(|port| std::net::TcpListener::bind(("127.0.0.1", port)))
-            .collect();
-        if held.is_ok() {
-            return (first, lock);
-        }
-    }
-    panic!("no block of {PORTS} free ports");
-}
-
-/// The lock of the block at `first`, unless another process (or another open of it here) holds
-/// it. The lock is the kernel's on the open file, so it goes when its holder does, crash or not.
-pub fn take_block(first: u16) -> Option<std::fs::File> {
-    let dir = std::env::temp_dir().join("bota-radovid-ports");
-    std::fs::create_dir_all(&dir).expect("the lock directory");
-    let file = std::fs::File::create(dir.join(format!("{first}.lock"))).expect("a lock file");
-    file.try_lock().ok().map(|()| file)
-}
-
-pub fn first_port(block: u32) -> u16 {
-    BLOCKS_FROM + PORTS * u16::try_from(block).expect("a block")
-}
 
 /// The game server binary, built once per test run with the WebSocket
 /// listener that radovid's handoff URL points to.
@@ -110,8 +65,8 @@ pub struct Env {
     pub url: String,
     pub tls: Tls,
     dir: PathBuf,
-    /// The game ports' block, this process's until the service is stopped.
-    ports_lock: std::fs::File,
+    /// The game ports, leased until the service is stopped.
+    _ports: PortLease,
 }
 
 pub const RULESET: &str = "solo_mid";
@@ -140,7 +95,7 @@ pub fn start_configured(replays: bool, adjust: impl FnOnce(&mut Config)) -> Env 
         NEXT_DIR.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::create_dir_all(&dir).expect("test dir");
-    let (first, ports_lock) = free_ports();
+    let ports = PortLease::block(PORTS);
     let config = format!(
         r#"
 listen = "127.0.0.1:0"
@@ -181,7 +136,8 @@ artifact_args = ["--replay", "{{artifact}}"]
 "#,
         db = dir.join("radovid.db").display(),
         artifacts = dir.join("artifacts").display(),
-        last = first + PORTS - 1,
+        first = ports.first(),
+        last = ports.last(),
         fingerprint = fingerprint(),
         binary = binary.display(),
     );
@@ -206,7 +162,7 @@ artifact_args = ["--replay", "{{artifact}}"]
         runtime,
         service: Some(service),
         dir,
-        ports_lock,
+        _ports: ports,
     }
 }
 
