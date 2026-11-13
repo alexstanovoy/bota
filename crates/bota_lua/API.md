@@ -94,6 +94,26 @@ New bounded integer arguments use `api/globals::bounded_integer`: finite whole
 numbers must fall within the specified bounds before conversion. The older
 general numeric helper itself is unchanged; migrated calls validate their own bounds.
 
+## Team lane desires
+
+`GetPushLaneDesire(lane)` and `GetDefendLaneDesire(lane)` read this Lua team's
+validated cache. Arguments use engine TOP=1, MID=2, BOT=3; they are translated
+through the typed lane interface, not used as core indices (MID=0, TOP=1, BOT=2).
+An absent override returns the native baseline zero.
+
+`UpdatePushLaneDesires` and `UpdateDefendLaneDesires` are both attempted. Their
+pair publishes immediately when both succeed, independently of errors in
+`TeamThink`, farm, roam or Roshan hooks. Either lane-hook failure retains the
+previous pair; with no previous pair both queries return zero. A missing or nil
+return resets its own override when the pair succeeds. Table results require
+finite values in [0,1] at raw indices 1–3 and nil at raw index 4. The decoder does
+not invoke table metamethods, and normalizes negative zero to positive zero.
+
+A team-hook error discards orders only for the first configured Lua seat, which
+need not have wire slot zero; other configured seats still run. The desire cache
+is script decision state and is not rewound with rejected or late command
+continuations. Queries expose no other team's cache or server-only state.
+
 Unknown ability names and empty or invalid item slots return nil. Ability names
 come from core definitions, including the hero's separate innate and talent tree.
 Unlearned abilities retain handles at level zero. Innates have their granted level
