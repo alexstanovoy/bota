@@ -117,6 +117,9 @@ narrowing them through fixed-point conversion. Floating-point regeneration,
 armor, evasion and bounding radius retain Q16.16 precision. Integer range, speed,
 attribute and facing reads return whole units; facing uses engine degrees rather
 than protocol brads. Attack intervals are returned in seconds.
+Owned scalar statistics remain available from the session's received body memory
+while a dead hero's short-lived entity track is absent. They remain last-observed
+values until a new body observation arrives; this does not refresh hidden data.
 
 Estimated damage is an integer projection of observed attack stats and core spell
 data over the requested duration. The availability flag restricts allied spells

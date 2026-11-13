@@ -20,11 +20,52 @@ pub(crate) struct Player {
     pub level: u8,
     pub deaths: u16,
     pub last_seen: Option<(u32, bota_proto::Vec2)>,
+    pub statistics: Option<UnitStatistics>,
     pub unit: Option<EntityId>,
     pub gold: Option<i32>,
     pub kit: Option<Kit>,
     pub stash: Option<Vec<Option<ItemView>>>,
     pub respawn_left: u32,
+}
+
+/// Scalar statistics received for a body; no inventory, effects or new hidden state.
+#[derive(Clone, Copy)]
+pub(crate) struct UnitStatistics {
+    pub mana: i32,
+    pub max_mana: i32,
+    pub hp_regen: bota_proto::Fixed,
+    pub mana_regen: bota_proto::Fixed,
+    pub armor: bota_proto::Fixed,
+    pub attack_damage: i32,
+    pub attack_range: bota_proto::Fixed,
+    pub attack_time: u32,
+    pub move_speed: bota_proto::Fixed,
+    pub bound: bota_proto::Fixed,
+    pub evasion: bota_proto::Fixed,
+    pub facing: bota_proto::Angle,
+    pub attributes: bota_proto::Attributes,
+    pub primary: Option<bota_proto::Attribute>,
+}
+
+impl From<&UnitView> for UnitStatistics {
+    fn from(unit: &UnitView) -> Self {
+        Self {
+            mana: unit.mana,
+            max_mana: unit.max_mana,
+            hp_regen: unit.hp_regen,
+            mana_regen: unit.mana_regen,
+            armor: unit.armor,
+            attack_damage: unit.attack_damage,
+            attack_range: unit.attack_range,
+            attack_time: unit.attack_time,
+            move_speed: unit.move_speed,
+            bound: unit.bound,
+            evasion: unit.evasion,
+            facing: unit.facing,
+            attributes: unit.attributes,
+            primary: unit.primary,
+        }
+    }
 }
 
 pub(crate) struct KnownUnit {
@@ -167,16 +208,20 @@ impl Snapshot {
                 .iter()
                 .map(|player| {
                     let own = player.team == session.team();
+                    let known = player.unit.and_then(|id| session.known(id));
                     Player {
                         slot: player.slot,
                         team: player.team,
                         hero: player.hero,
                         level: player.level,
                         deaths: player.deaths,
-                        last_seen: player
-                            .unit
-                            .and_then(|id| session.known(id))
+                        last_seen: known
                             .map(|(unit, age)| (view.tick.saturating_sub(age), unit.pos)),
+                        statistics: if own {
+                            known.map(|(unit, _)| UnitStatistics::from(unit))
+                        } else {
+                            None
+                        },
                         unit: player.unit,
                         gold: own.then_some(player.gold).flatten(),
                         kit: own.then(|| player.kit.clone()).flatten(),

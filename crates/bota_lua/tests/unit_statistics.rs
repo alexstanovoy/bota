@@ -132,3 +132,102 @@ fn unit_statistics_reject_forged_receivers_and_invalid_attribute_indices() {
     let turn = lua.think(&sessions[0]).expect("think");
     assert_script_ran(&turn);
 }
+
+#[test]
+fn owned_statistics_remain_available_after_a_dead_body_track_expires() {
+    let (_, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let own = sessions[0].own_hero().expect("hero").id;
+    let mut view = sessions[0].current().expect("view").clone();
+    view.tick += 1;
+    let body = view
+        .units
+        .iter_mut()
+        .find(|unit| unit.id == own)
+        .expect("hero");
+    body.mana = 73;
+    body.max_mana = 1000;
+    let kit = bota_proto::Kit {
+        abilities: body.abilities.clone(),
+        items: body.items.clone(),
+        town_portal: body.town_portal,
+        sellable_slots: 0,
+        reincarnating: false,
+    };
+    let tick = view.tick;
+    sessions[0]
+        .ingest(ServerMsg::Snapshot { view }, &mut ())
+        .expect("received live body");
+    sessions[0]
+        .ingest(
+            ServerMsg::Events {
+                tick,
+                events: Vec::new(),
+            },
+            &mut (),
+        )
+        .expect("events");
+    let mut lua = LuaTeam::new(
+        Team::Radiant,
+        &[BotSeat {
+            slot: SlotId(0),
+            hero: HeroId::SHADOW_FIEND,
+        }],
+        Limits::DEFAULT,
+        Keys {
+            hash: [17, 19],
+            random: 23,
+        },
+    )
+    .expect("team");
+    lua.add_script(
+        SlotId(0),
+        ScriptKind::Takeover,
+        "owned_body_statistics",
+        br#"
+        local turns = 0
+        function Think()
+            turns = turns + 1
+            assert(GetBot():GetMana() == 73 and GetBot():GetMaxMana() == 1000)
+            GetBot():Action_MoveToLocation(Vector(turns,222,0))
+        end
+    "#,
+    )
+    .expect("script");
+    let turn = lua.think(&sessions[0]).expect("live frame");
+    assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+    assert_eq!(
+        turn.bots[0].orders[0].order,
+        Order::Move {
+            target: Target::Pos(Vec2::from_ints(9217, 9438))
+        }
+    );
+    let mut view = sessions[0].current().expect("view").clone();
+    view.tick += 481;
+    view.players[0].deaths = 1;
+    view.players[0].respawn_left = 600;
+    view.players[0].kit = Some(kit);
+    view.units.retain(|unit| unit.id != own);
+    view.aggro.clear();
+    let tick = view.tick;
+    sessions[0]
+        .ingest(ServerMsg::Snapshot { view }, &mut ())
+        .expect("received dead body state");
+    sessions[0]
+        .ingest(
+            ServerMsg::Events {
+                tick,
+                events: Vec::new(),
+            },
+            &mut (),
+        )
+        .expect("events");
+    assert!(sessions[0].entity(own).is_none());
+    let turn = lua.think(&sessions[0]).expect("dead frame");
+    assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+    assert_eq!(
+        turn.bots[0].orders[0].order,
+        Order::Move {
+            target: Target::Pos(Vec2::from_ints(9218, 9438))
+        }
+    );
+}

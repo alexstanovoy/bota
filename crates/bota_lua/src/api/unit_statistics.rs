@@ -83,6 +83,8 @@ fn read(context: &ApiContext, vm: &mut Vm, args: Args, name: &str) -> Result<usi
     )?;
     let unit = state
         .unit(id)
+        .map(crate::state::UnitStatistics::from)
+        .or_else(|| state.player(id).and_then(|player| player.statistics))
         .ok_or_else(|| vm.error("unit is no longer known"))?;
     let value = match name {
         "GetMana" => f64::from(unit.mana),
