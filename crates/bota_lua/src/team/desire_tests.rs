@@ -239,3 +239,17 @@ fn malformed_push_retains_the_previous_pair_when_defend_returns_a_new_valid_valu
     assert!(lua.think(&sessions[0]).expect("recovered pair").failures.is_empty());
     assert_eq!(values(lua.state.borrow().team_desires.push),Some([1.0,0.0,0.5]));
 }
+
+#[test]
+fn unrelated_team_think_call_fuel_exhaustion_does_not_freeze_lane_pairs() {
+    let (mut local,mut sessions)=support::local(&[Team::Radiant,Team::Dire]);
+    let mut lua=team_with_limits("local frame=0 function TeamThink() while true do end end function UpdatePushLaneDesires() frame=frame+1 return {frame*0.125,0,1} end function UpdateDefendLaneDesires() return {1,0,0.5} end",Limits {fuel_per_call:10_000,fuel_per_tick:500_000,..Limits::DEFAULT});
+    for expected in [0.125,0.25] {
+        let turn=lua.think(&sessions[0]).expect("fuel-limited team hook");
+        assert_eq!(turn.failures.len(),1);
+        assert!(matches!(turn.failures[0].error,Error::Limit(Limit::FuelPerCall)));
+        assert_eq!(values(lua.state.borrow().team_desires.push),Some([expected,0.0,1.0]));
+        assert_eq!(values(lua.state.borrow().team_desires.defend),Some([1.0,0.0,0.5]));
+        advance(&mut local,&mut sessions);
+    }
+}

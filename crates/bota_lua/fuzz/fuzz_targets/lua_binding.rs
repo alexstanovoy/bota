@@ -74,10 +74,14 @@ fuzz_target!(|data: &[u8]| {
     lua.set_modules(modules).expect("module budget");
     let source = if data[0] & 1 == 0 {
         data[32..].to_vec()
+    } else if data[31] & 32 != 0 {
+        structured_team(data)
     } else {
         structured(data)
     };
-    let kind = if data[31] & 128 == 0 {
+    let kind = if data[31] & 32 != 0 {
+        ScriptKind::TeamDesires
+    } else if data[31] & 128 == 0 {
         ScriptKind::Takeover
     } else {
         ScriptKind::Mode(1)
@@ -243,4 +247,12 @@ fn structured(data: &[u8]) -> Vec<u8> {
     ];
     let ability_method = ability_methods[usize::from(data[7]) % ability_methods.len()];
     format!("function Think() local bot=GetBot() local ability=bot:GetAbilityByName('nevermore_shadowraze1') local item=bot:GetItemInSlot(0) local a,b,c={},{},{} pcall(function() bot:{}(a,b,c,a,b,c,a) end) pcall(function() ability:{}(a,b,c) end) pcall(function() item:{}(a,b,c) end) pcall(function() return Vector(1,2,3)*a end) collectgarbage() assert(require('bots/module').number==17) end", value(4), value(5), value(6), method, ability_method, ability_method).into_bytes()
+}
+
+fn structured_team(data: &[u8]) -> Vec<u8> {
+    let values = ["nil", "false", "true", "0", "-0.0", "0.5", "1", "-1", "1e308", "0/0", "math.huge", "'x'", "{}", "bot", "Vector(0,0,0)"];
+    let value = |index: usize| values[usize::from(data[index]) % values.len()];
+    let extra = if data[31] & 8 == 0 { "nil" } else { value(7) };
+    let unrelated = if data[31] & 16 == 0 { "" } else { "function UpdateRoshanDesire() error('unrelated team hook') end" };
+    format!("local bot=GetBot() function UpdatePushLaneDesires() return {{{},{},{},{}}} end function UpdateDefendLaneDesires() return {{{},{},{}}} end {}", value(4), value(5), value(6), extra, value(8), value(9), value(10), unrelated).into_bytes()
 }
