@@ -241,14 +241,27 @@ def module_name(expression, hero):
 
 def declarations(stream):
     names = set()
+    local_names = set()
     for index, (kind, value, _) in enumerate(stream):
-        if kind == "name" and value == "function" and index + 1 < len(stream) and stream[index + 1][0] == "name":
-            end = index + 1
-            while end + 2 < len(stream) and stream[end + 1][:2] in (("symbol", "."), ("symbol", ":")):
-                end += 2
-            names.add(stream[end][1])
+        if (kind, value) == ("name", "local"):
+            cursor = index + 1
+            if cursor < len(stream) and stream[cursor][:2] == ("name", "function"):
+                cursor += 1
+            while cursor < len(stream) and stream[cursor][0] == "name":
+                local_names.add(stream[cursor][1])
+                cursor += 1
+                if cursor >= len(stream) or stream[cursor][:2] != ("symbol", ","):
+                    break
+                cursor += 1
+        if kind == "name" and value == "function" and index + 2 < len(stream):
+            name, following = stream[index + 1], stream[index + 2]
+            if name[0] == "name" and following[:2] == ("symbol", "(") and name[1] not in local_names:
+                names.add(name[1])
         elif kind == "symbol" and value == "=" and index and index + 1 < len(stream) and stream[index + 1][:2] == ("name", "function"):
-            names.add(stream[index - 1][1])
+            name = stream[index - 1]
+            qualified = index > 1 and stream[index - 2][:2] in (("symbol", "."), ("symbol", ":"))
+            if name[0] == "name" and not qualified and name[1] not in local_names:
+                names.add(name[1])
     return names
 
 

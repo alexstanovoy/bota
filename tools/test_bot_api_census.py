@@ -12,6 +12,51 @@ spec.loader.exec_module(census)
 
 
 class Census(unittest.TestCase):
+    def test_only_global_hook_definitions_hide_native_mode_dependencies(self):
+        for source, global_hook in [
+            ('function Think() end', True), ('Think = function() end', True),
+            ('local function Think() end', False), ('local Think = function() end', False),
+            ('local M = {} function M.Think() end', False), ('local M = {} function M:Think() end', False),
+            ('local M = {} M.Think = function() end', False),
+        ]:
+            with self.subTest(source=source), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / 'bot_nevermore.lua').write_text(source)
+                (root / 'mode_laning_generic.lua').write_text('function Think() MissingModeApi() end')
+                report = census.scan(root, {})
+                self.assertEqual('bots/mode_laning_generic.lua' in report['entrypoints'], not global_hook)
+
+    def test_hardlinked_sources_are_refused_with_the_relative_path(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / 'bot_nevermore.lua'
+            source.write_text('function Think() end')
+            os.link(source, root / 'linked.lua')
+            with self.assertRaisesRegex(ValueError, r"nonregular or linked source: '(bot_nevermore|linked).lua'"):
+                census.sources(root)
+
+    def test_directory_entry_and_module_caps_accept_exactly_the_budget(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'bot_nevermore.lua').write_text('function Think() end')
+            self.assertEqual(len(census.sources(root, {'bytes': 1024, 'entries': 1, 'modules': 1})), 1)
+            for entries, modules, message in [(0, 1, 'directory entry limit'), (1, 0, 'module count limit')]:
+                with self.assertRaisesRegex(ValueError, message):
+                    census.sources(root, {'bytes': 1024, 'entries': entries, 'modules': modules})
+
+    def test_directory_depth_accepts_16_levels_and_rejects_17(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root
+            for _ in range(16):
+                path = path / 'd'
+                path.mkdir()
+            (path / 'a.lua').write_text('return true')
+            self.assertEqual(len(census.sources(root)), 1)
+            (path / 'd').mkdir()
+            with self.assertRaisesRegex(ValueError, 'directory depth limit'):
+                census.sources(root)
+
     def test_minion_only_hero_file_keeps_mode_dependencies_in_scope(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

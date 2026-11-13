@@ -1,4 +1,5 @@
-# Function-name reference: https://docs.moddota.com/lua_bots/ (API metadata, not implementation).
+# Function names transcribed from the generated bot API list at https://docs.moddota.com/lua_bots/.
+# Names and namespaces only: no signatures, constants, implementations or behavior guarantees.
 global	AddAvoidanceZone
 global	AddConditionalAvoidanceZone
 global	CMBanHero
