@@ -266,17 +266,25 @@ fn every_corpus_is_of_an_admitted_wire() {
 }
 
 /// The scripted matches hold every item of an admitted catalogue but the retired as a fight
-/// begins, and use every one of them that has a use: the corpus covers each item's rules.
+/// begins, carry each into a blow on a lane creep, and use every one that has a use to effect: the
+/// match told of the use (`EventKind::ItemUsed`), and a channelled one ran to its end (the hero
+/// arrived). An accepted order is not enough: a use can be overtaken by the next order.
 #[test]
-fn the_scripted_matches_hold_and_use_every_item_of_an_admitted_catalogue() {
+fn the_scripted_matches_hold_strike_with_and_use_every_item_of_an_admitted_catalogue() {
     for &admitted in ADMITTED_WIRES {
         let items = admitted.items();
-        let mut held = BTreeSet::new();
-        let mut used = BTreeSet::new();
+        let (mut held, mut struck, mut used, mut channelled) = (
+            BTreeSet::new(),
+            BTreeSet::new(),
+            BTreeSet::new(),
+            BTreeSet::new(),
+        );
         for (_, play) in scenarios::SCENARIOS {
             let played = play(items);
             held.extend(played.held);
+            struck.extend(played.struck_creeps);
             used.extend(played.used);
+            channelled.extend(played.channelled);
         }
         let live: BTreeSet<ItemId> = (0..items.items())
             .map(ItemId)
@@ -287,7 +295,19 @@ fn the_scripted_matches_hold_and_use_every_item_of_an_admitted_catalogue() {
             .copied()
             .filter(|&item| items.item(item).is_some_and(|def| def.aim.is_some()))
             .collect();
-        assert_eq!(held, live, "held");
-        assert_eq!(used, usable, "used");
+        let channels: BTreeSet<ItemId> = usable
+            .iter()
+            .copied()
+            .filter(|&item| {
+                items
+                    .item(item)
+                    .is_some_and(|def| def.behavior.has(bota_core::Behavior::CHANNELLED))
+            })
+            .collect();
+        let wire = fingerprint_to_hex(admitted.wire);
+        assert_eq!(held, live, "{wire}: held");
+        assert_eq!(struck, live, "{wire}: carried into a blow on a creep");
+        assert_eq!(used, usable, "{wire}: used to effect");
+        assert_eq!(channelled, channels, "{wire}: channelled to the end");
     }
 }

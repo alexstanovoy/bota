@@ -8,8 +8,9 @@
 //! ```
 //!
 //! `tools/admitted.sh corpus COMMIT` builds a commit with this program and runs it; see
-//! `DEVELOPMENT.md`. The corpus is refused (nothing written, exit 1) unless the matches held and
-//! used every item of the catalogue that can be used.
+//! `DEVELOPMENT.md`. The corpus is refused (nothing written, exit 1) unless the matches held every
+//! item of the catalogue, carried it into a blow on a creep, and used every one that has a use to
+//! effect (a channelled one to its end).
 
 #[path = "../tests/admitted/scenarios.rs"]
 mod scenarios;
@@ -39,6 +40,8 @@ fn main() {
     );
     let mut held = BTreeSet::new();
     let mut used = BTreeSet::new();
+    let mut struck = BTreeSet::new();
+    let mut channelled = BTreeSet::new();
     let mut replays = Vec::new();
     for (name, play) in scenarios::SCENARIOS {
         let played = play(catalogue);
@@ -61,10 +64,12 @@ fn main() {
             );
         }
         held.extend(played.held.iter().copied());
+        struck.extend(played.struck_creeps.iter().copied());
         used.extend(played.used.iter().copied());
+        channelled.extend(played.channelled.iter().copied());
         replays.push((name, played.records));
     }
-    let missing = missing(catalogue, &held, &used);
+    let missing = missing(catalogue, [&held, &struck, &used, &channelled]);
     if !missing.is_empty() {
         eprintln!("admitted_corpus: the matches leave out {missing}; nothing written");
         std::process::exit(1);
@@ -91,17 +96,29 @@ fn main() {
     print!("{manifest}");
 }
 
-/// The items of `catalogue` the matches never held, and those of a use they never used.
-fn missing(catalogue: Catalogue, held: &BTreeSet<ItemId>, used: &BTreeSet<ItemId>) -> String {
+/// The items of `catalogue` the matches never held, never carried into a blow on a creep, of a use
+/// that never took effect, of a channel that never ran to its end.
+fn missing(
+    catalogue: Catalogue,
+    [held, struck, used, channelled]: [&BTreeSet<ItemId>; 4],
+) -> String {
     let mut missing = String::new();
     for item in (0..catalogue.items()).map(ItemId) {
         let Some(def) = catalogue.item(item) else {
             continue;
         };
-        if !held.contains(&item) {
-            let _ = write!(missing, " held {}", def.key);
-        } else if def.aim.is_some() && !used.contains(&item) {
-            let _ = write!(missing, " used {}", def.key);
+        let channel = def.behavior.has(bota_core::Behavior::CHANNELLED);
+        let gaps = [
+            ("held", !held.contains(&item)),
+            ("struck", !struck.contains(&item)),
+            ("used", def.aim.is_some() && !used.contains(&item)),
+            (
+                "channelled",
+                def.aim.is_some() && channel && !channelled.contains(&item),
+            ),
+        ];
+        for (gap, _) in gaps.into_iter().filter(|(_, missing)| *missing) {
+            let _ = write!(missing, " {gap} {}", def.key);
         }
     }
     missing

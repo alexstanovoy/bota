@@ -14,8 +14,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use bota_core::Catalogue;
 use bota_proto::{
-    AbilitySlot, Aim, Cheat, ItemId, ItemSlot, MapId, ModifierSpec, Order, OutgoingOrder, Pick,
-    RejectReason, ReplayRecord, ServerMsg, SlotId, Target, Team, TickMode, Vec2,
+    AbilitySlot, Aim, Cheat, CreepSide, EventKind, ItemId, ItemSlot, MapId, ModifierSpec, Order,
+    OutgoingOrder, Pick, RejectReason, ReplayRecord, ServerMsg, SlotId, Target, Team, TickMode,
+    UnitKind, Vec2,
 };
 use bota_server::game::{MatchConfig, OrderDelay};
 use bota_server::local::LocalMatch;
@@ -37,8 +38,14 @@ pub struct Played {
     pub views: u64,
     /// The items a hero of the match held as a fight began.
     pub held: BTreeSet<ItemId>,
-    /// The items a hero used, the use taken.
+    /// The items a hero carried while its attack struck a lane creep: what answers to creeps
+    /// (Quelling Blade's bonus) came up.
+    pub struck_creeps: BTreeSet<ItemId>,
+    /// The items whose use took effect: the match told of it (`EventKind::ItemUsed`).
     pub used: BTreeSet<ItemId>,
+    /// The channelled items whose channel ran to its end: the hero arrived
+    /// (`EventKind::Teleported`, landed).
+    pub channelled: BTreeSet<ItemId>,
     /// The uses refused, and why.
     pub refused: Vec<(ItemId, RejectReason)>,
 }
@@ -57,6 +64,12 @@ pub const FOLD_START: u64 = 0xcbf2_9ce4_8422_2325;
 /// apart.
 const FIGHT: [Vec2; 2] = [Vec2::from_ints(9000, 9216), Vec2::from_ints(9200, 9216)];
 
+/// The most ticks a use is waited for: walking to a tree and a scroll's channel included.
+const USE_TICKS: u32 = 150;
+
+/// Ticks the heroes fight lane creeps a wave.
+const CREEP_TICKS: u32 = 45;
+
 /// Ticks a wave's fight lasts.
 const FIGHT_TICKS: u32 = 260;
 
@@ -66,8 +79,9 @@ const CARRIED: usize = 6;
 /// Shadow Fiend (Radiant) against Pudge (Dire): every item of `catalogue` but the retired, six a
 /// hero a wave, bought at the fountain where the shop sells it and handed out by the item cheat
 /// where it does not; then both heroes stand a raze apart with status resistance on (16%, which
-/// shortens the slows), use every item they carry, attack, raze, rot, hook and dismember, use
-/// everything again, and once more refreshed. Spell damage, cooldowns, cast ranges and walking into them, regeneration,
+/// shortens the slows), each strikes a lane creep of a wave stood up beside it, uses every item
+/// it carries (each use waited for until the match tells of it), attack, raze, rot, hook and
+/// dismember, use everything again, and once more refreshed. Spell damage, cooldowns, cast ranges and walking into them, regeneration,
 /// slows and damage over time all come up.
 pub fn every_item(catalogue: Catalogue) -> Played {
     let mut script = Script::start(catalogue);
@@ -182,12 +196,18 @@ struct Script {
     orders: [Vec<OutgoingOrder>; 2],
     /// The last sequence number given.
     seq: u32,
-    /// The use each sequence number stands for.
-    uses: Vec<(u32, ItemId)>,
     /// The sequence numbers refused, and why.
     refused: BTreeMap<u32, RejectReason>,
+    /// The last item each seat's hero was told to have used, since it was last cleared.
+    last_used: [Option<ItemId>; 2],
+    /// Whether each seat's last channel since it was last cleared ended, and landed.
+    channel_end: [Option<bool>; 2],
+    /// The lane creeps a creep fight stood up, as the world names them.
+    creeps: BTreeSet<bota_proto::EntityId>,
     /// Every tree of the map.
     trees: Vec<Vec2>,
+    /// The trees a use was aimed at, by their index in `trees`: none is aimed at twice.
+    felled: BTreeSet<usize>,
     played: Played,
 }
 
@@ -227,7 +247,9 @@ impl Script {
             world: FOLD_START,
             views: FOLD_START,
             held: BTreeSet::new(),
+            struck_creeps: BTreeSet::new(),
             used: BTreeSet::new(),
+            channelled: BTreeSet::new(),
             refused: Vec::new(),
         };
         let mut trees = Vec::new();
@@ -245,9 +267,12 @@ impl Script {
             catalogue,
             orders: [Vec::new(), Vec::new()],
             seq: 0,
-            uses: Vec::new(),
             refused: BTreeMap::new(),
+            last_used: [None; 2],
+            channel_end: [None; 2],
+            creeps: BTreeSet::new(),
             trees,
+            felled: BTreeSet::new(),
             played,
         };
         script.take_records();
@@ -287,8 +312,54 @@ impl Script {
         self.take_records();
     }
 
+    /// Keeps the tick's records, and notes what their events tell of the heroes: the uses that
+    /// took effect, channels ending, blows on the creeps.
     fn take_records(&mut self) {
-        self.played.records.extend(self.game.take_records());
+        let records = self.game.take_records();
+        let heroes = [0, 1].map(|seat| self.game.hero_of(seat).map(bota_server::game::wire_id));
+        for record in &records {
+            let ReplayRecord::Msg(ServerMsg::Events { events, .. }) = record else {
+                continue;
+            };
+            for event in events {
+                self.note(event, heroes);
+            }
+        }
+        self.played.records.extend(records);
+    }
+
+    fn note(&mut self, event: &EventKind, heroes: [Option<bota_proto::EntityId>; 2]) {
+        let seat_of = |unit: Option<bota_proto::EntityId>| {
+            unit.and_then(|unit| heroes.iter().position(|&hero| hero == Some(unit)))
+        };
+        match *event {
+            EventKind::ItemUsed { caster, item, .. } => {
+                if let Some(seat) = seat_of(caster) {
+                    self.played.used.insert(item);
+                    self.last_used[seat] = Some(item);
+                }
+            }
+            EventKind::Teleported { slot, landed } => {
+                // The two seats are slots 0 and 1.
+                if let Some(end) = self.channel_end.get_mut(usize::from(slot.0)) {
+                    *end = Some(landed);
+                }
+            }
+            EventKind::Damaged {
+                source,
+                target,
+                inflictor: None,
+                ..
+            } if self.creeps.contains(&target) => {
+                if let Some(seat) = seat_of(source) {
+                    let carried = self.carried(seat);
+                    self.played
+                        .struck_creeps
+                        .extend(carried.into_iter().map(|(_, item)| item));
+                }
+            }
+            _ => {}
+        }
     }
 
     fn steps(&mut self, ticks: u32) {
@@ -387,6 +458,7 @@ impl Script {
                 .extend(carried.into_iter().map(|(_, item)| item));
         }
         self.step();
+        self.creep_fight();
         self.use_all();
         let started = self.game.tick();
         for seat in 0..2 {
@@ -436,22 +508,98 @@ impl Script {
         self.use_all();
         let spent = self.game.tick() - started;
         self.steps(FIGHT_TICKS.saturating_sub(spent));
-        self.note_uses();
     }
 
-    /// Each hero uses every item it carries, one every four ticks.
+    /// Each hero stands up a wave of enemy lane creeps beside it and attacks the nearest creep
+    /// of it for a while; then every creep is taken away.
+    fn creep_fight(&mut self) {
+        for seat in 0..2 {
+            if let Some(at) = self.position(seat) {
+                let at = at + Vec2::from_ints(0, if seat == 0 { -300 } else { 300 });
+                self.order(
+                    seat,
+                    Order::Cheat {
+                        cheat: Cheat::CreateCreeps { enemy: true, at },
+                    },
+                );
+            }
+        }
+        self.step();
+        let world = self.game.world();
+        let creeps: Vec<(bota_server::game::Entity, Team)> = world
+            .entities
+            .iter()
+            .filter(|&unit| {
+                matches!(
+                    world.kind.get(unit),
+                    Some(
+                        UnitKind::CreepMelee
+                            | UnitKind::CreepRanged
+                            | UnitKind::CreepFlagbearer
+                            | UnitKind::CreepSiege
+                    )
+                )
+            })
+            .filter_map(|unit| Some((unit, *world.team.get(unit)?)))
+            .collect();
+        self.creeps = creeps
+            .iter()
+            .map(|&(unit, _)| bota_server::game::wire_id(unit))
+            .collect();
+        for seat in 0..2 {
+            let (Some(hero), Some(at)) = (self.game.hero_of(seat), self.position(seat)) else {
+                continue;
+            };
+            let team = self.game.world().team.get(hero).copied();
+            let nearest = creeps
+                .iter()
+                .filter(|&&(_, side)| Some(side) != team)
+                .filter_map(|&(unit, _)| {
+                    let stands = self.game.world().transform.get(unit)?.pos;
+                    Some((stands.distance_squared(at), unit))
+                })
+                .min_by_key(|&(apart, _)| apart)
+                .and_then(|(_, unit)| self.game.handle_of(seat, unit));
+            if let Some(creep) = nearest {
+                self.order(
+                    seat,
+                    Order::Attack {
+                        target: Target::Unit(creep),
+                    },
+                );
+            }
+        }
+        self.steps(CREEP_TICKS);
+        self.order(
+            0,
+            Order::Cheat {
+                cheat: Cheat::KillCreeps {
+                    which: CreepSide::All,
+                },
+            },
+        );
+        self.step();
+        self.creeps.clear();
+    }
+
+    /// Each hero in turn uses every item it carries, one at a time: each use is waited for until
+    /// the match tells of it (a channel: until it ends), it is refused, or [`USE_TICKS`] pass.
     fn use_all(&mut self) {
-        let carried = [self.carried(0), self.carried(1)];
-        let longest = carried.iter().map(Vec::len).max().unwrap_or(0);
-        for at in 0..longest {
-            for (seat, carried) in carried.iter().enumerate() {
-                let Some(&(slot, item)) = carried.get(at) else {
+        for seat in 0..2 {
+            for (slot, item) in self.carried(seat) {
+                let Some(def) = self.catalogue.item(item) else {
                     continue;
                 };
-                let Some(aim) = self.catalogue.item(item).and_then(|def| def.aim) else {
+                let Some(aim) = def.aim else {
                     continue;
                 };
+                let channel = def.behavior.has(bota_core::Behavior::CHANNELLED);
                 let target = self.aim(seat, aim);
+                if aim == Aim::Tree {
+                    self.fell(target);
+                }
+                self.last_used[seat] = None;
+                self.channel_end[seat] = None;
                 let seq = self.order(
                     seat,
                     Order::Use {
@@ -459,26 +607,30 @@ impl Script {
                         target,
                     },
                 );
-                self.uses.push((seq, item));
-            }
-            self.steps(4);
-        }
-    }
-
-    /// The items whose use was taken join [`Played::used`].
-    fn note_uses(&mut self) {
-        for (seq, item) in self.uses.drain(..) {
-            match self.refused.get(&seq) {
-                None => {
-                    self.played.used.insert(item);
+                for _ in 0..USE_TICKS {
+                    self.step();
+                    if let Some(&reason) = self.refused.get(&seq) {
+                        self.played.refused.push((item, reason));
+                        break;
+                    }
+                    let used = self.last_used[seat] == Some(item);
+                    if channel {
+                        if used && let Some(landed) = self.channel_end[seat] {
+                            if landed {
+                                self.played.channelled.insert(item);
+                            }
+                            break;
+                        }
+                    } else if used {
+                        break;
+                    }
                 }
-                Some(&reason) => self.played.refused.push((item, reason)),
             }
         }
     }
 
-    /// What a seat aims a use of an item of `aim` at: itself, the enemy hero's spot, the tree
-    /// nearest it, its fountain.
+    /// What a seat aims a use of an item of `aim` at: itself, the enemy hero's spot, the nearest
+    /// tree no use was aimed at before, its fountain.
     fn aim(&self, seat: usize, aim: Aim) -> Target {
         match aim {
             Aim::Own | Aim::Building => Target::None,
@@ -489,9 +641,20 @@ impl Script {
                 .and_then(|at| {
                     self.trees
                         .iter()
-                        .min_by_key(|tree| tree.distance_squared(at))
+                        .enumerate()
+                        .filter(|(index, _)| !self.felled.contains(index))
+                        .min_by_key(|(_, tree)| tree.distance_squared(at))
                 })
-                .map_or(Target::None, |&tree| Target::Pos(tree)),
+                .map_or(Target::None, |(_, &tree)| Target::Pos(tree)),
+        }
+    }
+
+    /// Notes the tree a use is aimed at as one no later use aims at: the use may fell it.
+    fn fell(&mut self, target: Target) {
+        if let Target::Pos(at) = target
+            && let Some(index) = self.trees.iter().position(|&tree| tree == at)
+        {
+            self.felled.insert(index);
         }
     }
 
