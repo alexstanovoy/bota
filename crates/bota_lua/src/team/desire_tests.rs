@@ -223,3 +223,19 @@ fn core_and_engine_lane_ids_select_the_same_pinned_desire() {
     assert_eq!(Lane::from_engine(0),None);
     assert_eq!(Lane::from_engine(4),None);
 }
+
+#[test]
+fn malformed_push_retains_the_previous_pair_when_defend_returns_a_new_valid_value() {
+    let (mut local,mut sessions)=support::local(&[Team::Radiant,Team::Dire]);
+    let mut lua=team("local frame=0 function UpdatePushLaneDesires() frame=frame+1 if frame==2 then return false end if frame==3 then return {1,0,0.5} end return {0.125,0.375,0.625} end function UpdateDefendLaneDesires() if frame==2 then return {0.5,0.25,0.125} end return {0.75,0.5,0.25} end");
+    assert!(lua.think(&sessions[0]).expect("initial pair").failures.is_empty());
+    let before=lua.state.borrow().team_desires;
+    advance(&mut local,&mut sessions);
+    let failed=lua.think(&sessions[0]).expect("malformed push");
+    assert_eq!(failed.failures.len(),1);
+    assert!(matches!(&failed.failures[0].error,Error::Runtime{message,..} if message.contains("team lane desires")));
+    assert_eq!(lua.state.borrow().team_desires,before);
+    advance(&mut local,&mut sessions);
+    assert!(lua.think(&sessions[0]).expect("recovered pair").failures.is_empty());
+    assert_eq!(values(lua.state.borrow().team_desires.push),Some([1.0,0.0,0.5]));
+}
