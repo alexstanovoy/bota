@@ -595,6 +595,18 @@ mod tests {
         assert_eq!(validate_tick(&[&ended, &reordered]), refused(contract));
         assert_eq!(validate_tick(&[&good, &good[..1]]), refused(contract));
         assert_eq!(validate_tick(&[&good, &[]]), refused(contract));
+        let mut late = good.clone();
+        late.push(ServerMsg::MatchOver {
+            winner: Team::Dire,
+            stats: MatchStats {
+                duration: game.tick() + 1,
+                ..game.truth().stats()
+            },
+        });
+        assert_eq!(
+            validate_tick(&[&ended, &late]),
+            refused("MatchOver's duration is not the tick's")
+        );
         // The tick that ends a match without advancing it tells only the ending.
         assert_eq!(
             validate_tick(&[std::slice::from_ref(&over); 2]),

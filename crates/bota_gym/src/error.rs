@@ -43,6 +43,9 @@ pub enum GymError {
     Poisoned,
     /// The workers stopped before answering.
     Stopped,
+    /// The workers met [`MAX_UNDISPOSED_PANICS`](crate::workers::MAX_UNDISPOSED_PANICS) panic
+    /// payloads that panicked again when dropped, kept them, and take no more jobs.
+    Undisposed,
     /// A counter (game ordinal, random draws) would overflow.
     CounterOverflow,
 }
@@ -94,6 +97,9 @@ impl fmt::Display for GymError {
                 formatter.write_str("the driver lost an episode to an earlier failure")
             }
             Self::Stopped => formatter.write_str("the gym workers stopped"),
+            Self::Undisposed => formatter.write_str(
+                "the workers kept too many panic payloads that panicked when dropped, and stopped",
+            ),
             Self::CounterOverflow => formatter.write_str("a gym counter would overflow"),
         }
     }

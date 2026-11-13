@@ -249,3 +249,165 @@ fn a_failure_in_the_middle_of_a_step_spends_the_driver() {
         );
     });
 }
+
+/// A game that panics on every step with its action as the payload.
+struct Thrower(GameId);
+
+impl Episode for Thrower {
+    type Shared = ();
+    type Plan = ();
+    type Action = std::sync::Arc<Vec<u8>>;
+    type Finished = ();
+    type Error = Error;
+
+    fn start(_: &(), id: GameId, (): ()) -> Result<Self, Error> {
+        Ok(Self(id))
+    }
+
+    fn step(&mut self, _: &(), payload: std::sync::Arc<Vec<u8>>) -> Result<Option<()>, Error> {
+        std::panic::panic_any(payload)
+    }
+
+    fn game(&self) -> GameId {
+        self.0
+    }
+}
+
+#[test]
+fn an_ordinary_panic_payload_is_freed_before_the_driver_hears_of_it() {
+    std::thread::scope(|scope| {
+        let workers = Workers::spawn(scope, one_worker(), &()).expect("workers");
+        for _ in 0..16 {
+            let payload = std::sync::Arc::new(vec![7u8; 1 << 20]);
+            let witness = std::sync::Arc::downgrade(&payload);
+            let mut env: VecEnv<Thrower> =
+                VecEnv::start(workers.clone(), vec![0], &()).expect("started");
+            assert_eq!(
+                env.step([payload], &(), |_, _| {}),
+                Err(Error(GymError::Panicked { position: 0 }))
+            );
+            assert!(witness.upgrade().is_none(), "the payload was dropped");
+        }
+    });
+}
+
+#[test]
+fn payloads_that_cannot_be_dropped_are_bounded_and_then_refused() {
+    within_a_minute(|| {
+        std::thread::scope(|scope| {
+            let workers = Workers::spawn(scope, one_worker(), &()).expect("workers");
+            for _ in 0..bota_gym::workers::MAX_UNDISPOSED_PANICS {
+                let mut env: VecEnv<Steps> =
+                    VecEnv::start(workers.clone(), vec![0], &100).expect("started");
+                assert_eq!(
+                    env.step([Act::Bomb], &100, |_, _| {}),
+                    Err(Error(GymError::Panicked { position: 0 }))
+                );
+            }
+            let refused = VecEnv::<Steps>::start(workers, vec![0], &100).err();
+            assert_eq!(refused, Some(Error(GymError::Undisposed)));
+            assert_eq!(
+                GymError::Undisposed.to_string(),
+                "the workers kept too many panic payloads that panicked when dropped, and stopped"
+            );
+        });
+    });
+}
+
+/// Panics whenever a panic is turned into it: caller code running on the driver's thread.
+#[derive(Debug, PartialEq, Eq)]
+struct Touchy(GymError);
+
+impl From<GymError> for Touchy {
+    fn from(error: GymError) -> Self {
+        assert!(
+            !matches!(error, GymError::Panicked { .. }),
+            "the conversion panics"
+        );
+        Self(error)
+    }
+}
+
+/// [`Steps`] whose error converts with a panic.
+struct TouchySteps(Steps);
+
+impl Episode for TouchySteps {
+    type Shared = ();
+    type Plan = u64;
+    type Action = Act;
+    type Finished = u64;
+    type Error = Touchy;
+
+    fn start(_: &(), id: GameId, length: u64) -> Result<Self, Touchy> {
+        Ok(Self(Steps {
+            id,
+            steps: 0,
+            length,
+        }))
+    }
+
+    fn step(&mut self, _: &(), act: Act) -> Result<Option<u64>, Touchy> {
+        self.0.step(&(), act).map_err(|Error(error)| Touchy(error))
+    }
+
+    fn game(&self) -> GameId {
+        self.0.id
+    }
+}
+
+fn unwinds(step: impl FnOnce()) -> bool {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(step)).is_err()
+}
+
+#[test]
+fn a_driver_whose_callers_code_unwinds_mid_step_is_spent() {
+    std::thread::scope(|scope| {
+        let workers = Workers::spawn(scope, one_worker(), &()).expect("workers");
+        // The conversion of the worker's panic report unwinds on the driver's thread.
+        let mut env: VecEnv<TouchySteps> =
+            VecEnv::start(workers.clone(), vec![0, 1], &100).expect("started");
+        assert!(unwinds(|| drop(env.step(
+            [Act::Bomb, Act::Count],
+            &100,
+            |_, _| {}
+        ))));
+        assert_eq!(
+            env.step([Act::Count; 2], &100, |_, _| {}),
+            Err(Touchy(GymError::Poisoned))
+        );
+        let mut tournament: Tournament<TouchySteps> =
+            Tournament::new(workers.clone(), 0, [100, 100], 2).expect("started");
+        assert!(unwinds(|| drop(
+            tournament.step([Act::Bomb, Act::Count], |_, _| Ok(()))
+        )));
+        assert_eq!(
+            tournament.step([Act::Count; 2], |_, _| Ok(())),
+            Err(Touchy(GymError::Poisoned))
+        );
+        // A completion callback unwinds.
+        let mut env: VecEnv<TouchySteps> =
+            VecEnv::start(workers.clone(), vec![0, 1], &1).expect("started");
+        assert!(unwinds(|| {
+            drop(env.step([Act::Count; 2], &1, |_, _: u64| -> () {
+                panic!("booking fails")
+            }))
+        }));
+        assert_eq!(
+            env.step([Act::Count; 2], &1, |_, _| {}),
+            Err(Touchy(GymError::Poisoned))
+        );
+        let mut tournament: Tournament<TouchySteps> =
+            Tournament::new(workers, 0, [1, 1], 2).expect("started");
+        assert!(unwinds(|| {
+            drop(
+                tournament.step([Act::Count; 2], |_, _| -> Result<(), Touchy> {
+                    panic!("booking fails")
+                }),
+            )
+        }));
+        assert_eq!(
+            tournament.step([Act::Count; 2], |_, _| Ok(())),
+            Err(Touchy(GymError::Poisoned))
+        );
+    });
+}

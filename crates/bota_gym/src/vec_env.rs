@@ -129,6 +129,9 @@ impl<'scope, E: Episode + 'scope> VecEnv<'scope, E> {
         let count = self.episodes.len();
         // Every action is in hand before any episode leaves: a wrong count moves none of them.
         self.round.stage(actions, count)?;
+        // Spent from here until every episode is back and every finished game booked: an
+        // error, or an unwinding conversion or callback, leaves it spent.
+        self.poisoned = true;
         let mut submitted = 0;
         let mut stopped = None;
         for (position, episode) in self.episodes.drain(..).enumerate() {
@@ -159,15 +162,11 @@ impl<'scope, E: Episode + 'scope> VecEnv<'scope, E> {
                 finished(position, done);
             }
         }
-        // A step that failed part-way moved some episodes and lost others: nothing after it
-        // could be trusted.
-        if received.is_err() || stopped.is_some() {
-            self.poisoned = true;
-        }
         received?;
         if let Some(error) = stopped {
             return Err(error.into());
         }
+        self.poisoned = false;
         Ok(())
     }
 }

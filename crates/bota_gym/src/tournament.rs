@@ -127,6 +127,9 @@ impl<'scope, E: Episode + 'scope> Tournament<'scope, E> {
         let count = self.live.len();
         // Every action is in hand before any game leaves: a wrong count moves none of them.
         self.round.stage(actions, count)?;
+        // Spent from here until every game is back, booked and refilled: an error, or an
+        // unwinding conversion or callback, leaves it spent.
+        self.poisoned = true;
         let mut submitted = 0;
         let mut failure = None;
         for (position, episode) in self.live.drain(..).enumerate() {
@@ -146,25 +149,21 @@ impl<'scope, E: Episode + 'scope> Tournament<'scope, E> {
             submitted += 1;
         }
         let received = self.round.receive(submitted);
-        if received.is_err() || failure.is_some() {
-            self.poisoned = true;
-            received?;
-            return Err(failure.expect("a failure").into());
+        received?;
+        if let Some(error) = failure {
+            return Err(error.into());
         }
         for position in 0..count {
             let episode = self.round.episodes[position]
                 .take()
                 .expect("every position replied");
             match self.round.finished[position].take() {
-                Some(done) => {
-                    if let Err(error) = finished(episode, done) {
-                        self.poisoned = true;
-                        return Err(error);
-                    }
-                }
+                Some(done) => finished(episode, done)?,
                 None => self.live.push(episode),
             }
         }
-        self.fill()
+        self.fill()?;
+        self.poisoned = false;
+        Ok(())
     }
 }

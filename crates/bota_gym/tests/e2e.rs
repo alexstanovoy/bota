@@ -100,51 +100,58 @@ fn a_cut_game_reports_its_end_and_its_slot_plays_the_next_game() {
     });
 }
 
+/// Every finished game of a tournament: its plan, ending and what each seat's client knew at
+/// its end, in plan order.
+type Played = Vec<(u64, u32, String, Vec<u64>)>;
+
+fn play_tournament(config: &bota_gym::PlayerEnvConfig<u64>, parallel: usize, act: bool) -> Played {
+    let plans = paired_games(40, 2, 1)
+        .expect("a plan")
+        .map(|pairing| pairing.seed);
+    std::thread::scope(|scope| {
+        let workers = Workers::spawn(scope, worker_config(3, 4), config).expect("workers");
+        let mut tournament: Tournament<PlayerEnv<u64>> =
+            Tournament::new(workers, 0, plans, parallel).expect("started");
+        let mut results = Vec::new();
+        while !tournament.is_over() {
+            let actions: Vec<_> = tournament
+                .live()
+                .iter()
+                .map(|episode| match act {
+                    true => random_orders(
+                        episode,
+                        GameId {
+                            slot: 0,
+                            game: *episode.plan(),
+                        },
+                    ),
+                    false => [None; MAX_SEATS],
+                })
+                .collect();
+            tournament
+                .step(actions, |episode, game| {
+                    let seats = (0..episode.seat_count())
+                        .map(|seat| digest(episode.seat(seat)))
+                        .collect();
+                    let end = format!("{:?} {:?}", game.end, game.result);
+                    results.push((game.plan, game.tick, end, seats));
+                    Ok(())
+                })
+                .expect("a round");
+        }
+        results.sort();
+        results
+    })
+}
+
 #[test]
 fn a_tournament_gives_every_planned_game_the_same_result_at_any_batch_size() {
     let config = seeded(8);
-    let plans: Vec<_> = paired_games(40, 2, 1)
-        .expect("a plan")
-        .map(|pairing| pairing.seed)
-        .collect();
-    let play = |parallel| {
-        std::thread::scope(|scope| {
-            let workers = Workers::spawn(scope, worker_config(3, 4), &config).expect("workers");
-            let mut tournament: Tournament<PlayerEnv<u64>> =
-                Tournament::new(workers.clone(), 0, plans.clone(), parallel).expect("started");
-            let mut results = Vec::new();
-            while !tournament.is_over() {
-                let actions: Vec<_> = tournament
-                    .live()
-                    .iter()
-                    .map(|episode| {
-                        random_orders(
-                            episode,
-                            GameId {
-                                slot: 0,
-                                game: *episode.plan(),
-                            },
-                        )
-                    })
-                    .collect();
-                tournament
-                    .step(actions, |_, game| {
-                        results.push((
-                            game.plan,
-                            game.tick,
-                            format!("{:?} {:?}", game.end, game.result),
-                        ));
-                        Ok(())
-                    })
-                    .expect("a round");
-            }
-            results.sort();
-            results
-        })
-    };
-    let one = play(1);
-    assert_eq!(one.len(), plans.len());
-    assert_eq!(one, play(3));
+    let one = play_tournament(&config, 1, true);
+    assert_eq!(one.len(), 4);
+    assert_eq!(one, play_tournament(&config, 3, true));
+    // The comparison sees the games themselves: other orders give other final views.
+    assert_ne!(one, play_tournament(&config, 3, false));
 }
 
 /// Configs of tournament games: the plan is the match seed.
