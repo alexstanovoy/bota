@@ -1226,7 +1226,8 @@ fn the_next_hit_is_what_the_server_would_land() {
     hero.attack_damage = 45;
     hero.attack_damage_min = 40;
     hero.attack_damage_max = 50;
-    // Two working blades (each adds against creeps), one muted, one in the backpack.
+    // Two working blades, one muted, one in the backpack: the two quell once ("Effects of multiple
+    // quelling blades do not stack", the install's Quelling Blade note; each kind of quell counts once).
     hero.items = vec![
         Some(blade(0)),
         Some(blade(30)),
@@ -1240,24 +1241,24 @@ fn the_next_hit_is_what_the_server_would_land() {
     creep.kind = UnitKind::CreepMelee;
     creep.team = Team::Dire;
     creep.armor = Fixed::from_int(2);
-    // (40 + 16), (45 + 16) and (50 + 16), each times 100 / 112, rounded down.
+    // (40 + 8), (45 + 8) and (50 + 8), each times 100 / 112, rounded down.
     assert_eq!(
         next_hit(&hero, &creep),
         HitRange {
-            least: 50,
-            mid: 54,
-            most: 58
+            least: 42,
+            mid: 47,
+            most: 51
         }
     );
-    // A ranged hero's blade adds 4, not 8: (40 + 8), (45 + 8), (50 + 8).
+    // A ranged hero's blade adds 4, not 8: (40 + 4), (45 + 4), (50 + 4).
     let mut fiend = hero.clone();
     fiend.hero = Some(bota_proto::HeroId::SHADOW_FIEND);
     assert_eq!(
         next_hit(&fiend, &creep),
         HitRange {
-            least: 42,
-            mid: 47,
-            most: 51
+            least: 39,
+            mid: 43,
+            most: 48
         }
     );
 

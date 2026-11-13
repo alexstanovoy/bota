@@ -132,6 +132,15 @@ class RulesIdentityBuildTests(unittest.TestCase):
         for crate in ("bota_core", "bota_proto"):
             shutil.copytree(ROOT / "crates" / crate, tree / "crates" / crate)
         shutil.copytree(ROOT / "crates/bota_server/src", tree / "crates/bota_server/src")
+        # These probes change catalogue rows on purpose; an admitted earlier wire pins its catalogue at build time
+        # (bota_core::ADMITTED_WIRES, "an admitted build's items are this build's first ones, unchanged") and would
+        # refuse the build. Admission has tests of its own (bota_server --test admitted): the probes run on a tree
+        # admitting none, which is a valid build.
+        fingerprint = tree / "crates/bota_core/src/fingerprint.rs"
+        source = fingerprint.read_text()
+        start = source.index("pub const ADMITTED_WIRES: &[AdmittedWire] = &[")
+        end = source.index("\n];", start)
+        fingerprint.write_text(source[:start] + "pub const ADMITTED_WIRES: &[AdmittedWire] = &[" + source[end:])
         map_source = tree / "crates/bota_core/src/map.rs"
         with map_source.open("a") as output:
             output.write(
