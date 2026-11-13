@@ -372,3 +372,25 @@ The binding alone maps semantic activities to engine constants: idle, rare idle,
 run, attack, alternate attack, flail, disabled, six cast and six channel slots,
 death and spawn. Death/spawn/teleport transitions require observed signals; no
 private controller state is read.
+
+### Incoming tracking projectiles
+
+`GetIncomingTrackingProjectiles()` returns a fresh array of currently received
+homing missiles whose target is this visible unit. The result fields were
+established from the installed game, build 6975. Rows contain `location`,
+`caster`, `playerid`, `ability`, `is_attack` and `is_dodgeable`. An unseen foreign
+receiver returns nil; an unknown non-roster receiver errors. Only current filtered
+records participate. A concealed caster stays nil and has playerid -1; it is never
+recovered from remembered launch events. Ability/item handles are supplied only
+when their current authenticated owner and slot are observed.
+
+Attack classification follows the projectile's received inflictor fact. In the
+current simulation, attacks are disjointable and spell missiles keep homing, so
+`is_dodgeable` follows that rule; this is a simulation contract rather than a
+claim that every reference spell shares the same disjoint behavior.
+
+The query charges 16 host fuel plus two per body, roster row and projectile
+searched; each result row adds 24 plus body/roster search work (two per row for an attack,
+12 for an ability inflictor, 36 for an item inflictor). Tables,
+vectors and authenticated handles pay their ordinary allocation charges. Empty
+results still allocate and charge their result table.

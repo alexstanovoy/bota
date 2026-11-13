@@ -110,6 +110,7 @@ pub(crate) struct Snapshot {
     pub catalogue: bota_core::Catalogue,
     pub glyph_cooldown: Option<u32>,
     pub attacks: Vec<AttackFact>,
+    pub projectiles: Vec<bota_proto::ProjectileView>,
 }
 
 impl Snapshot {
@@ -174,6 +175,13 @@ impl Snapshot {
                         .len()
                         .checked_mul(std::mem::size_of::<AttackFact>())?,
                 )
+        });
+        let players = players.and_then(|bytes| {
+            bytes.checked_add(
+                view.projectiles
+                    .len()
+                    .checked_mul(std::mem::size_of::<bota_proto::ProjectileView>())?,
+            )
         });
         let bytes =
             session
@@ -277,6 +285,7 @@ impl Snapshot {
                 .find(|glyph| glyph.team == session.team())
                 .and_then(|glyph| glyph.ready_after),
             attacks: attack_facts(session, view),
+            projectiles: view.projectiles.clone(),
             units: session
                 .entities()
                 .iter()

@@ -28,6 +28,7 @@ mod math_queries;
 mod modifiers;
 mod patterns;
 pub(crate) mod players;
+mod projectiles;
 mod queries;
 pub(crate) mod shop;
 mod structures;
@@ -149,6 +150,7 @@ pub(crate) fn install(lua: &mut Lua, state: Shared, vectors: Vectors) -> Result<
     distances::install(lua, &context)?;
     estimates::install(lua, &context)?;
     activities::install(lua, &context)?;
+    projectiles::install(lua, &context)?;
     globals::install(lua, state.clone(), vectors)?;
     lane_desires::install(lua, &context)?;
     match_metadata::install(lua, &context)?;

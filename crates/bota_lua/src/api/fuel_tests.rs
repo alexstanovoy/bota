@@ -292,3 +292,9 @@ fn activity_queries_charge_their_explicit_work_and_received_unit_searches() {
     assert_budget("GetAnimCycle", 17);
 
 }
+
+#[test]
+fn empty_incoming_projectile_query_charges_scan_and_result_table() {
+    // 16 work + 1 handle + 8 body/roster scan + 4 result allocation.
+    assert_budget("GetIncomingTrackingProjectiles", 29);
+}

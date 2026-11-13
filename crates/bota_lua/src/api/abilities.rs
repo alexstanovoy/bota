@@ -181,7 +181,11 @@ pub(super) fn identity(state: &State, value: Value) -> Option<Identity> {
         .or_else(|| state.ability_identities.value(value))
 }
 
-fn handle(vm: &mut Vm, state: &mut State, identity: Option<Identity>) -> Result<Value, LuaError> {
+pub(super) fn handle(
+    vm: &mut Vm,
+    state: &mut State,
+    identity: Option<Identity>,
+) -> Result<Value, LuaError> {
     let Some(identity) = identity else {
         return Ok(Value::Nil);
     };
@@ -427,7 +431,7 @@ fn current_active(vm: &mut Vm, state: &mut State, id: EntityId) -> Result<Value,
     handle(vm, state, Some(identity))
 }
 
-fn lookup_ability(state: &State, id: EntityId, key: &[u8]) -> Option<Identity> {
+pub(super) fn lookup_ability(state: &State, id: EntityId, key: &[u8]) -> Option<Identity> {
     let book = state.ability_book(id).unwrap_or_default();
     let matches =
         |id| bota_core::ability_def(id).is_some_and(|definition| definition.key.as_bytes() == key);
