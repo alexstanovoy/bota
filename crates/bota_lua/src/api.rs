@@ -9,6 +9,9 @@ use crate::{
     vector::{self, Vectors},
 };
 
+#[cfg(test)]
+mod fuel_tests;
+
 pub(crate) mod abilities;
 pub(crate) mod context;
 mod estimates;
@@ -30,12 +33,22 @@ mod unit_statistics;
 
 pub(crate) type Shared = Rc<RefCell<State>>;
 
+// Even a constant-work boundary crossing costs more than an interpreter instruction.
+const CALL_FUEL: u64 = 8;
+
+fn metered(function: luagee::HostFunction) -> luagee::HostFunction {
+    Rc::new(move |vm, args| {
+        vm.charge_fuel(CALL_FUEL)?;
+        function(vm, args)
+    })
+}
+
 fn global(
     lua: &mut Lua,
     name: &'static str,
     function: luagee::HostFunction,
 ) -> Result<(), BindingError> {
-    let function = lua.function(name, function)?;
+    let function = lua.function(name, metered(function))?;
     lua.set_global(name, function)?;
     Ok(())
 }
@@ -46,7 +59,7 @@ fn method(
     name: &'static str,
     function: luagee::HostFunction,
 ) -> Result<(), BindingError> {
-    let function = lua.function(name, function)?;
+    let function = lua.function(name, metered(function))?;
     let key = lua.string(name.as_bytes())?;
     lua.vm().raw_set(methods, key, function)?;
     Ok(())
