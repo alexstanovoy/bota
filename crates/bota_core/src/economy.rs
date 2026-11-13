@@ -188,6 +188,47 @@ pub fn missing_parts(item: ItemId, held: &[ItemId], primary: Option<Attribute>) 
     purchase_requirements(item, held, primary).wanted
 }
 
+/// What a buy order of `item` buys, given what the buyer holds that counts ([`purchase_pool`]).
+///
+/// [`missing_parts`] says what an item still lacks to be built. A buy order asks for one more copy,
+/// so it differs where the buyer already holds every part of a copy that has not been built: the
+/// parts wait in places that do not meet (a bag far from its shop, the stash, a courier), and
+/// nothing builds until they do. Such a complete set is a copy already bought, and is set aside;
+/// what is held beyond it counts toward the next copy, whose other parts are bought. A buyer
+/// holding nothing beyond the sets (nothing toward one more copy) is told there is nothing to buy
+/// rather than charged for a whole copy it did not ask a second time.
+pub fn purchase_parts(item: ItemId, held: &[ItemId], primary: Option<Attribute>) -> Vec<ItemId> {
+    evaluate_buy::<Vec<ItemId>, Vec<ItemId>>(item, held.to_vec(), primary)
+        .unwrap_or_else(|never| match never {})
+}
+
+/// The rule of [`purchase_parts`] over any buffers, so that the allocating and the fixed-capacity
+/// callers (the server, the client's order legality) are one implementation.
+fn evaluate_buy<P: RecipeItems, W: RecipeItems>(
+    item: ItemId,
+    held: P,
+    primary: Option<Attribute>,
+) -> Result<W, W::Error> {
+    let mut pool = held;
+    let mut set_aside = false;
+    // Each set aside leaves fewer items in the pool, so the run ends.
+    for _ in 0..=pool.items().len() {
+        let (wanted, spare) = evaluate_purchase::<P, W>(item, pool.clone(), primary)?;
+        if wanted.items().is_empty() {
+            pool = spare;
+            set_aside = true;
+            continue;
+        }
+        let toward_next_copy = spare.items().len() < pool.items().len();
+        return Ok(if set_aside && !toward_next_copy {
+            W::default()
+        } else {
+            wanted
+        });
+    }
+    Ok(W::default())
+}
+
 /// The existing recipe evaluator's missing components and unconsumed ownership pool.
 #[must_use]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -213,28 +254,27 @@ pub fn purchase_requirements(
     }
 }
 
-/// Fixed-capacity recipe evaluation for clients that cannot allocate per order.
+/// [`purchase_parts`] in fixed capacity, for clients that cannot allocate per order.
 /// Nothing when the caller's ownership buffer or the catalogue expansion exceeds its bound.
-pub fn bounded_purchase_requirements<const HELD: usize>(
+pub fn bounded_purchase_parts<const HELD: usize>(
     item: ItemId,
     held: &[ItemId],
     primary: Option<Attribute>,
-) -> Option<BoundedPurchaseRequirements> {
+) -> Option<BoundedPurchaseParts> {
     let mut owned = RecipeBuffer::<HELD>::default();
     for &item in held {
         RecipeItems::push(&mut owned, item).ok()?;
     }
-    let (wanted, _) =
-        evaluate_purchase::<_, RecipeBuffer<MAX_PURCHASE_TREE>>(item, owned, primary).ok()?;
-    Some(BoundedPurchaseRequirements { wanted })
+    let wanted = evaluate_buy::<_, RecipeBuffer<MAX_PURCHASE_TREE>>(item, owned, primary).ok()?;
+    Some(BoundedPurchaseParts { wanted })
 }
 
-/// The missing leaves of a purchase, in the same order as [`missing_parts`].
-pub struct BoundedPurchaseRequirements {
+/// What a buy order buys, in the order of [`purchase_parts`].
+pub struct BoundedPurchaseParts {
     wanted: RecipeBuffer<MAX_PURCHASE_TREE>,
 }
 
-impl BoundedPurchaseRequirements {
+impl BoundedPurchaseParts {
     pub fn wanted(&self) -> &[ItemId] {
         self.wanted.items()
     }
@@ -441,17 +481,16 @@ mod tests {
                 continue;
             }
             assert!(
-                super::bounded_purchase_requirements::<0>(def.id, &[], None).is_some(),
+                super::bounded_purchase_parts::<0>(def.id, &[], None).is_some(),
                 "{:?}",
                 def.id
             );
         }
-        let plan =
-            super::bounded_purchase_requirements::<1>(ItemId::BRACER, &[ItemId::GAUNTLETS], None)
-                .expect("bounded recipe");
+        let plan = super::bounded_purchase_parts::<1>(ItemId::BRACER, &[ItemId::GAUNTLETS], None)
+            .expect("bounded recipe");
         assert_eq!(plan.wanted(), &[ItemId::CIRCLET, ItemId::RECIPE_BRACER]);
         assert!(
-            super::bounded_purchase_requirements::<0>(ItemId::BRACER, &[ItemId::GAUNTLETS], None)
+            super::bounded_purchase_parts::<0>(ItemId::BRACER, &[ItemId::GAUNTLETS], None)
                 .is_none()
         );
     }

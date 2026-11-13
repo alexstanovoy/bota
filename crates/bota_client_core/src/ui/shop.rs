@@ -220,6 +220,17 @@ impl App {
         if !self.offers(item) {
             return PurchaseAvailability::NotOffered;
         }
+        if self.in_tactical_phase() {
+            // Before the match there is no hero to place a part with and no stock to run out: what is
+            // chosen waits in the queue for the starting gold.
+            return if self.missing_for(item).is_empty() {
+                PurchaseAvailability::NothingToBuy
+            } else if self.price_of(item).0 > self.spendable_gold() {
+                PurchaseAvailability::InsufficientGold
+            } else {
+                PurchaseAvailability::Available
+            };
+        }
         let (Some(view), Some(shops), Some(slot)) = (self.view(), self.statics(), self.my_slot)
         else {
             return PurchaseAvailability::NoBuyer;

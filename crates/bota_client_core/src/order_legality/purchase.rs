@@ -1,7 +1,7 @@
 use super::{OrderContext, UnknownReason, Verdict};
 use bota_core::{
-    Berth, HeldItem, PurchaseContext, bounded_purchase_requirements, item_def,
-    place_shop_purchase_into, purchase_pool_iter, purchase_stock_available,
+    Berth, HeldItem, PurchaseContext, bounded_purchase_parts, item_def, place_shop_purchase_into,
+    purchase_pool_iter, purchase_stock_available,
 };
 use bota_proto::{ItemId, ItemView, RejectReason};
 
@@ -32,11 +32,9 @@ impl OrderContext<'_> {
             length += 1;
         }
         let primary = bota_core::hero_def(self.player.hero).and_then(|hero| hero.unit.primary);
-        let Some(plan) = bounded_purchase_requirements::<{ crate::OWN_ITEM_SLOTS }>(
-            item,
-            &held[..length],
-            primary,
-        ) else {
+        let Some(plan) =
+            bounded_purchase_parts::<{ crate::OWN_ITEM_SLOTS }>(item, &held[..length], primary)
+        else {
             return Verdict::Unknown(UnknownReason::MalformedView);
         };
         let parts = plan.wanted();

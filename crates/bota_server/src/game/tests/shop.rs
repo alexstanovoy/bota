@@ -685,6 +685,158 @@ fn buying_a_built_item_a_second_time_buys_its_parts_again() {
     );
 }
 
+/// Where spare parts of a build wait while the hero is far from its shop.
+#[derive(Clone, Copy, Debug)]
+enum Spare {
+    Bag,
+    Backpack,
+    Courier,
+}
+
+/// A hero far from every shop holding `spares` copies of `part` in `place`.
+fn far_hero_holding(part: ItemId, spares: usize, place: Spare) -> (World, Entity) {
+    let (mut world, hero) = a_hero_with_gold(10_000);
+    world.transform.get_mut(hero).expect("standing").pos = rules::DEMO_LANE_CORNERS[0];
+    let courier = the_courier(&world);
+    for at in 0..spares {
+        let (carrier, slot) = match place {
+            Spare::Bag => (hero, at),
+            Spare::Backpack => (hero, rules::INVENTORY_SLOTS + at),
+            Spare::Courier => (courier, at),
+        };
+        world.inventory.get_mut(carrier).expect("bag").slots[slot] = Some(a_stack_of(part, 0));
+    }
+    (world, hero)
+}
+
+fn stash_count(world: &World, item: ItemId) -> usize {
+    world.seats[0]
+        .stash
+        .held()
+        .filter(|stack| stack.id == item)
+        .count()
+}
+
+/// The parts one copy of a composite asks beside the spare part the buyer already holds.
+const COMPOSITES: [(ItemId, ItemId, [ItemId; 2]); 3] = [
+    (
+        ItemId::WRAITH_BAND,
+        ItemId::CIRCLET,
+        [ItemId::SLIPPERS, ItemId::RECIPE_WRAITH_BAND],
+    ),
+    (
+        ItemId::BRACER,
+        ItemId::CIRCLET,
+        [ItemId::GAUNTLETS, ItemId::RECIPE_BRACER],
+    ),
+    (
+        ItemId::NULL_TALISMAN,
+        ItemId::CIRCLET,
+        [ItemId::MANTLE, ItemId::RECIPE_NULL_TALISMAN],
+    ),
+];
+
+/// What the client's shared order legality says of an order, as the server's validation says it:
+/// `Ok` for a legal order, the refusal for an illegal one.
+fn shared_legality(world: &World, order: &Order) -> Result<(), RejectReason> {
+    use bota_client_core::order_legality::{OrderContext, Verdict};
+    let view = world.view_full();
+    let player = view.player(SlotId(0)).expect("the buyer");
+    let verdict = OrderContext {
+        view: &view,
+        player,
+        map: world.map,
+        catalogue: world.catalogue,
+        cheats: false,
+    }
+    .check(None, *order, false);
+    match verdict {
+        Verdict::Legal => Ok(()),
+        Verdict::Illegal(reason) => Err(reason),
+        other => panic!("the shared legality could not say: {other:?}"),
+    }
+}
+
+/// Three spare parts far from the shop: each buy of the composite takes the other parts for one more
+/// copy, however the earlier copies' parts still wait apart from the spares (nothing builds
+/// until they meet), and the fourth finds nothing left to buy.
+#[test]
+fn every_copy_of_a_composite_is_bought_while_spare_parts_wait_apart_from_its_other_parts() {
+    for (item, spare, [other, recipe]) in COMPOSITES {
+        for place in [Spare::Bag, Spare::Backpack, Spare::Courier] {
+            let (mut world, _) = far_hero_holding(spare, 3, place);
+            let each = price_of(other) + price_of(recipe);
+            for copies in 1..=3usize {
+                let gold = world.seats[0].gold;
+                let order = Order::Buy { item };
+                assert_eq!(
+                    shared_legality(&world, &order),
+                    world.validate_order(SlotId(0), None, &order),
+                    "{item:?} copy {copies} from {place:?}: the client and the server disagree"
+                );
+                advance_validated(&mut world, None, Order::Buy { item });
+                assert_eq!(
+                    gold - world.seats[0].gold,
+                    each,
+                    "{item:?} copy {copies} from {place:?}"
+                );
+                assert_eq!(stash_count(&world, other), copies, "{item:?} {place:?}");
+                assert_eq!(stash_count(&world, recipe), copies, "{item:?} {place:?}");
+            }
+            assert_eq!(
+                world.validate_order(SlotId(0), None, &Order::Buy { item }),
+                Err(RejectReason::NothingToBuy),
+                "{item:?} from {place:?}: every part of three copies is already held"
+            );
+            assert_eq!(
+                shared_legality(&world, &Order::Buy { item }),
+                Err(RejectReason::NothingToBuy),
+                "{item:?} from {place:?}: the client agrees that nothing is left to buy"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_further_copy_with_spare_parts_still_needs_the_gold_of_the_missing_parts() {
+    let (mut world, hero) = far_hero_holding(ItemId::CIRCLET, 2, Spare::Bag);
+    advance_validated(
+        &mut world,
+        None,
+        Order::Buy {
+            item: ItemId::WRAITH_BAND,
+        },
+    );
+    world.seats[0].gold = price_of(ItemId::SLIPPERS) + price_of(ItemId::RECIPE_WRAITH_BAND) - 1;
+    reject_purchase_without_mutation(
+        &mut world,
+        hero,
+        ItemId::WRAITH_BAND,
+        RejectReason::NotEnoughGold,
+    );
+}
+
+/// At its shop the hero builds as it buys: each copy is whole at once.
+#[test]
+fn every_copy_of_a_composite_is_built_at_once_while_the_hero_stands_at_its_shop() {
+    let (mut world, hero) = a_hero_with_gold(10_000);
+    for at in 0..3 {
+        world.inventory.get_mut(hero).expect("bag").slots[at] =
+            Some(a_stack_of(ItemId::CIRCLET, 0));
+    }
+    for copies in 1..=3usize {
+        advance_validated(
+            &mut world,
+            None,
+            Order::Buy {
+                item: ItemId::WRAITH_BAND,
+            },
+        );
+        assert_eq!(count_of(&world, hero, ItemId::WRAITH_BAND), copies);
+        assert_eq!(count_of(&world, hero, ItemId::CIRCLET), 3 - copies);
+    }
+}
+
 fn count_of(world: &World, hero: Entity, item: ItemId) -> usize {
     world
         .inventory

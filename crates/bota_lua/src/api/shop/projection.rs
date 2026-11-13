@@ -196,7 +196,7 @@ impl Inventory {
                 .chain(&self.courier.slots)
                 .flatten(),
         );
-        let parts = bota_core::missing_parts(item, &held, self.primary);
+        let parts = bota_core::purchase_parts(item, &held, self.primary);
         let mut cost = 0i32;
         for &part in &parts {
             cost = cost.saturating_add(

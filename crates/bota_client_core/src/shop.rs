@@ -3,7 +3,7 @@
 //! server buys by.
 
 use bota_core::{
-    Berth, PurchaseCarrier, PurchaseContext, Shelf, hero_def, missing_parts, place_shop_purchase,
+    Berth, PurchaseCarrier, PurchaseContext, Shelf, hero_def, place_shop_purchase, purchase_parts,
     purchase_pool, shop_access, sold,
 };
 use bota_proto::{Attribute, ItemId, PlayerView, RejectReason, UnitKind, UnitView, WorldView};
@@ -48,10 +48,10 @@ pub fn primary_of(p: &PlayerView) -> Option<Attribute> {
     hero_def(p.hero).and_then(|hero| hero.unit.primary)
 }
 
-/// The parts of `item` a seat holding `held` still has to buy: its cheapest recipe, the one set
-/// to `primary` first among equals ([`missing_parts`]).
+/// The parts a buy order of `item` buys for a seat holding `held`: its cheapest recipe, the one set
+/// to `primary` first among equals, without the parts held ([`purchase_parts`]).
 pub fn missing_for(item: ItemId, held: &[ItemId], primary: Option<Attribute>) -> Vec<ItemId> {
-    missing_parts(item, held, primary)
+    purchase_parts(item, held, primary)
 }
 
 /// What the shop asks a seat holding `held` for one item: an item without parts costs its whole

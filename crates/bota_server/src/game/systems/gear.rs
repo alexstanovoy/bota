@@ -650,8 +650,8 @@ impl World {
     /// with the parts it lacks, each of those asked the same question in turn,
     /// so a part that is itself built is bought as its own parts. A part
     /// already waiting in the bag, the stash or on the courier is spent on the build and so is
-    /// bought no second time. Of several recipes the cheapest is bought, see
-    /// [`bota_core::missing_parts`].
+    /// bought no second time. Of several recipes the cheapest is bought, and parts waiting
+    /// apart that already make a copy are that copy, see [`bota_core::purchase_parts`].
     /// While the hero lies dead, what it carries counts as held, as in Dota.
     fn missing_parts(&self, seat: usize, unit: Option<Entity>, item: ItemId) -> Vec<ItemId> {
         let bag = unit.and_then(|unit| self.inventory.get(unit));
@@ -672,7 +672,7 @@ impl World {
             Some(unit) => self.def.get(unit).and_then(|kind| kind.0.primary),
             None => bota_core::hero_def(self.seats[seat].hero).and_then(|hero| hero.unit.primary),
         };
-        bota_core::missing_parts(item, &held, primary)
+        bota_core::purchase_parts(item, &held, primary)
     }
 
     pub fn item_def_in(&self, entity: Entity, slot: usize) -> Option<&'static ItemDef> {
