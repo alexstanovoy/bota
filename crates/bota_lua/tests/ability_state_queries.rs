@@ -58,13 +58,13 @@ fn ability_and_item_reads_follow_received_mana_cooldowns_charges_and_item_remova
                     assert(not pcall(ability[name],setmetatable({}, {__index=ability})))
                 end
                 assert(ability:GetManaCost() == 37 and ability:GetCurrentCharges() == 0)
-                assert(ability:GetCooldownTimeRemaining() == (phase == 1 and 2.5 or 0))
-                assert(ability:IsCooldownReady() == (phase ~= 1))
-                if phase <= 2 then
+                assert(ability:GetCooldownTimeRemaining() == (phase == 1 and 2.5 or (phase == 2 and 1/30 or 0)))
+                assert(ability:IsCooldownReady() == (phase >= 3))
+                if phase <= 3 then
                     assert(item:GetManaCost() == 19)
                     assert(item:GetCurrentCharges() == (phase == 1 and 7 or 2))
-                    assert(item:GetCooldownTimeRemaining() == (phase == 1 and 1.5 or 0))
-                    assert(item:IsCooldownReady() == (phase == 2))
+                    assert(item:GetCooldownTimeRemaining() == (phase == 1 and 1.5 or (phase == 2 and 1/30 or 0)))
+                    assert(item:IsCooldownReady() == (phase >= 3))
                 else
                     assert(GetBot():GetItemInSlot(0) == nil and item:IsNull())
                     for _, name in ipairs({'GetManaCost','GetCooldownTimeRemaining','IsCooldownReady','GetCurrentCharges'}) do
@@ -82,8 +82,8 @@ fn ability_and_item_reads_follow_received_mana_cooldowns_charges_and_item_remova
             source.as_bytes(),
         )
         .expect("script");
-        for phase in 1..=4 {
-            view.tick += if phase == 4 { 481 } else { 1 };
+        for phase in 1..=5 {
+            view.tick += if phase == 5 { 481 } else { 1 };
             let unit = view
                 .units
                 .iter_mut()
@@ -91,16 +91,24 @@ fn ability_and_item_reads_follow_received_mana_cooldowns_charges_and_item_remova
                 .expect("hero");
             unit.abilities[0].level = 1;
             unit.abilities[0].mana_cost = 37;
-            unit.abilities[0].cooldown_left = if phase == 1 { 75 } else { 0 };
-            if phase < 3 {
+            unit.abilities[0].cooldown_left = match phase {
+                1 => 75,
+                2 => 1,
+                _ => 0,
+            };
+            if phase < 4 {
                 let item = unit.items[0].as_mut().expect("tango");
                 item.mana_cost = 19;
-                item.cooldown_left = if phase == 1 { 45 } else { 0 };
+                item.cooldown_left = match phase {
+                    1 => 45,
+                    2 => 1,
+                    _ => 0,
+                };
                 item.charges = Some(if phase == 1 { 7 } else { 2 });
             } else {
                 unit.items[0] = None;
             }
-            if phase == 4 {
+            if phase == 5 {
                 let kit = bota_proto::Kit {
                     abilities: unit.abilities.clone(),
                     items: unit.items.clone(),
@@ -132,7 +140,7 @@ fn ability_and_item_reads_follow_received_mana_cooldowns_charges_and_item_remova
                     &mut (),
                 )
                 .expect("events");
-            if phase == 4 {
+            if phase == 5 {
                 assert!(sessions[index].entity(own).is_none());
             }
             let turn = lua.think(&sessions[index]).expect("think");
