@@ -13,11 +13,13 @@ pub(super) fn install(lua: &mut Lua, context: &ApiContext) -> Result<(), Binding
 
 fn get_location(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaError> {
     let id = context.receiver(vm, args)?;
-    let position = context.state.borrow().unit(id).map(|unit| unit.pos);
-    let value = match position {
-        Some(position) => context.vectors.location(vm, position)?,
-        None => context.vectors.value(vm, [0.0; 3])?,
-    };
+    let position = context
+        .state
+        .borrow()
+        .unit(id)
+        .map(|unit| unit.pos)
+        .ok_or_else(|| vm.error("unit is no longer known"))?;
+    let value = context.vectors.location(vm, position)?;
     vm.results(&[value])
 }
 

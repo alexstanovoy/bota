@@ -89,8 +89,13 @@ fn global_unit_lists_include_visible_units_and_drop_remembered_enemies_from_both
                     assert(#enemies == 0)
                     if phase >= 3 then
                         assert(enemy and not enemy:CanBeSeen())
-                        assert(same(enemy:GetOrigin(), enemy:GetLocation()))
-                        if phase == 4 then assert(same(enemy:GetOrigin(), Vector(0,0,0))) end
+                        if phase == 3 then assert(same(enemy:GetOrigin(), enemy:GetLocation()))
+                        else
+                            for _, name in ipairs({'GetOrigin','GetLocation'}) do
+                                local ok, reason = pcall(enemy[name],enemy)
+                                assert(not ok and string.find(tostring(reason),'unit is no longer known',1,true))
+                            end
+                        end
                     end
                 end
                 for _, unit in ipairs(GetUnitList(UNIT_LIST_ALL)) do assert(unit:CanBeSeen()) end
