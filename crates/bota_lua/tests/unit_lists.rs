@@ -107,6 +107,14 @@ fn global_unit_lists_include_visible_units_and_drop_remembered_enemies_from_both
         );
         let turn = lua.think(&sessions[index]).expect("visible enemy");
         assert_script_ran(&turn, 9318, 9416);
+        let observed_enemy = sessions[index]
+            .current()
+            .expect("view")
+            .units
+            .iter()
+            .find(|unit| unit.kind == UnitKind::Hero && unit.team == sessions[index].enemy())
+            .expect("visible enemy")
+            .id;
         let mut positions = [center; 2];
         positions[index] = bota_core::fountain_pos(sessions[index].map(), side);
         for _ in 0..1800 {
@@ -119,9 +127,103 @@ fn global_unit_lists_include_visible_units_and_drop_remembered_enemies_from_both
             !sees_enemy(&sessions[index]),
             "the enemy left this side's sight"
         );
+        assert!(
+            sessions[index].entity(observed_enemy).is_some(),
+            "the hidden enemy is still remembered"
+        );
         let turn = lua.think(&sessions[index]).expect("hidden enemy");
         assert_script_ran(&turn, 9319, 9416);
     }
+}
+
+#[test]
+fn unit_lists_classify_visible_creeps_wards_buildings_and_neutrals() {
+    use bota_core::NeutralKind;
+    use bota_core::{FILLER, MELEE_CREEP, OBSERVER_WARD, SENTRY_WARD};
+    use bota_server::game::Place;
+
+    let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let position = sessions[0].own_hero().expect("hero").pos;
+    {
+        let world = local.world_mut();
+        world.spawn_creep(
+            &MELEE_CREEP,
+            Team::Radiant,
+            position,
+            bota_core::rules::LANE_MID,
+            0,
+        );
+        world.spawn_creep(
+            &MELEE_CREEP,
+            Team::Dire,
+            position + Vec2::from_ints(100, 0),
+            bota_core::rules::LANE_MID,
+            0,
+        );
+        world.spawn_neutral(
+            NeutralKind::Kobold,
+            position + Vec2::from_ints(200, 0),
+            0,
+            0,
+        );
+        world.spawn_ward(
+            &OBSERVER_WARD,
+            (Team::Radiant, position + Vec2::from_ints(0, 100)),
+            300,
+            (None, None),
+        );
+        world.spawn_ward(
+            &SENTRY_WARD,
+            (Team::Dire, position + Vec2::from_ints(100, 100)),
+            300,
+            (None, None),
+        );
+        world.spawn_building(
+            &FILLER,
+            Team::Dire,
+            position + Vec2::from_ints(200, 100),
+            Place::Filler,
+        );
+    }
+    let streams = local.step(&[&[], &[]]).expect("project units");
+    for (session, stream) in sessions.iter_mut().zip(streams) {
+        support::fold(session, stream);
+    }
+    assert!(
+        sessions[0]
+            .current()
+            .expect("view")
+            .units
+            .iter()
+            .any(|unit| unit.kind == SENTRY_WARD.kind && unit.team == Team::Dire),
+        "the fixture reveals the enemy ward"
+    );
+    let mut lua = team(Team::Radiant, SlotId(0));
+    lua.add_script(
+        SlotId(0),
+        ScriptKind::Takeover,
+        "unit_categories",
+        br#"
+        function Think()
+            assert(#GetUnitList(UNIT_LIST_ALLIED_CREEPS) == 1)
+            assert(#GetUnitList(UNIT_LIST_ENEMY_CREEPS) == 1)
+            assert(#GetUnitList(UNIT_LIST_NEUTRAL_CREEPS) == 1)
+            assert(#GetUnitList(UNIT_LIST_ALLIED_WARDS) == 1)
+            assert(#GetUnitList(UNIT_LIST_ENEMY_WARDS) == 1)
+            local found = false
+            for _, unit in ipairs(GetUnitList(UNIT_LIST_ENEMY_BUILDINGS)) do
+                if unit:GetUnitName() == 'npc_dota_badguys_fillers' then found = true end
+            end
+            assert(found)
+            for _, unit in ipairs(GetUnitList(UNIT_LIST_ENEMIES)) do
+                assert(unit:GetTeam() == TEAM_DIRE)
+            end
+            GetBot():Action_MoveToLocation(Vector(123,456,0))
+        end
+    "#,
+    )
+    .expect("script");
+    assert_script_ran(&lua.think(&sessions[0]).expect("think"), 9339, 9672);
 }
 
 #[test]

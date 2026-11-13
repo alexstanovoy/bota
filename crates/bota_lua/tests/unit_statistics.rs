@@ -17,7 +17,11 @@ fn assert_script_ran(turn: &bota_lua::TeamTurn) {
 #[test]
 fn unit_statistics_preserve_received_whole_points_fractions_and_time_units() {
     let (_, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
-    for (index, side) in [(0, Team::Radiant), (1, Team::Dire)] {
+    for (index, side, brads, degrees) in [
+        (0, Team::Radiant, 16584, "91"),
+        (1, Team::Dire, 65535, "359"),
+        (0, Team::Radiant, 0, "0"),
+    ] {
         let slot = SlotId(index as u8);
         let mut view = sessions[index].current().expect("view").clone();
         view.tick += 1;
@@ -37,7 +41,7 @@ fn unit_statistics_preserve_received_whole_points_fractions_and_time_units() {
         unit.move_speed = Fixed::from_ratio(701, 2);
         unit.bound = Fixed::from_ratio(145, 4);
         unit.evasion = Fixed::from_ratio(1, 4);
-        unit.facing = bota_proto::Angle { brads: 16584 };
+        unit.facing = bota_proto::Angle { brads };
         unit.attributes.strength = Fixed::from_ratio(39, 2);
         unit.attributes.agility = Fixed::from_ratio(93, 4);
         unit.attributes.intelligence = Fixed::from_ratio(75, 4);
@@ -68,7 +72,7 @@ fn unit_statistics_preserve_received_whole_points_fractions_and_time_units() {
             },
         )
         .expect("team");
-        lua.add_script(slot, ScriptKind::Takeover, "received_statistics", br#"
+        lua.add_script(slot, ScriptKind::Takeover, "received_statistics", r#"
             function Think()
                 local unit = GetBot()
                 assert(unit:GetMana() == 2000000 and unit:GetMaxMana() == 2147483647)
@@ -77,7 +81,7 @@ fn unit_statistics_preserve_received_whole_points_fractions_and_time_units() {
                 assert(unit:GetAttackRange() == 601)
                 assert(unit:GetSecondsPerAttack() == 1.25)
                 assert(unit:GetCurrentMovementSpeed() == 350 and unit:GetBoundingRadius() == 36.25)
-                assert(unit:GetEvasion() == 0.25 and unit:GetFacing() == 91)
+                assert(unit:GetEvasion() == 0.25 and unit:GetFacing() == __DEGREES__)
                 assert(unit:GetPrimaryAttribute() == ATTRIBUTE_AGILITY)
                 assert(ATTRIBUTE_STRENGTH == 0 and ATTRIBUTE_AGILITY == 1 and ATTRIBUTE_INTELLECT == 2)
                 assert(unit:GetAttributeValue(ATTRIBUTE_STRENGTH) == 19)
@@ -85,7 +89,7 @@ fn unit_statistics_preserve_received_whole_points_fractions_and_time_units() {
                 assert(unit:GetAttributeValue(ATTRIBUTE_INTELLECT) == 18)
                 unit:Action_MoveToLocation(Vector(123,456,0))
             end
-        "#).expect("script");
+        "#.replace("__DEGREES__", degrees).as_bytes()).expect("script");
         let turn = lua.think(&sessions[index]).expect("think");
         assert_script_ran(&turn);
     }
