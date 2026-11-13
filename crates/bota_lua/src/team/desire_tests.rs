@@ -520,3 +520,69 @@ fn lane_getters_require_exactly_three_fuel_with_a_two_fuel_read_charge() {
         }
     }
 }
+
+#[test]
+fn multiple_team_hook_errors_keep_the_first_error_and_count_each_later_one_per_turn() {
+    let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let mut lua = team(
+        "function TeamThink() error('first team error') end function UpdatePushLaneDesires() error('push error') end function UpdateDefendLaneDesires() error('defend error') end function UpdateFarmLaneDesires() error('farm error') end function UpdateRoamDesire() error('roam error') end function UpdateRoshanDesire() error('roshan error') end",
+    );
+    for _ in 0..2 {
+        let turn = lua.think(&sessions[0]).expect("team turn");
+        assert_eq!(
+            turn.failures.len(),
+            1,
+            "only the first team error is reported"
+        );
+        assert!(
+            matches!(&turn.failures[0].error,Error::Runtime{message,..} if message.contains("first team error")),
+            "{:?}",
+            turn.failures
+        );
+        assert_eq!(
+            turn.hook_activity.suppressed_team_errors, 5,
+            "both failed lane hooks and all three later hooks count"
+        );
+        advance(&mut local, &mut sessions);
+    }
+}
+
+#[test]
+fn replacing_global_next_cannot_change_raw_lane_desire_shape_validation() {
+    let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let mut lua = team(
+        "local frame=0 function TeamThink() frame=frame+1 _G.next=function() error('global next replacement executed') end end function UpdatePushLaneDesires() if frame==2 then return {0,0.5,1,nil,0.25} end return {0,0.5,1} end function UpdateDefendLaneDesires() return {1,0.5,0} end",
+    );
+    let valid = lua
+        .think(&sessions[0])
+        .expect("valid pair with replaced next");
+    assert!(valid.failures.is_empty(), "{:?}", valid.failures);
+    assert_eq!(
+        values(lua.state.borrow().team_desires.push),
+        Some([0.0, 0.5, 1.0])
+    );
+    let replacement = lua.lua.global("next").expect("replaced global");
+    assert!(
+        matches!(lua.lua.call(replacement,&[]),Err(Error::Runtime{message,..}) if message.contains("global next replacement executed")),
+        "the global really was replaced"
+    );
+    advance(&mut local, &mut sessions);
+    let invalid = lua.think(&sessions[0]).expect("sparse extra key");
+    assert_eq!(invalid.failures.len(), 1);
+    assert!(
+        matches!(&invalid.failures[0].error,Error::Runtime{message,..} if message.contains("exactly three array entries")),
+        "{:?}",
+        invalid.failures
+    );
+    assert_eq!(
+        values(lua.state.borrow().team_desires.push),
+        Some([0.0, 0.5, 1.0])
+    );
+    advance(&mut local, &mut sessions);
+    assert!(
+        lua.think(&sessions[0])
+            .expect("recovery")
+            .failures
+            .is_empty()
+    );
+}

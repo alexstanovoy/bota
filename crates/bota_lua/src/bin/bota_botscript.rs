@@ -77,7 +77,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     let result = play_team(joined, &mut worker)?;
     println!(
-        "match_result seats={} orders={} script_failures={} retired={} script_initializations={} script_hooks={} native_hooks={} deadline_ticks={}",
+        "match_result seats={} orders={} script_failures={} retired={} script_initializations={} script_hooks={} native_hooks={} suppressed_team_errors={} deadline_ticks={}",
         result.outcomes.len(),
         result.orders_sent,
         result.script_failures,
@@ -85,6 +85,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         result.hook_activity.initializations,
         result.hook_activity.scripted,
         result.hook_activity.native,
+        result.hook_activity.suppressed_team_errors,
         worker.deadline_ticks(),
     );
     Ok(())

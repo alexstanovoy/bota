@@ -128,13 +128,17 @@ fn decide(
     match worker.think(session) {
         Ok(turn) => {
             result.hook_activity += turn.hook_activity;
-            result.script_failures += turn.failures.len() as u64;
+            result.script_failures = result
+                .script_failures
+                .saturating_add(turn.failures.len() as u64)
+                .saturating_add(turn.hook_activity.suppressed_team_errors);
             for failure in &turn.failures {
                 if failure.report {
                     eprintln!(
-                        "WARN pack=lua slot={} tick={} error={:?}",
+                        "WARN pack=lua slot={} tick={} suppressed_team_errors={} error={:?}",
                         failure.slot.0,
                         tick,
+                        turn.hook_activity.suppressed_team_errors,
                         failure.error.to_string()
                     );
                 }

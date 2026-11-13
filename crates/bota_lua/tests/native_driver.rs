@@ -169,3 +169,34 @@ fn a_retired_team_stands_through_ordinary_stop_orders() {
         "late script orders are never committed"
     );
 }
+
+#[test]
+fn process_driver_counts_all_team_hook_errors_while_reporting_the_first() {
+    let (transport, seated, _) = fixture();
+    let mut modules = ModuleBank::new(Limits::DEFAULT);
+    modules
+        .insert("bots/bot_nevermore", include_bytes!("scripts/duel.lua"))
+        .expect("takeover");
+    modules.insert("bots/team_desires",b"local frame=0 local function fail(name) if frame==1 then error(name) end end function TeamThink() frame=frame+1 fail('first team error') end function UpdatePushLaneDesires() fail('push error') end function UpdateDefendLaneDesires() fail('defend error') end function UpdateFarmLaneDesires() fail('farm error') end function UpdateRoamDesire() fail('roam error') end function UpdateRoshanDesire() fail('roshan error') end").expect("team source");
+    let mut config = NativeConfig::new(
+        Team::Radiant,
+        vec![BotSeat {
+            slot: SlotId(0),
+            hero: HeroId::SHADOW_FIEND,
+        }],
+        Keys {
+            hash: [17, 19],
+            random: 23,
+        },
+    );
+    config.think_timeout = std::time::Duration::from_secs(10);
+    let mut worker = NativeTeam::new(config, modules).expect("worker");
+    let result = play_team(vec![(transport, seated)], &mut worker).expect("driver");
+    assert_eq!(result.hook_activity.suppressed_team_errors, 5);
+    assert_eq!(
+        result.script_failures, 6,
+        "all six first-frame team errors must reach match accounting"
+    );
+    assert_eq!(worker.deadline_ticks(), 0);
+    assert!(!result.retired);
+}

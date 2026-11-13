@@ -75,10 +75,11 @@ fn run_pack(directory: &std::path::Path, runtime: Option<&std::path::Path>, team
         "conformance cannot discard late turns"
     );
     println!(
-        "pack_conformance team={team:?} ticks={ticks} orders={sent} script_failures=0 retired=false script_initializations={} script_hooks={} native_hooks={} deadline_ticks={}",
+        "pack_conformance team={team:?} ticks={ticks} orders={sent} script_failures=0 retired=false script_initializations={} script_hooks={} native_hooks={} suppressed_team_errors={} deadline_ticks={}",
         activity.initializations,
         activity.scripted,
         activity.native,
+        activity.suppressed_team_errors,
         lua.deadline_ticks()
     );
 }

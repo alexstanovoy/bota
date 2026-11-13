@@ -114,7 +114,9 @@ same fuel budget. It does not invoke table metamethods, and normalizes negative
 zero to positive zero.
 
 Every team hook is attempted even after another fails; the first error is
-reported. A team-hook error discards orders only for the first configured Lua seat, which
+reported. Later errors increment `HookActivity::suppressed_team_errors`; native
+warnings include that count and match `script_failures` counts all errors.
+A team-hook error discards orders only for the first configured Lua seat, which
 need not have wire slot zero; other configured seats still run. The desire cache
 is script decision state and is not rewound with rejected or late command
 continuations. Queries expose no other team's cache or server-only state.

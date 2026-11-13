@@ -59,18 +59,23 @@ pub struct ScriptFailure {
     pub report: bool,
 }
 
-/// Source initializations and attempted hooks; missing functions do not count.
+/// Source initializations, attempted hooks and additional team-hook errors; missing functions do not count.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct HookActivity {
     pub initializations: u64,
     pub scripted: u64,
     pub native: u64,
+    /// Additional errors after the first reported team-hook error in each turn.
+    pub suppressed_team_errors: u64,
 }
 impl std::ops::AddAssign for HookActivity {
     fn add_assign(&mut self, other: Self) {
         self.initializations = self.initializations.saturating_add(other.initializations);
         self.scripted = self.scripted.saturating_add(other.scripted);
         self.native = self.native.saturating_add(other.native);
+        self.suppressed_team_errors = self
+            .suppressed_team_errors
+            .saturating_add(other.suppressed_team_errors);
     }
 }
 impl HookActivity {
@@ -81,6 +86,9 @@ impl HookActivity {
                 .saturating_sub(previous.initializations),
             scripted: self.scripted.saturating_sub(previous.scripted),
             native: self.native.saturating_sub(previous.native),
+            suppressed_team_errors: self
+                .suppressed_team_errors
+                .saturating_sub(previous.suppressed_team_errors),
         }
     }
 }
@@ -693,26 +701,35 @@ impl LuaTeam {
         let mut first_error = self.call_hook(index, "TeamThink", &[]).err();
         let push = self.lane_desires(index, "UpdatePushLaneDesires");
         let defend = self.lane_desires(index, "UpdateDefendLaneDesires");
-        let lanes =
-            push.and_then(|push| defend.map(|defend| crate::state::TeamDesires { push, defend }));
-        if let Ok(desires) = &lanes {
-            self.state.borrow_mut().team_desires = *desires;
-        }
-        if first_error.is_none() {
-            first_error = lanes.err();
+        match (push, defend) {
+            (Ok(push), Ok(defend)) => {
+                self.state.borrow_mut().team_desires = crate::state::TeamDesires { push, defend };
+            }
+            (push, defend) => {
+                for error in [push.err(), defend.err()].into_iter().flatten() {
+                    self.record_team_error(&mut first_error, error);
+                }
+            }
         }
         for hook in [
             "UpdateFarmLaneDesires",
             "UpdateRoamDesire",
             "UpdateRoshanDesire",
         ] {
-            if let Err(error) = self.call_hook(index, hook, &[])
-                && first_error.is_none()
-            {
-                first_error = Some(error);
+            if let Err(error) = self.call_hook(index, hook, &[]) {
+                self.record_team_error(&mut first_error, error);
             }
         }
         first_error.map_or(Ok(()), Err)
+    }
+
+    fn record_team_error(&mut self, first: &mut Option<Error>, error: Error) {
+        if first.is_none() {
+            *first = Some(error);
+        } else {
+            self.hook_activity.suppressed_team_errors =
+                self.hook_activity.suppressed_team_errors.saturating_add(1);
+        }
     }
 
     fn lane_desires(

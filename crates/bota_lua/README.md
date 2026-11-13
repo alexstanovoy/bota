@@ -18,7 +18,9 @@ in TeamThink, farm, roam or Roshan hooks. If either lane hook fails or returns a
 malformed value, the previously published pair is kept for that frame; an absent
 or nil lane hook resets its own value to native policy when the pair succeeds.
 Every team hook is attempted independently, including farm, roam and Roshan after
-an earlier error. The first error is reported; a team-hook error discards only
+an earlier error. The first error is reported; later errors increment
+`HookActivity::suppressed_team_errors`, included in warnings and match totals.
+A team-hook error discards only
 the first configured Lua seat's orders (index 0,
 which need not be wire slot 0); other seats still run under the shared tick budget.
 These are script decisions, so late output does not rewind published desires with
