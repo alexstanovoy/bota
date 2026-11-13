@@ -3,6 +3,7 @@
 
 mod auxiliary;
 mod items;
+mod economy;
 pub(crate) use auxiliary::{AuxiliaryHook, install as install_auxiliary};
 
 use std::rc::Rc;

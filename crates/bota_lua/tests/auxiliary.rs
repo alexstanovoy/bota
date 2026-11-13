@@ -70,6 +70,56 @@ fn default_items_use_ready_carried_regeneration_without_repeating_its_active_eff
     assert!(!second.bots[0].orders.iter().any(|order| matches!(order.order, Order::Use { .. })));
 }
 
+#[test]
+fn missing_purchase_hooks_equip_the_bot_without_rebuying_completed_starting_goals() {
+    let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let initial = sessions[0].current().expect("view").players[0].gold.expect("own gold");
+    let mut lua = team(None);
+    let mut branch_buys = 0;
+    for tick in 0..20 {
+        let turn = lua.think(&sessions[0]).expect("turn");
+        assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+        let purchases: Vec<_> = turn.bots[0].orders.iter().filter(|order| matches!(order.order, Order::Buy { .. })).collect();
+        if tick == 0 { assert_eq!(purchases.len(), 1, "an unoverridden bot must equip itself"); }
+        branch_buys += purchases.iter().filter(|order| matches!(order.order, Order::Buy { item } if bota_core::item_by_key("item_branches") == Some(item))).count();
+        let orders: Vec<_> = turn.bots[0].orders.iter().map(|&order| sessions[0].issue(order).expect("order")).collect();
+        for (session, stream) in sessions.iter_mut().zip(local.step(&[&orders, &[]]).expect("step")) { support::fold(session, stream); }
+    }
+    assert_eq!(branch_buys, 2);
+    assert!(sessions[0].current().expect("view").players[0].gold.expect("own gold") < initial);
+    assert!(sessions[0].own_hero().expect("hero").items.iter().flatten().count() >= 2);
+}
+
+#[test]
+fn upgraded_equipment_satisfies_its_component_goals() {
+    let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let branch = bota_core::item_by_key("item_branches").expect("branch");
+    let buy = sessions[0].issue(IssuedOrder::hero(Order::Buy { item: branch })).expect("buy");
+    for (session, stream) in sessions.iter_mut().zip(local.step(&[&[buy], &[]]).expect("step")) { support::fold(session, stream); }
+    let own = sessions[0].own_hero().expect("hero");
+    let source = own.id;
+    let template = *own.items.iter().flatten().next().expect("item template");
+    let mut view = sessions[0].current().expect("view").clone();
+    view.tick += 1;
+    let tick = view.tick;
+    view.players[0].gold = Some(10000);
+    let own = view.units.iter_mut().find(|unit| unit.id == source).expect("hero");
+    own.items.fill(None);
+    for (slot, key) in ["item_branches", "item_branches", "item_wraith_band", "item_bottle", "item_power_treads"].into_iter().enumerate() {
+        let id = bota_core::item_by_key(key).expect("equipment");
+        let definition = bota_core::item_def(id).expect("definition");
+        own.items[slot] = Some(bota_proto::ItemView { id, mode: definition.mode, charges: (definition.charges > 0).then_some(definition.charges), ..template });
+    }
+    sessions[0].ingest(bota_proto::ServerMsg::Snapshot { view }, &mut ()).expect("equipment observation");
+    sessions[0].ingest(bota_proto::ServerMsg::Events { tick, events: Vec::new() }, &mut ()).expect("events");
+    let turn = team(None).think(&sessions[0]).expect("turn");
+    assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+    let wand = bota_core::item_by_key("item_magic_wand").expect("wand");
+    let boots = bota_core::item_by_key("item_boots").expect("boots");
+    assert!(turn.bots[0].orders.iter().any(|order| order.order == Order::Buy { item: wand }));
+    assert!(!turn.bots[0].orders.iter().any(|order| order.order == Order::Buy { item: boots }));
+}
+
 fn low_health_step(local: &mut bota_server::local::LocalMatch, sessions: &mut [bota_client_core::ClientSession]) {
     let source = sessions[0].own_hero().expect("hero").id;
     let mut streams = local.step(&[&[], &[]]).expect("observation step");

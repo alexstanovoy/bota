@@ -647,12 +647,15 @@ impl LuaTeam {
         if default_item {
             self.lua.call(self.default_auxiliary, &[Value::Number(f64::from(crate::default_bot::AuxiliaryHook::Item as u8))])?;
         }
-        if let Some(index) = self
+        let purchase = self
             .scripts
             .iter()
             .position(|script| script.slot == slot && script.kind == ScriptKind::ItemPurchase)
-        {
+        ;
+        if let Some(index) = purchase && self.has_hook(index, "ItemPurchaseThink")? {
             self.call_hook(index, "ItemPurchaseThink", &[])?;
+        } else if takeover.is_none() {
+            self.lua.call(self.default_auxiliary, &[Value::Number(f64::from(crate::default_bot::AuxiliaryHook::Purchase as u8))])?;
         }
         self.run_minions(slot, takeover)
     }
