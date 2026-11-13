@@ -767,3 +767,33 @@ fn the_shipped_matchmaking_rulesets_fit_lobbies_and_bound_practice() {
     assert!(practice.instant_solo);
     assert_eq!(practice.max_duration_secs, 7200);
 }
+
+#[test]
+fn named_versions_cross_the_shared_client_authentication_and_profile_contract() {
+    let env = start();
+    let first = env.bot("engine");
+    let first = first.client.me().expect("first version").clone();
+    let mut second = Account {
+        client: bota_radovid::Client::open(&env.url, &env.tls).expect("connect"),
+        log: Vec::new(),
+    };
+    let seq = second
+        .client
+        .login("engine", PASSWORD, Some("v2 (sample)".into()))
+        .expect("login");
+    let Reply::LoggedIn { me, .. } = second.reply(seq).expect("second version") else {
+        panic!("login reply")
+    };
+    assert_ne!(first.id, me.id);
+    assert_eq!(first.main_account, me.main_account);
+    assert_eq!(me.version.as_deref(), Some("v2 (sample)"));
+    let Reply::Account { account } = second
+        .ask(bota_radovid::proto::ClientMsg::Account { account: me.id })
+        .expect("profile")
+    else {
+        panic!("profile reply")
+    };
+    assert_eq!(account.nickname, "engine");
+    assert_eq!(account.version, me.version);
+    assert!(account.ratings.is_empty());
+}

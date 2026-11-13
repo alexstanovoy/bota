@@ -220,10 +220,10 @@ impl Env {
             client: Client::open(&self.url, &self.tls).expect("connect"),
             log: Vec::new(),
         };
-        let bot_version = (kind == AccountKind::Bot).then(|| "test".to_owned());
+        let version = (kind == AccountKind::Bot).then(|| "test".to_owned());
         let seq = account
             .client
-            .register(login, PASSWORD, kind, bot_version)
+            .register(login, PASSWORD, kind, version)
             .expect("register");
         account.reply(seq).expect("registered");
         account
@@ -240,7 +240,17 @@ impl Env {
             log: Vec::new(),
         };
         let seq = account.client.login(login, PASSWORD, None).expect("login");
-        match account.reply(seq).expect("authenticated") {
+        let reply = match account.reply(seq) {
+            Err(Error::VersionRequired) => {
+                let seq = account
+                    .client
+                    .login(login, PASSWORD, Some("test".into()))
+                    .expect("version login");
+                account.reply(seq)
+            }
+            other => other,
+        };
+        match reply.expect("authenticated") {
             Reply::LoggedIn { activities, .. } => activities,
             other => panic!("login reply: {other:?}"),
         }

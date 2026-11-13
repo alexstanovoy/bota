@@ -534,6 +534,8 @@ pub struct App {
     pub lobby: Lobby,
     /// Seat names from the lobby.
     pub names: Vec<(SlotId, String)>,
+    /// Optional bot identity metadata supplied by the matchmaking client.
+    player_versions: Vec<(SlotId, String)>,
     /// The stream from the lobby on, and what this client knows of the
     /// match from its start.
     seat: Seat,
@@ -630,6 +632,7 @@ impl App {
             held_item: None,
             lobby: Lobby::default(),
             names: Vec::new(),
+            player_versions: Vec::new(),
             seat: Seat::watching(SESSION_OPTIONS),
             attack_move_armed: false,
             queueing: false,
@@ -833,6 +836,28 @@ impl App {
         self.names
             .iter()
             .find(|(s, _)| *s == slot)
+            .map(|(_, name)| name.as_str())
+    }
+
+    /// Records bounded display metadata for a seat, independently of the game wire.
+    pub fn set_player_version(&mut self, slot: SlotId, version: Option<&str>) {
+        self.player_versions.retain(|(current, _)| *current != slot);
+        if usize::from(slot.0) >= bota_proto::limits::MAX_SEATS {
+            return;
+        }
+        if let Some(version) = version.filter(|name| {
+            !name.is_empty()
+                && name.len() <= 32
+                && name.bytes().all(|byte| (32..=126).contains(&byte))
+        }) {
+            self.player_versions.push((slot, version.to_owned()));
+        }
+    }
+
+    pub fn player_version(&self, slot: SlotId) -> Option<&str> {
+        self.player_versions
+            .iter()
+            .find(|(current, _)| *current == slot)
             .map(|(_, name)| name.as_str())
     }
 

@@ -114,13 +114,16 @@ impl Client {
         login: &str,
         password: &str,
         kind: AccountKind,
-        bot_version: Option<String>,
+        version: Option<String>,
     ) -> Result<u32, ClientError> {
         self.request(ClientMsg::Register {
             login: login.to_owned(),
             password: Secret::new(password),
             kind,
-            client: ClientInfo { bot_version },
+            client: ClientInfo {
+                retired_bot_version: None,
+                version,
+            },
         })
     }
 
@@ -128,12 +131,15 @@ impl Client {
         &mut self,
         login: &str,
         password: &str,
-        bot_version: Option<String>,
+        version: Option<String>,
     ) -> Result<u32, ClientError> {
         self.request(ClientMsg::Login {
             login: login.to_owned(),
             password: Secret::new(password),
-            client: ClientInfo { bot_version },
+            client: ClientInfo {
+                retired_bot_version: None,
+                version,
+            },
         })
     }
 
@@ -141,11 +147,14 @@ impl Client {
     pub fn resume(
         &mut self,
         session: SessionToken,
-        bot_version: Option<String>,
+        version: Option<String>,
     ) -> Result<u32, ClientError> {
         self.request(ClientMsg::Resume {
             session,
-            client: ClientInfo { bot_version },
+            client: ClientInfo {
+                retired_bot_version: None,
+                version,
+            },
         })
     }
 
