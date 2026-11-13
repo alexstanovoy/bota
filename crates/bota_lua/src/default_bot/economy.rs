@@ -179,10 +179,7 @@ mod tests {
         let call = support::bare_native_call_fuel();
         for budget in [call, call + 1] {
             let mut lua = Lua::new(
-                Limits {
-                    fuel_per_tick: budget,
-                    ..Limits::DEFAULT
-                },
+                Limits::DEFAULT.with_fuel_per_tick(budget),
                 Keys {
                     hash: [17, 19],
                     random: 23,

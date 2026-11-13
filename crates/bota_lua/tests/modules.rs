@@ -83,12 +83,10 @@ fn modules_share_one_team_cache_while_dofile_is_uncached_and_scopes_survive_gc()
 
 #[test]
 fn module_bank_rejects_traversal_and_source_resource_overflows() {
-    let limits = Limits {
-        module_size: 16,
-        scripts_size: 32,
-        module_count: 2,
-        ..Limits::DEFAULT
-    };
+    let limits = Limits::DEFAULT
+        .with_module_size(16)
+        .with_scripts_size(32)
+        .with_module_count(2);
     let mut modules = ModuleBank::new(limits);
     for name in ["../x", "/x", "x\\y", "x:y", ".hidden", "CON", "x/../../y"] {
         let error = modules
@@ -112,10 +110,7 @@ fn module_bank_rejects_traversal_and_source_resource_overflows() {
             .to_string()
             .contains("module count limit")
     );
-    let mut modules = ModuleBank::new(Limits {
-        module_count: 3,
-        ..limits
-    });
+    let mut modules = ModuleBank::new(limits.with_module_count(3));
     modules.insert("one", &[b' '; 16]).expect("first");
     modules.insert("two", &[b' '; 16]).expect("second");
     assert!(

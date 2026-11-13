@@ -202,10 +202,7 @@ mod tests {
     #[test]
     fn witness_allocation_failure_drops_host_data_without_borrowing_an_index() {
         let mut lua = Lua::new(
-            Limits {
-                memory: 1 << 20,
-                ..Limits::DEFAULT
-            },
+            Limits::DEFAULT.with_memory(1 << 20),
             Keys {
                 hash: [17, 19],
                 random: 23,

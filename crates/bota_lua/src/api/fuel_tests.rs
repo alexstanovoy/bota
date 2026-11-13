@@ -57,14 +57,11 @@ fn run(name: &str, fuel: u64) -> Result<Vec<Value>, luagee::Error> {
     let skill = bota_core::ability_def(body.abilities[0].id)
         .expect("skill")
         .key;
-    let limits = Limits {
-        fuel_per_tick: if metadata || active {
-            Limits::DEFAULT.fuel_per_call
-        } else {
-            fuel
-        },
-        ..Limits::DEFAULT
-    };
+    let limits = Limits::DEFAULT.with_fuel_per_tick(if metadata || active {
+        Limits::DEFAULT.fuel_per_call
+    } else {
+        fuel
+    });
     let mut lua = Lua::new(
         limits,
         Keys {

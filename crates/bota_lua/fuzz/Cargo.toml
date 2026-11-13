@@ -1,6 +1,6 @@
-# The fuzz target of the bot-script host, a workspace of its own like fuzz/ (the fuzzer's flags and libFuzzer stay out of
-# the main build) and like bota_lua itself (it needs the luagee checkout). `fuzz.sh` is the one of fuzz/, linked here: it
-# builds and runs the targets of the directory it is called from.
+# The fuzz target of the bot-script host, a workspace of its own like fuzz/: the fuzzer's flags and libFuzzer stay out of
+# the main build. `fuzz.sh` is the one of fuzz/, linked here: it builds and runs the targets of the directory it is called
+# from.
 [package]
 name = "bota_lua_fuzz"
 version = "0.0.0"
@@ -17,6 +17,7 @@ bota_client_core = { path = "../../bota_client_core" }
 bota_core = { path = "../../bota_core" }
 bota_proto = { path = "../../bota_proto" }
 bota_server = { path = "../../bota_server" }
+luagee = { version = "0.1.0", default-features = false }
 libfuzzer-sys = "0.4"
 
 [workspace]

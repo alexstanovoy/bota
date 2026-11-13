@@ -21,8 +21,6 @@ import test_groups  # noqa: E402
 CRATES, GROUPS, ROUTES = test_groups.load()
 ROUTER = test_groups.Router(CRATES, GROUPS, ROUTES)
 SERVER = "crates/bota_server/src"
-# The bot-script host needs the luagee checkout: where it is absent, its group and lint are left out (see BotscriptAbsent).
-LUA = {"lua"} if CRATES["bota_lua"].available else set()
 
 
 def groups_of(*paths):
@@ -49,7 +47,7 @@ class Routing(unittest.TestCase):
         self.assertEqual(groups_of(f"{SERVER}/game/tests/runes.rs"), {"game_objectives", "game_determinism"})
 
     def test_the_world_runs_server_groups_and_consumers_with_real_matches(self):
-        expected = {g.name for g in GROUPS if g.name.startswith(("game_", "server_"))} | {"radovid", "admitted_builds"} | LUA
+        expected = {g.name for g in GROUPS if g.name.startswith(("game_", "server_"))} | {"radovid", "admitted_builds", "lua", "gym"}
         self.assertEqual(groups_of(f"{SERVER}/game/world.rs"), expected)
 
     def test_a_proto_change_runs_everything_built_on_it(self):
@@ -74,12 +72,17 @@ class Routing(unittest.TestCase):
     def test_a_change_to_the_fuzz_targets_checks_the_fuzz_targets(self):
         self.assertTrue(test_groups.plan(ROUTER, ["fuzz/fuzz_targets/server_orders.rs"])[2])
 
+    def test_the_fuzz_crates_of_the_crates_are_planned_like_the_repositorys_own(self):
+        self.assertIn("bota_lua", test_groups.fuzz_dependencies())
+        for path in ("crates/bota_lua/fuzz/fuzz_targets/lua_binding.rs", "crates/bota_lua/src/lib.rs", "fuzz/fuzz_targets/x.rs"):
+            self.assertTrue(test_groups.plan(ROUTER, [path])[2], path)
+
     def test_a_change_the_fuzz_targets_do_not_build_on_leaves_them_alone(self):
         for path in ("DEVELOPMENT.md", "crates/bota_radovid/src/lib.rs"):
             self.assertFalse(test_groups.plan(ROUTER, [path])[2], path)
 
-    def test_a_server_change_lints_the_server_and_the_lua_match_consumer(self):
-        self.assertEqual(test_groups.plan(ROUTER, [f"{SERVER}/net/conn.rs"])[1], {"bota_server"} | ({"bota_lua"} if LUA else set()))
+    def test_a_server_change_lints_the_server_and_the_crates_that_run_real_matches(self):
+        self.assertEqual(test_groups.plan(ROUTER, [f"{SERVER}/net/conn.rs"])[1], {"bota_server", "bota_lua", "bota_gym"})
 
     def test_the_test_certificate_runs_every_group_that_reads_it(self):
         self.assertTrue({"server_net", "server_launch", "server_transport"} <= groups_of("crates/bota_server/tests/tls/cert.pem"))
@@ -93,62 +96,6 @@ class Routing(unittest.TestCase):
         self.assertTrue(test_groups.glob_regex("tools/*.sh").match("tools/gate.sh"))
         self.assertFalse(test_groups.glob_regex("tools/*.sh").match("tools/import_items/x.sh"))
         self.assertTrue(test_groups.glob_regex("**.md").match("crates/bota_core/README.md"))
-
-
-class BotscriptAbsent(unittest.TestCase):
-    """Where the luagee checkout bota_lua needs is absent (patched, so these hold with the checkout too)."""
-
-    def load_without_luagee(self):
-        stderr = io.StringIO()
-        with patch.object(test_groups, "present", lambda requires: not requires), redirect_stderr(stderr):
-            crates, groups, routes = test_groups.load()
-        return test_groups.Router(crates, groups, routes), stderr.getvalue()
-
-    def test_the_lua_group_is_left_out_and_said_so(self):
-        router, notice = self.load_without_luagee()
-        self.assertNotIn("lua", router.names)
-        self.assertIn("group lua is not covered here: bota_lua needs ../luagee/crates/luagee/Cargo.toml, which is absent", notice)
-
-    def test_a_change_to_the_server_lints_only_the_workspace(self):
-        router, _ = self.load_without_luagee()
-        self.assertEqual(test_groups.plan(router, [f"{SERVER}/net/conn.rs"])[1], {"bota_server"})
-
-    def test_a_change_to_bota_lua_runs_and_lints_nothing(self):
-        router, _ = self.load_without_luagee()
-        self.assertEqual(test_groups.plan(router, ["crates/bota_lua/src/lib.rs"]), (set(), set(), False))
-
-    def test_the_whole_plan_leaves_bota_lua_out(self):
-        router, _ = self.load_without_luagee()
-        groups, lint, _ = test_groups.plan(router, None)
-        self.assertNotIn("lua", groups)
-        self.assertNotIn("bota_lua", lint)
-
-    def test_a_change_to_a_file_of_the_absent_crate_is_refused_rather_than_left_unchecked(self):
-        router, _ = self.load_without_luagee()
-        with self.assertRaises(test_groups.Failure) as raised:
-            test_groups.plan_report(router, "a" * 40, ["crates/bota_lua/src/lib.rs"])
-        self.assertEqual(str(raised.exception), "crates/bota_lua/src/lib.rs changed, but bota_lua cannot be built here: "
-                         "../luagee/crates/luagee/Cargo.toml is missing. Check out that repository beside this one so that the change can be checked")
-
-    def test_a_document_of_the_absent_crate_is_no_code_to_check(self):
-        router, _ = self.load_without_luagee()
-        self.assertEqual(test_groups.plan_report(router, "a" * 40, ["crates/bota_lua/README.md"])[1:4], ["crates", "fuzz 0", "uncovered bota_lua"])
-
-    def test_the_plan_names_the_absent_crate_and_its_scope_is_never_full(self):
-        router, _ = self.load_without_luagee()
-        report = test_groups.plan_report(router, "a" * 40, ["tools/gate.sh"])
-        self.assertIn("uncovered bota_lua", report)
-        self.assertEqual(report[-1], "scope full-without-bota_lua")
-
-    def test_the_tests_of_the_absent_crate_are_no_unrun_tests(self):
-        router, _ = self.load_without_luagee()
-        self.assertEqual(test_groups.check_markers(router, test_groups.files()), [])
-
-    def test_a_machine_that_must_cover_everything_fails_on_the_missing_checkout(self):
-        with patch.object(test_groups, "present", lambda requires: not requires), patch.dict(os.environ, {test_groups.REQUIRE_ALL: "1"}):
-            with self.assertRaises(test_groups.Failure) as raised:
-                test_groups.load()
-        self.assertEqual(str(raised.exception), "crate bota_lua needs ../luagee/crates/luagee/Cargo.toml, which is absent, and TEST_GROUPS_REQUIRE_ALL is set")
 
 
 class Selection(unittest.TestCase):
@@ -172,7 +119,7 @@ class Selection(unittest.TestCase):
         self.assertEqual(test_groups.scope_of(None, ["core"], [], False), "full")
 
     def test_a_change_that_selects_everything_is_stamped_as_full(self):
-        self.assertEqual(test_groups.plan_report(ROUTER, "a" * 40, ["tools/gate.sh"])[-1], "scope full" if LUA else "scope full-without-bota_lua")
+        self.assertEqual(test_groups.plan_report(ROUTER, "a" * 40, ["tools/gate.sh"])[-1], "scope full")
         self.assertTrue(test_groups.plan_report(ROUTER, "a" * 40, [f"{SERVER}/net/conn.rs"])[-1].startswith("scope affected-"))
 
 
@@ -596,14 +543,6 @@ class Guards(unittest.TestCase):
 
     def test_this_repository_has_no_test_where_no_group_runs(self):
         self.assertEqual(test_groups.check_markers(ROUTER, test_groups.files()), [])
-
-    def test_bota_lua_repeats_the_workspace_settings_it_cannot_inherit(self):
-        root = tomllib.loads((test_groups.ROOT / "Cargo.toml").read_text())
-        lua = tomllib.loads((test_groups.ROOT / "crates/bota_lua/Cargo.toml").read_text())
-        self.assertEqual(lua["profile"], root["profile"])
-        self.assertEqual(lua["workspace"]["lints"], root["workspace"]["lints"])
-        for key, value in lua["workspace"]["package"].items():
-            self.assertEqual(value, root["workspace"]["package"][key], f"workspace.package.{key}")
 
     def test_this_repository_has_no_unlistable_target(self):
         self.assertEqual(test_groups.check_harnesses(CRATES, GROUPS, test_groups.files()), [])

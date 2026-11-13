@@ -226,11 +226,11 @@ fn crowd_query(limits: Limits) -> LuaTeam {
 #[test]
 fn forty_creeps_allow_an_aoe_query_and_following_orders_with_native_fuel() {
     let session = creep_crowd_session(40);
-    let mut lua = crowd_query(Limits {
-        fuel_per_call: 125_000,
-        fuel_per_tick: 500_000,
-        ..Limits::DEFAULT
-    });
+    let mut lua = crowd_query(
+        Limits::DEFAULT
+            .with_fuel_per_call(125_000)
+            .with_fuel_per_tick(500_000),
+    );
     let turn = lua.think(&session).expect("think");
     assert!(turn.failures.is_empty(), "{:?}", turn.failures);
     assert_eq!(
@@ -243,11 +243,11 @@ fn forty_creeps_allow_an_aoe_query_and_following_orders_with_native_fuel() {
 #[test]
 fn an_aoe_query_still_exhausts_a_small_budget_and_discards_the_whole_outbox() {
     let session = creep_crowd_session(160);
-    let mut lua = crowd_query(Limits {
-        fuel_per_call: 2_000,
-        fuel_per_tick: 10_000,
-        ..Limits::DEFAULT
-    });
+    let mut lua = crowd_query(
+        Limits::DEFAULT
+            .with_fuel_per_call(2_000)
+            .with_fuel_per_tick(10_000),
+    );
     let turn = lua.think(&session).expect("think");
     assert_eq!(turn.failures.len(), 1);
     assert!(

@@ -1071,7 +1071,9 @@ fn truncate_error(error: &mut Error) {
             truncate(chunk, 256);
             truncate(message, MAX_DIAGNOSTIC_BYTES);
         }
-        Error::Limit(_) => {}
+        // A limit, a refusal of the limits, or a kind of error this host does not know yet (the interpreter's errors are
+        // non-exhaustive): short, fixed messages, nothing to cut.
+        _ => {}
     }
 }
 

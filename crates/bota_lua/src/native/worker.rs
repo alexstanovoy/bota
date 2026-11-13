@@ -10,11 +10,9 @@ use std::time::{Duration, Instant};
 const MAX_CONSECUTIVE_LATE_TICKS: u8 = 3;
 // At the measured ~13ns/fuel, 600k leaves over four times the execution margin
 // inside 33ms, including snapshot copying, collection, and scheduling jitter.
-const NATIVE_LIMITS: Limits = Limits {
-    fuel_per_call: 125_000,
-    fuel_per_tick: 600_000,
-    ..Limits::DEFAULT
-};
+const NATIVE_LIMITS: Limits = Limits::DEFAULT
+    .with_fuel_per_call(125_000)
+    .with_fuel_per_tick(600_000);
 
 #[derive(Clone, Debug)]
 pub struct NativeConfig {

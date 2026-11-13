@@ -109,11 +109,11 @@ fn takeover_runs_team_and_auxiliary_hooks_without_running_modes() {
 #[test]
 fn sparse_fuel_failures_warn_at_most_once_per_thirty_ticks() {
     let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
-    let mut lua = team(Limits {
-        fuel_per_call: 500,
-        fuel_per_tick: 10_000,
-        ..Limits::DEFAULT
-    });
+    let mut lua = team(
+        Limits::DEFAULT
+            .with_fuel_per_call(500)
+            .with_fuel_per_tick(10_000),
+    );
     lua.add_script(SlotId(0), ScriptKind::Takeover, "sparse_spin", b"local calls = 0 function Think() calls = calls + 1 if calls%20 == 1 then while true do end end end").expect("script");
     let mut warnings = Vec::new();
     for tick in 0..41 {

@@ -82,11 +82,9 @@ fn fuel_exhaustion_discards_orders_and_counts_without_stalling_other_seats() {
     let (_, sessions) = support::local(&[Team::Radiant, Team::Dire, Team::Radiant]);
     let mut lua = team(
         &[0, 2],
-        Limits {
-            fuel_per_call: 500,
-            fuel_per_tick: 10_000,
-            ..Limits::DEFAULT
-        },
+        Limits::DEFAULT
+            .with_fuel_per_call(500)
+            .with_fuel_per_tick(10_000),
     );
     lua.add_script(
         SlotId(0),

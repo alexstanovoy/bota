@@ -59,8 +59,7 @@ turn was accepted; discarded host continuations, including attack-once completio
 are restored before computing that request. Lua script globals are not rewound.
 Native defaults are 125,000 fuel per call and 600,000
 per team tick, leaving margin inside the deadline under load. Native interpreter limits may
-only reduce the defaults. Active and retiring workers share a process-wide limit
-of 32; cleanup does not wait on timed-out work.
+only reduce the defaults.
 
 Native directory preloading requires Linux `openat2` and procfs. It pins objects
 before classification, rejects symlinks/submounts/nonregular files and reads sources
@@ -71,20 +70,19 @@ runtime-source root. Diagnostics use logical module names.
 
 ## Building and testing
 
-`bota_lua` is a workspace of its own, outside the bota workspace: it builds on `luagee`, which must be checked out
-beside the bota repository (`../luagee`, relative to the repository root), and the bota workspace builds without it.
-Run these from the bota repository root; the build output goes to `crates/bota_lua/target`.
+`bota_lua` is a member of the bota workspace, outside the default members like `bota_radovid` and `bota_gym` (a plain
+`cargo build` does not compile the interpreter), and builds on `luagee`, the Lua interpreter, from crates.io. Run these from
+the bota repository root:
 
 ```sh
-cargo build --release --manifest-path crates/bota_lua/Cargo.toml --features native      # the bota_botscript binary
-cargo test --profile test-release --manifest-path crates/bota_lua/Cargo.toml --features native
-cargo clippy --manifest-path crates/bota_lua/Cargo.toml --all-targets --all-features -- -D warnings
+cargo build --release -p bota_lua --features native      # the bota_botscript binary
+cargo test --profile test-release -p bota_lua --features native
+cargo clippy -p bota_lua --all-targets --all-features -- -D warnings
 ```
 
-`tools/precheck.sh` and `tools/gate.sh` cover it as well (clippy, the wasm check, the fuzz target, `cargo deny`, fmt and
-the `lua` test group) wherever the luagee checkout is present.
+`tools/precheck.sh` and `tools/gate.sh` cover it as well (clippy, the wasm check, the fuzz target and the `lua` test group).
 
-Run `bota_botscript` (`crates/bota_lua/target/release/bota_botscript`) with `--scripts DIR --team radiant`.
+Run `bota_botscript` (`target/release/bota_botscript`) with `--scripts DIR --team radiant`.
 Options include `--runtime-scripts DIR`, `--address HOST:PORT`, `--hero KEY` and
 `--think-ms N`. `--selection fixed` uses the configured hero without loading draft hooks;
 the default `--selection pack` lets draft hooks choose and uses `--hero` as a fallback.

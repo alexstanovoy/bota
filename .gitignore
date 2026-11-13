@@ -3,4 +3,3 @@
 *.pid
 /temp/
 __pycache__/
-/crates/bota_lua/target/

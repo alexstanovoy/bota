@@ -85,15 +85,9 @@ fn source_reader_refuses_unsafe_sources_with_relative_diagnostics() {
             .expect("fifo"),
             _ => std::fs::write(&file, [b' '; 17]).expect("oversize"),
         }
-        let error = bota_lua::native::load_modules(
-            pack.path(),
-            None,
-            Limits {
-                module_size: 16,
-                ..Limits::DEFAULT
-            },
-        )
-        .expect_err("refused file");
+        let error =
+            bota_lua::native::load_modules(pack.path(), None, Limits::DEFAULT.with_module_size(16))
+                .expect_err("refused file");
         let message = error.to_string();
         assert!(!message.contains(pack.path().to_str().expect("fixture name")));
         assert!(!message.contains(outside.path().to_str().expect("fixture name")));

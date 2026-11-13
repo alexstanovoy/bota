@@ -41,10 +41,7 @@ if arguments[0] == "plan":
     print("groups", os.environ.get("FLOW_GROUPS", "core"))
     print("crates", os.environ.get("FLOW_CRATES", ""))
     print("fuzz", os.environ.get("FLOW_FUZZ", "0"))
-    print("uncovered", os.environ.get("FLOW_UNCOVERED", ""))
     print("scope", scope)
-elif arguments[0] == "available":
-    print(os.environ.get("FLOW_AVAILABLE", ""))
 elif arguments[0] == "check" and os.environ.get("FLOW_CHECK_FAILS"):
     sys.exit("test-groups: a test in no group")
 elif arguments[0] == "run" and os.environ.get("FLOW_MUTATES"):
@@ -68,7 +65,7 @@ class GateFlow(unittest.TestCase):
         self.write("tools/test_groups.py", GROUPS)
         self.write("tools/ignored_audit.sh", "#!/bin/sh\n", executable=True)
         self.write("fuzz/fuzz.sh", '#!/bin/sh\necho "fuzz.sh $*" >> "$FLOW_TRACE"\n[ -z "$FLOW_FUZZ_FAILS" ]\n', executable=True)
-        self.write("crates/bota_lua/fuzz/fuzz.sh", '#!/bin/sh\necho "lua-fuzz.sh $*" >> "$FLOW_TRACE"\n', executable=True)
+        self.write("crates/bota_lua/fuzz/fuzz.sh", '#!/bin/sh\necho "lua-fuzz.sh $*" >> "$FLOW_TRACE"\n[ -z "$FLOW_LUA_FUZZ_FAILS" ]\n', executable=True)
         self.write("tools/import_items/src/main.rs", "fn main() {}\n")
         self.write("crates/sample/src/lib.rs", "fn sample() {}\n")
         self.write(".gitignore", "/temp/\n")
@@ -190,44 +187,30 @@ class GateFlow(unittest.TestCase):
     def traced(self, prefix):
         return [line for line in self.trace.read_text().splitlines() if line.startswith(prefix)]
 
-    def test_the_bot_script_host_is_checked_with_its_own_manifest_where_the_plan_names_it(self):
-        self.passes("precheck", FLOW_CRATES="bota_core bota_lua")
+    def test_every_fuzz_crate_compiles_when_the_plan_says_so_the_bot_script_hosts_too(self):
+        self.passes("precheck", FLOW_FUZZ="1")
+        self.assertEqual(self.fuzz_checks(), ["fuzz.sh check"])
         self.assertEqual(self.traced("lua-fuzz.sh"), ["lua-fuzz.sh check"])
-        self.assertIn("cargo clippy --manifest-path crates/bota_lua/Cargo.toml --all-targets --all-features -- -D warnings",
+
+    def test_a_fuzz_crate_of_a_crate_that_does_not_compile_fails_the_precheck_and_the_gate(self):
+        self.refused("precheck", 1, "PRECHECK-FAIL fuzz-check-bota_lua", FLOW_FUZZ="1", FLOW_LUA_FUZZ_FAILS="1")
+        self.passes("precheck", FLOW_FUZZ="1")
+        self.refused("gate", 1, "GATE-FAIL fuzz-check-bota_lua", FLOW_FUZZ="1", FLOW_LUA_FUZZ_FAILS="1")
+
+    def test_the_bot_script_host_is_checked_with_all_its_features_where_the_plan_names_it(self):
+        self.passes("precheck", FLOW_CRATES="bota_core bota_lua")
+        self.assertIn("cargo clippy -p bota_lua --all-targets --all-features -- -D warnings",
                       self.traced("cargo clippy"))
         self.assertIn("cargo clippy -p bota_core --all-targets -- -D warnings", self.traced("cargo clippy"))
 
     def test_the_bot_script_host_is_left_out_of_the_workspace_clippy_run(self):
         self.passes("precheck", FLOW_CRATES="bota_lua")
-        self.assertEqual(self.traced("cargo clippy -p"), [])
+        self.assertNotIn("cargo clippy -p bota_lua --all-targets -- -D warnings", self.traced("cargo clippy"))
 
     def test_the_bot_script_host_is_left_alone_where_the_plan_does_not_name_it(self):
         self.passes("precheck", FLOW_CRATES="bota_core")
         self.assertEqual(self.traced("lua-fuzz.sh"), [])
         self.assertFalse([line for line in self.traced("cargo") if "bota_lua" in line])
-
-    def test_the_gate_denies_and_formats_the_bot_script_host_where_its_checkout_is_and_not_otherwise(self):
-        self.passes("precheck", FLOW_AVAILABLE="bota_lua")
-        self.passes("gate", FLOW_AVAILABLE="bota_lua")
-        self.assertIn("cargo deny --config deny.toml --manifest-path crates/bota_lua/Cargo.toml check", self.traced("cargo deny"))
-        self.assertIn("cargo fmt --manifest-path crates/bota_lua/Cargo.toml --all --check", self.traced("cargo fmt"))
-        self.trace.write_text("")
-        gate = self.passes("gate", GATE_AGAIN="1", GATE_PRECHECKED="1").stdout
-        self.assertIn("deny-lua: not affected (no luagee checkout)", gate)
-        self.assertIn("fmt-lua: not affected (no luagee checkout)", gate)
-        self.assertEqual([line for line in self.traced("cargo") if "bota_lua" in line], [])
-
-    def test_the_precheck_and_the_gate_name_what_is_not_covered_here(self):
-        precheck = self.passes("precheck", FLOW_UNCOVERED="bota_lua").stdout
-        self.assertIn("PRECHECK-OK (", precheck)
-        self.assertRegex(precheck, r"PRECHECK-OK \(\d+ s; not covered: bota_lua\)")
-        self.assertIn("precheck: NOT COVERED here: bota_lua", precheck)
-        gate = self.passes("gate", FLOW_UNCOVERED="bota_lua").stdout
-        self.assertIn("GATE-OK (affected: 1 groups; not covered: bota_lua)", gate)
-        self.assertIn("gate: NOT COVERED here: bota_lua", gate)
-
-    def test_nothing_is_said_about_coverage_where_everything_is_covered(self):
-        self.assertNotIn("not covered", self.passes("precheck").stdout.lower())
 
     def test_a_failing_group_check_fails_the_gate(self):
         self.passes("precheck")

@@ -11,10 +11,7 @@ fn fixture(budget: u64) -> LuaTeam {
             slot: SlotId(0),
             hero: HeroId::SHADOW_FIEND,
         }],
-        Limits {
-            fuel_per_tick: budget,
-            ..Limits::DEFAULT
-        },
+        Limits::DEFAULT.with_fuel_per_tick(budget),
         Keys {
             hash: [17, 19],
             random: 23,

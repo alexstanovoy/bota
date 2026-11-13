@@ -207,11 +207,9 @@ fn failed_push_keeps_an_empty_initial_pair_but_does_not_skip_valid_defend() {
         );
         let mut lua = team_with_limits(
             &source,
-            Limits {
-                fuel_per_call: 10_000,
-                fuel_per_tick: 500_000,
-                ..Limits::DEFAULT
-            },
+            Limits::DEFAULT
+                .with_fuel_per_call(10_000)
+                .with_fuel_per_tick(500_000),
         );
         let failed = lua.think(&sessions[0]).expect("first-frame failure");
         assert_eq!(failed.failures.len(), 1, "{failure}");
@@ -418,11 +416,9 @@ fn unrelated_team_think_call_fuel_exhaustion_does_not_freeze_lane_pairs() {
     let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
     let mut lua = team_with_limits(
         "local frame=0 function TeamThink() while true do end end function UpdatePushLaneDesires() frame=frame+1 return {frame*0.125,0,1} end function UpdateDefendLaneDesires() return {1,0,0.5} end",
-        Limits {
-            fuel_per_call: 10_000,
-            fuel_per_tick: 500_000,
-            ..Limits::DEFAULT
-        },
+        Limits::DEFAULT
+            .with_fuel_per_call(10_000)
+            .with_fuel_per_tick(500_000),
     );
     for expected in [0.125, 0.25] {
         let turn = lua.think(&sessions[0]).expect("fuel-limited team hook");
@@ -487,10 +483,7 @@ fn lane_getters_require_exactly_the_bare_call_and_a_two_fuel_read_charge() {
                     slot: SlotId(0),
                     hero: HeroId::SHADOW_FIEND,
                 }],
-                Limits {
-                    fuel_per_tick: budget,
-                    ..Limits::DEFAULT
-                },
+                Limits::DEFAULT.with_fuel_per_tick(budget),
                 Keys {
                     hash: [17, 19],
                     random: 23,

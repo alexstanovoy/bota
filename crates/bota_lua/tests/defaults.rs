@@ -328,11 +328,9 @@ fn an_empty_think_is_an_override_and_full_takeovers_receive_no_default_actions()
 
 #[test]
 fn default_work_uses_the_interpreters_tick_fuel_and_discards_its_orders_on_exhaustion() {
-    let limits = Limits {
-        fuel_per_call: 2000,
-        fuel_per_tick: 8,
-        ..Limits::DEFAULT
-    };
+    let limits = Limits::DEFAULT
+        .with_fuel_per_call(2000)
+        .with_fuel_per_tick(8);
     let mut lua = LuaTeam::new(
         Team::Radiant,
         &[BotSeat {
@@ -432,11 +430,9 @@ fn a_full_takeover_does_not_load_unused_mode_sources() {
 
 #[test]
 fn lazy_mode_setup_preserves_the_active_turn_fuel_budget() {
-    let limits = Limits {
-        fuel_per_call: 4000,
-        fuel_per_tick: 1500,
-        ..Limits::DEFAULT
-    };
+    let limits = Limits::DEFAULT
+        .with_fuel_per_call(4000)
+        .with_fuel_per_tick(1500);
     let mut modules = ModuleBank::new(limits);
     modules
         .insert(

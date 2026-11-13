@@ -42,18 +42,17 @@ fuzz_target!(|data: &[u8]| {
     if data.len() < 32 || data.len() > 8192 {
         return;
     }
-    let limits = Limits {
-        fuel_per_call: 20_000,
-        fuel_per_tick: 80_000,
-        memory: 32 << 20,
-        string_length: 4096,
-        module_size: 8192,
-        scripts_size: 32768,
-        module_count: 64,
-        syntax_depth: 32,
-        pattern_depth: 32,
-        call_depth: 256,
-    };
+    let limits = Limits::DEFAULT
+        .with_fuel_per_call(20_000)
+        .with_fuel_per_tick(80_000)
+        .with_memory(32 << 20)
+        .with_string_length(4096)
+        .with_module_size(8192)
+        .with_scripts_size(32768)
+        .with_module_count(64)
+        .with_syntax_depth(32)
+        .with_pattern_depth(32)
+        .with_call_depth(256);
     let mut lua = LuaTeam::new(
         Team::Radiant,
         &[BotSeat {

@@ -8,17 +8,12 @@
 # its files run, and the crates to lint (the changed ones and every crate building on them). A step the change cannot affect
 # is named with the reason; none is left out quietly.
 # Steps: ignored-audit (every #[ignore]d test has a step that runs it), test-groups (every test in exactly one group, every
-# file routed, at most 30 groups), fuzz-check (the fuzz targets compile), clippy, clippy-radovid, clippy-lua, fuzz-lua,
-# clippy-ui, wasm, wasm-lua, wasm-radovid, wasm-web, test (the groups: their tests in profile test-release, bota_proto as the product builds it,
+# file routed, at most 30 groups), fuzz-check and fuzz-check-NAME (the fuzz targets of every fuzz crate compile: fuzz/ and crates/*/fuzz/), clippy,
+# clippy-radovid, clippy-lua, clippy-ui, wasm, wasm-lua, wasm-radovid, wasm-web, test (the groups: their tests in profile test-release, bota_proto as the product builds it,
 # bota_radovid's end-to-end tests against the release bota_server, the dummy bench's digest checks, the item importer's
-# checks against a Dota 2 install, which must be there when they run), deny, deny-lua, import-clippy, then fmt, fmt-lua and
+# checks against a Dota 2 install, which must be there when they run), deny, import-clippy, then fmt and
 # import-fmt (last: they change no code).
-# The bot-script host (crates/bota_lua: clippy-lua, fuzz-lua, wasm-lua, deny-lua, fmt-lua and the test group lua) needs the
-# luagee checkout beside this repository and is a workspace of its own. Without that checkout the gate leaves it out and says
-# so ("NOT COVERED", and in GATE-OK), but refuses a change to its files; TEST_GROUPS_REQUIRE_ALL=1 makes a missing checkout
-# a failure for every change, for the machines that must cover it.
 # Environment:
-#   TEST_GROUPS_REQUIRE_ALL=1  fail where the luagee checkout is absent instead of leaving the bot-script host out
 #   GATE_FULL=1              everything (a full pass also stands for the affected one)
 #   GATE_BASE=REV            what the change is measured against (default origin/main, main without an origin)
 #   GATE_STEP_LOG=FILE       append the seconds each step took to FILE (tab separated)
@@ -47,8 +42,6 @@ groups=$(sed -n 's/^groups *//p' <<< "$plan")
 crates=$(sed -n 's/^crates *//p' <<< "$plan")
 fuzz=$(sed -n 's/^fuzz //p' <<< "$plan")
 scope=$(sed -n 's/^scope //p' <<< "$plan")
-uncovered=$(sed -n 's/^uncovered *//p' <<< "$plan") # crates whose required checkout is absent: nothing here covers them
-optional=$(python3 tools/test_groups.py available) # the crates of their own whose sibling checkouts are here (bota_lua)
 # The gate confirms; the precheck finds. It starts only on a tree tools/precheck.sh has passed with the same selection (or
 # in full), and not again on a tree that already passed (formatting is left out of both; a full pass stands for an
 # affected one too). A stamp names the tree and the selection: what it was compared with and what that selected.
@@ -67,12 +60,11 @@ if [ "${GATE_AGAIN:-0}" != 1 ] && [ -n "$passed" ]; then
     exit 3
 fi
 if [ "$mode" = gate ] && only_docs_changed "$base"; then
-    echo "GATE-OK (documents only: nothing to confirm${uncovered:+; not covered: $uncovered})"
+    echo "GATE-OK (documents only: nothing to confirm)"
     stamp_put "$key" "$mode"
     exit 0
 fi
 echo "gate: $what ($selection): groups ${groups:-none}; crates ${crates:-none}"
-[ -z "$uncovered" ] || echo "gate: NOT COVERED here: $uncovered (a checkout they need is absent; the change does not touch their files)"
 skip=" ${GATE_SKIP:-} "
 # leaving anything out, even a step this change does not run or one that does not exist, is not a pass
 skipped=0
@@ -131,14 +123,12 @@ fi
 # shellcheck disable=SC2086
 step_if '[ -n "$groups" ]' "no test group" test python3 tools/test_groups.py run $groups
 step deny cargo deny check
-step_if 'has "$optional" bota_lua' "no luagee checkout" deny-lua cargo deny --config deny.toml --manifest-path "$botscript" check
 
 # The importer reads the install with heatel, a checkout beside this one.
 importer=(--manifest-path tools/import_items/Cargo.toml)
 step_if 'has "$groups" import_items' "group import_items does not run" import-clippy cargo clippy "${importer[@]}" --all-targets -- -D warnings
 # Formatting changes no code, so it comes last: a gate that fails only here needs `cargo fmt` and an amend, not a rerun.
 step fmt cargo fmt --all --check
-step_if 'has "$optional" bota_lua' "no luagee checkout" fmt-lua cargo fmt --manifest-path "$botscript" --all --check
 step import-fmt cargo fmt "${importer[@]}" --check
 
 if [ "$skipped" = 1 ]; then
@@ -152,5 +142,5 @@ if [ "$now" != "$tree" ]; then
     git status --short
     exit 1
 fi
-echo "GATE-OK ($what: $(wc -w <<< "$groups") groups${uncovered:+; not covered: $uncovered})"
+echo "GATE-OK ($what: $(wc -w <<< "$groups") groups)"
 stamp_put "$key" "$mode"

@@ -10,7 +10,7 @@ bota_client_core  logic every client shares                deps: bota_proto, bot
 bota_replay       the match metadata format                deps: bota_proto, bota_core
 bota_radovid      optional matchmaking helper              deps: bota_client_core, bota_proto, radovid
 bota_gym          in-process training and evaluation       deps: bota_server, bota_client_core, bota_replay, bota_core, bota_proto
-bota_lua          optional bot-script host (outside the workspace)  deps: bota_client_core, bota_core, bota_proto, luagee
+bota_lua          bot-script host                          deps: bota_client_core, bota_core, bota_proto, luagee
 ```
 
 Dependencies point one way: `bota_proto` <- `bota_core` <- `bota_server` and `bota_client_core`. The server and the
@@ -34,11 +34,10 @@ client library don't depend on each other (the server's tests and examples use t
   the hidden state only behind `Game<Privileged>`), the caller's per-game `Episode` run on `Workers`, `VecEnv` and
   `Tournament` drivers, seeding, opponent scheduling, statistics. Outside the default members; its crate docs are
   the guide (`cargo doc -p bota_gym --open`).
-- `bota_lua`: the host for Lua bots (binary `bota_botscript`). It builds on `luagee`, a repository of its own, and is a
-  workspace of its own (`crates/bota_lua/Cargo.toml`, with its own `Cargo.lock` and `target/`), not a member of this
-  one: Cargo loads the manifest of every path dependency, an optional one included, so a member would stop every build
-  of bota whenever the luagee checkout is absent. Nothing in the bota workspace depends on it. Build and test it with
-  the commands in [its README](crates/bota_lua/README.md).
+- `bota_lua`: the host for Lua bots (binary `bota_botscript`). It builds on `luagee`, an independent Lua interpreter
+  from crates.io. Nothing else in the workspace depends on it, and it is outside the default members (a plain `cargo build`
+  of the server does not compile the interpreter): build and test it with `-p bota_lua`; its commands are in
+  [its README](crates/bota_lua/README.md).
 
 ## Running a server
 
@@ -277,10 +276,8 @@ Chat never enters the simulation or a tick's hash. A client may ask for its conn
 affect. It stamps a green tree. `tools/gate.sh` is the merge gate; its header lists the steps: clippy, the wasm checks,
 the tests in the `test-release` profile, the bota_radovid end-to-end tests, the bench digest checks, `cargo deny check`,
 the item importer (`tools/import_items`, which checks the committed item table against a Dota 2 install) and fmt. The
-bot-script host `bota_lua` (clippy, the wasm check, its fuzz target, `cargo deny`, fmt and the `lua` test group) is
-covered where the luagee checkout is. Where it is not, the precheck and the gate say it is not covered, and refuse a change
-to its files (a change that cannot be checked must not look green); `TEST_GROUPS_REQUIRE_ALL=1` makes a missing
-checkout a failure even for other changes, for machines that must cover it. It
+bot-script host `bota_lua` (clippy with all its features, the wasm check and the `lua` test group) is
+a member of the workspace like the others. The gate
 stops at the first failure, prints `GATE-OK`, and fails when a step can't run. Both run what the change can affect;
 `GATE_FULL=1` (`PRECHECK_ALL=1`) runs everything, for releases and after a batch of changes.
 
