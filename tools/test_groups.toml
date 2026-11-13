@@ -710,8 +710,9 @@ also_paths = [
     "crates/bota_server/src/game_loop/**",
     "crates/bota_server/src/net/**",
 ]
-# tools/admitted.sh builds every admitted wire's commit (its corpus names it) once, then keeps it
-tests = [{ crate = "bota_server", target = "test:admitted_builds", env = { ADMITTED_BUILDS = "{target_dir}/admitted" }, before = [
+# tools/admitted.sh builds every admitted wire's commit (its corpus names it) once and keeps the verified
+# executables in the target directory's `admitted`, where the test looks (both read ADMITTED_BUILDS alike)
+tests = [{ crate = "bota_server", target = "test:admitted_builds", before = [
     ["tools/admitted.sh", "build"],
 ] }]
 

@@ -5,74 +5,148 @@
 #   tools/admitted.sh corpus COMMIT   builds COMMIT with this tree's corpus program and writes the
 #                                     corpus of its wire to crates/bota_server/tests/admitted/WIRE/
 #   tools/admitted.sh build           builds the server and the peer of every corpus' commit (its
-#                                     corpus.txt names it) under target/admitted/WIRE/
+#                                     corpus.txt names it)
 #
-# ADMITTED_BUILDS names another directory than target/admitted. A commit is exported with
-# `git archive` (never a checkout of this tree) to target/admitted/WIRE/src,
-# this tree's programs (examples/admitted_corpus.rs, examples/admitted_peer.rs,
-# tests/admitted/scenarios.rs and tests/admitted/peer.rs) are laid over it, and it is built in release with its own lock file
-# and a target directory of its own beside the export. See DEVELOPMENT.md, "Admitted wires".
+# The cache is <Cargo's target directory>/admitted (ADMITTED_BUILDS names another). A commit is
+# exported with `git archive` (never a checkout of this tree), this tree's programs
+# (examples/admitted_corpus.rs, examples/admitted_peer.rs, tests/admitted/scenarios.rs and
+# tests/admitted/peer.rs) are laid over it, and it is built in release with its own lock file in a
+# work directory. Only after the build succeeded and its server said the expected wire are the
+# executables kept, as WIRE/bin/ with WIRE/wire and WIRE/stamp (the commit and the programs they
+# were built from, written last); the export and the compilation target are then deleted. A
+# stale entry is deleted before it is rebuilt, so a failed rebuild leaves nothing to run. Every
+# failure exits non-zero. Retention: `build` deletes the entries of wires no corpus names, in the
+# default cache only (an ADMITTED_BUILDS directory may be another worktree's); the cache must stay
+# under ADMITTED_MAX_BYTES (1 GiB by default), or the script fails. See DEVELOPMENT.md, "Admitted
+# wires".
 set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
-target=${ADMITTED_BUILDS:-${CARGO_TARGET_DIR:-$root/target}/admitted}
 corpora=$root/crates/bota_server/tests/admitted
+budget=${ADMITTED_MAX_BYTES:-1073741824}
 programs=(
     crates/bota_server/examples/admitted_corpus.rs
     crates/bota_server/examples/admitted_peer.rs
     crates/bota_server/tests/admitted/scenarios.rs
     crates/bota_server/tests/admitted/peer.rs
 )
+executables=(bota_server examples/admitted_corpus examples/admitted_peer)
 
-# Exports COMMIT to DIR/src with this tree's programs over it and builds it in DIR/target; prints
-# the wire of the build.
+fail() {
+    echo "tools/admitted.sh: $*" >&2
+    exit 1
+}
+
+if [ -n "${ADMITTED_BUILDS:-}" ]; then
+    cache=$ADMITTED_BUILDS
+    own_cache=false
+else
+    target=$(cargo metadata --format-version 1 --no-deps --manifest-path "$root/Cargo.toml" |
+        sed -n 's/.*"target_directory":"\([^"]*\)".*/\1/p') ||
+        fail "cannot ask Cargo for its target directory"
+    [ -n "$target" ] || fail "Cargo named no target directory"
+    cache=$target/admitted
+    own_cache=true
+fi
+mkdir -p -- "$cache" || fail "cannot make the cache $cache"
+# One run at a time on a cache.
+exec 9>"$cache/.lock" || fail "cannot open $cache/.lock"
+flock 9 || fail "cannot lock $cache"
+
+# Builds COMMIT into DIR (DIR/bin, DIR/wire, DIR/stamp), unless DIR holds a verified build of it
+# with these programs. Fails, leaving no DIR, when anything of it fails.
 build_commit() {
-    local commit=$1 dir=$2 stamp
-    # An export already made of this commit and these programs is kept, so Cargo builds nothing
-    # again.
-    stamp=$(cd -- "$root" && { echo "$commit"; sha256sum -- "${programs[@]}"; } | sha256sum)
-    if [ "$(cat -- "$dir/exported" 2>/dev/null)" != "$stamp" ]; then
-        rm -rf -- "$dir/src" "$dir/exported"
-        mkdir -p -- "$dir/src"
-        git -C "$root" archive "$commit" | tar -x -C "$dir/src"
-        for program in "${programs[@]}"; do
-            mkdir -p -- "$(dirname -- "$dir/src/$program")"
-            cp -- "$root/$program" "$dir/src/$program"
-        done
-        echo "$stamp" >"$dir/exported"
+    local commit=$1 dir=$2 stamp work wire
+    stamp=$(cd -- "$root" && { echo "$commit"; sha256sum -- "${programs[@]}"; } | sha256sum) ||
+        fail "cannot read the programs to lay over $commit"
+    if [ -f "$dir/stamp" ] && [ "$(cat -- "$dir/stamp")" = "$stamp" ]; then
+        return 0
     fi
+    rm -rf -- "$dir" || fail "cannot delete the stale build $dir"
+    work=$dir.work
+    rm -rf -- "$work" || fail "cannot delete $work"
+    mkdir -p -- "$work/src" || fail "cannot make $work"
+    git -C "$root" archive --output="$work/src.tar" "$commit" || fail "cannot export $commit"
+    tar -x -C "$work/src" -f "$work/src.tar" || fail "cannot unpack the export of $commit"
+    for program in "${programs[@]}"; do
+        mkdir -p -- "$(dirname -- "$work/src/$program")" || fail "cannot lay $program over $commit"
+        cp -- "$root/$program" "$work/src/$program" || fail "cannot lay $program over $commit"
+    done
     # bota_radovid's manifest names the radovid checkout beside the repository; every member's
     # manifest is read even for a build of one crate, so the export sees the same checkout.
-    ln -sfn -- "$(cd -- "$root/../radovid" && pwd)" "$dir/radovid"
-    CARGO_TARGET_DIR=$dir/target cargo build --release --locked -q \
-        --manifest-path "$dir/src/Cargo.toml" -p bota_server \
-        --bin bota_server --example admitted_corpus --example admitted_peer >&2
-    "$dir/target/release/bota_server" --wire-fingerprint
+    if [ -d "$root/../radovid" ]; then
+        ln -sfn -- "$(cd -- "$root/../radovid" && pwd)" "$work/radovid" || fail "cannot link radovid"
+    fi
+    CARGO_TARGET_DIR=$work/target cargo build --release --locked -q \
+        --manifest-path "$work/src/Cargo.toml" -p bota_server \
+        --bin bota_server --example admitted_corpus --example admitted_peer >&2 ||
+        fail "building $commit failed"
+    mkdir -p -- "$work/bin/examples" || fail "cannot make $work/bin"
+    for executable in "${executables[@]}"; do
+        cp -- "$work/target/release/$executable" "$work/bin/$executable" ||
+            fail "the build of $commit made no $executable"
+    done
+    wire=$("$work/bin/bota_server" --wire-fingerprint) || fail "the server of $commit says no wire"
+    [[ $wire =~ ^[0-9a-f]{16}$ ]] || fail "the server of $commit says the wire ${wire@Q}"
+    mkdir -p -- "$dir" || fail "cannot make $dir"
+    mv -- "$work/bin" "$dir/bin" || fail "cannot keep the build of $commit"
+    echo "$wire" >"$dir/wire" || fail "cannot keep the wire of $commit"
+    echo "$stamp" >"$dir/stamp" || fail "cannot stamp the build of $commit"
+    rm -rf -- "$work" || fail "cannot delete $work"
+}
+
+# Fails when the cache is over its budget.
+within_budget() {
+    local used
+    used=$(du -sb -- "$cache" | cut -f1) || fail "cannot measure $cache"
+    if [ "$used" -gt "$budget" ]; then
+        fail "the admitted builds take $used bytes in $cache, over ADMITTED_MAX_BYTES=$budget: \
+delete the entries of wires no longer admitted, or raise the budget"
+    fi
 }
 
 case "${1:-}" in
     corpus)
         [ $# -eq 2 ] || { echo "usage: tools/admitted.sh corpus COMMIT" >&2; exit 2; }
-        commit=$(git -C "$root" rev-parse --verify "$2^{commit}")
-        scratch=$target/commit-$commit
-        wire=$(build_commit "$commit" "$scratch")
-        mkdir -p -- "$corpora/$wire"
-        "$scratch/target/release/examples/admitted_corpus" "$corpora/$wire" "$commit"
-        rm -rf -- "$target/$wire"
-        mv -- "$scratch" "$target/$wire"
+        commit=$(git -C "$root" rev-parse --verify "$2^{commit}") || fail "no commit $2"
+        scratch=$cache/commit-$commit
+        build_commit "$commit" "$scratch"
+        wire=$(cat -- "$scratch/wire") || fail "no wire for $commit"
+        mkdir -p -- "$corpora/$wire" || fail "cannot make the corpus directory of $wire"
+        "$scratch/bin/examples/admitted_corpus" "$corpora/$wire" "$commit" ||
+            fail "the corpus program of $commit failed"
+        rm -rf -- "${cache:?}/$wire" || fail "cannot replace the cached build of $wire"
+        mv -- "$scratch" "$cache/$wire" || fail "cannot keep the build of $wire"
+        within_budget
         echo "corpus of wire $wire written to crates/bota_server/tests/admitted/$wire" >&2
         ;;
     build)
         [ $# -eq 1 ] || { echo "usage: tools/admitted.sh build" >&2; exit 2; }
+        named=()
         for manifest in "$corpora"/*/corpus.txt; do
             [ -e "$manifest" ] || continue
             wire=$(basename -- "$(dirname -- "$manifest")")
+            named+=("$wire")
             commit=$(sed -n 's/^commit //p' "$manifest")
-            built=$(build_commit "$commit" "$target/$wire")
+            [ -n "$commit" ] || fail "$manifest names no commit"
+            build_commit "$commit" "$cache/$wire"
+            built=$(cat -- "$cache/$wire/wire") || fail "no wire for $commit"
             if [ "$built" != "$wire" ]; then
-                echo "tools/admitted.sh: commit $commit builds wire $built, its corpus is of $wire" >&2
-                exit 1
+                rm -rf -- "${cache:?}/$wire"
+                fail "commit $commit builds wire $built, its corpus is of $wire"
             fi
         done
+        if $own_cache; then
+            for entry in "$cache"/*; do
+                [ -d "$entry" ] || continue
+                name=$(basename -- "$entry")
+                keep=false
+                for wire in "${named[@]}"; do
+                    [ "$name" = "$wire" ] && keep=true
+                done
+                $keep || rm -rf -- "$entry" || fail "cannot delete $entry"
+            done
+        fi
+        within_budget
         ;;
     *)
         echo "usage: tools/admitted.sh corpus COMMIT | build" >&2

@@ -4,15 +4,16 @@
 //! as that build compiled it) does the same at this build's server. Both matches play on the
 //! earlier build's items.
 //!
-//! The earlier builds come from `tools/admitted.sh build`, under `ADMITTED_BUILDS` (the
-//! workspace's `target/admitted` when unset); a build missing fails the test, naming the command.
+//! The earlier builds come from `tools/admitted.sh build`, under `ADMITTED_BUILDS` (the Cargo
+//! target directory's `admitted` when unset, as the script has it); a build missing fails the
+//! test, naming the command.
 
 #[path = "admitted/peer.rs"]
 mod peer;
 
 use std::io::{BufRead, BufReader};
 use std::net::TcpListener;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::Duration;
@@ -26,19 +27,26 @@ use bota_server::spectators::Spectators;
 /// What each client buys: an item of the first catalogue ever admitted, sold at the fountain.
 const BOUGHT: ItemId = ItemId::CIRCLET;
 
-/// Where the builds of the admitted wires are.
+/// Where the builds of the admitted wires are: `ADMITTED_BUILDS`, else `admitted` in the Cargo
+/// target directory this test was built into, as `tools/admitted.sh` has it.
 fn builds() -> PathBuf {
-    std::env::var_os("ADMITTED_BUILDS").map_or_else(
-        || Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/admitted"),
-        PathBuf::from,
-    )
+    if let Some(builds) = std::env::var_os("ADMITTED_BUILDS") {
+        return PathBuf::from(builds);
+    }
+    let test = std::env::current_exe().expect("the test's own path");
+    // <target>/<profile>/deps/<this test>
+    let target = test
+        .ancestors()
+        .nth(3)
+        .expect("a test binary in a Cargo target directory");
+    target.join("admitted")
 }
 
 /// A program of the build of `admitted`, which must be there.
 fn program(admitted: AdmittedWire, name: &str) -> PathBuf {
     let path = builds()
         .join(fingerprint_to_hex(admitted.wire))
-        .join("target/release")
+        .join("bin")
         .join(name);
     assert!(
         path.is_file(),

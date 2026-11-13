@@ -185,30 +185,45 @@ Packaging individual crates for crates.io is not supported by this build arrange
 
 A change that only adds items (their rows and the mechanics only they reach) leaves every older build's games as they
 were, and may let the older build's clients, servers and replays in: `bota_core::ADMITTED_WIRES` lists such wires, each
-with the catalogue prefix its build holds. A client speaking to a server of an admitted wire says that wire and that
-catalogue in its hello (the handoff names it; a server's `WireMismatch` names it to a direct connection, which dials
-again speaking it). An entry is a claim that the older build's rules are unchanged, and its evidence is the wire's
-corpus, `crates/bota_server/tests/admitted/WIRE/`: replays of the scripted matches of
-`crates/bota_server/tests/admitted/scenarios.rs`, which buy and use every item of the catalogue and exercise spell
-damage, cooldowns, cast ranges, regeneration, slows and damage over time, recorded by a build of that wire, and
-`corpus.txt`, that build's count of their records, snapshots and world fingerprints. The `admitted` test of
-`bota_server` plays the matches again and fails on the first record that departs, on a wire without a corpus and on a
-corpus of a wire no longer admitted.
+with the catalogue prefix its build holds. An entry is a claim that the older build's rules are unchanged, and its
+evidence is the wire's corpus, `crates/bota_server/tests/admitted/WIRE/`: replays of the scripted matches of
+`crates/bota_server/tests/admitted/scenarios.rs`, recorded by a build of that wire, and `corpus.txt`, that build's
+count of their records, snapshots and world fingerprints. The matches hold every item of the catalogue, carry each
+into blows on lane creeps, and use every one that has a use to effect (the match tells of the use; a channel runs to
+its end), between heroes that cast, attack, regenerate and slow each other under status resistance. The `admitted`
+test of `bota_server` plays the matches again and fails on the first record that departs, on a wire without a corpus,
+on a corpus of a wire no longer admitted, and on matches that leave an item unused. A finite corpus is evidence, not
+proof: what it does not play, it does not check.
+
+A client speaking to a server of an admitted wire says that wire and that catalogue in its hello: the wire a
+matchmaker's handoff names, or, on a direct connection, the one the server's `WireMismatch` names, the connection
+dialing again speaking it. That fallback happens once in the life of a link; a server naming yet another wire after
+it is a hard failure. A server can thus move a client only to a wire the client's build explicitly admits, backed by
+a corpus, and onto that build's shorter catalogue; it was the authority on the match anyway.
 
 To admit the wire of commit `C` (the commit the change was branched from):
 
 1. `tools/admitted.sh corpus C` exports `C` with `git archive`, lays this tree's corpus programs over it, builds it in
-   release under `target/admitted/` (`ADMITTED_BUILDS` names another directory; the radovid checkout beside this
-   repository is linked in, as `bota_radovid`'s manifest names it) and writes the corpus. It refuses a corpus whose
-   matches leave an item unheld or unused.
+   release (the radovid checkout beside this repository is linked in, as `bota_radovid`'s manifest names it) and
+   writes the corpus. It refuses a corpus whose matches leave an item unheld or unused.
 2. Add the entry: the wire the script printed and `Catalogue::FULL.prefix()` of `C`. A build-time check refuses a
    catalogue this build does not hold alike.
 3. Run the `admitted` test. A departure is a rules change: fix it, or drop the entry and its corpus and say so.
 
+When `C` lands under another hash (a restack), update the `commit` line of `corpus.txt` and check that
+`tools/admitted.sh build` still builds the corpus' wire from it; if the wire moved, write the corpus again. A change
+to the scripted matches changes every corpus: write them all again from their commits.
+
 `tools/admitted.sh build` builds the server and a small client (`examples/admitted_peer.rs`) of every corpus' commit;
-`crates/bota_server/tests/admitted_builds.rs` plays each against this build both ways. A change to the scripted
-matches changes every corpus: write them again from their commits. A finite corpus is evidence, not proof: what it
-does not play, it does not check.
+`crates/bota_server/tests/admitted_builds.rs` plays each against this build both ways. The builds live in
+`admitted/` of Cargo's target directory (`ADMITTED_BUILDS` names another; the test reads the same variable). Every
+failure of an export, a build or a wire check fails the script, and a stale build is deleted before it is rebuilt, so
+nothing of an earlier build is run after a failed rebuild. Retention: only the verified executables of a wire are kept
+(`WIRE/bin`, `WIRE/wire`, `WIRE/stamp`: the commit and programs they were built from); the export and the
+compilation target are deleted after the build. In the default cache `build` deletes the entries of wires no corpus
+names; a cache named by `ADMITTED_BUILDS` may be another worktree's and is never pruned. The cache must stay under
+`ADMITTED_MAX_BYTES` (1 GiB by default), or the script fails. A build takes a minute or two; an unchanged stamp
+builds nothing.
 
 ## Determinism
 
