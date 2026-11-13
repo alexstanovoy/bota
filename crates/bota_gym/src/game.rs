@@ -12,6 +12,29 @@
 //! # }
 //! ```
 //!
+//! ```compile_fail
+//! # fn read(game: &mut bota_gym::Game) {
+//! let _ = game.finish(); // the recorder reads the whole map: privileged only
+//! # }
+//! ```
+//!
+//! ```compile_fail
+//! # fn fork(game: &bota_gym::Game) {
+//! let _: bota_gym::Game = game.clone(); // a fork knows the future: privileged only
+//! # }
+//! ```
+//!
+//! ```compile_fail
+//! # fn read(env: &bota_gym::PlayerEnv<()>) {
+//! let _ = env.truth(); // a player environment has no truth either
+//! # }
+//! ```
+//!
+//! What a `Game<Player>` hands out is what the seats are told: their streams, and
+//! [`Game::result`], the `MatchOver` statistics every seat receives when the match ends. The
+//! live scoreboard ([`Truth::stats`]) and the recorded metadata ([`Game::finish`]) read hidden
+//! state and are privileged; a player game refuses `record_meta`.
+//!
 //! ```
 //! # fn read(game: &bota_gym::Game<bota_gym::Privileged>) {
 //! let _ = game.truth().full_view(); // the whole map, fog or not
@@ -36,8 +59,18 @@ pub const MAX_ADVANCE_TICKS: u32 = 1 << 16;
 /// Upper bound on the seats of a match.
 pub const MAX_SEATS: usize = bota_proto::limits::MAX_SEATS;
 
-mod sealed {
-    pub trait Sealed {}
+pub(crate) mod sealed {
+    use super::{Game, GymError, Meta};
+
+    pub trait Sealed: Sized + 'static {
+        /// Whether the holder may know the whole truth.
+        const PRIVILEGED: bool;
+
+        /// The match metadata of a finished game, for a holder that may record it.
+        fn take_meta(game: &mut Game<Self>) -> Result<Option<Meta>, GymError>
+        where
+            Self: super::Access;
+    }
 }
 
 /// What a [`Game`]'s holder may know: [`Player`] or [`Privileged`].
@@ -48,8 +81,22 @@ pub enum Player {}
 /// The whole truth besides: the world, the whole map's view, forks of the match.
 pub enum Privileged {}
 
-impl sealed::Sealed for Player {}
-impl sealed::Sealed for Privileged {}
+impl sealed::Sealed for Player {
+    const PRIVILEGED: bool = false;
+
+    fn take_meta(_: &mut Game<Self>) -> Result<Option<Meta>, GymError> {
+        // A player game never records: `Game::new` refuses `record_meta`.
+        Ok(None)
+    }
+}
+
+impl sealed::Sealed for Privileged {
+    const PRIVILEGED: bool = true;
+
+    fn take_meta(game: &mut Game<Self>) -> Result<Option<Meta>, GymError> {
+        game.finish()
+    }
+}
 impl Access for Player {}
 impl Access for Privileged {}
 
@@ -76,7 +123,10 @@ pub struct Game<A: Access = Player> {
     local: LocalMatch,
     seats: usize,
     limit: u32,
-    over: bool,
+    /// The ending every seat was told in `MatchOver`, once the match ended.
+    result: Option<(Team, MatchStats)>,
+    /// Whether the match keeps replay records, which must be drained every tick.
+    recorded: bool,
     recorder: Option<Recorder>,
     access: PhantomData<A>,
 }
@@ -88,7 +138,8 @@ impl Clone for Game<Privileged> {
             local: self.local.clone(),
             seats: self.seats,
             limit: self.limit,
-            over: self.over,
+            result: self.result.clone(),
+            recorded: self.recorded,
             recorder: self.recorder.clone(),
             access: PhantomData,
         }
@@ -104,6 +155,11 @@ impl<A: Access> Game<A> {
     /// `Events`, then every setup tick's stream as the seat's connection would carry it.
     pub fn new(spec: &MatchSpec) -> Result<(Self, Vec<Vec<ServerMsg>>), GymError> {
         validate(spec)?;
+        if spec.record_meta && !A::PRIVILEGED {
+            return Err(GymError::Config(
+                "record_meta reads the whole map: only a Game<Privileged> records",
+            ));
+        }
         let config = match_config(spec);
         let (local, mut opening) = if spec.record_meta {
             LocalMatch::new_recorded(&config, &spec.order_delays)
@@ -115,11 +171,23 @@ impl<A: Access> Game<A> {
         if let Some(recorder) = &mut recorder {
             recorder.push(&ReplayRecord::Msg(opening[0][0].clone()));
         }
+        // The opening and the setup ticks must leave the policy at least one tick.
+        let setup_ticks = if spec.setup.is_empty() {
+            0
+        } else {
+            1 + spec.longest_delay()
+        };
+        if local.tick() + setup_ticks >= spec.tick_limit {
+            return Err(GymError::Config(
+                "tick_limit leaves no tick after the opening and setup",
+            ));
+        }
         let mut game = Self {
             seats: spec.picks.len(),
             local,
             limit: spec.tick_limit,
-            over: false,
+            result: None,
+            recorded: spec.record_meta,
             recorder,
             access: PhantomData,
         };
@@ -198,7 +266,7 @@ impl<A: Access> Game<A> {
         &mut self,
         orders: &[Option<OutgoingOrder>],
     ) -> Result<(Vec<Vec<ServerMsg>>, Option<Team>), GymError> {
-        if self.over {
+        if self.result.is_some() {
             return Err(GymError::MatchOver);
         }
         if orders.len() != self.seats {
@@ -223,7 +291,13 @@ impl<A: Access> Game<A> {
         let views: [&[ServerMsg]; MAX_SEATS] =
             core::array::from_fn(|seat| streams.get(seat).map_or(&[][..], Vec::as_slice));
         let winner = validate_tick(&views[..self.seats])?;
-        self.over = winner.is_some();
+        if let Some(winner) = winner {
+            let stats = streams[0].iter().find_map(|message| match message {
+                ServerMsg::MatchOver { stats, .. } => Some(stats.clone()),
+                _ => None,
+            });
+            self.result = Some((winner, stats.expect("a validated ending tells MatchOver")));
+        }
         Ok((streams, winner))
     }
 
@@ -278,31 +352,27 @@ impl<A: Access> Game<A> {
 
     /// Whether the match sent `MatchOver`.
     pub const fn is_over(&self) -> bool {
-        self.over
+        self.result.is_some()
     }
 
-    /// The scoreboard now: every seat's kills, deaths, assists, last hits, denies, gold
-    /// earned and damage to heroes and buildings (what Dota's scoreboard shows every player).
-    pub fn stats(&self) -> MatchStats {
-        self.local.world().match_stats()
-    }
-
-    /// The match metadata recorded so far, when the spec asked for it: per-minute samples of
-    /// every seat (gold, net worth with items, experience, level, kills, last hits, healing…),
-    /// kills, purchases, level-ups and fallen buildings. Ends the recording.
-    pub fn finish(&mut self) -> Result<Option<Meta>, GymError> {
-        let Some(recorder) = self.recorder.take() else {
-            return Ok(None);
-        };
-        bota_replay::meta::decode(&recorder.finish())
-            .map(Some)
-            .map_err(|error| GymError::Meta(format!("{error:?}")))
+    /// How the match ended, once it did: the winner ([`Team::Neutral`] for a draw) and the final
+    /// statistics, exactly as every seat was told them in `MatchOver` (the protocol's end-of-match
+    /// message: every seat's kills, deaths, assists, last hits, denies, gold earned and damage).
+    /// None while the match runs and for a game cut at its tick limit, which tells no seat.
+    pub fn result(&self) -> Option<(Team, &MatchStats)> {
+        self.result.as_ref().map(|(winner, stats)| (*winner, stats))
     }
 
     fn record(&mut self) {
+        if !self.recorded {
+            return;
+        }
+        // Drained every tick, recorder or not: a finished recording must not let the match's
+        // tape grow.
+        let records = self.local.take_records();
         if let Some(recorder) = &mut self.recorder {
-            for record in self.local.take_records() {
-                recorder.push(&record);
+            for record in &records {
+                recorder.push(record);
             }
         }
     }
@@ -312,6 +382,19 @@ impl Game<Privileged> {
     /// The whole truth of the match.
     pub fn truth(&self) -> Truth<'_> {
         Truth { local: &self.local }
+    }
+
+    /// The match metadata recorded so far, when the spec asked for it: per-minute samples of
+    /// every seat (gold, net worth with items, experience, level, kills, last hits, healing…),
+    /// kills, purchases, level-ups and fallen buildings, read from the whole map. Ends the
+    /// recording; later calls return none.
+    pub fn finish(&mut self) -> Result<Option<Meta>, GymError> {
+        let Some(recorder) = self.recorder.take() else {
+            return Ok(None);
+        };
+        bota_replay::meta::decode(&recorder.finish())
+            .map(Some)
+            .map_err(|error| GymError::Meta(format!("{error:?}")))
     }
 
     /// Rearranges the world directly, for a scenario no cheat sets up; returns what every seat
@@ -342,6 +425,12 @@ impl<'a> Truth<'a> {
     /// The handle a seat's client knows a world entity by, once the seat was told of it.
     pub fn handle_of(self, seat: usize, entity: Entity) -> Option<bota_proto::EntityId> {
         self.local.handle_of(seat, entity)
+    }
+
+    /// The live scoreboard of every seat, the other side's gold and damage included: hidden
+    /// from a player until `MatchOver`.
+    pub fn stats(self) -> MatchStats {
+        self.local.world().match_stats()
     }
 
     /// The whole map as a spectator of everything sees it.
@@ -436,7 +525,15 @@ fn validate_tick(streams: &[&[ServerMsg]]) -> Result<Option<Team>, GymError> {
         };
         let winner = match rest {
             [] if snapshot => None,
-            [ServerMsg::MatchOver { winner, .. }] => Some(*winner),
+            [ServerMsg::MatchOver { winner, stats }] => {
+                if let [ServerMsg::Snapshot { view }, ..] = &messages[answered..]
+                    && snapshot
+                    && stats.duration != view.tick
+                {
+                    return Err(problem("MatchOver's duration is not the tick's"));
+                }
+                Some(*winner)
+            }
             _ => {
                 return Err(problem(
                     "not rejections, Snapshot, Events of one tick, MatchOver",
@@ -482,7 +579,7 @@ mod tests {
         assert_eq!(validate_tick(&[&good, &good]), Ok(None));
         let over = ServerMsg::MatchOver {
             winner: Team::Dire,
-            stats: game.stats(),
+            stats: game.truth().stats(),
         };
         let mut ended = good.clone();
         ended.push(over.clone());

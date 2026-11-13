@@ -20,8 +20,10 @@
 //! **Caller code on workers** must be bounded: an episode's `start` and `step` run on a
 //! shared worker, so a step that blocks (on I/O, a lock held elsewhere, another driver) stalls
 //! that worker for everyone. A panic in caller code is caught on the worker and reported as
-//! [`GymError::Panicked`] for that position; the episode is lost and its driver stops, while
-//! the workers and other drivers carry on.
+//! [`GymError::Panicked`] for that position, even when the panic's payload panics again as it
+//! is dropped (the payload is leaked instead); the episode is lost and its driver is spent,
+//! while the workers and other drivers carry on. Only a panic during another panic's unwinding
+//! (which Rust turns into an abort) is beyond this.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
@@ -101,9 +103,18 @@ pub(crate) enum Job<'scope, E: Episode> {
     },
 }
 
+/// Why a job gave back no episode.
+pub(crate) enum Failure<Error> {
+    /// The caller's code returned an error.
+    Error(Error),
+    /// The caller's code panicked; the driver turns this into its error, on its own thread.
+    Panicked,
+}
+
 /// One job's result: the episode (its next game's, when a game ended and a plan was given) and
 /// what a finished game left.
-pub(crate) type Done<E> = Result<(Box<E>, Option<<E as Episode>::Finished>), <E as Episode>::Error>;
+pub(crate) type Done<E> =
+    Result<(Box<E>, Option<<E as Episode>::Finished>), Failure<<E as Episode>::Error>>;
 pub(crate) type Reply<E> = (usize, Done<E>);
 
 struct Envelope<'scope, E: Episode> {
@@ -189,10 +200,43 @@ fn work<E: Episode>(receiver: &Mutex<Receiver<Envelope<'_, E>>>, shared: &E::Sha
         else {
             return;
         };
-        let done = catch_unwind(AssertUnwindSafe(|| run(job, shared)))
-            .unwrap_or(Err(GymError::Panicked { position }.into()));
-        // A driver that failed no longer reads its replies.
-        let _ = reply.send((position, done));
+        let mut answer = Answer {
+            position,
+            reply: Some(reply),
+        };
+        // Nothing the caller's code raises escapes the worker: not a panic of the job, not a
+        // panic of dropping what a job left. A caught panic's payload is leaked, never dropped:
+        // its destructor is caller code too, and could panic again.
+        if let Err(payload) = catch_unwind(AssertUnwindSafe(|| answer.send(run(job, shared)))) {
+            std::mem::forget(payload);
+        }
+        // An answer the job never sent goes now, as a panic.
+        drop(answer);
+    }
+}
+
+/// The reply a job owes its driver, sent exactly once: with the job's result, or as a panic
+/// when the job never got to send it.
+struct Answer<E: Episode> {
+    position: usize,
+    reply: Option<SyncSender<Reply<E>>>,
+}
+
+impl<E: Episode> Answer<E> {
+    fn send(&mut self, done: Done<E>) {
+        if let Some(reply) = self.reply.take() {
+            // A driver that failed no longer reads its replies; what it would have read is
+            // dropped here, inside the worker's catch.
+            let _ = reply.send((self.position, done));
+        }
+    }
+}
+
+impl<E: Episode> Drop for Answer<E> {
+    fn drop(&mut self) {
+        if let Some(reply) = self.reply.take() {
+            let _ = reply.send((self.position, Err(Failure::Panicked)));
+        }
     }
 }
 
@@ -200,9 +244,9 @@ fn run<E: Episode>(job: Job<'_, E>, shared: &E::Shared) -> Done<E> {
     match job {
         Job::Start { game, plan } => start(shared, game, plan).map(|episode| (episode, None)),
         Job::Build { slot, build } => {
-            let episode = build(shared)?;
+            let episode = build(shared).map_err(Failure::Error)?;
             if episode.game().slot != slot {
-                return Err(GymError::GameMismatch.into());
+                return Err(Failure::Error(GymError::GameMismatch.into()));
             }
             Ok((Box::new(episode), None))
         }
@@ -211,32 +255,39 @@ fn run<E: Episode>(job: Job<'_, E>, shared: &E::Shared) -> Done<E> {
             action,
             next,
         } => {
-            let finished = episode.step(shared, action)?;
+            let finished = episode.step(shared, action).map_err(Failure::Error)?;
             match (&finished, next) {
-                (Some(_), Some(plan)) => episode
-                    .game()
-                    .next()
-                    .map_err(E::Error::from)
-                    .and_then(|game| start(shared, game, plan))
-                    .map(|next| (next, finished)),
+                (Some(_), Some(plan)) => {
+                    let game = episode
+                        .game()
+                        .next()
+                        .map_err(|error| Failure::Error(error.into()))?;
+                    start(shared, game, plan).map(|next| (next, finished))
+                }
                 _ => Ok((episode, finished)),
             }
         }
     }
 }
 
-fn start<E: Episode>(shared: &E::Shared, game: GameId, plan: E::Plan) -> Result<Box<E>, E::Error> {
-    let episode = E::start(shared, game, plan)?;
+fn start<E: Episode>(
+    shared: &E::Shared,
+    game: GameId,
+    plan: E::Plan,
+) -> Result<Box<E>, Failure<E::Error>> {
+    let episode = E::start(shared, game, plan).map_err(Failure::Error)?;
     if episode.game() != game {
-        return Err(GymError::GameMismatch.into());
+        return Err(Failure::Error(GymError::GameMismatch.into()));
     }
     Ok(Box::new(episode))
 }
 
-/// A driver's side of one round: its reply channel and the slots replies land in.
+/// A driver's side of one round: its reply channel, the actions it hands out and the slots
+/// replies land in.
 pub(crate) struct Round<E: Episode> {
     pub(crate) reply: SyncSender<Reply<E>>,
     replies: Receiver<Reply<E>>,
+    pub(crate) actions: Vec<Option<E::Action>>,
     pub(crate) episodes: Vec<Option<Box<E>>>,
     pub(crate) finished: Vec<Option<E::Finished>>,
 }
@@ -248,15 +299,45 @@ impl<E: Episode> Round<E> {
         Self {
             reply,
             replies,
+            actions: (0..capacity).map(|_| None).collect(),
             episodes: (0..capacity).map(|_| None).collect(),
             finished: (0..capacity).map(|_| None).collect(),
         }
     }
 
+    /// Takes exactly `count` actions into `actions[..count]`; any other number is refused and
+    /// leaves nothing staged. Counting stops a bound past `count`.
+    pub(crate) fn stage(
+        &mut self,
+        actions: impl IntoIterator<Item = E::Action>,
+        count: usize,
+    ) -> Result<(), GymError> {
+        let mut actions = actions.into_iter();
+        let mut got = 0;
+        for slot in &mut self.actions[..count] {
+            *slot = actions.next();
+            got += usize::from(slot.is_some());
+        }
+        if got == count {
+            let extra = actions.take(MAX_QUEUE).count();
+            if extra == 0 {
+                return Ok(());
+            }
+            got += extra;
+        }
+        self.actions[..count]
+            .iter_mut()
+            .for_each(|slot| *slot = None);
+        Err(GymError::ActionCount {
+            expected: count,
+            got,
+        })
+    }
+
     /// Waits for `count` replies and files them by position; the first failed position's
     /// error when any failed.
     pub(crate) fn receive(&mut self, count: usize) -> Result<(), E::Error> {
-        let mut failure: Option<(usize, E::Error)> = None;
+        let mut failure: Option<(usize, Failure<E::Error>)> = None;
         for _ in 0..count {
             let (position, done) = self
                 .replies
@@ -276,7 +357,8 @@ impl<E: Episode> Round<E> {
             }
         }
         match failure {
-            Some((_, error)) => Err(error),
+            Some((_, Failure::Error(error))) => Err(error),
+            Some((position, Failure::Panicked)) => Err(GymError::Panicked { position }.into()),
             None => Ok(()),
         }
     }

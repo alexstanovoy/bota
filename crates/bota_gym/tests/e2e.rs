@@ -5,8 +5,8 @@ mod support;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use bota_gym::{
-    Episode, Finished, Game, GameId, GymError, MatchSpec, PlayerEnv, Privileged, SetupCheat,
-    Tournament, VecEnv, WorkerConfig, Workers, paired_games,
+    Episode, Finished, Game, GameId, GymError, MAX_SEATS, MatchSpec, PlayerEnv, Privileged,
+    SetupCheat, Tournament, VecEnv, WorkerConfig, Workers, paired_games,
 };
 use bota_proto::{Cheat, ItemId, RejectReason, ServerMsg, Team};
 use bota_replay::meta::{MetaRecord, stat};
@@ -88,7 +88,10 @@ fn a_cut_game_reports_its_end_and_its_slot_plays_the_next_game() {
             ended.end
         );
         assert_eq!(ended.tick, limit);
-        assert_eq!(ended.stats.slots.len(), 2);
+        assert_eq!(
+            ended.result, None,
+            "a cut game tells no seat its statistics"
+        );
         assert_eq!(env.episodes()[0].game(), GameId { slot: 7, game: 1 });
         assert!(
             env.episodes()[0].tick() < limit,
@@ -126,7 +129,11 @@ fn a_tournament_gives_every_planned_game_the_same_result_at_any_batch_size() {
                     .collect();
                 tournament
                     .step(actions, |_, game| {
-                        results.push((game.plan, game.tick, format!("{:?}", game.stats)));
+                        results.push((
+                            game.plan,
+                            game.tick,
+                            format!("{:?} {:?}", game.end, game.result),
+                        ));
                         Ok(())
                     })
                     .expect("a round");
@@ -337,7 +344,8 @@ fn recorded_metadata_agrees_with_the_scoreboard() {
         decision_ticks: 3,
         spec: Box::new(move |_, _: &()| spec.clone()),
     };
-    let mut env = PlayerEnv::<()>::start(&config, GameId { slot: 0, game: 0 }, ()).expect("a game");
+    let mut env = PlayerEnv::<(), Privileged>::start(&config, GameId { slot: 0, game: 0 }, ())
+        .expect("a game");
     let finished = loop {
         let orders = to_the_middle(&env);
         if let Some(finished) = env.step(&config, orders).expect("a step") {
@@ -345,7 +353,8 @@ fn recorded_metadata_agrees_with_the_scoreboard() {
         }
     };
     let meta = finished.meta.expect("recorded");
-    for scored in &finished.stats.slots {
+    let scoreboard = env.truth().stats();
+    for scored in &scoreboard.slots {
         let last = meta
             .records
             .iter()
@@ -361,8 +370,62 @@ fn recorded_metadata_agrees_with_the_scoreboard() {
         assert_eq!(value(stat::KILLS), Some(i64::from(scored.kills)));
         assert_eq!(value(stat::DEATHS), Some(i64::from(scored.deaths)));
     }
-    let farmed: u16 = finished.stats.slots.iter().map(|seat| seat.last_hits).sum();
+    let farmed: u16 = scoreboard.slots.iter().map(|seat| seat.last_hits).sum();
     assert!(farmed > 0, "ninety seconds in mid farm some creeps");
+}
+
+/// The recorder reads the whole map every tick: a player-access game must not keep one.
+#[test]
+fn a_player_game_refuses_to_record_the_whole_map() {
+    let mut spec = duel(11, 10);
+    spec.record_meta = true;
+    assert_eq!(
+        Game::<bota_gym::Player>::new(&spec).err(),
+        Some(GymError::Config(
+            "record_meta reads the whole map: only a Game<Privileged> records"
+        ))
+    );
+}
+
+/// A player learns the final statistics only from `MatchOver`, as a client does; a game cut at
+/// its tick limit tells none.
+#[test]
+fn a_cut_player_game_reports_no_result_and_no_metadata() {
+    let config = config(1);
+    let mut env = PlayerEnv::<()>::start(&config, GameId { slot: 0, game: 0 }, ()).expect("a game");
+    let finished = loop {
+        if let Some(finished) = env.step(&config, [None; MAX_SEATS]).expect("a step") {
+            break finished;
+        }
+    };
+    assert!(finished.end.limited);
+    assert_eq!(finished.result, None);
+    assert!(finished.meta.is_none());
+}
+
+/// The native cap of the mid-only map ends the match with `MatchOver`, a draw: every seat is
+/// told the final statistics, which the game hands on as its result.
+#[test]
+fn a_finished_match_tells_every_seat_its_result() {
+    let spec = MatchSpec::new(
+        bota_core::MAP2_ID,
+        support::picks(),
+        17,
+        bota_core::MAP2_TICK_CAP + 10,
+    );
+    let (mut game, _) = Game::<bota_gym::Player>::new(&spec).expect("a game");
+    let mut told = None;
+    while told.is_none() {
+        let streams = game.step(&[None, None]).expect("a tick");
+        told = streams[0].iter().find_map(|message| match message {
+            ServerMsg::MatchOver { winner, stats } => Some((*winner, stats.clone())),
+            _ => None,
+        });
+    }
+    let (winner, stats) = told.expect("told");
+    assert_eq!(winner, Team::Neutral);
+    assert_eq!(game.result(), Some((winner, &stats)));
+    assert_eq!(stats.duration, game.tick());
 }
 
 #[test]
@@ -462,6 +525,96 @@ fn drivers_and_matches_refuse_what_is_out_of_bounds() {
             got: 1
         })
     );
+}
+
+#[test]
+fn a_tick_limit_with_no_tick_left_after_the_opening_and_setup_is_refused() {
+    let refused = Some(GymError::Config(
+        "tick_limit leaves no tick after the opening and setup",
+    ));
+    let mut spec = duel(1, 10);
+    spec.tick_limit = 1;
+    assert_eq!(Game::<bota_gym::Player>::new(&spec).err(), refused);
+    spec.tick_limit = 2;
+    spec.setup = vec![SetupCheat {
+        seat: 0,
+        cheat: Cheat::Gold { amount: 100 },
+    }];
+    assert_eq!(Game::<bota_gym::Player>::new(&spec).err(), refused);
+}
+
+#[test]
+fn the_tightest_accepted_limit_ends_as_a_cut_on_the_first_step() {
+    for (limit, setup) in [(2, Vec::new()), (3, vec![Cheat::Gold { amount: 100 }])] {
+        let mut spec = duel(1, 10);
+        spec.tick_limit = limit;
+        spec.setup = setup
+            .into_iter()
+            .map(|cheat| SetupCheat { seat: 0, cheat })
+            .collect();
+        let config = bota_gym::PlayerEnvConfig {
+            decision_ticks: 3,
+            spec: Box::new(move |_, _: &()| spec.clone()),
+        };
+        let mut env =
+            PlayerEnv::<()>::start(&config, GameId { slot: 0, game: 0 }, ()).expect("a game");
+        let finished = env
+            .step(&config, [None; MAX_SEATS])
+            .expect("a step")
+            .expect("cut at once");
+        assert!(finished.end.limited);
+        assert_eq!(finished.tick, limit);
+    }
+}
+
+#[test]
+fn rosters_with_gaps_in_their_slot_ids_play_through_player_env() {
+    use bota_proto::{HeroId, Pick, SlotId};
+    let pick = |slot, team| Pick {
+        slot: SlotId(slot),
+        team,
+        hero: HeroId::SHADOW_FIEND,
+    };
+    let rosters = [
+        (
+            bota_core::MAP2_ID,
+            vec![pick(0, Team::Radiant), pick(5, Team::Dire)],
+        ),
+        (
+            bota_proto::MapId(0),
+            vec![
+                pick(1, Team::Radiant),
+                pick(2, Team::Radiant),
+                pick(6, Team::Dire),
+                pick(7, Team::Dire),
+            ],
+        ),
+    ];
+    for (map, picks) in rosters {
+        let slots: Vec<SlotId> = picks.iter().map(|pick| pick.slot).collect();
+        let config = bota_gym::PlayerEnvConfig {
+            decision_ticks: 3,
+            spec: Box::new(move |_, _: &()| MatchSpec::new(map, picks.clone(), 9, 600)),
+        };
+        let mut env =
+            PlayerEnv::<()>::start(&config, GameId { slot: 0, game: 0 }, ()).expect("a game");
+        for _ in 0..5 {
+            assert!(
+                env.step(&config, [None; MAX_SEATS])
+                    .expect("a step")
+                    .is_none()
+            );
+        }
+        for (seat, slot) in slots.iter().enumerate() {
+            let session = env.seat(seat);
+            assert_eq!(session.slot(), Some(*slot));
+            assert!(
+                session
+                    .own_player()
+                    .is_some_and(|player| player.gold.is_some())
+            );
+        }
+    }
 }
 
 #[test]

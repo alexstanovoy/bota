@@ -89,10 +89,11 @@ fn main() {
                 .collect();
             ticks += 3 * slots as u64;
             env.step(actions, &(), |_, finished| {
+                // The final statistics come with MatchOver; a game cut at its limit has none.
                 let scores: Vec<String> = finished
-                    .stats
-                    .slots
+                    .result
                     .iter()
+                    .flat_map(|stats| &stats.slots)
                     .map(|seat| {
                         format!(
                             "{}/{}/{} lh {} dn {} gold {}",

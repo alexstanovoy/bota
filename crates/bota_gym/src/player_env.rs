@@ -1,7 +1,7 @@
 //! A ready-made [`Episode`]: every seat's client session folded on the workers.
 
 use bota_client_core::{AckPolicy, ClientSession, IssuedOrder, MatchStatic, SessionOptions};
-use bota_proto::{MatchStats, OutgoingOrder, ServerMsg, SlotId};
+use bota_proto::{MatchStats, OutgoingOrder, ServerMsg};
 use bota_replay::meta::Meta;
 
 use crate::game::{Access, Advance, MAX_SEATS, Player, Privileged, Truth};
@@ -31,9 +31,10 @@ pub struct Finished<P> {
     pub end: Advance,
     /// The tick the game ended on.
     pub tick: u32,
-    /// The final scoreboard of every seat.
-    pub stats: MatchStats,
-    /// The match metadata, when the spec recorded it.
+    /// The final statistics every seat was told in `MatchOver`; none for a game cut at its tick
+    /// limit, which tells no seat.
+    pub result: Option<MatchStats>,
+    /// The match metadata, when the spec recorded it: a `PlayerEnv<_, Privileged>` only.
     pub meta: Option<Meta>,
 }
 
@@ -41,8 +42,11 @@ pub struct Finished<P> {
 /// stream a connection to a server would carry, on the worker, and the caller's policy reads
 /// those sessions between steps and answers with one [`IssuedOrder`] per seat.
 ///
-/// `PlayerEnv<P, Privileged>` also offers [`PlayerEnv::truth`] for training signals that may
-/// see everything; `PlayerEnv<P>` (= `PlayerEnv<P, Player>`) has no way to it.
+/// The caller plays every seat, so it holds every seat's session: a policy acting for one seat
+/// should read that seat's session alone, as its client would. `PlayerEnv<P, Privileged>` also
+/// offers [`PlayerEnv::truth`] for training signals that may see everything;
+/// `PlayerEnv<P>` (= `PlayerEnv<P, Player>`) has no way to it, and its finished games carry only
+/// what every seat was told.
 pub struct PlayerEnv<P, A: Access = Player> {
     id: GameId,
     plan: P,
@@ -107,7 +111,12 @@ impl<P: Clone + Send, A: Access> Episode for PlayerEnv<P, A> {
                 ack: AckPolicy::Never,
                 ..SessionOptions::default()
             };
-            let slot = SlotId(u8::try_from(seat).expect("at most MAX_SEATS seats"));
+            // The seat's own slot, whatever ids the roster uses.
+            let slot = info
+                .picks
+                .get(seat)
+                .map(|pick| pick.slot)
+                .ok_or_else(|| refused(&"the roster has no pick for this seat"))?;
             let mut session = ClientSession::seat(statics, slot, None, options)
                 .map_err(|error| refused(&error))?;
             for message in stream {
@@ -157,8 +166,8 @@ impl<P: Clone + Send, A: Access> Episode for PlayerEnv<P, A> {
             plan: self.plan.clone(),
             end,
             tick: self.game.tick(),
-            stats: self.game.stats(),
-            meta: self.game.finish()?,
+            result: self.game.result().map(|(_, stats)| stats.clone()),
+            meta: A::take_meta(&mut self.game)?,
         }))
     }
 

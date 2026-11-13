@@ -111,7 +111,9 @@ impl<'scope, E: Episode + 'scope> VecEnv<'scope, E> {
 
     /// Steps every episode with its action, in slot order; a game that ends hands what it left
     /// to `finished` (with its position, in position order) and the slot's next game starts
-    /// from `next`. On an error (the first failing position's) the env is spent.
+    /// from `next`. A wrong number of actions is refused before any episode moves, and the env
+    /// stays usable. Any failure after that (the first failing position's) spends the env:
+    /// every later call returns [`GymError::Poisoned`].
     pub fn step(
         &mut self,
         actions: impl IntoIterator<Item = E::Action>,
@@ -125,53 +127,46 @@ impl<'scope, E: Episode + 'scope> VecEnv<'scope, E> {
             return Err(GymError::Poisoned.into());
         }
         let count = self.episodes.len();
-        let mut actions = actions.into_iter();
+        // Every action is in hand before any episode leaves: a wrong count moves none of them.
+        self.round.stage(actions, count)?;
         let mut submitted = 0;
-        let mut stopped = false;
+        let mut stopped = None;
         for (position, episode) in self.episodes.drain(..).enumerate() {
-            match actions.next() {
-                Some(action) if !stopped => {
-                    let job = Job::Step {
-                        episode,
-                        action,
-                        next: Some(next.clone()),
-                    };
-                    match self.workers.submit(position, job, &self.round.reply) {
-                        Ok(()) => submitted += 1,
-                        Err(_) => stopped = true,
-                    }
-                }
-                _ => self.round.episodes[position] = Some(episode),
+            let action = self.round.actions[position].take().expect("staged");
+            if stopped.is_some() {
+                self.round.episodes[position] = Some(episode);
+                continue;
+            }
+            let job = Job::Step {
+                episode,
+                action,
+                next: Some(next.clone()),
+            };
+            match self.workers.submit(position, job, &self.round.reply) {
+                Ok(()) => submitted += 1,
+                Err(error) => stopped = Some(error),
             }
         }
-        let extra = actions.next().is_some();
         let received = self.round.receive(submitted);
-        let mut kept = 0;
         for (position, episode) in self.round.episodes[..count].iter_mut().enumerate() {
             if let Some(episode) = episode.take() {
                 self.episodes.push(episode);
-                kept += 1;
             }
             if let Some(done) = self.round.finished[position].take()
                 && received.is_ok()
+                && stopped.is_none()
             {
                 finished(position, done);
             }
         }
-        if kept != count {
+        // A step that failed part-way moved some episodes and lost others: nothing after it
+        // could be trusted.
+        if received.is_err() || stopped.is_some() {
             self.poisoned = true;
         }
         received?;
-        if stopped {
-            self.poisoned = true;
-            return Err(GymError::Stopped.into());
-        }
-        if submitted != count || extra {
-            return Err(GymError::ActionCount {
-                expected: count,
-                got: submitted + usize::from(extra),
-            }
-            .into());
+        if let Some(error) = stopped {
+            return Err(error.into());
         }
         Ok(())
     }

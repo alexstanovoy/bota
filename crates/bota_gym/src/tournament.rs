@@ -113,8 +113,9 @@ impl<'scope, E: Episode + 'scope> Tournament<'scope, E> {
 
     /// Steps every live game with its action, in batch order; each finished game is handed,
     /// with what it left, to `finished` in batch order, then the batch is refilled from the
-    /// plan. On an error (the first failing position's, or `finished`'s) the tournament is
-    /// spent.
+    /// plan. A wrong number of actions is refused before any game moves, and the tournament stays
+    /// usable. Any failure after that (the first failing position's, or `finished`'s) spends it:
+    /// every later call returns [`GymError::Poisoned`].
     pub fn step(
         &mut self,
         actions: impl IntoIterator<Item = E::Action>,
@@ -124,33 +125,25 @@ impl<'scope, E: Episode + 'scope> Tournament<'scope, E> {
             return Err(GymError::Poisoned.into());
         }
         let count = self.live.len();
-        let mut actions = actions.into_iter();
+        // Every action is in hand before any game leaves: a wrong count moves none of them.
+        self.round.stage(actions, count)?;
         let mut submitted = 0;
         let mut failure = None;
         for (position, episode) in self.live.drain(..).enumerate() {
-            let Some(action) = actions.next() else {
-                failure.get_or_insert(GymError::ActionCount {
-                    expected: count,
-                    got: position,
-                });
-                break;
-            };
+            let action = self.round.actions[position].take().expect("staged");
+            if failure.is_some() {
+                continue;
+            }
             let job = Job::Step {
                 episode,
                 action,
                 next: None,
             };
             if let Err(error) = self.workers.submit(position, job, &self.round.reply) {
-                failure.get_or_insert(error);
-                break;
+                failure = Some(error);
+                continue;
             }
             submitted += 1;
-        }
-        if actions.next().is_some() {
-            failure.get_or_insert(GymError::ActionCount {
-                expected: count,
-                got: count + 1,
-            });
         }
         let received = self.round.receive(submitted);
         if received.is_err() || failure.is_some() {
