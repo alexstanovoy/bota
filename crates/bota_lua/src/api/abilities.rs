@@ -1,6 +1,6 @@
 use bota_proto::{AbilityId, AbilitySlot, EntityId, ItemId, ItemSlot, StatusFlags, TalentSlot};
 
-use super::globals::{integer, string};
+use super::globals::{integer, seconds, string};
 use super::*;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -50,6 +50,9 @@ struct View {
     range: i32,
     castable: bool,
     learnable: bool,
+    mana_cost: i32,
+    cooldown_left: Option<u32>,
+    charges: u8,
 }
 
 fn view(state: &State, identity: Identity) -> Option<View> {
@@ -78,6 +81,9 @@ fn view(state: &State, identity: Identity) -> Option<View> {
                 range: 0,
                 castable: false,
                 learnable: alive && talent.may_learn.is_some_and(|slots| slots.has(slot)),
+                mana_cost: 0,
+                cooldown_left: Some(0),
+                charges: 0,
             })
         }
         Identity::Innate { id, .. } => {
@@ -95,6 +101,10 @@ fn view(state: &State, identity: Identity) -> Option<View> {
                 range: definition.range,
                 castable: false,
                 learnable: false,
+                mana_cost: bota_core::ability_mana_cost(id, 1),
+                // Passive innates have no running cooldown. Active ones need a received slot.
+                cooldown_left: definition.passive.then_some(0),
+                charges: 0,
             })
         }
         Identity::Ability { slot, id, .. } => {
@@ -112,6 +122,9 @@ fn view(state: &State, identity: Identity) -> Option<View> {
                     && ability.cooldown_left == 0
                     && unit.is_some_and(|unit| unit.mana >= ability.mana_cost),
                 learnable: alive && ability.learnable == Some(true),
+                mana_cost: ability.mana_cost,
+                cooldown_left: Some(ability.cooldown_left),
+                charges: 0,
             })
         }
         Identity::Item { slot, id, .. } => {
@@ -129,6 +142,9 @@ fn view(state: &State, identity: Identity) -> Option<View> {
                     && item.mute_left == 0
                     && unit.is_some_and(|unit| unit.mana >= item.mana_cost),
                 learnable: false,
+                mana_cost: item.mana_cost,
+                cooldown_left: Some(item.cooldown_left),
+                charges: item.charges.unwrap_or(0),
             })
         }
     }
@@ -195,6 +211,10 @@ pub(super) fn install(lua: &mut Lua, units: TableId, state: Shared) -> Result<()
         "CanAbilityBeUpgraded",
         "GetSpecialValueInt",
         "GetAbilityDamage",
+        "GetManaCost",
+        "GetCooldownTimeRemaining",
+        "IsCooldownReady",
+        "GetCurrentCharges",
     ] {
         let capture = state.clone();
         method(
@@ -216,6 +236,26 @@ pub(super) fn install(lua: &mut Lua, units: TableId, state: Shared) -> Result<()
                     .ok_or_else(|| vm.error("ability handle expected"))?;
                 let view = view(&state, identity);
                 let value = match name {
+                    "GetManaCost"
+                    | "GetCooldownTimeRemaining"
+                    | "IsCooldownReady"
+                    | "GetCurrentCharges" => {
+                        let view = view.ok_or_else(|| vm.error("ability is no longer known"))?;
+                        match name {
+                            "GetManaCost" => Value::Number(f64::from(view.mana_cost)),
+                            "GetCurrentCharges" => Value::Number(f64::from(view.charges)),
+                            _ => {
+                                let cooldown = view
+                                    .cooldown_left
+                                    .ok_or_else(|| vm.error("ability cooldown is not observed"))?;
+                                if name == "IsCooldownReady" {
+                                    Value::Boolean(cooldown == 0)
+                                } else {
+                                    Value::Number(seconds(cooldown))
+                                }
+                            }
+                        }
+                    }
                     "GetSpecialValueInt" | "GetAbilityDamage" => {
                         let key = if name == "GetSpecialValueInt" {
                             string(vm, args, 1)?

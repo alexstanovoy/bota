@@ -187,6 +187,14 @@ use received status flags or effect ids. In particular, `IsIllusion` tests only
 the reported illusion effect; it does not identify an enemy real hero from
 information withheld by the side's view.
 
+Ability and item mana cost, remaining cooldown and current charges come from
+the received ability book or inventory, including an owned dead hero's kit.
+Cooldowns are seconds; readiness tests the cooldown alone, independently of mana
+or status effects. Abilities and items without charges return zero. The new
+state reads reject forgotten ability/item handles. An active innate without a
+received cooldown slot reports that the cooldown is unobserved; passive innates
+and talents have no running cooldown.
+
 Estimated damage is an integer projection of observed attack stats and core spell
 data over the requested duration. The availability flag restricts allied spells
 and items by the known mana and cooldowns; it does not disable ordinary attacks.
