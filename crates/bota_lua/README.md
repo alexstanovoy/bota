@@ -59,7 +59,11 @@ turn was accepted; discarded host continuations, including attack-once completio
 are restored before computing that request. Lua script globals are not rewound.
 Native defaults are 125,000 fuel per call and 600,000
 per team tick, leaving margin inside the deadline under load. Native interpreter limits may
-only reduce the defaults.
+only reduce the defaults of the script host: `SCRIPT_LIMITS`, the interpreter's defaults with the upvalues per function
+raised to 120, which the reference game's script runtime accepts and scripts written for it rely on (game build 6975).
+`NativeConfig` and so `bota_botscript` start from it. `LuaTeam::new` takes the limits its caller passes, so an embedder that
+passes the interpreter's `Limits::DEFAULT` keeps 60 upvalues per function. Active and retiring workers share a process-wide limit
+of 32; cleanup does not wait on timed-out work.
 
 Native directory preloading requires Linux `openat2` and procfs. It pins objects
 before classification, rejects symlinks/submounts/nonregular files and reads sources

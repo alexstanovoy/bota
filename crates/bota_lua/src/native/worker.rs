@@ -1,4 +1,4 @@
-use crate::{BotSeat, Keys, Limits, LuaTeam, ModuleBank, TeamTurn, state::Snapshot};
+use crate::{BotSeat, Keys, Limits, LuaTeam, ModuleBank, SCRIPT_LIMITS, TeamTurn, state::Snapshot};
 use bota_client_core::ClientSession;
 use bota_proto::{SlotId, Team};
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 const MAX_CONSECUTIVE_LATE_TICKS: u8 = 3;
 // At the measured ~13ns/fuel, 600k leaves over four times the execution margin
 // inside 33ms, including snapshot copying, collection, and scheduling jitter.
-const NATIVE_LIMITS: Limits = Limits::DEFAULT
+const NATIVE_LIMITS: Limits = SCRIPT_LIMITS
     .with_fuel_per_call(125_000)
     .with_fuel_per_tick(600_000);
 
@@ -79,7 +79,7 @@ struct Request {
 /// One request at a time on a dedicated stack. Late outputs are discarded; three consecutive
 /// missed ticks retire the worker. A successful timely reply resets that streak.
 /// Cleanup never waits on the caller. Retired workers finish bounded fuel asynchronously; a process-wide
-/// permit bounds active and retiring workers together to 32. Native limits cannot exceed interpreter defaults.
+/// permit bounds active and retiring workers together to 32. Native limits cannot exceed the script host's.
 pub struct NativeTeam {
     requests: Option<SyncSender<Request>>,
     replies: Option<Receiver<Reply>>,
@@ -114,7 +114,7 @@ impl NativeTeam {
         }
         if !bounded_limits(config.limits) {
             return Err(NativeError::Setup(
-                "native limits may only reduce interpreter defaults".to_owned(),
+                "native limits may only reduce the script host limits".to_owned(),
             ));
         }
         let permit = WorkerPermit::acquire()?;
@@ -379,7 +379,7 @@ impl Drop for WorkerPermit {
     }
 }
 fn bounded_limits(limits: Limits) -> bool {
-    let cap = Limits::DEFAULT;
+    let cap = SCRIPT_LIMITS;
     limits.fuel_per_call <= cap.fuel_per_call
         && limits.fuel_per_tick <= cap.fuel_per_tick
         && limits.memory <= cap.memory
@@ -387,6 +387,7 @@ fn bounded_limits(limits: Limits) -> bool {
         && limits.call_depth <= cap.call_depth
         && limits.syntax_depth <= cap.syntax_depth
         && limits.pattern_depth <= cap.pattern_depth
+        && limits.function_upvalues <= cap.function_upvalues
         && limits.module_size <= cap.module_size
         && limits.scripts_size <= cap.scripts_size
         && limits.module_count <= cap.module_count

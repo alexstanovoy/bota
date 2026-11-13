@@ -1,6 +1,6 @@
 use bota_client_core::{Link, Transport, greet};
 use bota_lua::{
-    BotSeat, Limits,
+    BotSeat, SCRIPT_LIMITS,
     native::{HeroSelection, NativeConfig, NativeTeam, load_modules, play_team, random_keys},
 };
 use bota_proto::{ClientMsg, HeroId, Role, SeatKey, Team};
@@ -42,11 +42,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     let options = options()?;
     let credentials = credentials(options.team)?;
-    let modules = load_modules(
-        &options.scripts,
-        options.runtime.as_deref(),
-        Limits::DEFAULT,
-    )?;
+    let modules = load_modules(&options.scripts, options.runtime.as_deref(), SCRIPT_LIMITS)?;
     let mut joined = Vec::new();
     for credential in credentials {
         let mut link = Link::connect(&options.address, Duration::from_secs(30))?;
@@ -204,7 +200,7 @@ mod tests {
 
     #[test]
     fn startup_diagnostics_escape_script_control_characters() {
-        let mut modules = ModuleBank::new(Limits::DEFAULT);
+        let mut modules = ModuleBank::new(SCRIPT_LIMITS);
         modules
             .insert(
                 "bots/hero_selection",

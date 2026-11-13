@@ -66,6 +66,35 @@ fn native_worker_plays_shadow_fiend_to_match_over_through_real_orders() {
 }
 
 #[test]
+fn native_limits_above_the_script_hosts_are_refused_at_setup_field_by_field() {
+    let refused = |limits: Limits| match NativeTeam::new(
+        {
+            let mut config = config();
+            config.limits = limits;
+            config
+        },
+        modules(),
+    ) {
+        Err(NativeError::Setup(message)) => message,
+        Err(other) => panic!("expected a setup error, got {other:?}"),
+        Ok(_) => panic!("limits above the script host's were accepted"),
+    };
+    let cap = bota_lua::SCRIPT_LIMITS;
+    let above = cap.with_function_upvalues(cap.function_upvalues + 1);
+    assert_eq!(
+        refused(above),
+        "native limits may only reduce the script host limits"
+    );
+    // At the cap, and below it, the worker starts.
+    for upvalues in [cap.function_upvalues, 60] {
+        let mut accepted = config();
+        accepted.limits = cap.with_function_upvalues(upvalues);
+        NativeTeam::new(accepted, modules())
+            .unwrap_or_else(|error| panic!("{upvalues} upvalues: {error}"));
+    }
+}
+
+#[test]
 fn consecutive_deadlines_retire_the_worker_without_committing_orders() {
     let mut config = config();
     config.think_timeout = Duration::ZERO;

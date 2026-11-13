@@ -17,6 +17,12 @@ mod team;
 mod vector;
 
 pub use luagee::{GcStress, Keys, Limits, Loader, ModuleName};
+
+/// The outer locals one script function may capture in the host: the reference game's script runtime accepts up to 120
+/// upvalues per function (game build 6975), and scripts written for it rely on that.
+pub const SCRIPT_UPVALUES: u8 = 120;
+/// The limits of a script host: the interpreter's defaults with the upvalue limit above.
+pub const SCRIPT_LIMITS: Limits = Limits::DEFAULT.with_function_upvalues(SCRIPT_UPVALUES);
 pub use modules::ModuleBank;
 pub use team::*;
 
