@@ -101,8 +101,6 @@ pub struct AbilityDef {
     /// Dota's internal name of the ability, its line of the id registry:
     /// what every data file and asset knows it by.
     pub key: &'static str,
-    /// What it is called.
-    pub name: &'static str,
     /// How it is aimed.
     pub aim: Aim,
     /// Levels it may reach.
@@ -196,7 +194,7 @@ pub struct AbilityDef {
 pub(crate) const BARE_ABILITY: AbilityDef = AbilityDef {
     id: AbilityId(u16::MAX),
     key: "",
-    name: "",
+
     aim: Aim::Own,
     max_level: 0,
     passive: true,
@@ -232,16 +230,11 @@ pub(crate) const BARE_ABILITY: AbilityDef = AbilityDef {
 
 /// A courier's ability: one level, cast for no mana, held from its owner's
 /// first level.
-const fn courier(
-    id: AbilityId,
-    key: &'static str,
-    name: &'static str,
-    cooldown: &'static [u32],
-) -> AbilityDef {
+const fn courier(id: AbilityId, key: &'static str, cooldown: &'static [u32]) -> AbilityDef {
     AbilityDef {
         id,
         key,
-        name,
+
         max_level: 1,
         passive: false,
         mana: &[0],
@@ -297,35 +290,18 @@ const HERO_ABILITIES: &[AbilityDef] = &[
         ..courier(
             AbilityId::BURST,
             "courier_burst",
-            "Burst",
             &[rules::COURIER_BURST_COOLDOWN],
         )
     },
-    courier(
-        AbilityId::RETURN_ITEMS,
-        "courier_return_to_base",
-        "Return",
-        &[0],
-    ),
-    courier(
-        AbilityId::TAKE_STASH,
-        "courier_take_stash_items",
-        "Take Stash",
-        &[0],
-    ),
-    courier(
-        AbilityId::DELIVER,
-        "courier_transfer_items",
-        "Deliver",
-        &[0],
-    ),
+    courier(AbilityId::RETURN_ITEMS, "courier_return_to_base", &[0]),
+    courier(AbilityId::TAKE_STASH, "courier_take_stash_items", &[0]),
+    courier(AbilityId::DELIVER, "courier_transfer_items", &[0]),
     AbilityDef {
         immediate: true,
         granted_at: Some(rules::COURIER_SHIELD_LEVEL),
         ..courier(
             AbilityId::SHIELD,
             "courier_shield",
-            "Shield",
             &[rules::COURIER_SHIELD_COOLDOWN],
         )
     },
@@ -341,7 +317,7 @@ const HERO_ABILITIES: &[AbilityDef] = &[
     AbilityDef {
         id: AbilityId(16),
         key: "bota_throw_grenade",
-        name: "Throw Grenade",
+
         retired: true,
         ..BARE_ABILITY
     },

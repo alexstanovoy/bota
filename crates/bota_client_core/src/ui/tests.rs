@@ -1310,9 +1310,9 @@ fn the_talent_trees_are_shadow_fiends_and_pudges() {
     for (id, hero) in bota_core::HEROES.iter().enumerate() {
         assert_eq!(
             crate::catalog::has_talents(id as u16),
-            matches!(hero.name, "Shadow Fiend" | "Pudge"),
+            matches!(hero.key, "npc_dota_hero_nevermore" | "npc_dota_hero_pudge"),
             "{}",
-            hero.name
+            hero.key
         );
     }
 }

@@ -56,7 +56,7 @@ fn pause_freezes_elapsed_time_and_step_queues_one_tick_without_reading() {
     player.poll(0.0);
     player.poll(0.0);
     player.paused = true;
-    assert_eq!(player.status(), "paused");
+    assert_eq!(player.status(), crate::ReplayStatus::Paused);
     let before = (bytes.get(), calls.get());
     for _ in 0..10 {
         assert!(player.poll(60.0).is_empty());

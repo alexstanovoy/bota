@@ -14,8 +14,6 @@ pub struct HeroDef {
     /// Dota's internal name of the hero, its line of the id registry: what
     /// every data file and asset knows it by.
     pub key: &'static str,
-    /// What it is called.
-    pub name: &'static str,
     /// The plain form of its body.
     pub unit: &'static UnitDef,
     /// The slots it carries, in the order they are shown. The ultimate sits

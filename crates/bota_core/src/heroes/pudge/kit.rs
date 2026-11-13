@@ -87,7 +87,7 @@ const _: () = {
 pub const HERO_DEF: HeroDef = HeroDef {
     id: HeroId::PUDGE,
     key: "npc_dota_hero_pudge",
-    name: "Pudge",
+
     unit: &PUDGE,
     abilities: &[
         AbilityId::MEAT_HOOK,
@@ -106,7 +106,7 @@ pub const MEAT_HOOK: AbilityDef = AbilityDef {
     )],
     id: AbilityId::MEAT_HOOK,
     key: PUDGE_MEAT_HOOK.key,
-    name: "Meat Hook",
+
     aim: Aim::Point,
     max_level: PUDGE_MEAT_HOOK.max_level,
     passive: false,
@@ -122,7 +122,7 @@ pub const MEAT_HOOK: AbilityDef = AbilityDef {
 pub const ROT: AbilityDef = AbilityDef {
     id: AbilityId::ROT,
     key: PUDGE_ROT.key,
-    name: "Rot",
+
     max_level: PUDGE_ROT.max_level,
     passive: false,
     toggle: PUDGE_ROT.behavior.has(Behavior::TOGGLE),
@@ -137,7 +137,7 @@ pub const ROT: AbilityDef = AbilityDef {
 pub const FLESH_HEAP: AbilityDef = AbilityDef {
     id: AbilityId::FLESH_HEAP,
     key: PUDGE_INNATE_GRAFT_FLESH.key,
-    name: "Flesh Heap",
+
     max_level: PUDGE_INNATE_GRAFT_FLESH.max_level,
     range: FLESH_HEAP_RANGE,
     ..BARE_ABILITY
@@ -146,7 +146,7 @@ pub const FLESH_HEAP: AbilityDef = AbilityDef {
 pub const MEAT_SHIELD: AbilityDef = AbilityDef {
     id: AbilityId::MEAT_SHIELD,
     key: PUDGE_FLESH_HEAP.key,
-    name: "Meat Shield",
+
     max_level: PUDGE_FLESH_HEAP.max_level,
     passive: false,
     immediate: PUDGE_FLESH_HEAP.behavior.has(Behavior::IMMEDIATE),
@@ -159,7 +159,7 @@ pub const MEAT_SHIELD: AbilityDef = AbilityDef {
 pub const DISMEMBER: AbilityDef = AbilityDef {
     id: AbilityId::DISMEMBER,
     key: PUDGE_DISMEMBER.key,
-    name: "Dismember",
+
     block: crate::BlockTiming::Cast,
     aim: Aim::Unit,
     max_level: PUDGE_DISMEMBER.max_level,

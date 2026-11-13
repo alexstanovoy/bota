@@ -38,7 +38,7 @@ fn assert_failed(bytes: Vec<u8>, check: impl FnOnce(&io::Error)) {
     check(player.error().expect("invalid input must be reported"));
     assert!(!player.finished());
     assert!(player.paused);
-    assert_eq!(player.status(), "error");
+    assert_eq!(player.status(), crate::ReplayStatus::Error);
     let before = (read.get(), calls.get());
     player.advance_ticks(1.0);
     assert!(player.poll(1.0).is_empty());
@@ -173,7 +173,7 @@ fn clean_eof_is_terminal_and_is_not_an_error() {
 
     assert!(player.finished());
     assert!(player.error().is_none());
-    assert_eq!(player.status(), "finished");
+    assert_eq!(player.status(), crate::ReplayStatus::Finished);
     let before = (bytes.get(), calls.get());
     assert!(player.poll(60.0).is_empty());
     assert_eq!((bytes.get(), calls.get()), before);
@@ -211,7 +211,7 @@ fn repeated_interruptions_yield_at_the_read_budget_and_resume() {
     assert_eq!(calls.get(), MAX_READS_PER_POLL);
     assert_eq!(player.bytes_read(), 0);
     assert!(player.error().is_none());
-    assert_eq!(player.status(), "loading");
+    assert_eq!(player.status(), crate::ReplayStatus::Loading);
     assert_eq!(player.poll(60.0).len(), 1);
 }
 

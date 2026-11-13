@@ -643,6 +643,7 @@ name = "server_transport"
 about = "the wire end to end: TCP, WebSocket and TLS links, slow, broken and hostile peers"
 paths = [
     "crates/bota_server/tests/malformed.rs",
+    "crates/bota_server/tests/replaced_wire.rs",
     "crates/bota_server/tests/bad_links.rs",
     "crates/bota_server/tests/wire/**",
     "crates/bota_server/tests/proxy/**",
@@ -650,6 +651,7 @@ paths = [
 ]
 tests = [
     { crate = "bota_server", target = "test:malformed" },
+    { crate = "bota_server", target = "test:replaced_wire", before = [["tools/replaced_client.sh"]] },
     { crate = "bota_server", target = "test:bad_links" },
 ]
 

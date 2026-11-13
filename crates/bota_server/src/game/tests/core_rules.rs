@@ -26,13 +26,13 @@ fn a_heros_view_shows_the_attributes_and_least_damage_the_core_computes_for_its_
                 shown.attributes,
                 attributes_at_level(hero_def.unit, level),
                 "{} at level {level}",
-                hero_def.name
+                hero_def.key
             );
             assert_eq!(
                 shown.attack_damage_min,
                 base_damage_least(hero_def.unit, level),
                 "{} at level {level}",
-                hero_def.name
+                hero_def.key
             );
         }
     }

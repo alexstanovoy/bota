@@ -160,8 +160,6 @@ impl NeutralKind {
 pub struct NeutralDef {
     /// The kind the entry is for: its place in [`NEUTRALS`].
     pub kind: NeutralKind,
-    /// What the game calls it.
-    pub name: &'static str,
     /// Dota's internal name of the unit, its line of the id registry: what
     /// its model, its art and every data file know it by.
     pub unit: &'static str,
@@ -272,14 +270,13 @@ const fn regen(tenths: i32) -> Fixed {
 /// An entry, its kind given by its place.
 const fn neutral(
     kind: NeutralKind,
-    name: &'static str,
     unit: &'static str,
     abilities: &'static [NeutralAbility],
     def: UnitDef,
 ) -> NeutralDef {
     NeutralDef {
         kind,
-        name,
+
         unit,
         abilities,
         growth: Some(crate::NeutralGrowth {
@@ -299,7 +296,6 @@ const fn neutral(
 const NEUTRAL_ROWS: &[NeutralDef] = &[
     neutral(
         NeutralKind::Kobold,
-        "Kobold",
         "npc_dota_neutral_kobold",
         &[A::ProspectingAura],
         UnitDef {
@@ -331,7 +327,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::KoboldTunneler,
-        "Kobold Soldier",
         "npc_dota_neutral_kobold_tunneler",
         &[A::StealWeapon],
         UnitDef {
@@ -363,7 +358,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::KoboldTaskmaster,
-        "Kobold Foreman",
         "npc_dota_neutral_kobold_taskmaster",
         &[A::SpeedAura],
         UnitDef {
@@ -395,7 +389,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::ForestTrollBerserker,
-        "Hill Troll Berserker",
         "npc_dota_neutral_forest_troll_berserker",
         &[A::Break, A::Piercing],
         UnitDef {
@@ -427,7 +420,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::ForestTrollHighPriest,
-        "Hill Troll Priest",
         "npc_dota_neutral_forest_troll_high_priest",
         &[A::Heal, A::HealAmplificationAura, A::Piercing],
         UnitDef {
@@ -459,7 +451,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::GnollAssassin,
-        "Vhoul Assassin",
         "npc_dota_neutral_gnoll_assassin",
         &[A::EnvenomedWeapon, A::Piercing],
         UnitDef {
@@ -491,7 +482,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::FelBeast,
-        "Fell Spirit",
         "npc_dota_neutral_fel_beast",
         &[A::Vex],
         UnitDef {
@@ -523,7 +513,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::Ghost,
-        "Ghost",
         "npc_dota_neutral_ghost",
         &[A::FrostAttack, A::Piercing],
         UnitDef {
@@ -555,7 +544,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::HarpyScout,
-        "Harpy Scout",
         "npc_dota_neutral_harpy_scout",
         &[A::TakeOff, A::Piercing],
         UnitDef {
@@ -587,7 +575,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::HarpyStorm,
-        "Harpy Stormcrafter",
         "npc_dota_neutral_harpy_storm",
         &[A::ChainLightning, A::Piercing],
         UnitDef {
@@ -619,7 +606,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::CentaurOutrunner,
-        "Centaur Courser",
         "npc_dota_neutral_centaur_outrunner",
         &[A::CloakAura],
         UnitDef {
@@ -651,7 +637,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::CentaurKhan,
-        "Centaur Conqueror",
         "npc_dota_neutral_centaur_khan",
         &[A::WarStomp],
         UnitDef {
@@ -683,7 +668,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::GiantWolf,
-        "Giant Wolf",
         "npc_dota_neutral_giant_wolf",
         &[A::Intimidate],
         UnitDef {
@@ -715,7 +699,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::AlphaWolf,
-        "Alpha Wolf",
         "npc_dota_neutral_alpha_wolf",
         &[A::CriticalStrike, A::PackleadersAura],
         UnitDef {
@@ -747,7 +730,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::SatyrTrickster,
-        "Satyr Banisher",
         "npc_dota_neutral_satyr_trickster",
         &[A::Purge],
         UnitDef {
@@ -779,7 +761,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::SatyrSoulstealer,
-        "Satyr Mindstealer",
         "npc_dota_neutral_satyr_soulstealer",
         &[A::ManaBurn, A::ManaAura],
         UnitDef {
@@ -811,7 +792,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::SatyrHellcaller,
-        "Satyr Tormenter",
         "npc_dota_neutral_satyr_hellcaller",
         &[A::Shockwave, A::UnholyAura],
         UnitDef {
@@ -843,7 +823,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::OgreMauler,
-        "Ogre Bruiser",
         "npc_dota_neutral_ogre_mauler",
         &[A::OgreSmash],
         UnitDef {
@@ -875,7 +854,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::OgreMagi,
-        "Ogre Frostmage",
         "npc_dota_neutral_ogre_magi",
         &[A::IceArmor],
         UnitDef {
@@ -907,7 +885,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::MudGolem,
-        "Mud Golem",
         "npc_dota_neutral_mud_golem",
         &[A::HurlBoulder, A::ShardSplit],
         UnitDef {
@@ -939,7 +916,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::MudGolemSplit,
-        "Shard Golem",
         "npc_dota_neutral_mud_golem_split",
         &[A::HurlBoulder],
         UnitDef {
@@ -971,7 +947,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::PolarFurbolgChampion,
-        "Hellbear",
         "npc_dota_neutral_polar_furbolg_champion",
         &[A::SwiftnessAura, A::DeathThroeRush],
         UnitDef {
@@ -1003,7 +978,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::PolarFurbolgUrsaWarrior,
-        "Hellbear Smasher",
         "npc_dota_neutral_polar_furbolg_ursa_warrior",
         &[A::ThunderClap, A::DeathThroePower],
         UnitDef {
@@ -1035,7 +1009,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::Wildkin,
-        "Wildwing",
         "npc_dota_neutral_wildkin",
         &[A::Tornado],
         UnitDef {
@@ -1067,7 +1040,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::EnragedWildkin,
-        "Wildwing Ripper",
         "npc_dota_neutral_enraged_wildkin",
         &[A::Hurricane, A::ToughnessAura],
         UnitDef {
@@ -1099,7 +1071,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::DarkTroll,
-        "Hill Troll",
         "npc_dota_neutral_dark_troll",
         &[A::Ensnare, A::Piercing],
         UnitDef {
@@ -1131,7 +1102,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::DarkTrollWarlord,
-        "Dark Troll Summoner",
         "npc_dota_neutral_dark_troll_warlord",
         &[A::RaiseDead],
         UnitDef {
@@ -1163,7 +1133,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::WarpineRaider,
-        "Warpine Raider",
         "npc_dota_neutral_warpine_raider",
         &[A::SeedShot],
         UnitDef {
@@ -1195,7 +1164,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::BlackDrake,
-        "Ancient Black Drake",
         "npc_dota_neutral_black_drake",
         &[A::MagicAmplificationAura],
         UnitDef {
@@ -1228,7 +1196,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::BlackDragon,
-        "Ancient Black Dragon",
         "npc_dota_neutral_black_dragon",
         &[A::Fireball, A::SplashAttack, A::DragonhideAura],
         UnitDef {
@@ -1261,7 +1228,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::RockGolem,
-        "Ancient Rock Golem",
         "npc_dota_neutral_rock_golem",
         &[A::WeakeningAura],
         UnitDef {
@@ -1294,7 +1260,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::GraniteGolem,
-        "Ancient Granite Golem",
         "npc_dota_neutral_granite_golem",
         &[A::GraniteAura],
         UnitDef {
@@ -1327,7 +1292,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::SmallThunderLizard,
-        "Ancient Rumblehide",
         "npc_dota_neutral_small_thunder_lizard",
         &[A::WarDrumsAura],
         UnitDef {
@@ -1360,7 +1324,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::BigThunderLizard,
-        "Ancient Thunderhide",
         "npc_dota_neutral_big_thunder_lizard",
         &[A::Slam, A::Frenzy],
         UnitDef {
@@ -1393,7 +1356,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::FrostbittenGolem,
-        "Ancient Frostbitten Golem",
         "npc_dota_neutral_frostbitten_golem",
         &[A::TimeWarpAura],
         UnitDef {
@@ -1426,7 +1388,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::IceShaman,
-        "Ancient Ice Shaman",
         "npc_dota_neutral_ice_shaman",
         &[A::IcefireBomb],
         UnitDef {
@@ -1459,7 +1420,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::ProwlerAcolyte,
-        "Ancient Prowler Acolyte",
         "npc_dota_neutral_prowler_acolyte",
         &[A::ProwlerAura],
         UnitDef {
@@ -1492,7 +1452,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::ProwlerShaman,
-        "Ancient Prowler Shaman",
         "npc_dota_neutral_prowler_shaman",
         &[A::Desecrate, A::Petrify],
         UnitDef {
@@ -1525,7 +1484,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::Tadpole,
-        "Pollywog",
         "npc_dota_neutral_tadpole",
         &[A::RiverbornAura],
         UnitDef {
@@ -1557,7 +1515,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::Froglet,
-        "Boglet",
         "npc_dota_neutral_froglet",
         &[A::ArmOfTheDeep, A::RiverbornAura],
         UnitDef {
@@ -1589,7 +1546,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::GrownFrog,
-        "Croaker",
         "npc_dota_neutral_grown_frog",
         &[A::TendrilsOfTheDeep, A::RiverbornAura],
         UnitDef {
@@ -1621,7 +1577,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::AncientFrog,
-        "Ancient Croaker",
         "npc_dota_neutral_ancient_frog",
         &[A::CongregationsOfTheDeep, A::RiverbornAura],
         UnitDef {
@@ -1654,7 +1609,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::FrogletMage,
-        "Marshmage Apprentice",
         "npc_dota_neutral_froglet_mage",
         &[A::WaterBubbleSmall, A::RiverbornAura],
         UnitDef {
@@ -1686,7 +1640,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::GrownFrogMage,
-        "Marshmage",
         "npc_dota_neutral_grown_frog_mage",
         &[A::WaterBubbleMedium, A::RiverbornAura],
         UnitDef {
@@ -1718,7 +1671,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::AncientFrogMage,
-        "Ancient Marshmage",
         "npc_dota_neutral_ancient_frog_mage",
         &[A::WaterBubbleLarge, A::RiverbornAura],
         UnitDef {
@@ -1751,7 +1703,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     ),
     neutral(
         NeutralKind::SkeletonWarrior,
-        "Skeleton Warrior",
         "npc_dota_dark_troll_warlord_skeleton_warrior",
         &[A::Rally],
         UnitDef {
@@ -1785,7 +1736,6 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
         growth: None,
         ..neutral(
             NeutralKind::WildkinTornado,
-            "Tornado",
             "npc_dota_enraged_wildkin_tornado",
             &[A::Tempest],
             UnitDef {
@@ -1810,7 +1760,7 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
     },
     NeutralDef {
         kind: NeutralKind::Roshan,
-        name: "Roshan",
+
         unit: "npc_dota_roshan",
         abilities: &[
             A::RevengeRoar,

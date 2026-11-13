@@ -13,9 +13,6 @@ use crate::{AttackClass, PriorityOrder, TargetClass, rules};
 pub struct KindDef {
     /// The kind the row is for: its place in [`UNIT_KINDS`].
     pub kind: UnitKind,
-    /// The rules' identifier for the kind, for logs and tests; not a
-    /// player-facing label.
-    pub name: &'static str,
     /// A fixed NPC model key; dynamic neutral and ward subtypes select their own.
     pub npc: Option<&'static str>,
     /// Health taken by one ranged-hero attack, for hit-count units.
@@ -92,7 +89,7 @@ pub struct KindDef {
 /// it apart.
 const PLAIN: KindDef = KindDef {
     kind: UnitKind::Hero,
-    name: "Hero",
+
     npc: None,
     health_per_ranged_hit: None,
     structure: false,
@@ -118,10 +115,10 @@ const PLAIN: KindDef = KindDef {
     walkable: false,
 };
 
-const fn lane_creep(kind: UnitKind, name: &'static str, attack_class: AttackClass) -> KindDef {
+const fn lane_creep(kind: UnitKind, attack_class: AttackClass) -> KindDef {
     KindDef {
         kind,
-        name,
+
         lane_creep: true,
         creep: true,
         attack_class,
@@ -132,15 +129,10 @@ const fn lane_creep(kind: UnitKind, name: &'static str, attack_class: AttackClas
 }
 
 /// A building, and whether a scroll carries to it.
-const fn building(
-    kind: UnitKind,
-    name: &'static str,
-    target_class: TargetClass,
-    takes_scrolls: bool,
-) -> KindDef {
+const fn building(kind: UnitKind, target_class: TargetClass, takes_scrolls: bool) -> KindDef {
     KindDef {
         kind,
-        name,
+
         structure: true,
         always_seen: true,
         fixed: true,
@@ -159,12 +151,12 @@ const fn building(
 /// A neutral building of the map's objectives: invulnerable, it never
 /// falls, so nothing denies it and nothing announces its fall, and the
 /// Glyph leaves it bare.
-const fn objective(kind: UnitKind, name: &'static str, takes_scrolls: bool) -> KindDef {
+const fn objective(kind: UnitKind, takes_scrolls: bool) -> KindDef {
     KindDef {
         deny_below_pct: None,
         death_announced: false,
         glyphed_for: None,
-        ..building(kind, name, TargetClass::Building, takes_scrolls)
+        ..building(kind, TargetClass::Building, takes_scrolls)
     }
 }
 
@@ -178,46 +170,37 @@ pub const UNIT_KINDS: [KindDef; 20] = [
         breaks_regen: true,
         ..PLAIN
     },
-    lane_creep(UnitKind::CreepMelee, "Melee Creep", AttackClass::Runty),
-    lane_creep(
-        UnitKind::CreepFlagbearer,
-        "Flagbearer Creep",
-        AttackClass::Runty,
-    ),
-    lane_creep(UnitKind::CreepRanged, "Ranged Creep", AttackClass::Piercing),
+    lane_creep(UnitKind::CreepMelee, AttackClass::Runty),
+    lane_creep(UnitKind::CreepFlagbearer, AttackClass::Runty),
+    lane_creep(UnitKind::CreepRanged, AttackClass::Piercing),
     KindDef {
         target_class: TargetClass::Siege,
         priority: PriorityOrder::SiegeFirst,
-        ..lane_creep(UnitKind::CreepSiege, "Siege Creep", AttackClass::Reinforced)
+        ..lane_creep(UnitKind::CreepSiege, AttackClass::Reinforced)
     },
     KindDef {
         kind: UnitKind::CreepNeutral,
-        name: "Neutral Creep",
+
         neutral: true,
         creep: true,
         ..PLAIN
     },
     KindDef {
         killer_announced: true,
-        ..building(UnitKind::Tower, "Tower", TargetClass::Building, true)
+        ..building(UnitKind::Tower, TargetClass::Building, true)
     },
-    building(
-        UnitKind::Ancient,
-        "The Ancient",
-        TargetClass::Building,
-        true,
-    ),
+    building(UnitKind::Ancient, TargetClass::Building, true),
     KindDef {
         killer_announced: true,
-        ..building(UnitKind::Barracks, "Barracks", TargetClass::Unit, true)
+        ..building(UnitKind::Barracks, TargetClass::Unit, true)
     },
-    building(UnitKind::Fountain, "Fountain", TargetClass::Building, true),
+    building(UnitKind::Fountain, TargetClass::Building, true),
     KindDef {
         kind: UnitKind::Ward,
         health_per_ranged_hit: Some(
             crate::OBSERVER_WARD.max_hp / rules::WARD_HITS.ranged_hero as i32,
         ),
-        name: "Ward",
+
         fixed: true,
         leaves_a_death: false,
         target_class: TargetClass::Ward,
@@ -229,40 +212,40 @@ pub const UNIT_KINDS: [KindDef; 20] = [
     KindDef {
         kind: UnitKind::Courier,
         health_per_ranged_hit: Some(crate::COURIER.max_hp / rules::COURIER_HITS.ranged_hero as i32),
-        name: "Courier",
+
         death_announced: true,
         ..PLAIN
     },
     // Dota announces no filler building's fall.
     KindDef {
         death_announced: false,
-        ..building(UnitKind::Filler, "Building", TargetClass::Unit, false)
+        ..building(UnitKind::Filler, TargetClass::Unit, false)
     },
     // A side teleports to the Outposts it holds [LIQ Outpost].
     KindDef {
         interact: Some(AbilityId::CAPTURE),
         npc: Some("npc_dota_watch_tower"),
-        ..objective(UnitKind::Outpost, "Outpost", true)
+        ..objective(UnitKind::Outpost, true)
     },
     KindDef {
         interact: Some(AbilityId::LAMP_USE),
         npc: Some("npc_dota_lantern"),
-        ..objective(UnitKind::Watcher, "Watcher", false)
+        ..objective(UnitKind::Watcher, false)
     },
     KindDef {
         npc: Some("npc_dota_xp_fountain"),
         selectable: false,
         walkable: true,
-        ..objective(UnitKind::Shrine, "Shrine of Wisdom", false)
+        ..objective(UnitKind::Shrine, false)
     },
     KindDef {
         npc: Some("npc_dota_lotus_pool"),
         selectable: false,
-        ..objective(UnitKind::LotusPool, "Lotus Pool", false)
+        ..objective(UnitKind::LotusPool, false)
     },
     KindDef {
         kind: UnitKind::Roshan,
-        name: "Roshan",
+
         attack_class: AttackClass::Hero,
         neutral: true,
         creep: true,
@@ -279,7 +262,7 @@ pub const UNIT_KINDS: [KindDef; 20] = [
                     .expect("banner hit count")
                     .ranged_hero as i32,
         ),
-        name: "Banner",
+
         npc: Some("npc_dota_unit_roshans_banner"),
         fixed: true,
         leaves_a_death: false,
@@ -293,7 +276,7 @@ pub const UNIT_KINDS: [KindDef; 20] = [
     KindDef {
         interact: Some(AbilityId::TWIN_GATE_WARP),
         npc: Some("npc_dota_unit_twin_gate"),
-        ..objective(UnitKind::TwinGate, "Twin Gate", false)
+        ..objective(UnitKind::TwinGate, false)
     },
 ];
 

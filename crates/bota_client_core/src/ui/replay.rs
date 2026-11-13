@@ -48,6 +48,17 @@ struct ReplayStream {
     unpacked: bool,
 }
 
+/// Playback progress, for clients to present in their own words.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReplayStatus {
+    Error,
+    Finished,
+    Loading,
+    CatchingUp,
+    Paused,
+    Playing,
+}
+
 /// Feeds bounded batches of recorded messages out on the recorded clock.
 ///
 /// Snapshots and order records wait for their ticks. Messages between them
@@ -147,20 +158,20 @@ impl ReplayPlayer {
         self.stream.offset
     }
 
-    /// Playback state shown by the replay UI.
-    pub fn status(&self) -> &'static str {
+    /// Current playback state.
+    pub fn status(&self) -> ReplayStatus {
         if self.error.is_some() {
-            "error"
+            ReplayStatus::Error
         } else if self.finished() {
-            "finished"
+            ReplayStatus::Finished
         } else if !self.started {
-            "loading"
+            ReplayStatus::Loading
         } else if self.catching_up {
-            "catching up"
+            ReplayStatus::CatchingUp
         } else if self.paused {
-            "paused"
+            ReplayStatus::Paused
         } else {
-            "playing"
+            ReplayStatus::Playing
         }
     }
 

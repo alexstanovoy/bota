@@ -203,7 +203,7 @@ fn maximum_payload_spans_polls_without_exceeding_byte_or_read_budgets() {
         }
     }
     assert_eq!(received, vec![message(record), message(snapshot(0))]);
-    assert_eq!(player.status(), "playing");
+    assert_eq!(player.status(), crate::ReplayStatus::Playing);
 }
 
 #[test]
@@ -217,7 +217,7 @@ fn read_call_budget_yields_with_a_partial_payload_and_preserves_loading_clock() 
     let mut player = ReplayPlayer::from_reader(reader);
     assert!(player.poll(60.0).is_empty());
     assert_eq!(calls.get(), MAX_READS_PER_POLL);
-    assert_eq!(player.status(), "loading");
+    assert_eq!(player.status(), crate::ReplayStatus::Loading);
     let mut received = Vec::new();
     for _ in 0..8 {
         let before = calls.get();
@@ -241,7 +241,7 @@ fn queued_seek_completes_under_backpressure_without_adding_elapsed_time() {
     let mut received = Vec::new();
     for _ in 0..4 {
         received.extend(player.poll(60.0));
-        if player.status() != "catching up" {
+        if player.status() != crate::ReplayStatus::CatchingUp {
             break;
         }
     }

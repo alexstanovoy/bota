@@ -76,7 +76,7 @@ const _: () = assert!(SHADOW_FIEND_RAZES.len() == RAZE_DISTANCE.len());
 pub const HERO_DEF: HeroDef = HeroDef {
     id: HeroId::SHADOW_FIEND,
     key: "npc_dota_hero_nevermore",
-    name: "Shadow Fiend",
+
     unit: &SHADOW_FIEND,
     abilities: &[
         SHADOW_FIEND_RAZES[0],
@@ -92,11 +92,11 @@ pub const HERO_DEF: HeroDef = HeroDef {
 
 /// The three razes are one skill worn as three slots, each landing at its
 /// own reach.
-const fn raze(id: AbilityId, key: &'static str, name: &'static str, reach: usize) -> AbilityDef {
+const fn raze(id: AbilityId, key: &'static str, reach: usize) -> AbilityDef {
     AbilityDef {
         id,
         key,
-        name,
+
         max_level: rules::ABILITY_MAX_LEVEL,
         passive: false,
         mana: &RAZE_MANA,
@@ -107,29 +107,14 @@ const fn raze(id: AbilityId, key: &'static str, name: &'static str, reach: usize
     }
 }
 
-pub const RAZE_NEAR: AbilityDef = raze(
-    AbilityId::RAZE_NEAR,
-    "nevermore_shadowraze1",
-    "Shadowraze (Near)",
-    0,
-);
-pub const RAZE_MID: AbilityDef = raze(
-    AbilityId::RAZE_MID,
-    "nevermore_shadowraze2",
-    "Shadowraze (Mid)",
-    1,
-);
-pub const RAZE_FAR: AbilityDef = raze(
-    AbilityId::RAZE_FAR,
-    "nevermore_shadowraze3",
-    "Shadowraze (Far)",
-    2,
-);
+pub const RAZE_NEAR: AbilityDef = raze(AbilityId::RAZE_NEAR, "nevermore_shadowraze1", 0);
+pub const RAZE_MID: AbilityDef = raze(AbilityId::RAZE_MID, "nevermore_shadowraze2", 1);
+pub const RAZE_FAR: AbilityDef = raze(AbilityId::RAZE_FAR, "nevermore_shadowraze3", 2);
 
 pub const REQUIEM: AbilityDef = AbilityDef {
     id: AbilityId::REQUIEM,
     key: "nevermore_requiem",
-    name: "Requiem of Souls",
+
     max_level: rules::ULT_MAX_LEVEL,
     passive: false,
     ultimate: true,
@@ -144,7 +129,7 @@ pub const REQUIEM: AbilityDef = AbilityDef {
 pub const NECROMASTERY: AbilityDef = AbilityDef {
     id: AbilityId::NECROMASTERY,
     key: "nevermore_necromastery",
-    name: "Necromastery",
+
     max_level: 1,
     ..BARE_ABILITY
 };
@@ -155,7 +140,7 @@ pub const NECROMASTERY: AbilityDef = AbilityDef {
 pub const PRESENCE: AbilityDef = AbilityDef {
     id: AbilityId::PRESENCE,
     key: "nevermore_dark_lord",
-    name: "Presence of the Dark Lord",
+
     max_level: rules::ABILITY_MAX_LEVEL,
     range: PRESENCE_RADIUS,
     pierces: Pierces::Yes,
@@ -176,7 +161,7 @@ pub const PRESENCE: AbilityDef = AbilityDef {
 pub const FEAST_OF_SOULS: AbilityDef = AbilityDef {
     id: AbilityId::FEAST_OF_SOULS,
     key: "nevermore_frenzy",
-    name: "Feast of Souls",
+
     max_level: rules::ABILITY_MAX_LEVEL,
     passive: false,
     immediate: true,

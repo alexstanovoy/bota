@@ -13,8 +13,6 @@ pub struct EffectDef {
     /// Dota's internal name of the modifier it is, its line of the id
     /// registry; a `bota_` key for one Dota has no modifier for.
     pub key: &'static str,
-    /// What it is called.
-    pub name: &'static str,
     /// Whether it hurts whoever wears it: a debuff, apart from the buffs.
     pub harmful: bool,
     /// Whether the id is out of use for good: kept so that no other effect
@@ -45,11 +43,11 @@ pub struct EffectDef {
     pub sighted_only: bool,
 }
 
-const fn buff(id: u16, key: &'static str, name: &'static str) -> EffectDef {
+const fn buff(id: u16, key: &'static str) -> EffectDef {
     EffectDef {
         id: EffectId(id),
         key,
-        name,
+
         harmful: false,
         retired: false,
         dispellable: false,
@@ -63,42 +61,42 @@ const fn buff(id: u16, key: &'static str, name: &'static str) -> EffectDef {
     }
 }
 
-const fn debuff(id: u16, key: &'static str, name: &'static str) -> EffectDef {
+const fn debuff(id: u16, key: &'static str) -> EffectDef {
     EffectDef {
         harmful: true,
-        ..buff(id, key, name)
+        ..buff(id, key)
     }
 }
 
 /// A count of what a hero has gathered, kept through its deaths.
-const fn gathered(id: u16, key: &'static str, name: &'static str) -> EffectDef {
+const fn gathered(id: u16, key: &'static str) -> EffectDef {
     EffectDef {
         kept_through_death: true,
-        ..buff(id, key, name)
+        ..buff(id, key)
     }
 }
 
 /// A modifier no client is told of.
-const fn hidden(id: u16, key: &'static str, name: &'static str) -> EffectDef {
+const fn hidden(id: u16, key: &'static str) -> EffectDef {
     EffectDef {
         hidden: true,
-        ..buff(id, key, name)
+        ..buff(id, key)
     }
 }
 
 /// A debuff a basic dispel takes off.
-const fn dispellable_debuff(id: u16, key: &'static str, name: &'static str) -> EffectDef {
+const fn dispellable_debuff(id: u16, key: &'static str) -> EffectDef {
     EffectDef {
         dispellable: true,
-        ..debuff(id, key, name)
+        ..debuff(id, key)
     }
 }
 
 /// A buff a basic dispel takes off.
-const fn fleeting(id: u16, key: &'static str, name: &'static str) -> EffectDef {
+const fn fleeting(id: u16, key: &'static str) -> EffectDef {
     EffectDef {
         dispellable: true,
-        ..buff(id, key, name)
+        ..buff(id, key)
     }
 }
 
@@ -107,226 +105,154 @@ const fn fleeting(id: u16, key: &'static str, name: &'static str) -> EffectDef {
 const EFFECT_ROWS: &[EffectDef] = &[
     EffectDef {
         retired: true,
-        ..buff(0, "bota_haste", "Haste")
+        ..buff(0, "bota_haste")
     },
-    fleeting(1, "modifier_flask_healing", "Mending"),
-    fleeting(2, "modifier_clarity_potion", "Clarity"),
-    buff(3, "modifier_fountain_aura_buff", "Fountain"),
+    fleeting(1, "modifier_flask_healing"),
+    fleeting(2, "modifier_clarity_potion"),
+    buff(3, "modifier_fountain_aura_buff"),
     EffectDef {
         strong_dispellable: true,
-        ..debuff(4, "modifier_stunned", "Stunned")
+        ..debuff(4, "modifier_stunned")
     },
-    debuff(5, "bota_slowed", "Slowed"),
-    debuff(6, "bota_burning", "Burning"),
-    fleeting(7, "modifier_courier_burst", "Hastened"),
-    buff(8, "modifier_courier_shield", "Shielded"),
-    fleeting(9, "modifier_item_phase_boots_active", "Phased"),
-    gathered(10, "modifier_pudge_innate_graft_flesh", "FleshHeap"),
-    gathered(11, "modifier_nevermore_necromastery", "Souls"),
-    debuff(12, "modifier_nevermore_presence", "ArmorBroken"),
-    buff(13, "modifier_tower_armor_bonus", "Guarded"),
-    buff(14, "modifier_flagbearer_creep_aura_effect", "Inspired"),
-    debuff(15, "modifier_nevermore_shadowraze_debuff", "Shadowraze"),
+    debuff(5, "bota_slowed"),
+    debuff(6, "bota_burning"),
+    fleeting(7, "modifier_courier_burst"),
+    buff(8, "modifier_courier_shield"),
+    fleeting(9, "modifier_item_phase_boots_active"),
+    gathered(10, "modifier_pudge_innate_graft_flesh"),
+    gathered(11, "modifier_nevermore_necromastery"),
+    debuff(12, "modifier_nevermore_presence"),
+    buff(13, "modifier_tower_armor_bonus"),
+    buff(14, "modifier_flagbearer_creep_aura_effect"),
+    debuff(15, "modifier_nevermore_shadowraze_debuff"),
     // Burns whoever wears it: the enemies in it and, never to death, its
     // owner.
-    debuff(16, "modifier_pudge_rot", "Rot"),
+    debuff(16, "modifier_pudge_rot"),
     EffectDef {
         strong_dispellable: true,
-        ..debuff(17, "modifier_nevermore_requiem_fear", "Feared")
+        ..debuff(17, "modifier_nevermore_requiem_fear")
     },
-    debuff(18, "modifier_nevermore_requiem_slow", "MagicBroken"),
-    fleeting(19, "modifier_nevermore_frenzy", "Feasting"),
-    buff(
-        20,
-        "modifier_nevermore_feast_of_souls_linger",
-        "FeastLinger",
-    ),
-    debuff(21, "modifier_item_blood_grenade_debuff", "BloodGrenade"),
+    debuff(18, "modifier_nevermore_requiem_slow"),
+    fleeting(19, "modifier_nevermore_frenzy"),
+    buff(20, "modifier_nevermore_feast_of_souls_linger"),
+    debuff(21, "modifier_item_blood_grenade_debuff"),
     EffectDef {
         dispellable: true,
-        ..debuff(22, "modifier_rooted", "Rooted")
+        ..debuff(22, "modifier_rooted")
     },
     EffectDef {
         dispellable: true,
-        ..debuff(23, "modifier_disarmed", "Disarmed")
+        ..debuff(23, "modifier_disarmed")
     },
     EffectDef {
         dispellable: true,
-        ..debuff(24, "modifier_break", "Broken")
+        ..debuff(24, "modifier_break")
     },
-    debuff(25, "modifier_kobold_disarm", "StealWeapon"),
-    buff(
-        26,
-        "modifier_kobold_taskmaster_speed_aura_bonus",
-        "SpeedAura",
-    ),
-    debuff(
-        27,
-        "modifier_gnoll_assassin_envenomed_weapon_poison",
-        "EnvenomedWeapon",
-    ),
-    debuff(28, "modifier_ghost_frost_attack_slow", "FrostAttack"),
-    buff(29, "modifier_mudgolem_cloak_aura_bonus", "CloakAura"),
-    debuff(30, "modifier_giant_wolf_intimidate", "Intimidate"),
-    buff(
-        31,
-        "modifier_alpha_wolf_command_aura_bonus",
-        "PackleadersAura",
-    ),
-    buff(
-        32,
-        "modifier_forest_troll_high_priest_mana_aura_bonus",
-        "ManaAura",
-    ),
-    buff(
-        33,
-        "modifier_satyr_hellcaller_unholy_aura_bonus",
-        "UnholyAura",
-    ),
-    debuff(34, "modifier_mud_golem_rock_destroy", "ShardSplit"),
-    buff(
-        35,
-        "modifier_centaur_khan_endurance_aura_bonus",
-        "SwiftnessAura",
-    ),
-    fleeting(36, "modifier_furbolg_enrage_attack_speed", "DeathThroeRush"),
-    debuff(
-        37,
-        "modifier_polar_furbolg_ursa_warrior_thunder_clap",
-        "ThunderClap",
-    ),
-    fleeting(38, "modifier_furbolg_enrage_damage", "DeathThroePower"),
-    buff(
-        39,
-        "modifier_enraged_wildkin_toughness_aura_bonus",
-        "ToughnessAura",
-    ),
-    debuff(
-        40,
-        "modifier_black_drake_magic_amplification",
-        "MagicAmplificationAura",
-    ),
-    buff(
-        41,
-        "modifier_black_dragon_dragonhide_aura_bonus",
-        "DragonhideAura",
-    ),
-    debuff(42, "modifier_ancient_rock_golem_weakening", "WeakeningAura"),
-    buff(43, "modifier_granite_golem_hp_aura_bonus", "GraniteAura"),
-    buff(
-        44,
-        "modifier_big_thunder_lizard_wardrums_aura",
-        "WarDrumsAura",
-    ),
-    debuff(45, "modifier_big_thunder_lizard_slam", "Slam"),
-    fleeting(46, "modifier_big_thunder_lizard_frenzy", "Frenzy"),
-    buff(
-        47,
-        "modifier_frostbitten_golem_time_warp_aura_bonus",
-        "TimeWarpAura",
-    ),
-    buff(48, "modifier_spawnlord_aura_bonus", "ProwlerAura"),
-    debuff(49, "modifier_spawnlord_master_stomp", "Desecrate"),
-    debuff(50, "modifier_spawnlord_master_freeze_root", "Petrify"),
-    buff(51, "modifier_frogmen_riverborn_aura_bonus", "RiverbornAura"),
-    buff(52, "modifier_hill_troll_rally", "Rally"),
-    debuff(53, "modifier_tornado_tempest_debuff", "Tempest"),
-    fleeting(54, "modifier_frogmen_water_bubble", "WaterBubble"),
-    debuff(55, "modifier_satyr_trickster_purge", "Purge"),
+    debuff(25, "modifier_kobold_disarm"),
+    buff(26, "modifier_kobold_taskmaster_speed_aura_bonus"),
+    debuff(27, "modifier_gnoll_assassin_envenomed_weapon_poison"),
+    debuff(28, "modifier_ghost_frost_attack_slow"),
+    buff(29, "modifier_mudgolem_cloak_aura_bonus"),
+    debuff(30, "modifier_giant_wolf_intimidate"),
+    buff(31, "modifier_alpha_wolf_command_aura_bonus"),
+    buff(32, "modifier_forest_troll_high_priest_mana_aura_bonus"),
+    buff(33, "modifier_satyr_hellcaller_unholy_aura_bonus"),
+    debuff(34, "modifier_mud_golem_rock_destroy"),
+    buff(35, "modifier_centaur_khan_endurance_aura_bonus"),
+    fleeting(36, "modifier_furbolg_enrage_attack_speed"),
+    debuff(37, "modifier_polar_furbolg_ursa_warrior_thunder_clap"),
+    fleeting(38, "modifier_furbolg_enrage_damage"),
+    buff(39, "modifier_enraged_wildkin_toughness_aura_bonus"),
+    debuff(40, "modifier_black_drake_magic_amplification"),
+    buff(41, "modifier_black_dragon_dragonhide_aura_bonus"),
+    debuff(42, "modifier_ancient_rock_golem_weakening"),
+    buff(43, "modifier_granite_golem_hp_aura_bonus"),
+    buff(44, "modifier_big_thunder_lizard_wardrums_aura"),
+    debuff(45, "modifier_big_thunder_lizard_slam"),
+    fleeting(46, "modifier_big_thunder_lizard_frenzy"),
+    buff(47, "modifier_frostbitten_golem_time_warp_aura_bonus"),
+    buff(48, "modifier_spawnlord_aura_bonus"),
+    debuff(49, "modifier_spawnlord_master_stomp"),
+    debuff(50, "modifier_spawnlord_master_freeze_root"),
+    buff(51, "modifier_frogmen_riverborn_aura_bonus"),
+    buff(52, "modifier_hill_troll_rally"),
+    debuff(53, "modifier_tornado_tempest_debuff"),
+    fleeting(54, "modifier_frogmen_water_bubble"),
+    debuff(55, "modifier_satyr_trickster_purge"),
     EffectDef {
         per_source: true,
-        ..buff(56, "modifier_fountain_glyph", "Fortified")
+        ..buff(56, "modifier_fountain_glyph")
     },
-    buff(57, "modifier_pudge_flesh_heap_block", "MeatShield"),
+    buff(57, "modifier_pudge_flesh_heap_block"),
     EffectDef {
         strong_dispellable: true,
-        ..debuff(58, "modifier_pudge_dismember", "Dismembered")
+        ..debuff(58, "modifier_pudge_dismember")
     },
-    buff(
-        59,
-        "modifier_backdoor_protection_active",
-        "BackdoorProtection",
-    ),
+    buff(59, "modifier_backdoor_protection_active"),
     EffectDef {
         own_side_only: true,
         ends_its_wearer: true,
-        ..buff(60, "modifier_illusion", "Illusion")
+        ..buff(60, "modifier_illusion")
     },
     EffectDef {
         ends_its_wearer: true,
-        ..buff(61, "modifier_kill", "TimedLife")
+        ..buff(61, "modifier_kill")
     },
-    hidden(62, "modifier_neutral_upgrade", "NeutralUpgrade"),
-    buff(63, "modifier_courier_flying", "Flying"),
-    buff(
-        64,
-        "modifier_fountain_invulnerability",
-        "FountainInvulnerable",
-    ),
-    hidden(65, "modifier_fountain_passive", "FountainPassive"),
-    debuff(
-        66,
-        "modifier_fountain_fury_swipes_damage_increase",
-        "FountainDamage",
-    ),
-    buff(67, "modifier_lamp_on", "VisionGrant"),
-    buff(68, "modifier_lamp_off", "LampOff"),
-    buff(69, "modifier_watch_tower_invulnerable", "CaptureGuard"),
-    buff(70, "bota_shrine_ready", "ShrineReady"),
-    buff(71, "modifier_rune_haste", "RuneHaste"),
-    buff(72, "modifier_rune_doubledamage", "RuneAmplifyDamage"),
-    buff(73, "modifier_rune_arcane", "RuneArcane"),
-    buff(74, "modifier_rune_regen", "RuneRegeneration"),
-    buff(75, "modifier_rune_invis", "RuneInvisibility"),
-    buff(76, "modifier_rune_shield", "RuneShield"),
-    fleeting(77, "modifier_bottle_regeneration", "BottleRegeneration"),
-    dispellable_debuff(78, "modifier_blight_stone_buff", "Corruption"),
-    dispellable_debuff(79, "modifier_item_orb_of_venom_slow", "PoisonAttack"),
-    dispellable_debuff(80, "modifier_orb_of_frost_debuff", "Frost"),
+    hidden(62, "modifier_neutral_upgrade"),
+    buff(63, "modifier_courier_flying"),
+    buff(64, "modifier_fountain_invulnerability"),
+    hidden(65, "modifier_fountain_passive"),
+    debuff(66, "modifier_fountain_fury_swipes_damage_increase"),
+    buff(67, "modifier_lamp_on"),
+    buff(68, "modifier_lamp_off"),
+    buff(69, "modifier_watch_tower_invulnerable"),
+    buff(70, "bota_shrine_ready"),
+    buff(71, "modifier_rune_haste"),
+    buff(72, "modifier_rune_doubledamage"),
+    buff(73, "modifier_rune_arcane"),
+    buff(74, "modifier_rune_regen"),
+    buff(75, "modifier_rune_invis"),
+    buff(76, "modifier_rune_shield"),
+    fleeting(77, "modifier_bottle_regeneration"),
+    dispellable_debuff(78, "modifier_blight_stone_buff"),
+    dispellable_debuff(79, "modifier_item_orb_of_venom_slow"),
+    dispellable_debuff(80, "modifier_orb_of_frost_debuff"),
     EffectDef {
         dispellable: true,
-        ..buff(81, "modifier_aegis_regen", "Recovery")
+        ..buff(81, "modifier_aegis_regen")
     },
-    buff(82, "modifier_roshan_devotion", "Devotion"),
-    hidden(
-        83,
-        "modifier_roshan_inherent_buffs",
-        "StrengthOfTheImmortal",
-    ),
-    hidden(84, "modifier_roshan_devotion_aura", "DevotionAura"),
-    hidden(85, "modifier_roshan_spell_block", "SpellBlock"),
+    buff(82, "modifier_roshan_devotion"),
+    hidden(83, "modifier_roshan_inherent_buffs"),
+    hidden(84, "modifier_roshan_devotion_aura"),
+    hidden(85, "modifier_roshan_spell_block"),
     EffectDef {
         dispellable: true,
-        ..debuff(86, "modifier_roshan_slam", "RoshanSlam")
+        ..debuff(86, "modifier_roshan_slam")
     },
     EffectDef {
         strong_dispellable: true,
-        ..debuff(87, "modifier_bashed", "Bashed")
+        ..debuff(87, "modifier_bashed")
     },
-    hidden(88, "modifier_roshan_revengeroar_windup", "RoarWindup"),
-    hidden(89, "modifier_roshan_revengeroar_aura", "RoarAura"),
-    debuff(90, "modifier_roshan_revengeroar_disarm", "RoarDisarm"),
+    hidden(88, "modifier_roshan_revengeroar_windup"),
+    hidden(89, "modifier_roshan_revengeroar_aura"),
+    debuff(90, "modifier_roshan_revengeroar_disarm"),
     EffectDef {
         dispellable: true,
-        ..debuff(91, "modifier_roshan_revengeroar", "RoarOfRetribution")
+        ..debuff(91, "modifier_roshan_revengeroar")
     },
     EffectDef {
         dispellable: true,
-        ..debuff(92, "modifier_silence", "Silenced")
+        ..debuff(92, "modifier_silence")
     },
-    debuff(93, "modifier_roshan_grab", "Grabbed"),
-    debuff(94, "modifier_roshan_grab_thrown", "Thrown"),
-    buff(95, "modifier_roshan_moving", "Moving"),
-    debuff(96, "modifier_knockback", "Knockback"),
+    debuff(93, "modifier_roshan_grab"),
+    debuff(94, "modifier_roshan_grab_thrown"),
+    buff(95, "modifier_roshan_moving"),
+    debuff(96, "modifier_knockback"),
     EffectDef {
         per_source: true,
-        ..hidden(
-            97,
-            "modifier_roshan_moving_knockback_timeout",
-            "ContactCooldown",
-        )
+        ..hidden(97, "modifier_roshan_moving_knockback_timeout")
     },
-    fleeting(98, "modifier_ghost_state", "Ethereal"),
+    fleeting(98, "modifier_ghost_state"),
     // Both gates glow while a warp is channelled through either [Liquipedia
     // and the Dota 2 Wiki, Twin Gate: "the other Twin Gate plays its
     // channeling animation and channeling sounds as well"]; each glow is seen
@@ -336,13 +262,9 @@ const EFFECT_ROWS: &[EffectDef] = &[
     // side watching the exit sees it glow, not who channels.
     EffectDef {
         sighted_only: true,
-        ..buff(99, "modifier_twin_gate_fx", "TwinGateActive")
+        ..buff(99, "modifier_twin_gate_fx")
     },
-    hidden(
-        100,
-        "modifier_pudge_meat_hook_followthrough",
-        "HookFollowthrough",
-    ),
+    hidden(100, "modifier_pudge_meat_hook_followthrough"),
 ];
 
 /// How many effect ids the protocol has ever handed out, retired ones

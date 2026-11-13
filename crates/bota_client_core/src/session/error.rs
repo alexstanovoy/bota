@@ -608,7 +608,7 @@ struct Named(HeroId);
 impl fmt::Display for Named {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match bota_core::hero_def(self.0) {
-            Some(hero) => formatter.write_str(hero.name),
+            Some(hero) => formatter.write_str(hero.key),
             None => write!(formatter, "HeroId({})", self.0.0),
         }
     }

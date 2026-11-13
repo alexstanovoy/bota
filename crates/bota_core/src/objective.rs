@@ -117,7 +117,7 @@ pub const OUTPOST: UnitDef = UnitDef {
 pub const CAPTURE: AbilityDef = AbilityDef {
     id: AbilityId::CAPTURE,
     key: "ability_capture",
-    name: "Capture",
+
     aim: Aim::Unit,
     max_level: 1,
     passive: false,
@@ -200,7 +200,7 @@ pub const WATCHER: UnitDef = UnitDef {
 pub const LAMP_USE: AbilityDef = AbilityDef {
     id: AbilityId::LAMP_USE,
     key: "ability_lamp_use",
-    name: "Lamp Use",
+
     aim: Aim::Unit,
     max_level: 1,
     passive: false,
@@ -399,7 +399,7 @@ pub const TWIN_GATE: UnitDef = UnitDef {
 pub const TWIN_GATE_WARP: AbilityDef = AbilityDef {
     id: AbilityId::TWIN_GATE_WARP,
     key: "twin_gate_portal_warp",
-    name: "Warp",
+
     aim: Aim::Unit,
     max_level: 1,
     passive: false,
