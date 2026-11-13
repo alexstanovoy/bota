@@ -39,9 +39,9 @@ impl Profiles {
     }
 }
 impl Meta {
-    /// Any skipped or broken frame makes the provenance ambiguous, even if statistics survive.
+    /// Malformed known records and broken framing make provenance ambiguous; future kinds do not.
     pub fn profiles(&self) -> Option<Profiles> {
-        if self.skipped != 0 {
+        if self.damaged {
             return None;
         }
         let mut found = None;
@@ -77,8 +77,89 @@ pub fn public_matchmaker(value: &str) -> bool {
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || b".-:[]".contains(&byte))
 }
+/// Whether a syntactically valid address can identify a service in a shared file.
+/// This never resolves DNS; local literals and local-only names carry no shareable identity.
+pub fn shareable_matchmaker(value: &str) -> bool {
+    use std::net::IpAddr;
+    if !public_matchmaker(value) {
+        return false;
+    }
+    let rest = value
+        .split_once("://")
+        .map(|(_, rest)| rest)
+        .unwrap_or_default();
+    let authority = rest.split('/').next().unwrap_or_default();
+    let host = if let Some(rest) = authority.strip_prefix('[') {
+        rest.split_once(']')
+            .map(|(host, _)| host)
+            .unwrap_or_default()
+    } else {
+        authority.split(':').next().unwrap_or_default()
+    };
+    match host.parse::<IpAddr>() {
+        Ok(IpAddr::V4(ip)) => public_ipv4(ip),
+        Ok(IpAddr::V6(ip)) => ip.to_ipv4_mapped().map_or_else(
+            || {
+                !ip.is_loopback()
+                    && !ip.is_unspecified()
+                    && !ip.is_unique_local()
+                    && !ip.is_unicast_link_local()
+                    && !ip.is_multicast()
+            },
+            public_ipv4,
+        ),
+        Err(_) => public_hostname(host),
+    }
+}
+
+fn public_hostname(host: &str) -> bool {
+    let host = host.to_ascii_lowercase();
+    if host.len() > 253
+        || !host.contains('.')
+        || [".localhost", ".local", ".lan", ".internal"]
+            .iter()
+            .any(|suffix| host.ends_with(suffix))
+    {
+        return false;
+    }
+    let numeric = host.split('.').all(|label| {
+        label.bytes().all(|byte| byte.is_ascii_digit())
+            || label
+                .strip_prefix("0x")
+                .is_some_and(|digits| digits.bytes().all(|byte| byte.is_ascii_hexdigit()))
+    });
+    !numeric
+        && host.split('.').all(|label| {
+            label.len() <= 63
+                && label
+                    .as_bytes()
+                    .first()
+                    .is_some_and(u8::is_ascii_alphanumeric)
+                && label
+                    .as_bytes()
+                    .last()
+                    .is_some_and(u8::is_ascii_alphanumeric)
+                && label
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+        })
+}
+
+fn public_ipv4(ip: std::net::Ipv4Addr) -> bool {
+    let [a, b, _, _] = ip.octets();
+    !ip.is_private()
+        && !ip.is_loopback()
+        && !ip.is_link_local()
+        && !ip.is_unspecified()
+        && !ip.is_multicast()
+        && !ip.is_broadcast()
+        && a != 0
+        && a < 240
+        && !(a == 100 && (64..=127).contains(&b))
+        && !(a == 198 && (18..=19).contains(&b))
+}
 pub(super) fn valid(maker: Option<&str>, seats: &[(u8, Option<u64>)]) -> bool {
-    if maker.is_some_and(|maker| !public_matchmaker(maker)) || seats.len() > MAX_PROFILE_SEATS {
+    if maker.is_some_and(|maker| !shareable_matchmaker(maker)) || seats.len() > MAX_PROFILE_SEATS {
         return false;
     }
     let mut seen = [false; MAX_PROFILE_SEATS];
@@ -117,7 +198,7 @@ pub(super) fn read_matchmaker<'de, D: Deserializer<'de>>(
                     f.write_str("a bounded public URI")
                 }
                 fn visit_str<E: de::Error>(self, value: &str) -> Result<String, E> {
-                    if !public_matchmaker(value) {
+                    if !shareable_matchmaker(value) {
                         return Err(E::custom("invalid public matchmaker URI"));
                     }
                     Ok(value.to_owned())
@@ -163,26 +244,35 @@ pub(super) fn read_seats<'de, D: Deserializer<'de>>(
 /// Enriches validated metadata without changing any of its match facts.
 pub fn with_profiles(bytes: &[u8], profiles: &Profiles) -> Option<Vec<u8>> {
     let meta = super::decode(bytes).ok()?;
-    if meta.skipped != 0 {
+    if meta.damaged {
         return None;
     }
-    let mut writer = super::Writer::default();
-    if !writer.push(&MetaRecord::Header(meta.header), true) {
-        return None;
-    }
+    let record = profiles.record();
+    let frame = bota_proto::encode_frame_to_vec(&record).ok()?;
+    let mut output = Vec::with_capacity(bytes.len().saturating_add(frame.len()));
+    let mut rest = bytes;
     let mut contexts = 0;
-    for record in &meta.records {
-        if let MetaRecord::Profiles { matchmaker, seats } = record {
+    while !rest.is_empty() {
+        let (head, tail) = rest.split_at(bota_proto::LEN_PREFIX);
+        let len = u32::from_le_bytes(head.try_into().ok()?) as usize;
+        let (payload, next) = tail.split_at(len);
+        if let Ok(MetaRecord::Profiles { matchmaker, seats }) = bota_proto::decode_payload(payload)
+        {
             contexts += 1;
-            if contexts > 1 || !valid(matchmaker.as_deref(), seats) {
+            if contexts > 1 || !valid(matchmaker.as_deref(), &seats) {
                 return None;
             }
-        } else if !writer.push(record, true) {
-            return None;
+        } else {
+            output.extend_from_slice(head);
+            output.extend_from_slice(payload);
         }
+        rest = next;
     }
-    if !writer.push(&profiles.record(), true) {
+    if output.len().saturating_add(frame.len())
+        > crate::limits::MAX_META_BYTES + crate::limits::END_RESERVE_BYTES
+    {
         return None;
     }
-    Some(writer.into_bytes())
+    output.extend_from_slice(&frame);
+    Some(output)
 }

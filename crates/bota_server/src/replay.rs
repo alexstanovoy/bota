@@ -97,7 +97,7 @@ impl ReplayWriter {
         Self::open_with_profiles(replay, max_bytes, meta, trailer, None)
     }
 
-    /// Explicit launch provenance also enables a trailer, with its room reserved up front.
+    /// Launch provenance enriches metadata; the caller still decides whether to write a trailer.
     pub fn open_with_profiles(
         replay: Option<&Path>,
         max_bytes: Option<u64>,
@@ -105,7 +105,6 @@ impl ReplayWriter {
         trailer: bool,
         profiles: Option<Profiles>,
     ) -> std::io::Result<ReplayWriter> {
-        let trailer = trailer || profiles.is_some();
         let mut writer = ReplayWriter::disabled();
         writer.profiles = profiles;
         if let Some(path) = meta {
@@ -358,5 +357,29 @@ mod tests {
         let trailer =
             bota_replay::trailer::frame(&longest).expect("the longest file a trailer takes");
         assert!(trailer.len() as u64 <= super::TRAILER_RESERVE);
+    }
+}
+
+#[cfg(test)]
+mod provenance_policy_tests {
+    #[test]
+    fn public_provenance_does_not_enable_an_unrequested_replay_trailer() {
+        let path = std::env::temp_dir().join(format!("trailer-policy-{}.brp", std::process::id()));
+        let writer = super::ReplayWriter::open_with_profiles(
+            Some(&path),
+            None,
+            None,
+            false,
+            Some(bota_replay::meta::Profiles::default()),
+        )
+        .expect("writer");
+        writer.finish();
+        let trailer = bota_replay::trailer::find(&mut std::fs::File::open(&path).expect("replay"))
+            .expect("read");
+        std::fs::remove_file(path).expect("remove fixture");
+        assert!(
+            trailer.is_none(),
+            "profile context must respect the existing trailer gate"
+        );
     }
 }

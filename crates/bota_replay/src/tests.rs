@@ -32,7 +32,12 @@ fn the_meta_layout_only_grows() {
     tracer
         .trace_simple_type::<crate::meta::Who>()
         .expect("traces");
-    let live = layout_lines(&tracer.registry().expect("whole"));
+    let registry = tracer.registry().expect("whole");
+    let ContainerFormat::Enum(kinds) = &registry["MetaRecord"] else {
+        panic!("record enum");
+    };
+    assert_eq!(kinds.keys().max().copied(), Some(MetaRecord::LAST_KIND));
+    let live = layout_lines(&registry);
     let live_set: HashSet<&str> = live.iter().map(String::as_str).collect();
     let committed: Vec<&str> = META
         .lines()
@@ -412,13 +417,7 @@ fn corrupt_profile_claims_keep_the_match_readable_without_profile_links() {
     hostile.push([good.clone(), good.clone()].concat());
     hostile.push([good.clone(), vec![4, 0]].concat());
     hostile.push([good.clone(), vec![0xff; 4]].concat());
-    hostile.push(
-        [
-            good.clone(),
-            bota_proto::encode_frame_to_vec(&99_u8).expect("unknown"),
-        ]
-        .concat(),
-    );
+
     for tail in hostile {
         let meta =
             decode(&[base.clone(), tail].concat()).expect("statistics survive hostile provenance");
@@ -485,4 +484,68 @@ fn enriching_metadata_preserves_facts_and_explicit_local_provenance() {
         false
     ));
     assert!(writer.bytes().is_empty());
+}
+
+#[test]
+fn unknown_future_records_preserve_profile_links_but_broken_records_do_not() {
+    let mut bytes = file(&[
+        MetaRecord::Header(header()),
+        MetaRecord::End {
+            tick: 1,
+            winner: Some(0),
+        },
+    ]);
+    bytes.extend(profile_frame(
+        Some("wss://match.example/control"),
+        &[(0, Some(42))],
+    ));
+    let future = bota_proto::encode_frame_to_vec(&(200_u32, 123_u64)).expect("future record");
+    bytes.extend_from_slice(&future);
+    let meta = decode(&bytes).expect("known facts");
+    assert_eq!(
+        meta.profiles()
+            .expect("a future fact does not damage known provenance")
+            .account(0),
+        Some(42)
+    );
+    let rewritten = crate::meta::with_profiles(&bytes, &meta.profiles().expect("known context"))
+        .expect("unknown records survive enrichment");
+    assert!(rewritten.windows(future.len()).any(|frame| frame == future));
+    bytes.extend([4, 0]);
+    assert!(
+        decode(&bytes)
+            .expect("known facts survive")
+            .profiles()
+            .is_none()
+    );
+}
+
+#[test]
+fn local_addresses_cannot_be_serialized_as_shareable_profile_provenance() {
+    for uri in [
+        "ws://127.0.0.1:7000",
+        "ws://127.1",
+        "ws://0177.0.0.1",
+        "ws://0x7f.0.0.1",
+        "ws://0x7f.0x0.0x0.0x1",
+        "wss://10.0.0.1",
+        "ws://192.168.1.5",
+        "ws://169.254.1.1",
+        "ws://[::1]",
+        "ws://[fe80::1]",
+        "ws://[fc00::1]",
+        "ws://[::ffff:127.0.0.1]",
+        "ws://control",
+        "ws://mm.local",
+    ] {
+        assert!(crate::meta::Profiles::new(Some(uri.into()), vec![(0, Some(42))]).is_none());
+        let mut bytes = file(&[MetaRecord::Header(header())]);
+        bytes.extend(profile_frame(Some(uri), &[(0, Some(42))]));
+        assert!(
+            decode(&bytes)
+                .expect("read known facts")
+                .profiles()
+                .is_none()
+        );
+    }
 }

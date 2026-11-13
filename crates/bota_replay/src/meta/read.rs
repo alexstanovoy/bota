@@ -29,8 +29,10 @@ pub struct Meta {
     pub header: MetaHeader,
     /// The records this build knows, in order, the header not among them.
     pub records: Vec<MetaRecord>,
-    /// Frames it skipped: records a later build wrote.
+    /// Frames skipped: future records, malformed known records, or a broken tail.
     pub skipped: u32,
+    /// Malformed known records or broken framing; unknown future kinds are not damage.
+    pub damaged: bool,
     /// Whether the match was decided in it (an `End` record): a file cut short, or of a match
     /// abandoned, has none.
     pub complete: bool,
@@ -54,15 +56,24 @@ pub fn decode(bytes: &[u8]) -> Result<Meta, MetaError> {
         header,
         records: Vec::new(),
         skipped: 0,
+        damaged: false,
         complete: false,
     };
     for frame in frames {
         let Frame::Payload(payload) = frame else {
             meta.skipped += 1;
+            meta.damaged = true;
             break;
         };
         match decode_payload::<MetaRecord>(payload) {
-            Ok(MetaRecord::Header(_)) | Err(_) => meta.skipped += 1,
+            Ok(MetaRecord::Header(_)) => {
+                meta.skipped += 1;
+                meta.damaged = true;
+            }
+            Err(_) => {
+                meta.skipped += 1;
+                meta.damaged |= !kind(payload).is_some_and(|kind| kind > MetaRecord::LAST_KIND);
+            }
             Ok(record) => {
                 meta.complete |= matches!(record, MetaRecord::End { .. });
                 meta.records.push(record);
@@ -100,4 +111,19 @@ impl<'a> Iterator for Frames<'a> {
         self.0 = rest;
         Some(Frame::Payload(payload))
     }
+}
+
+/// The postcard enum discriminant, checked before classifying an undecodable future kind.
+fn kind(payload: &[u8]) -> Option<u32> {
+    let mut value = 0_u32;
+    for (index, byte) in payload.iter().copied().take(5).enumerate() {
+        if index == 4 && byte > 15 {
+            return None;
+        }
+        value |= u32::from(byte & 127) << (index * 7);
+        if byte < 128 {
+            return Some(value);
+        }
+    }
+    None
 }

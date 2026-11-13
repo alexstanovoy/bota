@@ -112,8 +112,8 @@ struct Args {
     /// created.
     #[arg(long)]
     meta: Option<PathBuf>,
-    /// Retained for launchers that request a metadata trailer explicitly. New recordings
-    /// always carry their public launch provenance in a trailer.
+    /// Carry metadata in a replay trailer explicitly. Off by default until the replay
+    /// compatibility decision described in ServerOpts::meta_trailer.
     #[arg(long, requires = "replay")]
     meta_trailer: bool,
     /// Public matchmaker identity retained as text in replay metadata; never credentials.
@@ -304,7 +304,15 @@ fn main() -> ExitCode {
 }
 
 /// Listens, says `READY`, and plays the match.
-fn serve(args: Args) -> std::io::Result<MatchEnd> {
+fn serve(mut args: Args) -> std::io::Result<MatchEnd> {
+    if args.matchmaker.is_none() {
+        args.matchmaker = std::env::var("RADOVID_PUBLIC_IDENTITY")
+            .ok()
+            .filter(|value| !value.is_empty())
+            .map(|value| public_matchmaker(&value))
+            .transpose()
+            .map_err(std::io::Error::other)?;
+    }
     let opts = server_opts(&args)?;
     // Contradicting options fail before READY, never after.
     check_opts(&opts).map_err(std::io::Error::other)?;
@@ -318,7 +326,10 @@ fn serve(args: Args) -> std::io::Result<MatchEnd> {
     let listeners = listen(&args)?;
     println!("READY");
     let profiles = launch_profiles(&args, opts.players).map_err(std::io::Error::other)?;
-    run_with_profiles(listeners, opts, profiles)
+    match profiles {
+        Some(profiles) => run_with_profiles(listeners, opts, profiles),
+        None => bota_server::game_loop::run(listeners, opts),
+    }
 }
 
 fn public_matchmaker(value: &str) -> Result<String, String> {
@@ -338,7 +349,10 @@ fn profile_accounts(value: &str) -> Result<String, String> {
     Ok(value.to_owned())
 }
 
-fn launch_profiles(args: &Args, players: u8) -> Result<bota_replay::meta::Profiles, String> {
+fn launch_profiles(
+    args: &Args,
+    players: u8,
+) -> Result<Option<bota_replay::meta::Profiles>, String> {
     let seats = match args.profile_accounts.as_deref() {
         Some(accounts) => {
             let seats = accounts
@@ -366,8 +380,19 @@ fn launch_profiles(args: &Args, players: u8) -> Result<bota_replay::meta::Profil
         }
         None => (0..players).map(|slot| (slot, None)).collect(),
     };
-    bota_replay::meta::Profiles::new(args.matchmaker.clone(), seats)
-        .ok_or_else(|| "profile accounts require a public matchmaker identity".into())
+    if args.matchmaker.is_none() && args.profile_accounts.is_some() {
+        return Ok(None);
+    }
+    let public = args
+        .matchmaker
+        .as_deref()
+        .filter(|uri| bota_replay::meta::shareable_matchmaker(uri));
+    let profiles = match public {
+        Some(uri) => bota_replay::meta::Profiles::new(Some(uri.to_owned()), seats)
+            .ok_or("invalid public account mapping")?,
+        None => bota_replay::meta::Profiles::default(),
+    };
+    Ok(Some(profiles))
 }
 
 /// A variable of the environment; absent when unset or empty.

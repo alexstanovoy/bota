@@ -15,7 +15,8 @@ mod recorder;
 mod write;
 
 pub use profiles::{
-    MAX_MATCHMAKER_BYTES, MAX_PROFILE_SEATS, Profiles, public_matchmaker, with_profiles,
+    MAX_MATCHMAKER_BYTES, MAX_PROFILE_SEATS, Profiles, public_matchmaker, shareable_matchmaker,
+    with_profiles,
 };
 pub use read::{Meta, MetaError, decode};
 pub use record::*;

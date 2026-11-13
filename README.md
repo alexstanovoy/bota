@@ -94,15 +94,19 @@ work) is the rustdoc of `bota_proto::contract`: `cargo doc -p bota_proto --open`
 [DEVELOPMENT.md](DEVELOPMENT.md) has the crates, the server's options and launcher contract, the client library in
 depth, how to add a hero or an item, the protocol and determinism rules, and the tests.
 
+## Replay provenance
+
+Public profile provenance can accompany replay metadata. A matchmaking launcher supplies
+`BOTA_MATCHMAKER` (its public control URI, without credentials, query or fragment;
+otherwise `RADOVID_PUBLIC_IDENTITY` from the launcher) and
+`BOTA_PROFILE_ACCOUNTS` (public account ids in slot order, comma separated; `-` for a seat
+without a profile). Accounts without a matchmaker leave the identity unknown and do not prevent launching.
+Private/local IP literals and single-label hostnames are never recorded as a matchmaker.
+A local launch without either records explicit no-matchmaker provenance. Embedded servers can use `game_loop::run_with_profiles`; the legacy `run` API
+keeps its existing recording policy. Provenance goes in the metadata sidecar and replay
+trailer when explicitly enabled, including capped prefixes, without changing replay records or the wire identity.
+Readers treat it as untrusted text and account claims, never as permission to connect.
+
 ## License
 
 MIT, see [LICENSE](LICENSE).
-
-Public profile provenance can accompany replay metadata. A matchmaking launcher supplies
-`BOTA_MATCHMAKER` (its public control URI, without credentials, query or fragment) and
-`BOTA_PROFILE_ACCOUNTS` (public account ids in slot order, comma separated; `-` for a seat
-without a profile). Without a matchmaker, the command-line server records explicit local
-provenance. Embedded servers can use `game_loop::run_with_profiles`; the legacy `run` API
-keeps its existing recording policy. Provenance goes in the metadata sidecar and replay
-trailer, including capped prefixes, without changing replay records or the wire identity.
-Readers treat it as untrusted text and account claims, never as permission to connect.

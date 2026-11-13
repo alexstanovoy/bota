@@ -104,7 +104,7 @@ fn every_map_defaults_to_rules_it_plays_and_map2_to_none() {
 
 #[test]
 fn public_profile_launch_context_is_explicit_and_bounded_before_ready() {
-    let args = Args::try_parse_from([
+    let args = parse_profile_args([
         "bota_server",
         "--matchmaker",
         "wss://match.example/control",
@@ -113,19 +113,22 @@ fn public_profile_launch_context_is_explicit_and_bounded_before_ready() {
     ])
     .expect("public launch context");
     let opts = crate::server_opts(&args).expect("options");
-    let profiles = crate::launch_profiles(&args, opts.players).expect("launch context");
+    let profiles = crate::launch_profiles(&args, opts.players)
+        .expect("launch context")
+        .expect("known context");
     assert_eq!(profiles.matchmaker(), Some("wss://match.example/control"));
     assert_eq!(profiles.account(0), Some(42));
     assert_eq!(profiles.account(1), None);
-    let local = Args::try_parse_from(["bota_server"]).expect("local");
+    let local = parse_profile_args(["bota_server"]).expect("local");
     assert_eq!(
         crate::launch_profiles(&local, 2)
             .expect("explicit local")
+            .expect("local record")
             .matchmaker(),
         None
     );
     for accounts in ["0,-", "42", "42,-,-", "a,-"] {
-        let args = Args::try_parse_from(["bota_server", "--profile-accounts", accounts]);
+        let args = parse_profile_args(["bota_server", "--profile-accounts", accounts]);
         assert!(
             args.is_err() || crate::server_opts(&args.expect("parsed")).is_err(),
             "bad mapping must fail before READY"
@@ -136,6 +139,56 @@ fn public_profile_launch_context_is_explicit_and_bounded_before_ready() {
         "wss://example.org/?secret=x",
         "",
     ] {
-        assert!(Args::try_parse_from(["bota_server", "--matchmaker", uri]).is_err());
+        assert!(parse_profile_args(["bota_server", "--matchmaker", uri]).is_err());
+    }
+}
+
+#[test]
+fn absent_matchmaker_with_public_accounts_does_not_prevent_a_match_start() {
+    let mut args = parse_profile_args([
+        "bota_server",
+        "--matchmaker",
+        "wss://match.example/control",
+        "--profile-accounts",
+        "42,-",
+    ])
+    .expect("explicit args override the environment");
+    args.matchmaker = None;
+    assert!(
+        crate::launch_profiles(&args, 2).is_ok(),
+        "an unknown identity is not a contradictory roster"
+    );
+}
+
+fn parse_profile_args<const N: usize>(args: [&str; N]) -> Result<Args, clap::Error> {
+    use clap::{CommandFactory, FromArgMatches};
+    let matches = Args::command()
+        .mut_arg("matchmaker", |arg| arg.env(None::<&str>))
+        .mut_arg("profile_accounts", |arg| arg.env(None::<&str>))
+        .try_get_matches_from(args)?;
+    Args::from_arg_matches(&matches)
+}
+
+#[test]
+fn a_local_matchmaker_address_is_replaced_by_explicit_no_matchmaker_provenance() {
+    for value in [
+        "ws://127.0.0.1:7000",
+        "ws://192.168.1.5",
+        "ws://169.254.2.1",
+        "ws://control",
+    ] {
+        let args = parse_profile_args([
+            "bota_server",
+            "--matchmaker",
+            value,
+            "--profile-accounts",
+            "42,-",
+        ])
+        .expect("a local launcher may still run");
+        let context = crate::launch_profiles(&args, 2)
+            .expect("launch")
+            .expect("explicit nonshareable origin");
+        assert_eq!(context.matchmaker(), None);
+        assert_eq!(context.account(0), None);
     }
 }

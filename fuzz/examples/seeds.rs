@@ -32,6 +32,7 @@ fn order(seq: u32, order: Order) -> ClientMsg {
 }
 
 fn main() {
+    profile_seeds();
     let at = |x: i32, y: i32| {
         Target::Pos(Vec2 {
             x: Fixed { raw: x << 16 },
@@ -121,4 +122,77 @@ fn main() {
     std::fs::create_dir_all(&dir).expect("corpus");
     std::fs::write(dir.join("seed-match"), &input).expect("seed");
     std::fs::write(dir.join("seed-lobby"), &input[..input.len() / 2]).expect("seed");
+}
+
+fn profile_seeds() {
+    use bota_replay::meta::{MetaHeader, MetaRecord};
+    let header = MetaRecord::Header(MetaHeader {
+        magic: MetaHeader::MAGIC,
+        schema: 1,
+        wire_fingerprint: 7,
+        rules_version: 0,
+        match_id: 42,
+        map: 2,
+        tick_rate: 30,
+        pregame_ticks: 0,
+        catalogue_items: 0,
+        catalogue_digest: 0,
+    });
+    let head = encode_frame_to_vec(&header).expect("header");
+    let profile = encode_frame_to_vec(&MetaRecord::Profiles {
+        matchmaker: Some("wss://match.example/control".into()),
+        seats: vec![(0, Some(42)), (1, None)],
+    })
+    .expect("profile");
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("corpus/replay_meta");
+    std::fs::create_dir_all(&dir).expect("corpus");
+    for (name, tail) in [
+        ("profiles", profile.clone()),
+        (
+            "profiles_duplicate",
+            [profile.clone(), profile.clone()].concat(),
+        ),
+        ("profiles_broken", [profile.clone(), vec![4, 0]].concat()),
+        (
+            "profiles_future",
+            [
+                profile,
+                encode_frame_to_vec(&(200_u32, 17_u64)).expect("future"),
+            ]
+            .concat(),
+        ),
+        (
+            "profiles_local",
+            encode_frame_to_vec(&MetaRecord::Profiles {
+                matchmaker: None,
+                seats: vec![],
+            })
+            .expect("local"),
+        ),
+        (
+            "profiles_zero",
+            encode_frame_to_vec(&(
+                13_u8,
+                Some("wss://match.example/control"),
+                vec![(0_u8, Some(0_u64))],
+            ))
+            .expect("zero"),
+        ),
+        (
+            "profiles_private",
+            encode_frame_to_vec(&(
+                13_u8,
+                Some("ws://192.168.1.5:7000"),
+                vec![(0_u8, Some(42_u64))],
+            ))
+            .expect("private"),
+        ),
+        (
+            "profiles_oversize",
+            encode_frame_to_vec(&(13_u8, Some("x".repeat(513)), vec![(0_u8, Some(42_u64))]))
+                .expect("oversize"),
+        ),
+    ] {
+        std::fs::write(dir.join(name), [vec![0], head.clone(), tail].concat()).expect("seed");
+    }
 }

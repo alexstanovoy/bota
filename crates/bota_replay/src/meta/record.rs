@@ -142,6 +142,11 @@ pub enum MetaRecord {
     },
 }
 
+impl MetaRecord {
+    /// Kept in step with the append-only registry by the layout contract.
+    pub(crate) const LAST_KIND: u32 = 13;
+}
+
 /// The ids of the values of a [`MetaRecord::Sample`]. Append-only: a retired id stays reserved.
 pub mod stat {
     /// Gold in hand.

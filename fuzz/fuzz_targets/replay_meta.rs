@@ -10,7 +10,7 @@ use std::io::Cursor;
 use bota_client_core::{meta_in_replay, meta_of_replay};
 use bota_proto::{ReplayHeader, ReplayRecord, encode_frame_to_vec};
 use bota_replay::limits::{END_RESERVE_BYTES, MAX_META_BYTES};
-use bota_replay::meta::decode;
+use bota_replay::meta::{MetaRecord, decode, with_profiles};
 use libfuzzer_sys::fuzz_target;
 
 /// Most bytes a metadata file may hold, its reserve for the end included.
@@ -22,12 +22,12 @@ fuzz_target!(|data: &[u8]| {
     };
     match mode % 3 {
         0 => {
-            let _ = decode(data);
+            check_profiles(data);
         }
         1 => {
             if let Ok(Some(meta)) = meta_in_replay(&mut Cursor::new(data)) {
                 assert!(meta.len() <= MAX_FILE, "a trailer past its bound");
-                let _ = decode(&meta);
+                check_profiles(&meta);
             }
         }
         _ => {
@@ -45,3 +45,21 @@ fuzz_target!(|data: &[u8]| {
         }
     }
 });
+
+fn check_profiles(bytes: &[u8]) {
+    if let Ok(meta) = decode(bytes) {
+        let profiles = meta.profiles().unwrap_or_default();
+        if let Some(enriched) = with_profiles(bytes, &profiles) {
+            assert!(enriched.len() <= MAX_FILE);
+            let rewritten = decode(&enriched).expect("enriched metadata reads");
+            assert_eq!(rewritten.profiles(), Some(profiles));
+            let facts = |meta: bota_replay::meta::Meta| {
+                meta.records
+                    .into_iter()
+                    .filter(|record| !matches!(record, MetaRecord::Profiles { .. }))
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(facts(meta), facts(rewritten));
+        }
+    }
+}

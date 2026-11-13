@@ -345,7 +345,7 @@ fn public_profile_provenance_survives_full_and_capped_replays_without_seat_secre
             let options = ServerOpts {
                 replay: Some(replay.clone()),
                 meta: Some(meta.clone()),
-                meta_trailer: false,
+                meta_trailer: true,
                 replay_max_bytes: cap,
                 players: 2,
                 dummy_seat: true,
@@ -395,4 +395,34 @@ fn public_profile_provenance_survives_full_and_capped_replays_without_seat_secre
             std::fs::remove_file(meta).expect("remove metadata");
         }
     }
+}
+
+#[test]
+fn a_mismatched_public_profile_roster_is_rejected_before_ready() {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_bota_server"))
+        .args([
+            "--port",
+            "0",
+            "--players",
+            "2",
+            "--matchmaker",
+            "wss://match.example/control",
+            "--profile-accounts",
+            "42",
+        ])
+        .env_remove("BOTA_SEATS")
+        .env_remove("BOTA_REFEREE_KEY")
+        .output()
+        .expect("server exits after invalid launch context");
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("profile accounts must match the roster in slot order")
+    );
+    assert!(
+        !String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .any(|line| line == "READY"),
+        "invalid provenance must not advertise a usable server"
+    );
 }
