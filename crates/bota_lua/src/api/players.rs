@@ -57,16 +57,15 @@ pub(super) fn selected_hero(state: &State, id: i32) -> Option<HeroId> {
     if let Some(snapshot) = &state.snapshot {
         return player(snapshot, id).map(|player| player.hero);
     }
-    let base = if state.team == Team::Dire { 5 } else { 0 };
+    let base = match state.team { Team::Radiant => 0, Team::Dire => 5, _ => return None };
     let rank = usize::try_from(id.checked_sub(base)?).ok()?;
-    let index = state.seats.iter().position(|seat| {
-        state
-            .seats
-            .iter()
-            .filter(|other| other.slot.0 < seat.slot.0)
-            .count()
-            == rank
-    })?;
+    if rank >= 5 { return None; }
+    // Without a roster, only a contiguous prefix from wire slot zero proves a rank.
+    // A missing lower slot could belong to another player on this same side.
+    for lower in 0..=rank {
+        if !state.seats.iter().any(|seat| usize::from(seat.slot.0) == lower) { return None; }
+    }
+    let index = state.seats.iter().position(|seat| usize::from(seat.slot.0) == rank)?;
     Some(state.picks[index].unwrap_or(state.seats[index].hero))
 }
 
@@ -105,19 +104,18 @@ fn team_players(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, 
     let side = bounded_integer(vm, args, 0, 2, 3)?;
     let state = context.state.borrow();
     let snapshot = roster(&state, vm)?;
-    let table = vm.new_table()?;
-    let mut index = 1;
+    let mut found = Vec::new();
     for player in &snapshot.players {
         if team_number(player.team) == f64::from(side)
             && let Some(id) = engine_id(snapshot, player.slot)
         {
-            vm.raw_set(
-                table,
-                Value::Number(f64::from(index)),
-                Value::Number(f64::from(id)),
-            )?;
-            index += 1;
+            found.push(id);
         }
+    }
+    found.sort_unstable();
+    let table = vm.new_table()?;
+    for (index, id) in found.into_iter().enumerate() {
+        vm.raw_set(table, Value::Number((index + 1) as f64), Value::Number(f64::from(id)))?;
     }
     vm.results(&[Value::Table(table)])
 }
@@ -184,8 +182,16 @@ fn last_seen(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, Lua
     let snapshot = roster(&state, vm)?;
     let player =
         player(snapshot, id).ok_or_else(|| vm.error("player is not in the received roster"))?;
+    vm.charge_fuel(16 + 2 * snapshot.units.len() as u64)?;
+    let known = if player.unit.is_some() {
+        player.last_seen.into_iter().collect::<Vec<_>>()
+    } else {
+        snapshot.units.iter().filter(|known|
+            known.unit.kind == bota_proto::UnitKind::Hero && known.unit.owner == Some(player.slot))
+            .map(|known| known.last_visible).collect()
+    };
     let table = vm.new_table()?;
-    if let Some((tick, position)) = player.last_seen {
+    for (index, (tick, position)) in known.into_iter().enumerate() {
         let entry = vm.new_table()?;
         let location = context.vectors.location(vm, position)?;
         let key = vm.new_string(b"location")?;
@@ -196,7 +202,7 @@ fn last_seen(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, Lua
             key,
             Value::Number(seconds(snapshot.tick.saturating_sub(tick))),
         )?;
-        vm.raw_set(table, Value::Number(1.0), Value::Table(entry))?;
+        vm.raw_set(table, Value::Number((index + 1) as f64), Value::Table(entry))?;
     }
     vm.results(&[Value::Table(table)])
 }

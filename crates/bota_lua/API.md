@@ -69,9 +69,17 @@ each side's rank from its public roster's wire seat order; wire seat 1 can there
 be engine player 5. The host continues to use wire seats internally. Team arrays
 contain occupied roster entries only. Out-of-range or fractional player/team ids
 raise ordinary Lua errors; an unoccupied player id supplies no fabricated row.
+Before a roster is received, a selected hero name is supplied only when the
+configured seats prove its rank without assuming any missing lower seat's side.
+Other names remain empty. This does not reconstruct a selection-phase roster.
+Roster queries require a received view; this host's fixed selection mode skips
+pack selection scripts. In an active view, an unoccupied hero-name lookup returns
+an empty string; queries requiring a player row report its absence as an error.
 `GetHeroLastSeenInfo` returns an array with the last received `location` and
 `time_since_seen`, or an empty array for a hero never observed. It uses the
 session's remembered body even after short-lived entity tracking expires.
+When the public roster withholds the real hero's identity, last-seen results list
+received hero-body candidates instead of identifying a real hero or an illusion.
 
 `IsPlayerBot` is a host-declared fact. Configured scripted seats always answer
 true. The trusted launcher may additionally set `NativeConfig.declared_bot_slots`
@@ -82,7 +90,7 @@ as human. This does not disclose controller information from the wire.
 
 New bounded integer arguments use `api/globals::bounded_integer`: finite whole
 numbers must fall within the specified bounds before conversion. The older
-general numeric helper retains its existing callers' conversion behavior.
+general numeric helper itself is unchanged; migrated calls validate their own bounds.
 
 Unknown ability names and empty or invalid item slots return nil. Ability names
 come from core definitions, including the hero's separate innate and talent tree.
