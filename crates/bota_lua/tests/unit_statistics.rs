@@ -231,3 +231,123 @@ fn owned_statistics_remain_available_after_a_dead_body_track_expires() {
         }
     );
 }
+
+#[test]
+fn enemy_statistics_are_last_observed_only_until_the_received_track_expires() {
+    use bota_proto::Cheat;
+    let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    {
+        let world = local.world_mut();
+        world.cheats = true;
+        world.cheat(
+            SlotId(0),
+            None,
+            Cheat::AllVision { on: true },
+            &mut Vec::new(),
+        );
+    }
+    let streams = local.step(&[&[], &[]]).expect("shared sight");
+    for (session, stream) in sessions.iter_mut().zip(streams) {
+        support::fold(session, stream);
+    }
+    let mut teams = Vec::new();
+    let mut enemies = Vec::new();
+    for (index, side) in [(0, Team::Radiant), (1, Team::Dire)] {
+        let slot = SlotId(index as u8);
+        enemies.push(
+            sessions[index]
+                .current()
+                .expect("view")
+                .units
+                .iter()
+                .find(|unit| unit.hero.is_some() && unit.team == side.enemy())
+                .expect("enemy")
+                .id,
+        );
+        let mut lua = LuaTeam::new(
+            side,
+            &[BotSeat {
+                slot,
+                hero: HeroId::SHADOW_FIEND,
+            }],
+            Limits::DEFAULT,
+            Keys {
+                hash: [17, 19],
+                random: 23,
+            },
+        )
+        .expect("team");
+        lua.add_script(slot,ScriptKind::Takeover,"expired_enemy_statistics",br#"
+            local phase, enemy, mana = 0, nil, nil
+            function Think()
+                phase = phase + 1
+                if phase == 1 then
+                    enemy = GetUnitList(UNIT_LIST_ENEMY_HEROES)[1]
+                    assert(enemy and enemy:CanBeSeen())
+                    mana = enemy:GetMana()
+                elseif phase == 2 then
+                    assert(not enemy:CanBeSeen() and enemy:GetMana() == mana)
+                else
+                    for _, name in ipairs({'GetMana','GetMaxMana','GetHealthRegen','GetManaRegen','GetArmor',
+                        'GetAttackDamage','GetAttackRange','GetSecondsPerAttack','GetCurrentMovementSpeed',
+                        'GetBoundingRadius','GetEvasion','GetFacing','GetPrimaryAttribute','GetAttributeValue'}) do
+                        local ok, reason = pcall(enemy[name],enemy,0)
+                        assert(not ok and string.find(tostring(reason),'unit is no longer known',1,true))
+                    end
+                end
+                GetBot():Action_MoveToLocation(Vector(100+phase,200,0))
+            end
+        "#).expect("script");
+        teams.push(lua);
+    }
+    for phase in 1..=3 {
+        for (index, lua) in teams.iter_mut().enumerate() {
+            if phase == 3 {
+                let mut view = sessions[index].current().expect("view").clone();
+                view.tick += 481;
+                let tick = view.tick;
+                sessions[index]
+                    .ingest(ServerMsg::Snapshot { view }, &mut ())
+                    .expect("expired view");
+                sessions[index]
+                    .ingest(
+                        ServerMsg::Events {
+                            tick,
+                            events: Vec::new(),
+                        },
+                        &mut (),
+                    )
+                    .expect("events");
+                assert!(sessions[index].entity(enemies[index]).is_none());
+                assert!(
+                    sessions[index].known(enemies[index]).is_some(),
+                    "body memory alone must not supply enemy statistics"
+                );
+            }
+            let turn = lua.think(&sessions[index]).expect("think");
+            assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+            assert_eq!(turn.bots[0].orders.len(), 1);
+            assert_eq!(
+                turn.bots[0].orders[0].order,
+                Order::Move {
+                    target: Target::Pos(Vec2::from_ints(9316 + phase, 9416))
+                }
+            );
+        }
+        if phase == 1 {
+            local.world_mut().cheat(
+                SlotId(0),
+                None,
+                Cheat::AllVision { on: false },
+                &mut Vec::new(),
+            );
+            let streams = local.step(&[&[], &[]]).expect("normal sight");
+            for (session, stream) in sessions.iter_mut().zip(streams) {
+                support::fold(session, stream);
+            }
+            for (index, session) in sessions.iter().enumerate() {
+                assert!(session.entity(enemies[index]).is_some());
+            }
+        }
+    }
+}
