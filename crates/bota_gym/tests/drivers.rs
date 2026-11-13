@@ -1,7 +1,7 @@
 //! The drivers' contracts under misuse and failure, on episodes that simulate nothing.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::channel;
 use std::time::Duration;
 
@@ -311,19 +311,14 @@ impl Drop for Thrice {
     }
 }
 
-/// Which payload a [`Relay`] step panics with.
-enum Payload {
-    Twice(Arc<Vec<u8>>),
-    Thrice(Arc<Vec<u8>>),
-}
-
-/// A game whose every step panics; the shared counter counts the steps that ran.
+/// A game whose every step panics with a [`Twice`] of its action; the shared counter counts the
+/// steps that ran.
 struct Relay(GameId);
 
 impl Episode for Relay {
     type Shared = AtomicUsize;
     type Plan = ();
-    type Action = Payload;
+    type Action = Arc<Vec<u8>>;
     type Finished = ();
     type Error = Error;
 
@@ -331,12 +326,9 @@ impl Episode for Relay {
         Ok(Self(id))
     }
 
-    fn step(&mut self, ran: &AtomicUsize, payload: Payload) -> Result<Option<()>, Error> {
+    fn step(&mut self, ran: &AtomicUsize, data: Arc<Vec<u8>>) -> Result<Option<()>, Error> {
         ran.fetch_add(1, Ordering::Relaxed);
-        match payload {
-            Payload::Twice(data) => std::panic::panic_any(Twice(Some(data))),
-            Payload::Thrice(data) => std::panic::panic_any(Thrice(Some(data))),
-        }
+        std::panic::panic_any(Twice(Some(data)))
     }
 
     fn game(&self) -> GameId {
@@ -368,9 +360,8 @@ fn a_destructors_ordinary_second_payload_is_dropped_too() {
         let workers = Workers::spawn(scope, one_worker(), &ran).expect("workers");
         let mut env: VecEnv<Relay> =
             VecEnv::start(workers.clone(), (0..16).collect(), &()).expect("started");
-        let payloads = data.into_iter().map(Payload::Twice);
         assert_eq!(
-            env.step(payloads, &(), |_, _| {}),
+            env.step(data, &(), |_, _| {}),
             Err(Error(GymError::Panicked { position: 0 }))
         );
         // Nothing was kept, so the pool still takes jobs.
@@ -380,61 +371,142 @@ fn a_destructors_ordinary_second_payload_is_dropped_too() {
     assert_eq!(live(&witnesses), 0);
 }
 
+/// Times an [`Armed`] action's destructor ran with its data still in it.
+static ARMED_DROPS: AtomicUsize = AtomicUsize::new(0);
+
+/// An action whose destructor, while it still holds its data, panics three levels deep (with a
+/// [`Thrice`]): a step that runs takes the data out first.
+struct Armed(Option<Arc<Vec<u8>>>);
+
+impl Drop for Armed {
+    fn drop(&mut self) {
+        if let Some(data) = self.0.take() {
+            ARMED_DROPS.fetch_add(1, Ordering::Relaxed);
+            std::panic::panic_any(Thrice(Some(data)));
+        }
+    }
+}
+
+/// What a [`Fuse`] game reads: the steps that ran, the round's size, and how many plans the
+/// driver cloned since it was armed (one per submitted step).
+#[derive(Default)]
+struct Gate {
+    ran: AtomicUsize,
+    round: AtomicUsize,
+    armed: AtomicBool,
+    cloned: AtomicUsize,
+}
+
+/// A plan whose clones, once its gate is armed, count the driver's submissions.
+struct Ticket(Arc<Gate>);
+
+impl Clone for Ticket {
+    fn clone(&self) -> Self {
+        if self.0.armed.load(Ordering::SeqCst) {
+            self.0.cloned.fetch_add(1, Ordering::SeqCst);
+        }
+        Self(Arc::clone(&self.0))
+    }
+}
+
+/// A game whose step waits until the driver submitted every step of the round, then panics
+/// three levels deep with its action's data.
+struct Fuse(GameId);
+
+impl Episode for Fuse {
+    type Shared = Gate;
+    type Plan = Ticket;
+    type Action = Armed;
+    type Finished = ();
+    type Error = Error;
+
+    fn start(_: &Gate, id: GameId, _: Ticket) -> Result<Self, Error> {
+        Ok(Self(id))
+    }
+
+    fn step(&mut self, gate: &Gate, mut action: Armed) -> Result<Option<()>, Error> {
+        gate.ran.fetch_add(1, Ordering::SeqCst);
+        // Bounded by the test's watchdog: the driver submits the whole round promptly.
+        while gate.cloned.load(Ordering::SeqCst) < gate.round.load(Ordering::SeqCst) {
+            std::thread::yield_now();
+        }
+        let data = action.0.take();
+        std::panic::panic_any(Thrice(data))
+    }
+
+    fn game(&self) -> GameId {
+        self.0
+    }
+}
+
+/// Plays one step of `jobs` [`Fuse`] slots on `threads` workers; every step waits until all
+/// `jobs` are submitted. The last action holds no data and a harmless destructor, since it may
+/// be submitted after the pool turned terminal and be refused on this thread. Returns the steps
+/// that ran and the data still alive once the pool is gone.
+fn fuse(threads: usize, jobs: usize) -> (usize, usize) {
+    let gate = Arc::new(Gate::default());
+    let (data, witnesses) = megabytes(jobs - 1);
+    std::thread::scope(|scope| {
+        let config = WorkerConfig {
+            threads,
+            queue: jobs,
+            ..one_worker()
+        };
+        let workers = Workers::spawn(scope, config, &*gate).expect("workers");
+        let ticket = Ticket(Arc::clone(&gate));
+        let mut env: VecEnv<Fuse> =
+            VecEnv::start(workers.clone(), (0..jobs).collect(), &ticket).expect("started");
+        gate.round.store(jobs, Ordering::SeqCst);
+        gate.armed.store(true, Ordering::SeqCst);
+        let actions = data
+            .into_iter()
+            .map(|data| Armed(Some(data)))
+            .chain([Armed(None)]);
+        // Every job is answered: the first failing position's error comes back.
+        let stepped = env.step(actions, &ticket, |_, _| {});
+        assert!(matches!(stepped, Err(Error(GymError::Panicked { .. }))));
+        assert_eq!(
+            VecEnv::<Fuse>::start(workers, vec![0], &ticket).err(),
+            Some(Error(GymError::Undisposed))
+        );
+    });
+    (gate.ran.load(Ordering::SeqCst), live(&witnesses))
+}
+
 #[test]
-fn a_pool_keeps_at_most_its_budget_of_undroppable_payloads_and_runs_no_more_jobs() {
+fn the_first_undroppable_payload_stops_the_pool_and_leaks_the_queued_jobs_whole() {
     within_a_minute(|| {
-        let max = bota_gym::workers::MAX_UNDISPOSED_PANICS;
-        let ran = AtomicUsize::new(0);
-        let (data, witnesses) = megabytes(32);
-        std::thread::scope(|scope| {
-            let config = WorkerConfig {
-                queue: 32,
-                ..one_worker()
-            };
-            let workers = Workers::spawn(scope, config, &ran).expect("workers");
-            let mut env: VecEnv<Relay> =
-                VecEnv::start(workers.clone(), (0..32).collect(), &()).expect("started");
-            // Every job is queued while the budget is open; each is answered.
-            let payloads = data.into_iter().map(Payload::Thrice);
-            assert_eq!(
-                env.step(payloads, &(), |_, _| {}),
-                Err(Error(GymError::Panicked { position: 0 }))
-            );
-            let refused = VecEnv::<Relay>::start(workers, vec![0], &()).err();
-            assert_eq!(refused, Some(Error(GymError::Undisposed)));
-        });
-        // One worker: the jobs past the budget never ran, and only the budget's payloads live.
-        assert_eq!(ran.load(Ordering::Relaxed), max);
-        assert_eq!(live(&witnesses), max);
+        let (ran, alive) = fuse(1, 32);
+        assert_eq!(ran, 1, "nothing runs once the pool turned terminal");
+        assert_eq!(
+            ARMED_DROPS.load(Ordering::SeqCst),
+            0,
+            "no rejected job was dropped"
+        );
+        // The documented bound, met exactly: one kept payload for the one worker that ran a
+        // job, plus the 30 jobs with data queued when the pool turned terminal, leaked whole.
+        assert_eq!(alive, 1 + 30);
         assert_eq!(
             GymError::Undisposed.to_string(),
-            "the workers kept too many panic payloads that panicked when dropped, and stopped"
+            "the workers met a panic payload they could not drop, and run no more jobs"
         );
     });
 }
 
 #[test]
-fn several_workers_keep_at_most_the_budget_plus_the_jobs_already_running() {
+fn several_workers_run_at_most_one_job_each_before_the_pool_turns_terminal() {
     within_a_minute(|| {
-        let (max, threads) = (bota_gym::workers::MAX_UNDISPOSED_PANICS, 4);
-        let ran = AtomicUsize::new(0);
-        let (data, witnesses) = megabytes(64);
-        std::thread::scope(|scope| {
-            let config = WorkerConfig {
-                threads,
-                queue: 64,
-                ..one_worker()
-            };
-            let workers = Workers::spawn(scope, config, &ran).expect("workers");
-            let mut env: VecEnv<Relay> =
-                VecEnv::start(workers, (0..64).collect(), &()).expect("started");
-            let payloads = data.into_iter().map(Payload::Thrice);
-            assert!(env.step(payloads, &(), |_, _| {}).is_err());
-        });
-        // At most the budget, plus one for every other worker already running a job.
-        assert!(ran.load(Ordering::Relaxed) < max + threads);
-        assert!(live(&witnesses) < max + threads);
-        assert!(live(&witnesses) >= max);
+        let threads = 4;
+        let (ran, alive) = fuse(threads, 64);
+        // At most one job per worker ran: those a worker took before the pool turned terminal.
+        assert!((1..=threads).contains(&ran), "{ran} jobs ran");
+        assert_eq!(
+            ARMED_DROPS.load(Ordering::SeqCst),
+            0,
+            "no rejected job was dropped"
+        );
+        // Every job with data either ran and kept its payload, or was leaked whole.
+        assert_eq!(alive, 63);
     });
 }
 
