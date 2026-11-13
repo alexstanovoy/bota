@@ -8,11 +8,15 @@
 //! `Structure` record. The legacy record stays frozen, so older readers still see building
 //! falls and newer readers distinguish simultaneous falls without guessing from kind or team.
 
+mod profiles;
 mod read;
 mod record;
 mod recorder;
 mod write;
 
+pub use profiles::{
+    MAX_MATCHMAKER_BYTES, MAX_PROFILE_SEATS, Profiles, public_matchmaker, with_profiles,
+};
 pub use read::{Meta, MetaError, decode};
 pub use record::*;
 pub use recorder::Recorder;

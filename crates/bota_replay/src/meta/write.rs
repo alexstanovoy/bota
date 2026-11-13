@@ -16,6 +16,11 @@ pub struct Writer {
 impl Writer {
     /// Appends a record; false when it was dropped. `closing` records may use the reserve.
     pub fn push(&mut self, record: &MetaRecord, closing: bool) -> bool {
+        if let MetaRecord::Profiles { matchmaker, seats } = record
+            && !super::profiles::valid(matchmaker.as_deref(), seats)
+        {
+            return false;
+        }
         let Ok(frame) = encode_frame_to_vec(record) else {
             return false;
         };

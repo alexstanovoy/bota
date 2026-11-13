@@ -133,6 +133,13 @@ pub enum MetaRecord {
         tier: Option<u8>,
         ranged: Option<bool>,
     },
+    /// Public profile provenance; never authority to contact the named service.
+    Profiles {
+        #[serde(deserialize_with = "super::profiles::read_matchmaker")]
+        matchmaker: Option<String>,
+        #[serde(deserialize_with = "super::profiles::read_seats")]
+        seats: Vec<(u8, Option<u64>)>,
+    },
 }
 
 /// The ids of the values of a [`MetaRecord::Sample`]. Append-only: a retired id stays reserved.

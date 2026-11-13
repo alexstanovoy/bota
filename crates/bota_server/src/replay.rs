@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use bota_proto::{
     LEN_PREFIX, MAX_PAYLOAD_LEN, ReplayHeader, ReplayRecord, WorldView, encode_frame_to_vec,
 };
-use bota_replay::meta::Recorder;
+use bota_replay::meta::{Profiles, Recorder, with_profiles};
 use zstd::stream::write::Encoder;
 
 /// The Zstandard level a replay is written at: a match's records shrink some
@@ -74,6 +74,7 @@ pub struct ReplayWriter {
     truncated: bool,
     meta: Option<Meta>,
     trailer: bool,
+    profiles: Option<Profiles>,
 }
 
 impl ReplayWriter {
@@ -93,7 +94,20 @@ impl ReplayWriter {
         meta: Option<&Path>,
         trailer: bool,
     ) -> std::io::Result<ReplayWriter> {
+        Self::open_with_profiles(replay, max_bytes, meta, trailer, None)
+    }
+
+    /// Explicit launch provenance also enables a trailer, with its room reserved up front.
+    pub fn open_with_profiles(
+        replay: Option<&Path>,
+        max_bytes: Option<u64>,
+        meta: Option<&Path>,
+        trailer: bool,
+        profiles: Option<Profiles>,
+    ) -> std::io::Result<ReplayWriter> {
+        let trailer = trailer || profiles.is_some();
         let mut writer = ReplayWriter::disabled();
+        writer.profiles = profiles;
         if let Some(path) = meta {
             // Refused now rather than when the match is over.
             File::create(path).map_err(|error| {
@@ -146,6 +160,7 @@ impl ReplayWriter {
             truncated: false,
             meta: None,
             trailer: false,
+            profiles: None,
         }
     }
 
@@ -213,7 +228,7 @@ impl ReplayWriter {
                 .meta
                 .as_ref()
                 .filter(|_| self.trailer)
-                .map(|meta| meta.recorder.clone().finish());
+                .map(|meta| self.enrich(meta.recorder.clone().finish()));
             self.close_stream(prefix.as_deref());
             self.truncated = true;
         }
@@ -229,12 +244,26 @@ impl ReplayWriter {
         let meta = self
             .meta
             .take()
-            .map(|meta| (meta.recorder.finish(), meta.file));
+            .map(|meta| (self.enrich(meta.recorder.finish()), meta.file));
         self.close_stream(meta.as_ref().map(|(bytes, _)| bytes.as_slice()));
         if let Some((bytes, Some(path))) = meta
             && let Err(error) = std::fs::write(&path, bytes)
         {
             eprintln!("bota_server: the meta was not written ({error})");
+        }
+    }
+    fn enrich(&self, bytes: Vec<u8>) -> Vec<u8> {
+        let Some(profiles) = &self.profiles else {
+            return bytes;
+        };
+        match with_profiles(&bytes, profiles) {
+            Some(enriched) => enriched,
+            None => {
+                if !bytes.is_empty() {
+                    eprintln!("bota_server: public profile provenance could not fit the metadata");
+                }
+                bytes
+            }
         }
     }
     /// Closes the stream once. Its optional trailer has the metadata of this exact prefix.

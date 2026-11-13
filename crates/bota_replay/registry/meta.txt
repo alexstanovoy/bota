@@ -59,3 +59,6 @@ field MetaRecord::StructureLocation 0 index: u32
 field MetaRecord::StructureLocation 1 lane: Option<u8>
 field MetaRecord::StructureLocation 2 tier: Option<u8>
 field MetaRecord::StructureLocation 3 ranged: Option<bool>
+variant MetaRecord 13 Profiles {}
+field MetaRecord::Profiles 0 matchmaker: Option<String>
+field MetaRecord::Profiles 1 seats: Vec<(u8, Option<u64>)>

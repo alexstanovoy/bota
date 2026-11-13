@@ -204,6 +204,31 @@ pub fn run(listeners: impl Into<Listeners>, opts: ServerOpts) -> std::io::Result
     run_inner(
         listeners,
         opts,
+        None,
+        #[cfg(test)]
+        TestHooks::default(),
+    )
+}
+
+/// Runs with explicit public launch provenance, retained in metadata and replay trailers.
+pub fn run_with_profiles(
+    listeners: impl Into<Listeners>,
+    opts: ServerOpts,
+    profiles: bota_replay::meta::Profiles,
+) -> std::io::Result<MatchEnd> {
+    if profiles
+        .seats()
+        .iter()
+        .any(|(slot, _)| *slot >= opts.players)
+    {
+        return Err(std::io::Error::other(
+            "profile account outside the match roster",
+        ));
+    }
+    run_inner(
+        listeners,
+        opts,
+        Some(profiles),
         #[cfg(test)]
         TestHooks::default(),
     )
@@ -238,21 +263,23 @@ pub(crate) fn run_hooked(
     opts: ServerOpts,
     hooks: TestHooks,
 ) -> std::io::Result<MatchEnd> {
-    run_inner(listeners, opts, hooks)
+    run_inner(listeners, opts, None, hooks)
 }
 
 fn run_inner(
     listeners: impl Into<Listeners>,
     opts: ServerOpts,
+    profiles: Option<bota_replay::meta::Profiles>,
     #[cfg(test)] hooks: TestHooks,
 ) -> std::io::Result<MatchEnd> {
     check_opts(&opts).map_err(std::io::Error::other)?;
     let secrets = draw_secrets(opts.seed, opts.match_id)?;
-    let replay = ReplayWriter::open(
+    let replay = ReplayWriter::open_with_profiles(
         opts.replay.as_deref(),
         opts.replay_max_bytes,
         opts.meta.as_deref(),
         opts.meta_trailer,
+        profiles,
     )?;
     let (tx, rx) = channel();
     listeners.into().start(&tx)?;

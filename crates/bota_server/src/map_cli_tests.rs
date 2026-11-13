@@ -101,3 +101,41 @@ fn every_map_defaults_to_rules_it_plays_and_map2_to_none() {
         "the mid-only map stands no objective and spawns no rune unless asked"
     );
 }
+
+#[test]
+fn public_profile_launch_context_is_explicit_and_bounded_before_ready() {
+    let args = Args::try_parse_from([
+        "bota_server",
+        "--matchmaker",
+        "wss://match.example/control",
+        "--profile-accounts",
+        "42,-",
+    ])
+    .expect("public launch context");
+    let opts = crate::server_opts(&args).expect("options");
+    let profiles = crate::launch_profiles(&args, opts.players).expect("launch context");
+    assert_eq!(profiles.matchmaker(), Some("wss://match.example/control"));
+    assert_eq!(profiles.account(0), Some(42));
+    assert_eq!(profiles.account(1), None);
+    let local = Args::try_parse_from(["bota_server"]).expect("local");
+    assert_eq!(
+        crate::launch_profiles(&local, 2)
+            .expect("explicit local")
+            .matchmaker(),
+        None
+    );
+    for accounts in ["0,-", "42", "42,-,-", "a,-"] {
+        let args = Args::try_parse_from(["bota_server", "--profile-accounts", accounts]);
+        assert!(
+            args.is_err() || crate::server_opts(&args.expect("parsed")).is_err(),
+            "bad mapping must fail before READY"
+        );
+    }
+    for uri in [
+        "wss://user:secret@example.org",
+        "wss://example.org/?secret=x",
+        "",
+    ] {
+        assert!(Args::try_parse_from(["bota_server", "--matchmaker", uri]).is_err());
+    }
+}

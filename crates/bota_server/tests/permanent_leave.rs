@@ -319,3 +319,80 @@ fn a_departure_after_the_replay_cap_is_in_the_metadata_the_result_reports() {
         }
     }
 }
+
+#[test]
+fn public_profile_provenance_survives_full_and_capped_replays_without_seat_secrets() {
+    use bota_replay::meta::Profiles;
+    for (label, context) in [
+        ("local", Profiles::default()),
+        (
+            "public",
+            Profiles::new(
+                Some("wss://match.example/control".into()),
+                vec![(0, Some(42)), (1, None)],
+            )
+            .expect("public context"),
+        ),
+    ] {
+        for cap in [None, Some(CAP * 2)] {
+            let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
+                .join(format!("profile-provenance-{}", std::process::id()));
+            std::fs::create_dir_all(&dir).expect("scratch");
+            let replay = dir.join(format!("{label}-{cap:?}.brp"));
+            let meta = replay.with_extension("meta");
+            let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
+            let address = listener.local_addr().expect("address").to_string();
+            let options = ServerOpts {
+                replay: Some(replay.clone()),
+                meta: Some(meta.clone()),
+                meta_trailer: false,
+                replay_max_bytes: cap,
+                players: 2,
+                dummy_seat: true,
+                order_delays: Vec::new(),
+                empty_after: None,
+                ..opts(Vec::new())
+            };
+            let launch = context.clone();
+            let server = thread::spawn(move || {
+                bota_server::game_loop::run_with_profiles(listener, options, launch)
+            });
+            let (link, seated) =
+                Link::join(&address, "player", HeroId::SHADOW_FIEND, None).expect("seat");
+            let mut leaving = LeaveAndStay {
+                link,
+                leave_at: 900,
+                sent: false,
+            };
+            let _ = play(&mut leaving, seated, &mut (), |_| Vec::new());
+            let end = server
+                .join()
+                .expect("server thread")
+                .expect("server result");
+            assert!(matches!(end, MatchEnd::Over { .. }));
+            let full = decode(&std::fs::read(&meta).expect("sidecar")).expect("metadata");
+            assert!(full.complete);
+            assert_eq!(
+                full.profiles(),
+                Some(context.clone()),
+                "sidecar identifies the matchmaker and public accounts"
+            );
+            let carried =
+                bota_replay::trailer::find(&mut std::fs::File::open(&replay).expect("replay"))
+                    .expect("trailer read")
+                    .expect("trailer");
+            let prefix = decode(&carried).expect("prefix metadata");
+            assert_eq!(prefix.profiles(), Some(context.clone()));
+            assert_eq!(
+                prefix.complete,
+                cap.is_none(),
+                "a capped trailer describes only its recorded prefix"
+            );
+            if let Some(cap) = cap {
+                assert!(std::fs::metadata(&replay).expect("size").len() <= cap);
+            }
+            std::fs::remove_file(replay).expect("remove replay");
+            std::fs::remove_file(meta).expect("remove metadata");
+        }
+    }
+}

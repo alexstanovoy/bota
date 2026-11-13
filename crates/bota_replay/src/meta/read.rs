@@ -58,6 +58,7 @@ pub fn decode(bytes: &[u8]) -> Result<Meta, MetaError> {
     };
     for frame in frames {
         let Frame::Payload(payload) = frame else {
+            meta.skipped += 1;
             break;
         };
         match decode_payload::<MetaRecord>(payload) {

@@ -13,7 +13,8 @@ use bota_proto::{HeroId, Role, SeatKey, Team, encode_match_report};
 use bota_server::chat::{ChatOpts, SeatChat};
 use bota_server::game::OrderDelay;
 use bota_server::game_loop::{
-    DEFAULT_IDLE_TIMEOUT, DEFAULT_SPECTATORS_PER_SEAT, MatchEnd, ServerOpts, check_opts, run,
+    DEFAULT_IDLE_TIMEOUT, DEFAULT_SPECTATORS_PER_SEAT, MatchEnd, ServerOpts, check_opts,
+    run_with_profiles,
 };
 use bota_server::lobby::ReservedSeat;
 use bota_server::net::{DEFAULT_MESSAGES_PER_SEC, Listeners};
@@ -111,11 +112,16 @@ struct Args {
     /// created.
     #[arg(long)]
     meta: Option<PathBuf>,
-    /// Carry the metadata file at the end of the replay, after its compressed stream. Off until
-    /// the next change of the wire fingerprint, from which on no build that refuses such a replay
-    /// at its end can read the replay at all (see `ServerOpts::meta_trailer`).
+    /// Retained for launchers that request a metadata trailer explicitly. New recordings
+    /// always carry their public launch provenance in a trailer.
     #[arg(long, requires = "replay")]
     meta_trailer: bool,
+    /// Public matchmaker identity retained as text in replay metadata; never credentials.
+    #[arg(long, env = "BOTA_MATCHMAKER", value_parser = public_matchmaker)]
+    matchmaker: Option<String>,
+    /// Public account ids in slot order, comma separated; '-' means no profile.
+    #[arg(long, env = "BOTA_PROFILE_ACCOUNTS", value_parser = profile_accounts)]
+    profile_accounts: Option<String>,
     /// Which map to play: 0 Dota, 1 hero demo, 2 mid-only Dota (two lives or first tower, twenty game minutes).
     #[arg(long, default_value_t = 0, value_parser = parse_map)]
     map: u16,
@@ -311,7 +317,57 @@ fn serve(args: Args) -> std::io::Result<MatchEnd> {
     )?;
     let listeners = listen(&args)?;
     println!("READY");
-    run(listeners, opts)
+    let profiles = launch_profiles(&args, opts.players).map_err(std::io::Error::other)?;
+    run_with_profiles(listeners, opts, profiles)
+}
+
+fn public_matchmaker(value: &str) -> Result<String, String> {
+    bota_replay::meta::public_matchmaker(value).then(|| value.to_owned())
+        .ok_or_else(|| "expected a public matchmaker URI of at most 512 bytes, without credentials, query or fragment".into())
+}
+
+fn profile_accounts(value: &str) -> Result<String, String> {
+    if value.len() > 209
+        || value.split(',').count() > bota_replay::meta::MAX_PROFILE_SEATS
+        || value
+            .split(',')
+            .any(|account| account != "-" && !account.parse::<u64>().is_ok_and(|id| id != 0))
+    {
+        return Err("expected at most ten nonzero public account ids or '-'".into());
+    }
+    Ok(value.to_owned())
+}
+
+fn launch_profiles(args: &Args, players: u8) -> Result<bota_replay::meta::Profiles, String> {
+    let seats = match args.profile_accounts.as_deref() {
+        Some(accounts) => {
+            let seats = accounts
+                .split(',')
+                .enumerate()
+                .map(|(slot, account)| {
+                    Ok((
+                        slot as u8,
+                        if account == "-" {
+                            None
+                        } else {
+                            Some(
+                                account
+                                    .parse::<u64>()
+                                    .map_err(|_| "invalid public account id")?,
+                            )
+                        },
+                    ))
+                })
+                .collect::<Result<Vec<_>, &str>>()?;
+            if seats.len() != usize::from(players) {
+                return Err("profile accounts must match the roster in slot order".into());
+            }
+            seats
+        }
+        None => (0..players).map(|slot| (slot, None)).collect(),
+    };
+    bota_replay::meta::Profiles::new(args.matchmaker.clone(), seats)
+        .ok_or_else(|| "profile accounts require a public matchmaker identity".into())
 }
 
 /// A variable of the environment; absent when unset or empty.
@@ -400,6 +456,7 @@ fn server_opts(args: &Args) -> std::io::Result<ServerOpts> {
         }
         (_, seats) => seats as u8,
     };
+    launch_profiles(args, players).map_err(std::io::Error::other)?;
     Ok(ServerOpts {
         mode: match args.mode {
             Mode::Realtime => bota_proto::TickMode::Realtime,

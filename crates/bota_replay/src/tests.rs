@@ -17,6 +17,16 @@ const META: &str = include_str!("../registry/meta.txt");
 #[test]
 fn the_meta_layout_only_grows() {
     let mut tracer = Tracer::new(TracerConfig::default());
+    // The validating deserializer needs a real public URI and account sample.
+    tracer
+        .trace_value(
+            &mut serde_reflection::Samples::new(),
+            &MetaRecord::Profiles {
+                matchmaker: Some("wss://match.example/control".into()),
+                seats: vec![(0, Some(42))],
+            },
+        )
+        .expect("traces public provenance");
     tracer.trace_simple_type::<MetaRecord>().expect("traces");
     tracer.trace_simple_type::<MetaHeader>().expect("traces");
     tracer
@@ -316,4 +326,163 @@ fn the_trailer_carries_the_file_whole_and_a_replay_without_one_gives_none() {
         trailer::find(&mut Cursor::new(damaged)).expect("reads"),
         None
     );
+}
+
+// The variant number and field order are independent byte-level format expectations.
+fn profile_frame(maker: Option<&str>, seats: &[(u8, Option<u64>)]) -> Vec<u8> {
+    bota_proto::encode_frame_to_vec(&(13_u8, maker, seats)).expect("profile frame")
+}
+
+#[test]
+fn appended_public_profile_provenance_is_recognized_without_changing_legacy_facts() {
+    for (maker, seats) in [
+        (
+            Some("wss://match.example/control"),
+            vec![(0, Some(42)), (1, None)],
+        ),
+        (None, vec![(0, None), (1, None)]),
+    ] {
+        let mut bytes = file(&[
+            MetaRecord::Header(header()),
+            MetaRecord::Seat {
+                slot: 0,
+                team: 0,
+                hero: 1,
+            },
+            MetaRecord::Sample {
+                tick: 900,
+                slot: 0,
+                stats: vec![(stat::NET_WORTH, 1500)],
+            },
+            MetaRecord::End {
+                tick: 1200,
+                winner: Some(0),
+            },
+        ]);
+        bytes.extend(profile_frame(maker, &seats));
+        let meta = decode(&bytes).expect("metadata remains readable");
+        assert!(meta.complete);
+        assert_eq!(
+            meta.skipped, 0,
+            "the appended public origin is a known record"
+        );
+        assert_eq!(
+            meta.records.len(),
+            4,
+            "three old facts plus one public profile snapshot"
+        );
+    }
+}
+
+#[test]
+fn corrupt_profile_claims_keep_the_match_readable_without_profile_links() {
+    let base = file(&[
+        MetaRecord::Header(header()),
+        MetaRecord::End {
+            tick: 1200,
+            winner: Some(0),
+        },
+    ]);
+    assert!(decode(&base).expect("old metadata").profiles().is_none());
+    let good = profile_frame(Some("wss://match.example/control"), &[(0, Some(42))]);
+    let mut hostile = Vec::new();
+    for maker in [
+        "wss://user:secret@example.org",
+        "wss://example.org/?secret=x",
+        "wss://ex\u{202e}ample.org",
+        "wss://example.org/#part",
+        "",
+        "file:///etc/example",
+    ] {
+        hostile.push(profile_frame(Some(maker), &[(0, Some(42))]));
+    }
+    hostile.push(profile_frame(
+        Some(&format!("wss://example.org/{}", "a".repeat(512))),
+        &[(0, Some(42))],
+    ));
+    for seats in [
+        vec![(0, Some(0))],
+        vec![(0, Some(42)), (0, Some(43))],
+        vec![(10, Some(42))],
+        (0..11).map(|slot| (slot, Some(42))).collect(),
+    ] {
+        hostile.push(profile_frame(Some("wss://example.org"), &seats));
+    }
+    hostile.push(profile_frame(None, &[(0, Some(42))]));
+    hostile.push([good.clone(), good.clone()].concat());
+    hostile.push([good.clone(), vec![4, 0]].concat());
+    hostile.push([good.clone(), vec![0xff; 4]].concat());
+    hostile.push(
+        [
+            good.clone(),
+            bota_proto::encode_frame_to_vec(&99_u8).expect("unknown"),
+        ]
+        .concat(),
+    );
+    for tail in hostile {
+        let meta =
+            decode(&[base.clone(), tail].concat()).expect("statistics survive hostile provenance");
+        assert!(meta.complete);
+        assert!(
+            meta.profiles().is_none(),
+            "ambiguous claims must never provide account links"
+        );
+    }
+    let profiles = decode(&[base, good].concat())
+        .expect("valid metadata")
+        .profiles()
+        .expect("public provenance");
+    assert_eq!(profiles.matchmaker(), Some("wss://match.example/control"));
+    assert_eq!(profiles.account(0), Some(42));
+    assert_eq!(profiles.account(1), None);
+}
+
+#[test]
+fn enriching_metadata_preserves_facts_and_explicit_local_provenance() {
+    use crate::meta::{Profiles, with_profiles};
+    let bytes = file(&[
+        MetaRecord::Header(header()),
+        MetaRecord::Seat {
+            slot: 0,
+            team: 0,
+            hero: 1,
+        },
+        MetaRecord::End {
+            tick: 1200,
+            winner: Some(0),
+        },
+    ]);
+    let local = with_profiles(&bytes, &Profiles::default()).expect("local provenance");
+    let meta = decode(&local).expect("enriched");
+    assert!(meta.complete);
+    assert_eq!(meta.profiles().expect("explicit local").matchmaker(), None);
+    assert_eq!(
+        &meta.records[..2],
+        &decode(&bytes).expect("original").records
+    );
+    let public = Profiles::new(
+        Some("wss://match.example/control".into()),
+        vec![(0, Some(42)), (1, None)],
+    )
+    .expect("public");
+    let enriched = with_profiles(&local, &public).expect("replace launch context");
+    let meta = decode(&enriched).expect("enriched");
+    assert_eq!(meta.records.len(), 3);
+    assert_eq!(meta.profiles(), Some(public));
+    assert!(
+        with_profiles(
+            &[enriched.clone(), profile_frame(None, &[])].concat(),
+            &Profiles::default()
+        )
+        .is_none()
+    );
+    let mut writer = Writer::default();
+    assert!(!writer.push(
+        &MetaRecord::Profiles {
+            matchmaker: Some("x".repeat(100_000)),
+            seats: Vec::new()
+        },
+        false
+    ));
+    assert!(writer.bytes().is_empty());
 }

@@ -97,3 +97,12 @@ depth, how to add a hero or an item, the protocol and determinism rules, and the
 ## License
 
 MIT, see [LICENSE](LICENSE).
+
+Public profile provenance can accompany replay metadata. A matchmaking launcher supplies
+`BOTA_MATCHMAKER` (its public control URI, without credentials, query or fragment) and
+`BOTA_PROFILE_ACCOUNTS` (public account ids in slot order, comma separated; `-` for a seat
+without a profile). Without a matchmaker, the command-line server records explicit local
+provenance. Embedded servers can use `game_loop::run_with_profiles`; the legacy `run` API
+keeps its existing recording policy. Provenance goes in the metadata sidecar and replay
+trailer, including capped prefixes, without changing replay records or the wire identity.
+Readers treat it as untrusted text and account claims, never as permission to connect.
