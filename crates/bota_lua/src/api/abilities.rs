@@ -48,7 +48,7 @@ struct View {
     key: &'static str,
     level: u8,
     range: i32,
-    castable: bool,
+    castable: Option<bool>,
     learnable: bool,
     mana_cost: i32,
     cooldown_left: Option<u32>,
@@ -79,7 +79,7 @@ fn view(state: &State, identity: Identity) -> Option<View> {
                 key: tree.get(usize::from(slot.0))?.key(),
                 level: u8::from(talent.learned.has(slot)),
                 range: 0,
-                castable: false,
+                castable: Some(false),
                 learnable: alive && talent.may_learn.is_some_and(|slots| slots.has(slot)),
                 mana_cost: 0,
                 cooldown_left: Some(0),
@@ -99,7 +99,7 @@ fn view(state: &State, identity: Identity) -> Option<View> {
                 key: definition.key,
                 level: 1,
                 range: definition.range,
-                castable: false,
+                castable: Some(false),
                 learnable: false,
                 mana_cost: bota_core::ability_mana_cost(id, 1),
                 // Passive innates have no running cooldown. Active ones need a received slot.
@@ -116,11 +116,12 @@ fn view(state: &State, identity: Identity) -> Option<View> {
                 key: bota_core::ability_def(id)?.key,
                 level: ability.level,
                 range: ability.range,
-                castable: able
-                    && ability.level > 0
-                    && !ability.passive
-                    && ability.cooldown_left == 0
-                    && unit.is_some_and(|unit| unit.mana >= ability.mana_cost),
+                castable: Some(
+                    able && ability.level > 0
+                        && !ability.passive
+                        && ability.cooldown_left == 0
+                        && unit.is_some_and(|unit| unit.mana >= ability.mana_cost),
+                ),
                 learnable: alive && ability.learnable == Some(true),
                 mana_cost: ability.mana_cost,
                 cooldown_left: Some(ability.cooldown_left),
@@ -131,19 +132,25 @@ fn view(state: &State, identity: Identity) -> Option<View> {
             let item = state
                 .item(identity.owner(), slot)
                 .filter(|item| item.id == id)?;
+            // Cooldowns are withheld by carrier side, not by the item's original buyer.
+            let observed = unit
+                .map(|unit| unit.team)
+                .or_else(|| state.player(identity.owner()).map(|player| player.team))
+                == Some(state.team);
             Some(View {
                 key: bota_core::item_def(id)?.key,
                 level: item.level,
                 range: item.range,
-                castable: able
-                    && (slot.0 < 6 || slot == ItemSlot::TOWN_PORTAL)
-                    && item.aim.is_some()
-                    && item.cooldown_left == 0
-                    && item.mute_left == 0
-                    && unit.is_some_and(|unit| unit.mana >= item.mana_cost),
+                castable: observed.then_some(
+                    able && (slot.0 < 6 || slot == ItemSlot::TOWN_PORTAL)
+                        && item.aim.is_some()
+                        && item.cooldown_left == 0
+                        && item.mute_left == 0
+                        && unit.is_some_and(|unit| unit.mana >= item.mana_cost),
+                ),
                 learnable: false,
                 mana_cost: item.mana_cost,
-                cooldown_left: Some(item.cooldown_left),
+                cooldown_left: observed.then_some(item.cooldown_left),
                 charges: item.charges.unwrap_or(0),
             })
         }
@@ -247,7 +254,7 @@ pub(super) fn install(lua: &mut Lua, units: TableId, state: Shared) -> Result<()
                             _ => {
                                 let cooldown = view
                                     .cooldown_left
-                                    .ok_or_else(|| vm.error("ability cooldown is not observed"))?;
+                                    .ok_or_else(|| vm.error("cooldown is not observed"))?;
                                 if name == "IsCooldownReady" {
                                     Value::Boolean(cooldown == 0)
                                 } else {
@@ -280,7 +287,12 @@ pub(super) fn install(lua: &mut Lua, units: TableId, state: Shared) -> Result<()
                     "GetCastRange" => {
                         Value::Number(view.as_ref().map_or(0.0, |view| f64::from(view.range)))
                     }
-                    "IsFullyCastable" => Value::Boolean(view.is_some_and(|view| view.castable)),
+                    "IsFullyCastable" => Value::Boolean(match view {
+                        Some(view) => view
+                            .castable
+                            .ok_or_else(|| vm.error("cooldown is not observed"))?,
+                        None => false,
+                    }),
                     "CanAbilityBeUpgraded" => {
                         Value::Boolean(view.is_some_and(|view| view.learnable))
                     }

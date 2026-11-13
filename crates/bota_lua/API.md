@@ -194,6 +194,12 @@ or status effects. Abilities and items without charges return zero. The new
 state reads reject forgotten ability/item handles. An active innate without a
 received cooldown slot reports that the cooldown is unobserved; passive innates
 and talents have no running cooldown.
+Enemy item cooldowns are withheld by the producer, even when the item is visible.
+`GetCooldownTimeRemaining`, `IsCooldownReady` and `IsFullyCastable` raise
+`cooldown is not observed` for those items instead of treating the placeholder
+zero as readiness. This also changes the older item `IsFullyCastable` behavior.
+The carrier's side determines observation, rather than the item's original buyer;
+own-side items and owned dead-hero kits retain their received cooldowns.
 
 Estimated damage is an integer projection of observed attack stats and core spell
 data over the requested duration. The availability flag restricts allied spells

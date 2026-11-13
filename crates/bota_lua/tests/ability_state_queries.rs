@@ -147,3 +147,118 @@ fn ability_and_item_reads_follow_received_mana_cooldowns_charges_and_item_remova
         }
     }
 }
+
+#[test]
+fn enemy_item_cooldown_and_castability_are_unobserved_even_when_the_item_is_visible() {
+    use bota_client_core::IssuedOrder;
+    use bota_proto::ItemSlot;
+    let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    {
+        let world = local.world_mut();
+        world.cheats = true;
+        for slot in [SlotId(0), SlotId(1)] {
+            world.cheat(
+                slot,
+                None,
+                Cheat::Item {
+                    item: ItemId::PHASE_BOOTS,
+                },
+                &mut Vec::new(),
+            );
+        }
+        world.cheat(
+            SlotId(0),
+            None,
+            Cheat::AllVision { on: true },
+            &mut Vec::new(),
+        );
+    }
+    let streams = local.step(&[&[], &[]]).expect("items and shared vision");
+    for (session, stream) in sessions.iter_mut().zip(streams) {
+        support::fold(session, stream);
+    }
+    let order = sessions[1]
+        .issue(IssuedOrder::hero(Order::Use {
+            slot: ItemSlot(0),
+            target: Target::None,
+        }))
+        .expect("use boots");
+    let streams = local
+        .step(&[&[], &[order]])
+        .expect("use through the ordinary order path");
+    for (session, stream) in sessions.iter_mut().zip(streams) {
+        support::fold(session, stream);
+    }
+    for _ in 0..3 {
+        let streams = local.step(&[&[], &[]]).expect("cooldown");
+        for (session, stream) in sessions.iter_mut().zip(streams) {
+            support::fold(session, stream);
+        }
+    }
+    assert!(
+        sessions[1].own_hero().expect("hero").items[0]
+            .as_ref()
+            .expect("boots")
+            .cooldown_left
+            > 0
+    );
+    assert_eq!(
+        sessions[0]
+            .current()
+            .expect("view")
+            .units
+            .iter()
+            .find(|unit| unit.team == Team::Dire && unit.hero.is_some())
+            .expect("seen enemy")
+            .items[0]
+            .as_ref()
+            .expect("seen boots")
+            .cooldown_left,
+        0
+    );
+    for (index, side) in [(0, Team::Radiant), (1, Team::Dire)] {
+        let slot = SlotId(index as u8);
+        let mut lua = LuaTeam::new(
+            side,
+            &[BotSeat {
+                slot,
+                hero: HeroId::SHADOW_FIEND,
+            }],
+            Limits::DEFAULT,
+            Keys {
+                hash: [17, 19],
+                random: 23,
+            },
+        )
+        .expect("team");
+        lua.set_gc_stress(GcStress::Full);
+        lua.add_script(slot, ScriptKind::Takeover, "unobserved_item_cooldown", br#"
+            function Think()
+                local own = GetBot():GetItemInSlot(0)
+                local enemy = GetUnitList(UNIT_LIST_ENEMY_HEROES)[1]
+                assert(own and enemy)
+                local item = enemy:GetItemInSlot(0)
+                assert(item and item:GetName() == 'item_phase_boots')
+                for _, name in ipairs({'GetCooldownTimeRemaining','IsCooldownReady','IsFullyCastable'}) do
+                    local ok, reason = pcall(item[name], item)
+                    assert(not ok and string.find(tostring(reason), 'cooldown is not observed', 1, true))
+                end
+                if GetTeam() == TEAM_DIRE then
+                    assert(own:GetCooldownTimeRemaining() > 0 and not own:IsCooldownReady() and not own:IsFullyCastable())
+                else
+                    assert(own:GetCooldownTimeRemaining() == 0 and own:IsCooldownReady() and own:IsFullyCastable())
+                end
+                GetBot():Action_MoveToLocation(Vector(123,456,0))
+            end
+        "#).expect("script");
+        let turn = lua.think(&sessions[index]).expect("think");
+        assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+        assert_eq!(turn.bots[0].orders.len(), 1);
+        assert_eq!(
+            turn.bots[0].orders[0].order,
+            Order::Move {
+                target: Target::Pos(Vec2::from_ints(9339, 9672))
+            }
+        );
+    }
+}
