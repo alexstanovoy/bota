@@ -285,3 +285,9 @@ Constant-work utility and position queries explicitly charge eight fuel units
 for their host work. Families that already charge for reads or scans retain their
 own cost models; registration adds no implicit surcharge. Allocations and
 retained handles continue to pay their additional charges before work.
+
+Ability classification reads validate the current authenticated handle first.
+`IsTrained` reports whether its received level is positive; `IsTalent` identifies
+an actual talent handle; `IsUltimate` uses the public core ability classification.
+Items and talents are not ultimate abilities. These methods do not inspect
+cooldown readiness, and forgotten ability/item handles raise an ordinary error.

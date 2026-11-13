@@ -38,8 +38,16 @@ fn run(name: &str, fuel: u64) -> Result<Vec<Value>, luagee::Error> {
             inflictor: None,
         },
     ];
+    let metadata = matches!(name, "IsTrained" | "IsTalent" | "IsUltimate");
+    let skill = bota_core::ability_def(body.abilities[0].id)
+        .expect("skill")
+        .key;
     let limits = Limits {
-        fuel_per_tick: fuel,
+        fuel_per_tick: if metadata {
+            Limits::DEFAULT.fuel_per_call
+        } else {
+            fuel
+        },
         ..Limits::DEFAULT
     };
     let mut lua = Lua::new(
@@ -83,17 +91,48 @@ fn run(name: &str, fuel: u64) -> Result<Vec<Value>, luagee::Error> {
             .borrow_mut()
             .handle(lua.vm(), Some(own))
             .expect("receiver");
-        args.push(receiver);
+        if metadata {
+            let methods = state.borrow().unit_methods.expect("unit methods");
+            let key = lua.string(b"GetAbilityByName")?;
+            let getter = lua.vm().raw_get(methods, key).expect("getter");
+            let key = lua.string(skill.as_bytes())?;
+            let values = lua.call(getter, &[receiver, key])?;
+            args.push(values[0]);
+        } else {
+            args.push(receiver);
+        }
         if name == "HasModifier" || name == "GetModifierByName" {
             args.push(lua.string(b"modifier_stunned")?);
         } else if name.starts_with("GetModifier") {
             args.push(Value::Number(0.0));
         }
-        let methods = state.borrow().unit_methods.expect("methods");
+        let methods = if metadata {
+            state.borrow().ability_methods
+        } else {
+            state.borrow().unit_methods
+        }
+        .expect("methods");
         let key = lua.string(name.as_bytes())?;
         lua.vm().raw_get(methods, key).expect("method")
     };
     lua.begin_tick();
+    if metadata {
+        // Handle creation is trusted setup. Drain the tick to the requested test budget
+        // without reading a callback's charges or changing interpreter limits in flight.
+        let spend = lua
+            .tick_fuel_left()
+            .checked_sub(fuel + 1)
+            .expect("setup budget");
+        let drain = lua.function(
+            "test_budget",
+            Rc::new(move |vm, _| {
+                vm.charge_fuel(spend)?;
+                Ok(0)
+            }),
+        )?;
+        lua.call(drain, &[])?;
+        assert_eq!(lua.tick_fuel_left(), fuel);
+    }
     lua.call(function, &args)
 }
 
@@ -154,5 +193,12 @@ fn clock_and_script_directory_queries_charge_their_explicit_minimum() {
         ("GetScriptDirectory", 12),
     ] {
         assert_budget(name, host_work);
+    }
+}
+
+#[test]
+fn ability_metadata_queries_charge_their_explicit_minimum() {
+    for name in ["IsTrained", "IsTalent", "IsUltimate"] {
+        assert_budget(name, 10);
     }
 }

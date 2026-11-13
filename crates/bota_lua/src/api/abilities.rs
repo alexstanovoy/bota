@@ -233,6 +233,9 @@ pub(super) fn install(lua: &mut Lua, units: TableId, state: Shared) -> Result<()
         "GetCooldownTimeRemaining",
         "IsCooldownReady",
         "GetCurrentCharges",
+        "IsTrained",
+        "IsTalent",
+        "IsUltimate",
     ] {
         let capture = state.clone();
         method(
@@ -240,6 +243,9 @@ pub(super) fn install(lua: &mut Lua, units: TableId, state: Shared) -> Result<()
             methods,
             name,
             Rc::new(move |vm, args| {
+                if matches!(name, "IsTrained" | "IsTalent" | "IsUltimate") {
+                    vm.charge_fuel(super::CALL_FUEL)?;
+                }
                 let state = capture.borrow();
                 vm.charge_fuel(
                     1 + state.abilities.len() as u64 / 8
@@ -254,6 +260,20 @@ pub(super) fn install(lua: &mut Lua, units: TableId, state: Shared) -> Result<()
                     .ok_or_else(|| vm.error("ability handle expected"))?;
                 let view = view(&state, identity);
                 let value = match name {
+                    "IsTrained" | "IsTalent" | "IsUltimate" => {
+                        let view = view.ok_or_else(|| vm.error("ability is no longer known"))?;
+                        Value::Boolean(match name {
+                            "IsTrained" => view.level > 0,
+                            "IsTalent" => matches!(identity, Identity::Talent { .. }),
+                            _ => match identity {
+                                Identity::Ability { id, .. } | Identity::Innate { id, .. } => {
+                                    bota_core::ability_def(id)
+                                        .is_some_and(|definition| definition.ultimate)
+                                }
+                                Identity::Talent { .. } | Identity::Item { .. } => false,
+                            },
+                        })
+                    }
                     "GetManaCost"
                     | "GetCooldownTimeRemaining"
                     | "IsCooldownReady"

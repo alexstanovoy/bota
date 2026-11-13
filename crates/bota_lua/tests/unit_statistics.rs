@@ -284,16 +284,24 @@ fn enemy_statistics_are_last_observed_only_until_the_received_track_expires() {
         )
         .expect("team");
         lua.add_script(slot,ScriptKind::Takeover,"expired_enemy_statistics",br#"
-            local phase, enemy, mana = 0, nil, nil
+            local phase, enemy, mana, ability = 0, nil, nil, nil
             function Think()
                 phase = phase + 1
                 if phase == 1 then
                     enemy = GetUnitList(UNIT_LIST_ENEMY_HEROES)[1]
                     assert(enemy and enemy:CanBeSeen())
                     mana = enemy:GetMana()
+                    ability = enemy:GetAbilityByName('nevermore_shadowraze1')
+                    assert(ability and not ability:IsUltimate() and not ability:IsTalent())
+                    assert(type(ability:IsTrained()) == 'boolean')
                 elseif phase == 2 then
                     assert(not enemy:CanBeSeen() and enemy:GetMana() == mana)
+                    assert(not ability:IsUltimate() and not ability:IsTalent())
                 else
+                    for _, name in ipairs({'IsTrained','IsTalent','IsUltimate'}) do
+                        local ok, reason = pcall(ability[name],ability)
+                        assert(not ok and string.find(tostring(reason),'ability is no longer known',1,true))
+                    end
                     for _, name in ipairs({'GetMana','GetMaxMana','GetHealthRegen','GetManaRegen','GetArmor',
                         'GetAttackDamage','GetAttackRange','GetSecondsPerAttack','GetAttackPoint','GetAttackSpeed','GetCurrentMovementSpeed',
                         'GetBoundingRadius','GetEvasion','GetFacing','GetPrimaryAttribute','GetAttributeValue'}) do
