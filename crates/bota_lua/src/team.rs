@@ -1030,9 +1030,10 @@ impl LuaTeam {
 }
 
 fn validate_seats(team: Team, seats: &[BotSeat]) -> Result<(), BindingError> {
-    if team == Team::Neutral || seats.is_empty() || seats.len() > 10 {
+    crate::api::players::validate_team_size(seats.len())?;
+    if team == Team::Neutral || seats.is_empty() {
         return Err(BindingError::Configuration(
-            "a Lua team needs one to ten seats on a playing side",
+            "a Lua team needs one to five seats on a playing side",
         ));
     }
     for (index, seat) in seats.iter().enumerate() {

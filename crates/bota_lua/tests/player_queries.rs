@@ -76,6 +76,7 @@ fn player_queries_translate_both_sides_and_preserve_hidden_locations() {
             lua.set_gc_stress(stress);
             let source = r#"
             function Think()
+                assert(GetHeroLevel(tostring(GetBot():GetPlayerID())) == GetHeroLevel(GetBot():GetPlayerID()))
                 local bot = GetBot()
                 assert(bot:GetPlayerID() == __PLAYER__)
                 local radiant, dire = GetTeamPlayers(TEAM_RADIANT), GetTeamPlayers(TEAM_DIRE)
@@ -609,4 +610,70 @@ fn player_id_rejects_an_expired_creep_handle() {
         "the received creep observation expired"
     );
     assert_move(&lua.think(&sessions[0]).expect("expired creep"), 9218, 9438);
+}
+
+#[test]
+fn configurations_reject_more_than_five_scripted_or_roster_players_per_side() {
+    const REASON: &str = "bot API supports at most five players per side";
+    for side in [Team::Radiant, Team::Dire] {
+        let seats: Vec<_> = (0..6)
+            .map(|slot| BotSeat {
+                slot: SlotId(slot),
+                hero: HeroId::SHADOW_FIEND,
+            })
+            .collect();
+        assert!(
+            LuaTeam::new(
+                side,
+                &seats[..5],
+                Limits::DEFAULT,
+                Keys {
+                    hash: [17, 19],
+                    random: 23
+                }
+            )
+            .is_ok()
+        );
+        assert!(
+            matches!(LuaTeam::new(side, &seats, Limits::DEFAULT, Keys { hash: [17,19], random: 23 }), Err(bota_lua::BindingError::Configuration(reason)) if reason == REASON)
+        );
+        let mut teams = vec![side; 6];
+        teams.push(side.enemy());
+        let (_, sessions) = support::local(&teams);
+        let mut lua = team(side, SlotId(0));
+        assert!(
+            matches!(lua.think(&sessions[0]), Err(bota_lua::BindingError::Configuration(reason)) if reason == REASON)
+        );
+        // Reject the opponent's oversize roster too; do not silently omit its sixth row.
+        let mut lua = team(side.enemy(), SlotId(6));
+        assert!(
+            matches!(lua.think(&sessions[6]), Err(bota_lua::BindingError::Configuration(reason)) if reason == REASON)
+        );
+    }
+}
+
+#[cfg(feature = "native")]
+#[test]
+fn native_configuration_rejects_six_scripted_seats_before_starting_a_worker() {
+    use bota_lua::{
+        ModuleBank,
+        native::{NativeConfig, NativeError, NativeTeam},
+    };
+    let seats = (0..6)
+        .map(|slot| BotSeat {
+            slot: SlotId(slot),
+            hero: HeroId::SHADOW_FIEND,
+        })
+        .collect();
+    let config = NativeConfig::new(
+        Team::Radiant,
+        seats,
+        Keys {
+            hash: [17, 19],
+            random: 23,
+        },
+    );
+    assert!(
+        matches!(NativeTeam::new(config, ModuleBank::new(Limits::DEFAULT)), Err(NativeError::Setup(reason)) if reason == "bot API supports at most five players per side")
+    );
 }

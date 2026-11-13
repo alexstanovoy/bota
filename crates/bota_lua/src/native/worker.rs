@@ -104,6 +104,7 @@ impl NativeTeam {
         modules: ModuleBank,
         before_start: impl FnOnce() + Send + 'static,
     ) -> Result<Self, NativeError> {
+        crate::api::players::validate_team_size(config.seats.len()).map_err(setup)?;
         crate::api::players::bot_declarations(&config.declared_bot_slots).map_err(setup)?;
         if config.startup_timeout.is_zero()
             || config.startup_timeout > Duration::from_secs(120)

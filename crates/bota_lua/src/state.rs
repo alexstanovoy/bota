@@ -113,6 +113,11 @@ impl Snapshot {
         let view = session
             .current()
             .ok_or(BindingError::Configuration("a current view is required"))?;
+        for side in [Team::Radiant, Team::Dire] {
+            crate::api::players::validate_team_size(
+                view.players.iter().filter(|player| player.team == side).count(),
+            )?;
+        }
         let players = view.players.iter().try_fold(0usize, |bytes, player| {
             bytes
                 .checked_add(std::mem::size_of::<Player>())?

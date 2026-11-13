@@ -8,6 +8,15 @@ use super::{
 use crate::state::{Player, Snapshot};
 use bota_proto::{HeroId, SlotId};
 
+pub(crate) fn validate_team_size(count: usize) -> Result<(), BindingError> {
+    if count > 5 {
+        return Err(BindingError::Configuration(
+            "bot API supports at most five players per side",
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn bot_declarations(slots: &[SlotId]) -> Result<[bool; 10], BindingError> {
     if slots.len() > 10 {
         return Err(BindingError::Configuration(
