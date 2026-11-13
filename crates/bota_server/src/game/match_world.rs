@@ -1028,10 +1028,16 @@ fn inventory_transaction(order: Order) -> bool {
 
 /// Inventory-dependent actions validate against the same ordered state as
 /// storage transactions; reading an item or its bonuses is not an exception.
+/// A buyback is one: its cost and the gold for it are what the sales and
+/// purchases given before it on the same tick leave.
 fn inventory_dependent(order: Order) -> bool {
     inventory_transaction(order)
         || matches!(
             order,
-            Order::Use { .. } | Order::Put { .. } | Order::Take { .. } | Order::Cast { .. }
+            Order::Use { .. }
+                | Order::Put { .. }
+                | Order::Take { .. }
+                | Order::Cast { .. }
+                | Order::Buyback
         )
 }

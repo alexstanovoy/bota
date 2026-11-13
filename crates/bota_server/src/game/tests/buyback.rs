@@ -848,3 +848,207 @@ fn suicide_does_nothing_to_a_hero_that_lies_dead() {
         "the same wait runs on"
     );
 }
+
+/// The charges of what a seat's hero holds in a bag slot, as the seat is told; none for an empty
+/// slot.
+fn charges_in(duel: &Duel, seat: usize, slot: usize) -> Option<u8> {
+    let held = duel.hero(seat)?.items.get(slot).copied().flatten()?;
+    Some(held.charges.unwrap_or(0))
+}
+
+/// What a seat is worth by its buyback's cost, less its gold: the worth of what it owns, to
+/// the thirteen gold the cost's division hides.
+fn cost_with(duel: &Duel, seat: usize, items: i32) -> i32 {
+    200 + (duel.gold(seat) + items) / 13
+}
+
+#[test]
+fn a_bottle_is_worth_its_whole_cost_full_and_empty() {
+    let mut duel = Duel::new();
+    let bottle = item_def(ItemId::BOTTLE).expect("a bottle").cost;
+    assert_eq!(bottle, 675);
+    // Away from the fountain, which would fill it again.
+    let fountains = map_of(DEMO_ID).fountains;
+    let away = bota_proto::Vec2::from_ints(
+        (fountains[0].x.to_int() + fountains[1].x.to_int()) / 2,
+        (fountains[0].y.to_int() + fountains[1].y.to_int()) / 2,
+    );
+    duel.cheat(RADIANT, Cheat::Teleport { at: away });
+    duel.cheat(
+        RADIANT,
+        Cheat::Item {
+            item: ItemId::BOTTLE,
+        },
+    );
+    duel.set_gold(RADIANT, 600);
+    assert_eq!(charges_in(&duel, RADIANT, 0), Some(3), "bought full");
+    assert_eq!(duel.buyback(RADIANT).cost, cost_with(&duel, RADIANT, 675));
+    let mut waited = 0;
+    while charges_in(&duel, RADIANT, 0) != Some(0) {
+        duel.give(
+            RADIANT,
+            Order::Use {
+                slot: bota_proto::ItemSlot(0),
+                target: Target::None,
+            },
+        );
+        duel.run(15);
+        waited += 1;
+        assert!(waited < 400, "the bottle was drunk dry");
+    }
+    duel.set_gold(RADIANT, 600);
+    assert_eq!(
+        duel.buyback(RADIANT).cost,
+        200 + (600 + 675) / 13,
+        "an empty Bottle stays, and stays worth what it cost"
+    );
+}
+
+#[test]
+fn a_stack_of_consumables_is_worth_its_charges_and_nothing_once_used_up() {
+    let mut duel = Duel::new();
+    let clarity = item_def(ItemId::CLARITY).expect("a clarity").cost;
+    duel.cheat(
+        RADIANT,
+        Cheat::Item {
+            item: ItemId::CLARITY,
+        },
+    );
+    duel.cheat(
+        RADIANT,
+        Cheat::Item {
+            item: ItemId::CLARITY,
+        },
+    );
+    duel.set_gold(RADIANT, 600);
+    assert_eq!(charges_in(&duel, RADIANT, 0), Some(2), "one stack of two");
+    assert_eq!(
+        duel.buyback(RADIANT).cost,
+        200 + (600 + 2 * clarity) / 13,
+        "a stack is worth each of its charges"
+    );
+    let own = duel.me(RADIANT).unit.expect("its hero");
+    let drink = Order::Use {
+        slot: bota_proto::ItemSlot(0),
+        target: Target::Unit(own),
+    };
+    for (left, worth) in [(Some(1), clarity), (None, 0)] {
+        let mut waited = 0;
+        while charges_in(&duel, RADIANT, 0) != left {
+            duel.give(RADIANT, drink);
+            duel.run(10);
+            waited += 1;
+            assert!(waited < 400, "a clarity was drunk");
+        }
+        duel.set_gold(RADIANT, 600);
+        assert_eq!(
+            duel.buyback(RADIANT).cost,
+            200 + (600 + worth) / 13,
+            "with {left:?} left"
+        );
+    }
+}
+
+#[test]
+fn a_charge_holder_that_comes_empty_is_worth_its_whole_cost_and_a_free_charge_nothing() {
+    let mut duel = Duel::new();
+    let stick = item_def(ItemId::MAGIC_STICK).expect("a stick").cost;
+    duel.cheat(
+        RADIANT,
+        Cheat::Item {
+            item: ItemId::MAGIC_STICK,
+        },
+    );
+    duel.set_gold(RADIANT, 600);
+    assert_eq!(charges_in(&duel, RADIANT, 0), Some(0), "it comes empty");
+    assert_eq!(duel.buyback(RADIANT).cost, 200 + (600 + stick) / 13);
+    // A bought scroll joins the free one every hero starts with: the stack of two is worth
+    // the one that was paid for.
+    let scroll = item_def(ItemId::TOWN_PORTAL_SCROLL).expect("a scroll").cost;
+    duel.set_gold(RADIANT, 600 + scroll);
+    duel.done(
+        RADIANT,
+        Order::Buy {
+            item: ItemId::TOWN_PORTAL_SCROLL,
+        },
+    );
+    assert_eq!(duel.gold(RADIANT), 600);
+    assert_eq!(
+        duel.hero(RADIANT)
+            .expect("standing")
+            .town_portal
+            .and_then(|held| held.charges),
+        Some(2)
+    );
+    assert_eq!(
+        duel.buyback(RADIANT).cost,
+        200 + (600 + stick + scroll) / 13
+    );
+}
+
+#[test]
+fn a_ward_dispenser_is_worth_the_wards_it_holds() {
+    let mut duel = Duel::new();
+    let sentry = item_def(ItemId::SENTRY_WARD).expect("a sentry").cost;
+    let observer = item_def(ItemId::OBSERVER_WARD).expect("an observer").cost;
+    assert_eq!((observer, sentry), (0, 50));
+    for item in [
+        ItemId::OBSERVER_WARD,
+        ItemId::SENTRY_WARD,
+        ItemId::SENTRY_WARD,
+    ] {
+        duel.cheat(RADIANT, Cheat::Item { item });
+    }
+    duel.set_gold(RADIANT, 600);
+    let held = duel.hero(RADIANT).expect("standing").items[0].expect("the wards");
+    assert_eq!(held.id, ItemId::WARD_DISPENSER, "the wards came together");
+    assert_eq!(duel.buyback(RADIANT).cost, 200 + (600 + 2 * sentry) / 13);
+}
+
+/// A dead hero holding boots received during this death, its seat holding a hundred gold: the
+/// boots sell back for their cost, and only with that gold is the buyback paid for.
+fn dead_with_boots_to_sell() -> Duel {
+    let mut duel = Duel::new();
+    duel.kill(RADIANT);
+    duel.cheat(
+        RADIANT,
+        Cheat::Item {
+            item: ItemId::BOOTS,
+        },
+    );
+    duel.set_gold(RADIANT, 100);
+    assert_eq!(duel.buyback(RADIANT).cost, 200 + (100 + 500) / 13);
+    duel
+}
+
+#[test]
+fn a_buyback_is_paid_from_what_a_sale_given_before_it_on_the_same_tick_brought() {
+    let mut duel = dead_with_boots_to_sell();
+    let sell = Order::Sell {
+        slot: bota_proto::ItemSlot(0),
+    };
+    duel.step_naming([&[(None, sell), (None, Order::Buyback)], &[]]);
+    assert_eq!(
+        duel.rejected[RADIANT],
+        [],
+        "the sale's gold pays for the buyback"
+    );
+    assert_eq!(duel.me(RADIANT).respawn_left, 0, "bought back");
+    // 100 and the boots' 500 back, less 200 + 600 / 13.
+    assert_eq!(duel.gold(RADIANT), 354);
+}
+
+#[test]
+fn a_buyback_given_before_the_sale_that_would_pay_for_it_is_refused() {
+    let mut duel = dead_with_boots_to_sell();
+    let sell = Order::Sell {
+        slot: bota_proto::ItemSlot(0),
+    };
+    duel.step_naming([&[(None, Order::Buyback), (None, sell)], &[]]);
+    assert_eq!(duel.rejected[RADIANT], [RejectReason::NotEnoughGold]);
+    assert!(
+        duel.me(RADIANT).respawn_left > 0,
+        "the hero still lies dead"
+    );
+    assert_eq!(duel.gold(RADIANT), 600, "the sale went through after it");
+}

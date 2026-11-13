@@ -1,3 +1,4 @@
+mod buyback;
 mod catalogue;
 mod registry;
 mod text;

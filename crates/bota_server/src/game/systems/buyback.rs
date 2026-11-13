@@ -93,15 +93,19 @@ impl World {
     }
 }
 
-/// What one stack adds to its owner's net worth: a Ward Dispenser the wards
-/// it holds, anything else by its charges.
+/// What one stack adds to its owner's net worth: a Ward Dispenser the wards it holds, each at
+/// its own worth, anything else by [`stack_worth`].
 fn worth_of(stack: &ItemStack) -> i32 {
-    let cost = |id: ItemId| item_def(id).map_or(0, |def| def.cost);
+    let worth = |id: ItemId, charges: u8, free: u8| {
+        item_def(id).map_or(0, |def| stack_worth(def, charges, free))
+    };
     if stack.id == ItemId::WARD_DISPENSER {
         let (observers, sentries) = stack.ward_counts().unwrap_or_default();
-        return cost(ItemId::OBSERVER_WARD) * i32::from(observers)
-            + cost(ItemId::SENTRY_WARD) * i32::from(sentries);
+        return worth(ItemId::OBSERVER_WARD, observers, 0).saturating_add(worth(
+            ItemId::SENTRY_WARD,
+            sentries,
+            0,
+        ));
     }
-    let initial = item_def(stack.id).map_or(0, |def| def.charges);
-    stack_worth(cost(stack.id), initial, stack.charges, stack.free_charges)
+    worth(stack.id, stack.charges, stack.free_charges)
 }

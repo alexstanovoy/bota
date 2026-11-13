@@ -13,18 +13,20 @@ pub const fn buyback_cost(net_worth: i32) -> i32 {
     rules::BUYBACK_BASE_COST.saturating_add(net_worth / rules::BUYBACK_NET_WORTH_SHARE)
 }
 
-/// What one owned stack adds to the net worth a buyback is priced by: its
-/// item's cost, and for an item that comes with charges the share of the
-/// cost its paid charges are of those it comes with, as Dota counts a
-/// charged item (`cost * (charges - valueless charges) / initial charges`).
+/// What one owned stack adds to the net worth a buyback is priced by. An item that comes with
+/// charges and is gone with its last one (a consumable: a Tango, a scroll, a ward, a Raindrop)
+/// is worth the share of its cost its paid charges are of those it comes with, so nothing when
+/// empty and more than its cost when stacked; any other item is worth its whole cost at any
+/// charge: one that comes with none (a Magic Wand), and one that stays when empty (a Bottle).
+/// Established from the installed game, Dota 7.41f build 6975.
 #[inline]
 #[must_use]
-pub fn stack_worth(cost: i32, initial_charges: u8, charges: u8, free_charges: u8) -> i32 {
-    if initial_charges == 0 {
-        return cost;
+pub fn stack_worth(def: &crate::ItemDef, charges: u8, free_charges: u8) -> i32 {
+    if def.charges == 0 || def.kept_empty {
+        return def.cost;
     }
     let paid = i64::from(charges.saturating_sub(free_charges));
-    let worth = i64::from(cost) * paid / i64::from(initial_charges);
+    let worth = i64::from(def.cost) * paid / i64::from(def.charges);
     i32::try_from(worth).unwrap_or(i32::MAX)
 }
 
