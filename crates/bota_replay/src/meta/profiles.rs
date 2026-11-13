@@ -17,9 +17,9 @@ pub struct Profiles {
 }
 impl Profiles {
     pub fn new(matchmaker: Option<String>, seats: Vec<(u8, Option<u64>)>) -> Option<Self> {
-        let matchmaker=match matchmaker {
-            Some(value)=>Some(radovid_proto::shareable_matchmaker_identity(&value)?),
-            None=>None,
+        let matchmaker = match matchmaker {
+            Some(value) => Some(radovid_proto::shareable_matchmaker_identity(&value)?),
+            None => None,
         };
         valid(matchmaker.as_deref(), &seats).then_some(Self { matchmaker, seats })
     }
@@ -102,7 +102,7 @@ pub(super) fn read_matchmaker<'de, D: Deserializer<'de>>(
                 }
                 fn visit_str<E: de::Error>(self, value: &str) -> Result<String, E> {
                     radovid_proto::shareable_matchmaker_identity(value)
-                        .ok_or_else(||E::custom("invalid public matchmaker URI"))
+                        .ok_or_else(|| E::custom("invalid public matchmaker URI"))
                 }
             }
             deserializer.deserialize_str(Uri).map(Some)

@@ -120,8 +120,11 @@ fn public_profile_launch_context_is_explicit_and_bounded_before_ready() {
     assert_eq!(profiles.account(0), Some(42));
     assert_eq!(profiles.account(1), None);
     let local = parse_profile_args(["bota_server"]).expect("local");
-    assert_eq!(crate::launch_profiles(&local,2).expect("local launch"),None,
-        "without a maker or accounts no Profiles record is requested");
+    assert_eq!(
+        crate::launch_profiles(&local, 2).expect("local launch"),
+        None,
+        "without a maker or accounts no Profiles record is requested"
+    );
     for accounts in ["0,-", "42", "42,-,-", "a,-"] {
         let args = parse_profile_args(["bota_server", "--profile-accounts", accounts]);
         assert!(

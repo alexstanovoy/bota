@@ -552,21 +552,57 @@ fn local_addresses_cannot_be_serialized_as_shareable_profile_provenance() {
 
 #[test]
 fn a_profile_location_uses_the_protocols_canonical_identity_and_port_validation() {
-    let profile=crate::meta::Profiles::new(Some("WSS://MATCH.example:443/".into()),vec![(0,Some(42))]).expect("canonical public identity");
-    assert_eq!(profile.matchmaker(),Some("wss://match.example/control"));
-    for uri in ["wss://match.example:99999","https://match.example","wss://[::127.0.0.1]","wss://[64:ff9b::7f00:1]","wss://[2002:c0a8:101::]","wss://[2001:0:808:808:0:0:80ff:fffe]"] {
-        assert!(crate::meta::Profiles::new(Some(uri.into()),vec![(0,Some(42))]).is_none(),"{uri}");
-        let bytes=[file(&[MetaRecord::Header(header())]),profile_frame(Some(uri),&[(0,Some(42))])].concat();
-        assert!(decode(&bytes).expect("statistics remain readable").profiles().is_none(),"{uri}");
+    let profile =
+        crate::meta::Profiles::new(Some("WSS://MATCH.example:443/".into()), vec![(0, Some(42))])
+            .expect("canonical public identity");
+    assert_eq!(profile.matchmaker(), Some("wss://match.example/control"));
+    for uri in [
+        "wss://match.example:99999",
+        "https://match.example",
+        "wss://[::127.0.0.1]",
+        "wss://[64:ff9b::7f00:1]",
+        "wss://[2002:c0a8:101::]",
+        "wss://[2001:0:808:808:0:0:80ff:fffe]",
+    ] {
+        assert!(
+            crate::meta::Profiles::new(Some(uri.into()), vec![(0, Some(42))]).is_none(),
+            "{uri}"
+        );
+        let bytes = [
+            file(&[MetaRecord::Header(header())]),
+            profile_frame(Some(uri), &[(0, Some(42))]),
+        ]
+        .concat();
+        assert!(
+            decode(&bytes)
+                .expect("statistics remain readable")
+                .profiles()
+                .is_none(),
+            "{uri}"
+        );
     }
 }
 #[test]
 fn a_malformed_known_record_marks_metadata_damaged_and_disables_its_profile_links() {
-    let mut bytes=file(&[MetaRecord::Header(header()),MetaRecord::End{tick:30,winner:Some(0)}]);
-    bytes.extend(profile_frame(Some("wss://match.example/control"),&[(0,Some(42))]));
-    bytes.extend(bota_proto::encode_frame_to_vec(&12_u8).expect("a known kind without its required fields"));
-    let meta=decode(&bytes).expect("known statistics read");
-    assert!(meta.damaged,"a malformed known record is damage, not a future unknown kind");
+    let mut bytes = file(&[
+        MetaRecord::Header(header()),
+        MetaRecord::End {
+            tick: 30,
+            winner: Some(0),
+        },
+    ]);
+    bytes.extend(profile_frame(
+        Some("wss://match.example/control"),
+        &[(0, Some(42))],
+    ));
+    bytes.extend(
+        bota_proto::encode_frame_to_vec(&12_u8).expect("a known kind without its required fields"),
+    );
+    let meta = decode(&bytes).expect("known statistics read");
+    assert!(
+        meta.damaged,
+        "a malformed known record is damage, not a future unknown kind"
+    );
     assert!(meta.complete);
     assert!(meta.profiles().is_none());
 }
