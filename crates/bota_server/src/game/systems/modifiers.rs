@@ -25,8 +25,12 @@ use crate::engine::Entity;
 ///   "Poison Attack no longer slows movement speed"): left whole. No patch
 ///   note says status resistance shortens it.
 /// - A slow that also deals damage over time (a Blood Grenade, an enemy's
-///   rot, an attack passive laying both): one effect with one duration, which
-///   the slow's rule shortens, its damage with it.
+///   rot, an attack passive laying both): this implementation keeps one effect
+///   with one duration, which the slow's rule shortens, and the beats past the
+///   shortened end do not land. Whether Dota keeps such an effect's total
+///   damage or its tick schedule is not settled here: the 7.34 note says
+///   nothing of damage over time (Dota 7.07 once kept the damage of slowing
+///   damage-over-time debuffs whole); validate it before adding such effects.
 fn shortened_by_resistance(kind: ModifierKind) -> bool {
     match kind {
         ModifierKind::Control { .. } => true,
