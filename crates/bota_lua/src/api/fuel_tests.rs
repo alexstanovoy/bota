@@ -103,6 +103,8 @@ fn run(name: &str, fuel: u64) -> Result<Vec<Value>, luagee::Error> {
         }
         if name == "HasModifier" || name == "GetModifierByName" {
             args.push(lua.string(b"modifier_stunned")?);
+        } else if name == "FindItemSlot" {
+            args.push(lua.string(b"item_branches")?);
         } else if name.starts_with("GetModifier") {
             args.push(Value::Number(0.0));
         }
@@ -201,4 +203,9 @@ fn ability_metadata_queries_charge_their_explicit_minimum() {
     for name in ["IsTrained", "IsTalent", "IsUltimate"] {
         assert_budget(name, 10);
     }
+}
+
+#[test]
+fn named_item_slot_search_pays_for_its_bounded_storage_scan() {
+    assert_budget("FindItemSlot", 211);
 }

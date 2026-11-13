@@ -291,3 +291,11 @@ Ability classification reads validate the current authenticated handle first.
 an actual talent handle; `IsUltimate` uses the public core ability classification.
 Items and talents are not ultimate abilities. These methods do not inspect
 cooldown readiness, and forgotten ability/item handles raise an ordinary error.
+
+`FindItemSlot` accepts an item internal-name string and returns the first matching
+observed slot in the supported bag, backpack, stash and dedicated scroll layout,
+or -1 when there is no observed match. It uses the same slot mapping as
+`GetItemInSlot` and public core item keys, with case-sensitive matching. It reads
+received storage, not pending purchase projections. Enemy stash is not searched,
+and a hidden purchase does not update remembered inventory. Owned dead kits and
+stash remain searchable; an expired foreign inventory raises an ordinary error.
