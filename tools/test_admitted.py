@@ -11,6 +11,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -90,13 +91,15 @@ class AdmittedBuilds(unittest.TestCase):
             capture_output=True,
             text=True,
             timeout=120,
+            # Away from any checkout: a relative path the script takes stays in the scratch.
+            cwd=self.scratch,
         )
 
-    def test_a_verified_build_keeps_its_executables_wire_and_stamp_and_drops_the_rest(self):
+    def test_a_verified_build_keeps_its_executables_sums_wire_and_stamp_and_drops_the_rest(self):
         done = self.build()
         self.assertEqual(done.returncode, 0, done.stderr)
         entry = self.cache / WIRE
-        self.assertEqual(sorted(path.name for path in entry.iterdir()), ["bin", "stamp", "wire"])
+        self.assertEqual(sorted(path.name for path in entry.iterdir()), ["bin", "stamp", "sums", "wire"])
         self.assertEqual((entry / "wire").read_text().strip(), WIRE)
         self.assertTrue(os.access(entry / "bin/examples/admitted_peer", os.X_OK))
         self.assertFalse((self.cache / f"{WIRE}.work").exists())
@@ -135,6 +138,144 @@ class AdmittedBuilds(unittest.TestCase):
         failed = self.build(ADMITTED_MAX_BYTES="1")
         self.assertNotEqual(failed.returncode, 0)
         self.assertIn("over ADMITTED_MAX_BYTES=1", failed.stderr)
+
+    def fake_tool(self, name, text):
+        tool = Path(self.env["PATH"].split(":")[0]) / name
+        tool.write_text(text)
+        tool.chmod(0o755)
+
+    # A cache is only ever trusted after checking what it serves.
+
+    def test_a_cached_entry_missing_an_executable_is_rebuilt(self):
+        self.assertEqual(self.build().returncode, 0)
+        peer = self.cache / WIRE / "bin/examples/admitted_peer"
+        peer.unlink()
+        done = self.build()
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertTrue(peer.is_file())
+
+    def test_a_cached_server_of_another_wire_is_not_served(self):
+        self.assertEqual(self.build().returncode, 0)
+        server = self.cache / WIRE / "bin/bota_server"
+        server.write_text("#!/bin/sh\necho 00000000000000bb\n")
+        done = self.build()
+        reported = subprocess.run([str(server)], capture_output=True, text=True).stdout.strip()
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(reported, WIRE, "the altered server was kept")
+
+    def test_a_cached_executable_altered_but_still_saying_the_wire_is_rebuilt(self):
+        self.assertEqual(self.build().returncode, 0)
+        peer = self.cache / WIRE / "bin/examples/admitted_peer"
+        peer.write_text("#!/bin/sh\necho altered\n")
+        self.assertEqual(self.build().returncode, 0)
+        self.assertEqual(subprocess.run([str(peer)], capture_output=True, text=True).stdout.strip(), "peer")
+
+    def test_a_symlinked_cached_entry_is_not_served(self):
+        self.assertEqual(self.build().returncode, 0)
+        elsewhere = self.scratch / "elsewhere"
+        shutil.move(self.cache / WIRE, elsewhere)
+        (self.cache / WIRE).symlink_to(elsewhere)
+        self.assertEqual(self.build().returncode, 0)
+        self.assertFalse((self.cache / WIRE).is_symlink())
+        self.assertTrue(elsewhere.is_dir(), "the link's target was deleted")
+
+    # Every path written or deleted, every setting read.
+
+    def test_a_lock_symlink_cannot_clobber_an_unrelated_file(self):
+        self.cache.mkdir(parents=True)
+        outside = self.scratch / "unrelated.txt"
+        outside.write_text("keep these bytes\n")
+        (self.cache / ".lock").symlink_to(outside)
+        self.build(ADMITTED_BUILDS=str(self.cache))
+        self.build()
+        self.assertEqual(outside.read_text(), "keep these bytes\n")
+
+    def test_a_symlinked_cache_directory_is_refused(self):
+        real = self.scratch / "real"
+        real.mkdir()
+        self.target.mkdir()
+        self.cache.symlink_to(real)
+        done = self.build()
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("is a symbolic link", done.stderr)
+        self.assertEqual(list(real.iterdir()), [])
+
+    def test_a_malformed_budget_is_refused_before_any_work(self):
+        for budget in ["bananas", "", "0", "-5", "1e9", "99999999999999999999"]:
+            with self.subTest(budget=budget):
+                done = self.build(ADMITTED_MAX_BYTES=budget)
+                self.assertNotEqual(done.returncode, 0)
+                self.assertIn("ADMITTED_MAX_BYTES must be", done.stderr)
+                self.assertFalse(self.cache.exists())
+
+    def test_a_relative_cache_directory_is_refused(self):
+        done = self.build(ADMITTED_BUILDS="relative/cache")
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("ADMITTED_BUILDS must be an absolute path", done.stderr)
+
+    def test_a_corpus_naming_no_commit_or_no_wire_is_refused(self):
+        manifest = self.repo / "crates/bota_server/tests/admitted" / WIRE / "corpus.txt"
+        good = manifest.read_text()
+        manifest.write_text("wire x\ncommit --upload-pack=evil\n")
+        done = self.build()
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("names no commit", done.stderr)
+        manifest.write_text(good)
+        stray = self.repo / "crates/bota_server/tests/admitted/not-a-wire"
+        stray.mkdir()
+        (stray / "corpus.txt").write_text("commit 0123\n")
+        done = self.build()
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("is not named by a wire", done.stderr)
+
+    def test_a_failed_build_publishes_nothing_and_leaves_no_work(self):
+        self.fake_tool(
+            "cargo",
+            FAKE_CARGO.replace(
+                'if [ "$FAKE_BUILD" = fail ]; then',
+                'if [ "$FAKE_BUILD" = fail ]; then\n mkdir -p "$CARGO_TARGET_DIR/release"\n'
+                ' printf partial >"$CARGO_TARGET_DIR/release/bota_server"',
+            ),
+        )
+        done = self.build(FAKE_BUILD="fail")
+        self.assertNotEqual(done.returncode, 0)
+        self.assertFalse((self.cache / WIRE).exists())
+        self.assertFalse((self.cache / f"{WIRE}.work").exists())
+
+    def test_a_partial_copy_publishes_nothing(self):
+        self.assertEqual(self.build().returncode, 0)
+        (self.repo / PROGRAMS[1]).write_text("// force a stale build\n")
+        self.fake_tool(
+            "cp",
+            '#!/usr/bin/env bash\nif [[ "${@: -1}" == */bin/examples/admitted_peer ]]; then '
+            'printf partial >"${@: -1}"; exit 74; fi\nexec "$REAL_CP" "$@"\n',
+        )
+        done = self.build(REAL_CP=shutil.which("cp"))
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("made no examples/admitted_peer", done.stderr)
+        self.assertFalse((self.cache / WIRE).exists())
+        self.assertFalse((self.cache / f"{WIRE}.work").exists())
+
+    def test_concurrent_runs_on_one_cache_build_one_at_a_time(self):
+        guard = self.scratch / "building"
+        overlap = self.scratch / "overlap"
+        self.fake_tool(
+            "cargo",
+            FAKE_CARGO.replace(
+                'if [ "$FAKE_BUILD" = fail ]; then',
+                f'if ! mkdir "{guard}" 2>/dev/null; then touch "{overlap}"; exit 72; fi\n'
+                f' trap \'rmdir "{guard}"\' EXIT\n sleep 0.2\n if [ "$FAKE_BUILD" = fail ]; then',
+            ),
+        )
+        # Started together: one builds, the others wait for the cache and find its build.
+        results = []
+        runs = [threading.Thread(target=lambda: results.append(self.build())) for _ in range(3)]
+        for run in runs:
+            run.start()
+        for run in runs:
+            run.join()
+        self.assertEqual([done.returncode for done in results], [0, 0, 0], [done.stderr for done in results])
+        self.assertFalse(overlap.exists(), "two builds ran at once")
 
 
 if __name__ == "__main__":

@@ -216,14 +216,18 @@ to the scripted matches changes every corpus: write them all again from their co
 
 `tools/admitted.sh build` builds the server and a small client (`examples/admitted_peer.rs`) of every corpus' commit;
 `crates/bota_server/tests/admitted_builds.rs` plays each against this build both ways. The builds live in
-`admitted/` of Cargo's target directory (`ADMITTED_BUILDS` names another; the test reads the same variable). Every
-failure of an export, a build or a wire check fails the script, and a stale build is deleted before it is rebuilt, so
-nothing of an earlier build is run after a failed rebuild. Retention: only the verified executables of a wire are kept
-(`WIRE/bin`, `WIRE/wire`, `WIRE/stamp`: the commit and programs they were built from); the export and the
-compilation target are deleted after the build. In the default cache `build` deletes the entries of wires no corpus
-names; a cache named by `ADMITTED_BUILDS` may be another worktree's and is never pruned. The cache must stay under
-`ADMITTED_MAX_BYTES` (1 GiB by default), or the script fails. A build takes a minute or two; an unchanged stamp
-builds nothing.
+`admitted/` of Cargo's target directory (`ADMITTED_BUILDS`, an absolute path, names another; the test reads the same
+variable). Every failure of an export, a build or a wire check fails the script and deletes its work directory.
+Retention: only the verified executables of a wire are kept (`WIRE/bin`, with `WIRE/sums`, their SHA-256,
+`WIRE/wire` and `WIRE/stamp`, the commit and programs they were built from); the export and the compilation target
+are deleted after the build. Nothing cached is served unchecked: an entry is reused only when it is a real directory
+whose stamp matches, whose executables are regular files matching their sums, and whose server says the recorded wire;
+any other entry is deleted and built again, so nothing of an earlier build runs after a failed rebuild. The cache
+directory may not be a symbolic link, and runs on one cache take turns by a lock on the directory itself, so no lock
+file is written or followed. In the default cache `build` deletes the entries of wires no corpus names; a cache named
+by `ADMITTED_BUILDS` may be another worktree's and is never pruned. The cache must stay under `ADMITTED_MAX_BYTES` (a
+whole number of bytes, 1 GiB by default; anything else is refused before any work), or the script fails. A build
+takes a minute or two; an unchanged stamp builds nothing.
 
 ## Determinism
 

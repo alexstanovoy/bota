@@ -7,22 +7,27 @@
 #   tools/admitted.sh build           builds the server and the peer of every corpus' commit (its
 #                                     corpus.txt names it)
 #
-# The cache is <Cargo's target directory>/admitted (ADMITTED_BUILDS names another). A commit is
-# exported with `git archive` (never a checkout of this tree), this tree's programs
-# (examples/admitted_corpus.rs, examples/admitted_peer.rs, tests/admitted/scenarios.rs and
+# The cache is <Cargo's target directory>/admitted; ADMITTED_BUILDS (an absolute path) names
+# another. A commit is exported with `git archive` (never a checkout of this tree), this tree's
+# programs (examples/admitted_corpus.rs, examples/admitted_peer.rs, tests/admitted/scenarios.rs and
 # tests/admitted/peer.rs) are laid over it, and it is built in release with its own lock file in a
 # work directory. Only after the build succeeded and its server said the expected wire are the
-# executables kept, as WIRE/bin/ with WIRE/wire and WIRE/stamp (the commit and the programs they
-# were built from, written last); the export and the compilation target are then deleted. A
-# stale entry is deleted before it is rebuilt, so a failed rebuild leaves nothing to run. Every
+# executables kept, as WIRE/bin/ with WIRE/wire, WIRE/sums (the executables' SHA-256) and
+# WIRE/stamp (the commit and the programs they were built from, written last); the work
+# directory is then deleted, after a failure too.
+#
+# Nothing is trusted unchecked: a cached entry is served only when it is a real directory whose
+# stamp matches, whose executables are regular files matching their sums, and whose server says
+# the wire recorded; any other entry is deleted and built again, so nothing of an earlier build is
+# run after a failed rebuild. The cache directory may not be a symbolic link; runs on one cache
+# take turns by a lock on the directory itself (no lock file is written or followed). Every
 # failure exits non-zero. Retention: `build` deletes the entries of wires no corpus names, in the
 # default cache only (an ADMITTED_BUILDS directory may be another worktree's); the cache must stay
-# under ADMITTED_MAX_BYTES (1 GiB by default), or the script fails. See DEVELOPMENT.md, "Admitted
-# wires".
+# under ADMITTED_MAX_BYTES (a whole number of bytes, 1 GiB by default), or the script fails. See
+# DEVELOPMENT.md, "Admitted wires".
 set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 corpora=$root/crates/bota_server/tests/admitted
-budget=${ADMITTED_MAX_BYTES:-1073741824}
 programs=(
     crates/bota_server/examples/admitted_corpus.rs
     crates/bota_server/examples/admitted_peer.rs
@@ -30,35 +35,73 @@ programs=(
     crates/bota_server/tests/admitted/peer.rs
 )
 executables=(bota_server examples/admitted_corpus examples/admitted_peer)
+# The work directory of the build under way, deleted when the script fails.
+work=
 
 fail() {
     echo "tools/admitted.sh: $*" >&2
+    if [ -n "$work" ]; then
+        rm -rf -- "$work"
+    fi
     exit 1
 }
 
-if [ -n "${ADMITTED_BUILDS:-}" ]; then
+# Settings, checked before any work.
+budget=${ADMITTED_MAX_BYTES-1073741824}
+# Up to 18 digits: bash's integers hold them.
+[[ $budget =~ ^[1-9][0-9]{0,17}$ ]] ||
+    fail "ADMITTED_MAX_BYTES must be a whole number of bytes from 1 to 18 digits, not ${budget@Q}"
+if [ -n "${ADMITTED_BUILDS+set}" ]; then
     cache=$ADMITTED_BUILDS
+    [[ $cache == /* ]] || fail "ADMITTED_BUILDS must be an absolute path, not ${cache@Q}"
     own_cache=false
 else
     target=$(cargo metadata --format-version 1 --no-deps --manifest-path "$root/Cargo.toml" |
         sed -n 's/.*"target_directory":"\([^"]*\)".*/\1/p') ||
         fail "cannot ask Cargo for its target directory"
-    [ -n "$target" ] || fail "Cargo named no target directory"
+    [[ $target == /* ]] || fail "Cargo named no target directory"
     cache=$target/admitted
     own_cache=true
 fi
+cache=${cache%/}
+[ -L "$cache" ] && fail "the cache $cache is a symbolic link"
 mkdir -p -- "$cache" || fail "cannot make the cache $cache"
-# One run at a time on a cache.
-exec 9>"$cache/.lock" || fail "cannot open $cache/.lock"
+[ -d "$cache" ] && [ ! -L "$cache" ] || fail "the cache $cache is not a directory"
+# One run at a time on a cache: a lock on the directory, opened for reading.
+exec 9<"$cache" || fail "cannot open $cache"
 flock 9 || fail "cannot lock $cache"
 
-# Builds COMMIT into DIR (DIR/bin, DIR/wire, DIR/stamp), unless DIR holds a verified build of it
-# with these programs. Fails, leaving no DIR, when anything of it fails.
+# What a build of COMMIT with this tree's programs is stamped with.
+stamp_of() {
+    { echo "$1"; cd -- "$root" && sha256sum -- "${programs[@]}"; } | sha256sum
+}
+
+# Whether DIR holds a build stamped STAMP that may be served: a real directory, regular files
+# untouched since they were kept, and a server saying the wire recorded. Never fails the script.
+served() {
+    local dir=$1 stamp=$2 wire said
+    [ -d "$dir" ] && [ ! -L "$dir" ] || return 1
+    for file in stamp wire sums; do
+        [ -f "$dir/$file" ] && [ ! -L "$dir/$file" ] || return 1
+    done
+    [ "$(cat -- "$dir/stamp")" = "$stamp" ] || return 1
+    for executable in "${executables[@]}"; do
+        [ -f "$dir/bin/$executable" ] && [ ! -L "$dir/bin/$executable" ] &&
+            [ -x "$dir/bin/$executable" ] || return 1
+    done
+    (cd -- "$dir/bin" && sha256sum --quiet --strict -c -- ../sums) >/dev/null 2>&1 || return 1
+    wire=$(cat -- "$dir/wire")
+    said=$("$dir/bin/bota_server" --wire-fingerprint 2>/dev/null) || return 1
+    [ "$said" = "$wire" ]
+}
+
+# Builds COMMIT into DIR (DIR/bin, DIR/wire, DIR/sums, DIR/stamp), unless DIR holds a build of it
+# with these programs that may be served. Fails, leaving no DIR and no work directory, when
+# anything of it fails.
 build_commit() {
-    local commit=$1 dir=$2 stamp work wire
-    stamp=$(cd -- "$root" && { echo "$commit"; sha256sum -- "${programs[@]}"; } | sha256sum) ||
-        fail "cannot read the programs to lay over $commit"
-    if [ -f "$dir/stamp" ] && [ "$(cat -- "$dir/stamp")" = "$stamp" ]; then
+    local commit=$1 dir=$2 stamp wire
+    stamp=$(stamp_of "$commit") || fail "cannot read the programs to lay over $commit"
+    if served "$dir" "$stamp"; then
         return 0
     fi
     rm -rf -- "$dir" || fail "cannot delete the stale build $dir"
@@ -87,17 +130,22 @@ build_commit() {
     done
     wire=$("$work/bin/bota_server" --wire-fingerprint) || fail "the server of $commit says no wire"
     [[ $wire =~ ^[0-9a-f]{16}$ ]] || fail "the server of $commit says the wire ${wire@Q}"
-    mkdir -p -- "$dir" || fail "cannot make $dir"
+    (cd -- "$work/bin" && sha256sum -- "${executables[@]}") >"$work/sums" ||
+        fail "cannot sum the build of $commit"
+    mkdir -- "$dir" || fail "cannot make $dir"
     mv -- "$work/bin" "$dir/bin" || fail "cannot keep the build of $commit"
+    mv -- "$work/sums" "$dir/sums" || fail "cannot keep the sums of $commit"
     echo "$wire" >"$dir/wire" || fail "cannot keep the wire of $commit"
     echo "$stamp" >"$dir/stamp" || fail "cannot stamp the build of $commit"
     rm -rf -- "$work" || fail "cannot delete $work"
+    work=
 }
 
 # Fails when the cache is over its budget.
 within_budget() {
     local used
     used=$(du -sb -- "$cache" | cut -f1) || fail "cannot measure $cache"
+    [[ $used =~ ^[0-9]+$ ]] || fail "cannot measure $cache: ${used@Q}"
     if [ "$used" -gt "$budget" ]; then
         fail "the admitted builds take $used bytes in $cache, over ADMITTED_MAX_BYTES=$budget: \
 delete the entries of wires no longer admitted, or raise the budget"
@@ -107,7 +155,8 @@ delete the entries of wires no longer admitted, or raise the budget"
 case "${1:-}" in
     corpus)
         [ $# -eq 2 ] || { echo "usage: tools/admitted.sh corpus COMMIT" >&2; exit 2; }
-        commit=$(git -C "$root" rev-parse --verify "$2^{commit}") || fail "no commit $2"
+        commit=$(git -C "$root" rev-parse --verify --end-of-options "$2^{commit}") ||
+            fail "no commit $2"
         scratch=$cache/commit-$commit
         build_commit "$commit" "$scratch"
         wire=$(cat -- "$scratch/wire") || fail "no wire for $commit"
@@ -125,9 +174,10 @@ case "${1:-}" in
         for manifest in "$corpora"/*/corpus.txt; do
             [ -e "$manifest" ] || continue
             wire=$(basename -- "$(dirname -- "$manifest")")
+            [[ $wire =~ ^[0-9a-f]{16}$ ]] || fail "the corpus $manifest is not named by a wire"
             named+=("$wire")
             commit=$(sed -n 's/^commit //p' "$manifest")
-            [ -n "$commit" ] || fail "$manifest names no commit"
+            [[ $commit =~ ^[0-9a-f]{40}$ ]] || fail "$manifest names no commit (40 hex digits)"
             build_commit "$commit" "$cache/$wire"
             built=$(cat -- "$cache/$wire/wire") || fail "no wire for $commit"
             if [ "$built" != "$wire" ]; then
@@ -137,7 +187,7 @@ case "${1:-}" in
         done
         if $own_cache; then
             for entry in "$cache"/*; do
-                [ -d "$entry" ] || continue
+                [ -e "$entry" ] || [ -L "$entry" ] || continue
                 name=$(basename -- "$entry")
                 keep=false
                 for wire in "${named[@]}"; do
