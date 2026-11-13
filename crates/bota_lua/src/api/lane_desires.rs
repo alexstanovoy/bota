@@ -21,6 +21,9 @@ fn defend(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaErr
 }
 
 fn read(context: &ApiContext, vm: &mut Vm, args: Args, pushing: bool) -> Result<usize, LuaError> {
+    if !matches!(vm.arg(args,0),Value::Number(_)) {
+        return Err(vm.arg_error(args,0,"integer within bounds expected"));
+    }
     let engine = bounded_integer(vm, args, 0, 1, 3)?;
     let lane = Lane::from_engine(engine).ok_or_else(|| vm.error("unknown engine lane"))?;
     vm.charge_fuel(2)?;

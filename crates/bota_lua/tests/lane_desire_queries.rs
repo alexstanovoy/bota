@@ -201,3 +201,19 @@ fn lane_desire_queries_without_script_overrides_use_zero_baselines() {
     assert!(turn.failures.is_empty(), "{:?}", turn.failures);
     assert_move(&turn, 0, 101);
 }
+
+fn assert_rejected_lane_ids(cases:&str) {
+    let (_,sessions)=support::local(&[Team::Radiant,Team::Dire]);
+    let mut lua=team(Team::Radiant,&[SlotId(0)]);
+    let source=format!("function Think() assert(type(GetPushLaneDesire)=='function' and type(GetDefendLaneDesire)=='function') for _,query in ipairs({{GetPushLaneDesire,GetDefendLaneDesire}}) do for _,bad in ipairs({cases}) do local ok,reason=pcall(query,bad) assert(not ok and string.find(tostring(reason),'integer within bounds expected',1,true)) end end GetBot():Action_MoveToLocation(Vector(79,200,0)) end");
+    lua.add_script(SlotId(0),ScriptKind::Takeover,"=strict_lane_ids",source.as_bytes()).expect("script");
+    let turn=lua.think(&sessions[0]).expect("strict lane ids");
+    assert!(turn.failures.is_empty(),"{:?}",turn.failures);
+    assert_move(&turn,0,79);
+}
+
+#[test]
+fn lane_queries_reject_in_range_fractional_lane_ids() { assert_rejected_lane_ids("{1.5}"); }
+
+#[test]
+fn lane_queries_reject_numeric_string_lane_ids() { assert_rejected_lane_ids("{'1','2','3'}"); }

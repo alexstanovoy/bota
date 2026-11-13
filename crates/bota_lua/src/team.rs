@@ -210,7 +210,9 @@ impl LuaTeam {
         lua.pin(default_mode)?;
         let default_auxiliary = crate::default_bot::install_auxiliary(&mut lua, state.clone())?;
         lua.pin(default_auxiliary)?;
-        let lane_desire_reader = lua.function("team_lane_desires", Rc::new(lane_desire_values))?;
+        let raw_next = lua.global("next")?;
+        lua.pin(raw_next)?;
+        let lane_desire_reader = lua.function("team_lane_desires", Rc::new(move |vm,args| lane_desire_values(vm,args,raw_next)))?;
         lua.pin(lane_desire_reader)?;
         let set_environment = lua.global("setfenv")?;
         let get_environment = lua.global("getfenv")?;
@@ -685,7 +687,7 @@ impl LuaTeam {
             self.state.borrow_mut().team_desires = crate::state::TeamDesires::default();
             return Ok(());
         };
-        let team_think = self.call_hook(index, "TeamThink", &[]);
+        let mut first_error = self.call_hook(index, "TeamThink", &[]).err();
         let push = self.lane_desires(index, "UpdatePushLaneDesires");
         let defend = self.lane_desires(index, "UpdateDefendLaneDesires");
         let lanes =
@@ -693,16 +695,17 @@ impl LuaTeam {
         if let Ok(desires) = &lanes {
             self.state.borrow_mut().team_desires = *desires;
         }
-        team_think?;
-        lanes?;
+        if first_error.is_none() { first_error = lanes.err(); }
         for hook in [
             "UpdateFarmLaneDesires",
             "UpdateRoamDesire",
             "UpdateRoshanDesire",
         ] {
-            self.call_hook(index, hook, &[])?;
+            if let Err(error) = self.call_hook(index, hook, &[]) {
+                if first_error.is_none() { first_error = Some(error); }
+            }
         }
-        Ok(())
+        first_error.map_or(Ok(()), Err)
     }
 
     fn lane_desires(
@@ -1046,7 +1049,7 @@ fn runtime_error(message: &str) -> Error {
     }
 }
 
-fn lane_desire_values(vm: &mut Vm, args: Args) -> Result<usize, LuaError> {
+fn lane_desire_values(vm: &mut Vm, args: Args, raw_next: Value) -> Result<usize, LuaError> {
     let Value::Table(table) = vm.arg(args, 0) else {
         return Err(vm.error(
             "team lane desires must be a table of three finite numbers between zero and one",
@@ -1066,10 +1069,16 @@ fn lane_desire_values(vm: &mut Vm, args: Args) -> Result<usize, LuaError> {
             _ => value,
         };
     }
-    if vm.raw_get(table, Value::Number(4.0))? != Value::Nil {
-        return Err(vm.error("team lane desires must have exactly three array entries"));
+    let mut key = Value::Nil;
+    for count in 0..=3 {
+        let entry = vm.call(raw_next, &[Value::Table(table),key])?;
+        key = entry.first().copied().unwrap_or(Value::Nil);
+        if key == Value::Nil && count == 3 { return vm.results(&values); }
+        if key == Value::Nil || count == 3 {
+            return Err(vm.error("team lane desires must have exactly three array entries"));
+        }
     }
-    vm.results(&values)
+    unreachable!("the fourth raw iteration always returns")
 }
 
 fn binding_error(error: BindingError) -> Error {

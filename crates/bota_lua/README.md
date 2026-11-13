@@ -10,13 +10,16 @@ arbitrate every nine ticks with transition hooks. Team, ability/item, purchase a
 courier hooks use the same scheduler. A failed bot turn discards that bot's orders.
 Repeated fuel diagnostics are eligible once per thirty ticks.
 
-Team push/defend hooks return three array entries in engine TOP, MID, BOT order:
-finite values in [0, 1], with index 4 nil. The decoder normalizes negative zero.
+Team push/defend hooks return a table containing exactly numeric keys 1, 2 and 3
+in engine TOP, MID, BOT order, with finite values in [0, 1]. Sparse trailing keys
+and other extra fields are rejected by a bounded raw traversal. The decoder normalizes negative zero.
 The pair is published as soon as both lane hooks succeed, independently of errors
 in TeamThink, farm, roam or Roshan hooks. If either lane hook fails or returns a
 malformed value, the previously published pair is kept for that frame; an absent
 or nil lane hook resets its own value to native policy when the pair succeeds.
-A team-hook error discards only the first configured Lua seat's orders (index 0,
+Every team hook is attempted independently, including farm, roam and Roshan after
+an earlier error. The first error is reported; a team-hook error discards only
+the first configured Lua seat's orders (index 0,
 which need not be wire slot 0); other seats still run under the shared tick budget.
 These are script decisions, so late output does not rewind published desires with
 command continuations. Typed lane access translates core MID=0/TOP=1/BOT=2 into
