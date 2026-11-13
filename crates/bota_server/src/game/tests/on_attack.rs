@@ -724,6 +724,29 @@ fn status_resistance_shortens_frost_and_leaves_its_slow_as_strong() {
     assert_eq!(resisted_pace, bare_pace);
 }
 
+/// Sange and Yasha's status resistance (`status_resistance` "16") shortens Frost as any does
+/// (Valve, Dota 7.34: status resistance "now ... affects only the duration of slows"): on a
+/// carrier of it Frost holds 3 s × 0.84, 75 ticks of the 90 it holds on a bare foe.
+#[test]
+fn frost_on_a_sange_and_yasha_carrier_lasts_its_resisted_share() {
+    let left = |items: &'static [ItemId]| {
+        let (world, _, mark, _) = first_landing(&[ItemId::ORB_OF_FROST], move |world, at| {
+            let foe = foe_hero(world, at);
+            for (slot, &item) in items.iter().enumerate() {
+                world.inventory.get_mut(foe).expect("a bag").slots[slot] =
+                    Some(fresh_stack(item, 0));
+            }
+            foe
+        });
+        laid_on(&world, mark, ItemId::ORB_OF_FROST)
+            .1
+            .expect("Frost runs out")
+    };
+    let bare = left(&[]);
+    let carrier = left(&[ItemId::SANGE_AND_YASHA]);
+    assert_eq!(bare - carrier, 90 - 75, "{bare} and {carrier} ticks left");
+}
+
 /// Amplifications and cuts of Health Restoration stack apart and then add (Dota 7.39): Frost's 15%
 /// cut on a Sange carrier's 12% amplification leaves 97%, and a heal of 200 comes through as 194.
 #[test]
