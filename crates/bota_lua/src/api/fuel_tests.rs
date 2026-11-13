@@ -7,6 +7,12 @@ mod support {
 }
 
 fn run(name: &str, fuel: u64) -> Result<Vec<Value>, luagee::Error> {
+    let active = name == "GetCurrentActiveAbilityCasting";
+    let name = if active {
+        "GetCurrentActiveAbility"
+    } else {
+        name
+    };
     let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
     let mut snapshot = Snapshot::capture(&sessions[0]).expect("snapshot");
     let own = sessions[0].own_hero().expect("hero").id;
@@ -38,13 +44,21 @@ fn run(name: &str, fuel: u64) -> Result<Vec<Value>, luagee::Error> {
             inflictor: None,
         },
     ];
+    if active {
+        assert_eq!(body.abilities.len(), 6, "six received Shadow Fiend slots");
+        body.cast = Some(bota_proto::CastView {
+            ability: Some(body.abilities[0].id),
+            goes_off_in: 1,
+        });
+        body.statuses.bits |= bota_proto::StatusFlags::CASTING;
+    }
     let position = body.pos;
     let metadata = matches!(name, "IsTrained" | "IsTalent" | "IsUltimate");
     let skill = bota_core::ability_def(body.abilities[0].id)
         .expect("skill")
         .key;
     let limits = Limits {
-        fuel_per_tick: if metadata {
+        fuel_per_tick: if metadata || active {
             Limits::DEFAULT.fuel_per_call
         } else {
             fuel
@@ -108,13 +122,13 @@ fn run(name: &str, fuel: u64) -> Result<Vec<Value>, luagee::Error> {
             .borrow_mut()
             .handle(lua.vm(), Some(own))
             .expect("receiver");
-        if metadata {
+        if metadata || active {
             let methods = state.borrow().unit_methods.expect("unit methods");
             let key = lua.string(b"GetAbilityByName")?;
             let getter = lua.vm().raw_get(methods, key).expect("getter");
             let key = lua.string(skill.as_bytes())?;
             let values = lua.call(getter, &[receiver, key])?;
-            args.push(values[0]);
+            args.push(if metadata { values[0] } else { receiver });
         } else {
             args.push(receiver);
         }
@@ -135,7 +149,7 @@ fn run(name: &str, fuel: u64) -> Result<Vec<Value>, luagee::Error> {
         lua.vm().raw_get(methods, key).expect("method")
     };
     lua.begin_tick();
-    if metadata {
+    if metadata || active {
         // Handle creation is trusted setup. Drain the tick to the requested test budget
         // without reading a callback's charges or changing interpreter limits in flight.
         let spend = lua
@@ -242,4 +256,14 @@ fn distance_queries_pay_for_each_observed_position_lookup() {
 fn glyph_cooldown_and_request_pay_their_explicit_minimum() {
     assert_budget("GetGlyphCooldown", 9);
     assert_budget("ActionImmediate_Glyph", 12);
+}
+
+#[test]
+fn idle_active_ability_query_charges_its_explicit_minimum() {
+    assert_budget("GetCurrentActiveAbility", 10);
+}
+
+#[test]
+fn active_ability_query_charges_its_six_slot_scan_and_cached_handle() {
+    assert_budget("GetCurrentActiveAbilityCasting", 18);
 }

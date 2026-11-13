@@ -338,7 +338,11 @@ pub(super) fn install(lua: &mut Lua, units: TableId, state: Shared) -> Result<()
 }
 
 fn install_lookup(lua: &mut Lua, units: TableId, state: Shared) -> Result<(), BindingError> {
-    for name in ["GetAbilityByName", "GetItemInSlot"] {
+    for name in [
+        "GetAbilityByName",
+        "GetItemInSlot",
+        "GetCurrentActiveAbility",
+    ] {
         let capture = state.clone();
         method(
             lua,
@@ -347,6 +351,10 @@ fn install_lookup(lua: &mut Lua, units: TableId, state: Shared) -> Result<(), Bi
             Rc::new(move |vm, args| {
                 let mut state = capture.borrow_mut();
                 let id = super::identity(vm, &state, args)?;
+                if name == "GetCurrentActiveAbility" {
+                    let value = current_active(vm, &mut state, id)?;
+                    return vm.results(&[value]);
+                }
                 let identity = if name == "GetAbilityByName" {
                     let key = string(vm, args, 1)?;
                     lookup_ability(&state, id, key)
@@ -366,6 +374,48 @@ fn install_lookup(lua: &mut Lua, units: TableId, state: Shared) -> Result<(), Bi
         )?;
     }
     Ok(())
+}
+
+fn current_active(vm: &mut Vm, state: &mut State, id: EntityId) -> Result<Value, LuaError> {
+    vm.charge_fuel(super::CALL_FUEL)?;
+    if state
+        .player(id)
+        .is_some_and(|player| player.team == state.team && player.respawn_left > 0)
+    {
+        return Ok(Value::Nil);
+    }
+    let unit = state
+        .unit(id)
+        .ok_or_else(|| vm.error("unit is no longer known"))?;
+    let ability = if let Some(cast) = unit.cast {
+        cast.ability
+            .ok_or_else(|| vm.error("active ability is not observed"))?
+    } else if let Some(channel) = unit.channel {
+        channel.ability
+    } else {
+        return Ok(Value::Nil);
+    };
+    let book = state.ability_book(id).unwrap_or_default();
+    vm.charge_fuel(book.len() as u64 + 1)?;
+    let identity = book
+        .iter()
+        .position(|entry| entry.id == ability)
+        .and_then(|slot| u8::try_from(slot).ok())
+        .map(|slot| Identity::Ability {
+            unit: id,
+            slot: AbilitySlot(slot),
+            id: ability,
+        })
+        .or_else(|| {
+            state
+                .hero(id)
+                .and_then(bota_core::hero_def)
+                .and_then(|hero| hero.innate)
+                .filter(|&innate| innate == ability)
+                .map(|id| Identity::Innate { unit: unit.id, id })
+        })
+        .ok_or_else(|| vm.error("active ability is not observed"))?;
+    handle(vm, state, Some(identity))
 }
 
 fn lookup_ability(state: &State, id: EntityId, key: &[u8]) -> Option<Identity> {

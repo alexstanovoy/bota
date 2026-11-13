@@ -162,6 +162,7 @@ fn script(side: Team, slot: SlotId, position: Vec2) -> LuaTeam {
         function Think()
             local bot=GetBot()
             assert(not bot:IsAlive())
+            assert(bot:GetCurrentActiveAbility()==nil)
             local location,origin=bot:GetLocation(),bot:GetOrigin()
             assert(location.x == ({}/65536-9216) and location.y == ({}/65536-9216))
             assert(origin.x == location.x and origin.y == location.y and origin.z == location.z)
