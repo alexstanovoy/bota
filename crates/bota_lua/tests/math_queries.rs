@@ -22,6 +22,7 @@ fn min_and_max_compare_two_finite_engine_floats_and_reject_invalid_operands() {
     lua.add_script(SlotId(0), ScriptKind::Takeover, "math_queries", br#"
         function Think()
             assert(type(Min) == 'function' and type(Max) == 'function')
+            assert(Min('1',2) == 1 and Max('-3',-2) == -2)
             assert(Min(0.5,0.66) == 0.5 and Min(0.66,0.5) == 0.5)
             assert(Max(-0.5,-0.66) == -0.5 and Max(-0.66,-0.5) == -0.5)
             assert(Min(-1.25,2.5) == -1.25 and Max(-1.25,2.5) == 2.5)

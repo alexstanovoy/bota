@@ -68,8 +68,11 @@ Vectors expose both `x/y/z` and the one-based numeric components `1/2/3`.
 than a canonical bot-dump method. The lower-level engine
 [CBaseEntity declaration](https://docs.moddota.com/lua_server/#CBaseEntity) lists
 `GetOrigin(): vector`. Map units have no parent transform here, so it shares the
-authenticated `GetLocation` callback, coordinate conversion, remembered position
-and zero-vector result for a forgotten unit. It introduces no additional facts.
+authenticated `GetLocation` callback, coordinate conversion and remembered position.
+Both methods raise `unit is no longer known` after the received track expires.
+This changes the pre-existing `GetLocation` zero-vector fallback as well as
+`GetOrigin`, preventing forgotten targets from being mapped to the world origin.
+It introduces no additional facts.
 
 `GetGameMode` maps the configured Solo Mid map to engine mode 21; a map without
 an explicit engine-mode mapping raises an ordinary Lua error. `GetAssignedLane`
@@ -81,8 +84,11 @@ current position or on hidden facts. These queries require a received view.
 then return an authenticated handle only for a living building in the received
 side's current sight. A remembered enemy building does not disclose its current
 existence or health through these lookups. Missing or unseen buildings return nil.
-Barracks indices are TOP melee/ranged (0/1), MID (2/3), BOT (4/5); other nonnegative
-engine integers return nil. Invalid teams, negative/fractional indices and values
+The current barracks mapping is UNSOURCED: provisional indices are TOP
+melee/ranged (0/1), MID (2/3), BOT (4/5). A primary engine constant declaration or
+live engine observation must verify this order before claiming parity. The tests
+check identities against the public map catalogue, not this provisional table.
+Other nonnegative engine integers return nil. Invalid teams, negative/fractional indices and values
 outside the engine integer domain raise ordinary Lua errors.
 
 `Min` and `Max` compare two supplied Lua numbers. Both operands must be finite
@@ -190,7 +196,10 @@ information withheld by the side's view.
 Ability and item mana cost, remaining cooldown and current charges come from
 the received ability book or inventory, including an owned dead hero's kit.
 Cooldowns are seconds; readiness tests the cooldown alone, independently of mana
-or status effects. Abilities and items without charges return zero. The new
+or status effects. Items without charges return zero. `AbilityView` has no charge
+field: `GetCurrentCharges` currently returns zero for every ability, including
+charged abilities. That value does not establish that an ability is exhausted.
+The new
 state reads reject forgotten ability/item handles. An active innate without a
 received cooldown slot reports that the cooldown is unobserved; passive innates
 and talents have no running cooldown.
@@ -233,3 +242,21 @@ claim a live-engine verification of those mappings. Explicit script attack-once
 requests have no native policy lease; only native last-hit requests expire after
 the bounded, windup-aware lease. A rejected or lost native order can therefore
 recover without requiring a launch event or a gap-free stream of snapshots.
+
+## Compatibility and input behavior
+
+Numeric arguments retain Lua's C API `checknumber` coercion: numeric strings such
+as `GetHeroLevel("0")`, `GetBarracks(2,"0")` and `Min("1",2)` are accepted. Finite,
+integer and range checks still apply after conversion; NaN, infinities and
+out-of-domain values raise the same errors as their numeric equivalents.
+
+`SelectHero` and `GetSelectedHeroName` now use engine player ids 0..9 and reject
+values outside that range. This replaces the older acceptance of arbitrary
+integers and wire-seat interpretation. In particular, a Dire wire seat 1 can be
+engine player 5; scripts must use the engine id. Configured seats and received
+rosters with more than five players on either side are rejected explicitly rather
+than dropping unmappable players from roster results.
+
+Every API callback registered as a global or member pays eight fuel units for
+the host boundary crossing, including constant-work callbacks. Scans, allocations
+and retained handles continue to pay their additional charges before work.

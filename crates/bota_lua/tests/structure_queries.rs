@@ -3,137 +3,98 @@ mod support;
 use bota_lua::{BotSeat, GcStress, Keys, Limits, LuaTeam, ScriptKind};
 use bota_proto::{HeroId, Order, ServerMsg, SlotId, Target, Team, Vec2};
 
-fn positions(map: &bota_core::MapDef, side: usize) -> String {
-    use bota_core::rules::{LANE_BOT, LANE_MID, LANE_TOP};
-    // The API's top/mid/bot order differs from the core catalogue's mid/top/bot.
-    let mut values = Vec::new();
-    for (lane, ranged) in [
-        (LANE_TOP, false),
-        (LANE_TOP, true),
-        (LANE_MID, false),
-        (LANE_MID, true),
-        (LANE_BOT, false),
-        (LANE_BOT, true),
-    ] {
-        let (_, _, at) = map.barracks[side]
-            .iter()
-            .find(|&&(l, r, _)| l == lane && r == ranged)
-            .expect("barracks");
-        values.push(format!(
-            "{{{},{}}}",
-            at.x.to_int() - 9216,
-            at.y.to_int() - 9216
-        ));
-    }
-    format!("{{{}}}", values.join(","))
+fn destination(order: Order) -> Vec2 {
+    let Order::Move { target: Target::Pos(position) } = order else { panic!("query-derived move expected") };
+    position
 }
 
 #[test]
-fn structure_queries_map_each_barracks_and_ancient_from_both_filtered_views() {
+fn structure_queries_return_received_barracks_and_ancients_from_both_sides() {
     let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
     let mut teams = Vec::new();
     for (index, side) in [(0, Team::Radiant), (1, Team::Dire)] {
         let slot = SlotId(index as u8);
-        let mut lua = LuaTeam::new(
-            side,
-            &[BotSeat {
-                slot,
-                hero: HeroId::SHADOW_FIEND,
-            }],
-            Limits::DEFAULT,
-            Keys {
-                hash: [17, 19],
-                random: 23,
-            },
-        )
-        .expect("team");
+        let mut lua = LuaTeam::new(side, &[BotSeat { slot, hero: HeroId::SHADOW_FIEND }], Limits::DEFAULT, Keys { hash: [17,19], random: 23 }).expect("team");
         lua.set_gc_stress(GcStress::Full);
-        let map = sessions[index].map();
-        let ancient = map.ancients[index].expect("ancient");
-        let source = r#"
-            local phase, enemy = 0, nil
-            local own_positions = __OWN__
-            local enemy_positions = __ENEMY__
-            local function check(unit, at)
-                assert(unit and unit:CanBeSeen())
-                local pos = unit:GetLocation()
-                assert(pos.x == at[1] and pos.y == at[2])
-            end
+        lua.add_script(slot, ScriptKind::Takeover,"structure_queries",br#"
+            local frame, remembered = 0, nil
             function Think()
-                phase = phase + 1
-                assert(type(GetBarracks) == 'function' and type(GetAncient) == 'function')
-                for index=0,5 do
-                    check(GetBarracks(GetTeam(),index), own_positions[index+1])
-                    local other = GetBarracks(GetOpposingTeam(),index)
-                    if phase ~= 2 then check(other, enemy_positions[index+1])
-                    else assert(other == nil) end
-                end
+                frame = frame + 1
+                local phase, index = math.floor((frame-1)/6)+1, (frame-1)%6
+                local own = GetBarracks(GetTeam(),index)
+                assert(own and own:CanBeSeen())
+                GetBot():Action_MoveToLocation(own:GetLocation())
                 local ancient = GetAncient(GetTeam())
-                check(ancient, {__AX__,__AY__})
-                if phase ~= 2 then
-                    local current = GetAncient(GetOpposingTeam())
-                    assert(current and current:CanBeSeen())
-                    if phase == 3 then assert(current == enemy) else enemy = current end
+                assert(ancient and ancient:CanBeSeen())
+                GetBot():Action_MoveToLocation(ancient:GetLocation())
+                local other = GetBarracks(GetOpposingTeam(),index)
+                if phase == 2 then
+                    assert(other == nil and GetAncient(GetOpposingTeam()) == nil)
+                    assert(remembered and not remembered:CanBeSeen())
                 else
-                    assert(GetAncient(GetOpposingTeam()) == nil)
-                    assert(enemy and not enemy:CanBeSeen())
+                    assert(other and other:CanBeSeen())
+                    GetBot():Action_MoveToLocation(other:GetLocation())
+                    local enemy = GetAncient(GetOpposingTeam())
+                    assert(enemy and enemy:CanBeSeen())
+                    if phase == 1 then remembered = enemy else assert(enemy == remembered) end
                 end
-                assert(GetBarracks(GetTeam(),6) == nil)
-                assert(GetBarracks(GetTeam(),2147483647) == nil)
-                for _, index in ipairs({-1,0.5,1e300,-1e300,0/0,math.huge,-math.huge,{}}) do
-                    assert(not pcall(GetBarracks,GetTeam(),index))
+                if frame == 1 then
+                    assert(GetBarracks(GetTeam(),'0') == GetBarracks(GetTeam(),0))
+                    assert(GetBarracks(GetTeam(),6) == nil and GetBarracks(GetTeam(),2147483647) == nil)
+                    for _, index in ipairs({-1,0.5,1e300,-1e300,0/0,math.huge,-math.huge,{}}) do assert(not pcall(GetBarracks,GetTeam(),index)) end
+                    for _, side in ipairs({-1,0,1,4,2.5,1e300,-1e300,0/0,math.huge,-math.huge,{}}) do
+                        assert(not pcall(GetBarracks,side,0) and not pcall(GetAncient,side))
+                    end
+                    local ok, reason = pcall(GetBarracks,GetTeam(),math.huge)
+                    assert(not ok and string.find(tostring(reason),'finite number expected',1,true))
                 end
-                for _, side in ipairs({-1,0,1,4,2.5,1e300,-1e300,0/0,math.huge,-math.huge,{}}) do
-                    assert(not pcall(GetBarracks,side,0))
-                    assert(not pcall(GetAncient,side))
-                end
-                local ok, reason = pcall(GetBarracks,GetTeam(),math.huge)
-                assert(not ok and string.find(tostring(reason),'finite number expected',1,true))
-                GetBot():Action_MoveToLocation(Vector(100+phase,200,0))
+                GetBot():Action_MoveToLocation(Vector(100+frame,200,0))
             end
-        "#
-        .replace("__OWN__", &positions(map, index))
-        .replace("__ENEMY__", &positions(map, 1 - index))
-        .replace("__AX__", &(ancient.x.to_int() - 9216).to_string())
-        .replace("__AY__", &(ancient.y.to_int() - 9216).to_string());
-        lua.add_script(
-            slot,
-            ScriptKind::Takeover,
-            "structure_queries",
-            source.as_bytes(),
-        )
-        .expect("script");
+        "#).expect("script");
         teams.push(lua);
     }
-    for phase in 1..=3 {
-        for (index, lua) in teams.iter_mut().enumerate() {
+    let mut observed: [[Vec<Vec2>;3];2] = std::array::from_fn(|_|std::array::from_fn(|_|Vec::new()));
+    let mut enemy_observed: [[Vec<Vec2>;3];2] = std::array::from_fn(|_|std::array::from_fn(|_|Vec::new()));
+    for frame in 1..=18 {
+        let phase = (frame-1)/6;
+        for (index,lua) in teams.iter_mut().enumerate() {
             let turn = lua.think(&sessions[index]).expect("think");
-            assert!(turn.failures.is_empty(), "{:?}", turn.failures);
-            assert_eq!(turn.bots[0].orders.len(), 1);
-            assert_eq!(
-                turn.bots[0].orders[0].order,
-                Order::Move {
-                    target: Target::Pos(Vec2::from_ints(9316 + phase, 9416))
-                }
-            );
+            assert!(turn.failures.is_empty(), "frame {frame}: {:?}",turn.failures);
+            let orders = &turn.bots[0].orders;
+            assert_eq!(orders.len(),if phase == 1 {3} else {4});
+            observed[index][phase].push(destination(orders[0].order));
+            assert_eq!(destination(orders[1].order),sessions[index].map().ancients[index].expect("ancient"));
+            if phase != 1 { enemy_observed[index][phase].push(destination(orders[2].order)); }
+            assert_eq!(destination(orders.last().expect("final action").order),Vec2::from_ints(9316+frame as i32,9416));
         }
-        if phase < 3 {
-            let streams = local.step(&[&[], &[]]).expect("received buildings");
-            for (session, stream) in sessions.iter_mut().zip(streams) {
+        if frame < 18 {
+            let streams = local.step(&[&[],&[]]).expect("received buildings");
+            for (session,stream) in sessions.iter_mut().zip(streams) {
                 let enemy = session.enemy();
-                let stream = stream.into_iter().map(|message| match message {
-                    // Buildings are currently always shown by the simulation.
-                    // Exercise the API with a received stream withholding these facts.
-                    ServerMsg::Snapshot { mut view } if phase == 1 => {
-                        view.units.retain(|unit| {
-                            unit.team != enemy || !bota_core::kind_def(unit.kind).structure
-                        });
+                support::fold(session,stream.into_iter().map(|message| match message {
+                    // The producer always shows buildings. Independently exercise withholding at the API boundary.
+                    ServerMsg::Snapshot { mut view } if (6..12).contains(&frame) => {
+                        view.units.retain(|unit|unit.team != enemy || !bota_core::kind_def(unit.kind).structure);
                         view.aggro.clear();
                         ServerMsg::Snapshot { view }
                     }
                     other => other,
-                });
-                support::fold(session, stream);
+                }));
+            }
+        }
+    }
+    // This pins membership against catalogue geometry, not the unsourced engine index order.
+    for index in 0..2 {
+        let mut expected: Vec<_> = sessions[index].map().barracks[index].iter().map(|&(_,_,pos)|pos).collect();
+        expected.sort_unstable();
+        let mut enemy: Vec<_> = sessions[index].map().barracks[1-index].iter().map(|&(_,_,pos)|pos).collect();
+        enemy.sort_unstable();
+        for phase in 0..3 {
+            observed[index][phase].sort_unstable();
+            assert_eq!(observed[index][phase],expected);
+            if phase != 1 {
+                enemy_observed[index][phase].sort_unstable();
+                assert_eq!(enemy_observed[index][phase],enemy);
             }
         }
     }
