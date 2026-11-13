@@ -49,7 +49,7 @@ class Routing(unittest.TestCase):
         self.assertEqual(groups_of(f"{SERVER}/game/tests/runes.rs"), {"game_objectives", "game_determinism"})
 
     def test_the_world_runs_server_groups_and_consumers_with_real_matches(self):
-        expected = {g.name for g in GROUPS if g.name.startswith(("game_", "server_"))} | {"radovid"} | LUA
+        expected = {g.name for g in GROUPS if g.name.startswith(("game_", "server_"))} | {"radovid", "admitted_builds"} | LUA
         self.assertEqual(groups_of(f"{SERVER}/game/world.rs"), expected)
 
     def test_a_proto_change_runs_everything_built_on_it(self):
