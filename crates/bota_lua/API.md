@@ -85,6 +85,10 @@ Barracks indices are TOP melee/ranged (0/1), MID (2/3), BOT (4/5); other nonnega
 engine integers return nil. Invalid teams, negative/fractional indices and values
 outside the engine integer domain raise ordinary Lua errors.
 
+`Min` and `Max` compare two supplied Lua numbers. Both operands must be finite
+and within the engine float range; negative values are valid. Malformed or
+out-of-range operands raise ordinary Lua errors before comparison.
+
 Player ids are engine ids: Radiant 0–4 and Dire 5–9. Active-view queries derive
 each side's rank from its public roster's wire seat order; wire seat 1 can therefore
 be engine player 5. The host continues to use wire seats internally. Team arrays

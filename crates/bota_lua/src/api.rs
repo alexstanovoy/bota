@@ -16,6 +16,7 @@ mod geometry;
 mod globals;
 mod lane_desires;
 mod match_metadata;
+mod math_queries;
 mod modifiers;
 mod patterns;
 pub(crate) mod players;
@@ -134,6 +135,7 @@ pub(crate) fn install(lua: &mut Lua, state: Shared, vectors: Vectors) -> Result<
     globals::install(lua, state.clone(), vectors)?;
     lane_desires::install(lua, &context)?;
     match_metadata::install(lua, &context)?;
+    math_queries::install(lua, &context)?;
     structures::install(lua, &context)?;
     players::install(lua, &context)?;
     unit_lists::install(lua, &context)?;
