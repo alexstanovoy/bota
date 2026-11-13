@@ -467,6 +467,15 @@ impl State {
             .find(|player| player.unit == Some(id))
     }
 
+    /// Last received own-hero body position survives respawn waits; foreign memory does not.
+    pub fn position(&self, id: EntityId) -> Option<bota_proto::Vec2> {
+        self.unit(id).map(|unit| unit.pos).or_else(|| {
+            self.player(id)
+                .filter(|player| player.team == self.team)
+                .and_then(|player| player.last_seen.map(|(_, position)| position))
+        })
+    }
+
     pub fn hero(&self, id: EntityId) -> Option<HeroId> {
         self.player(id)
             .map(|player| player.hero)

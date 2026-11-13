@@ -14,6 +14,7 @@ mod fuel_tests;
 
 pub(crate) mod abilities;
 pub(crate) mod context;
+mod distances;
 mod estimates;
 mod geometry;
 mod globals;
@@ -142,6 +143,7 @@ pub(crate) fn install(lua: &mut Lua, state: Shared, vectors: Vectors) -> Result<
         vectors,
     };
     patterns::install(lua, &context)?;
+    distances::install(lua, &context)?;
     estimates::install(lua, &context)?;
     globals::install(lua, state.clone(), vectors)?;
     lane_desires::install(lua, &context)?;

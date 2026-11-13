@@ -16,14 +16,7 @@ fn get_location(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, 
     let id = context.receiver(vm, args)?;
     let state = context.state.borrow();
     let position = state
-        .unit(id)
-        .map(|unit| unit.pos)
-        .or_else(|| {
-            state
-                .player(id)
-                .filter(|player| player.team == state.team)
-                .and_then(|player| player.last_seen.map(|(_, position)| position))
-        })
+        .position(id)
         .ok_or_else(|| vm.error("unit is no longer known"))?;
     drop(state);
     let value = context.vectors.location(vm, position)?;

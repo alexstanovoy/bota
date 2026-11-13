@@ -38,6 +38,7 @@ fn run(name: &str, fuel: u64) -> Result<Vec<Value>, luagee::Error> {
             inflictor: None,
         },
     ];
+    let position = body.pos;
     let metadata = matches!(name, "IsTrained" | "IsTalent" | "IsUltimate");
     let skill = bota_core::ability_def(body.abilities[0].id)
         .expect("skill")
@@ -68,7 +69,22 @@ fn run(name: &str, fuel: u64) -> Result<Vec<Value>, luagee::Error> {
     let vectors = vector::install(&mut lua).expect("vectors");
     install(&mut lua, state.clone(), vectors).expect("API");
     let mut args = Vec::new();
-    let function = if name == "GetUnitList" {
+    let function = if matches!(
+        name,
+        "GetUnitToLocationDistance" | "GetUnitToLocationDistanceSqr" | "GetUnitToUnitDistanceSqr"
+    ) {
+        let receiver = state
+            .borrow_mut()
+            .handle(lua.vm(), Some(own))
+            .expect("receiver");
+        args.push(receiver);
+        if name == "GetUnitToUnitDistanceSqr" {
+            args.push(receiver);
+        } else {
+            args.push(vectors.location(lua.vm(), position).expect("point"));
+        }
+        lua.global(name)?
+    } else if name == "GetUnitList" {
         args.push(Value::Number(0.0));
         lua.global(name)?
     } else if matches!(
@@ -208,4 +224,15 @@ fn ability_metadata_queries_charge_their_explicit_minimum() {
 #[test]
 fn named_item_slot_search_pays_for_its_bounded_storage_scan() {
     assert_budget("FindItemSlot", 211);
+}
+
+#[test]
+fn distance_queries_pay_for_each_observed_position_lookup() {
+    for (name, minimum) in [
+        ("GetUnitToLocationDistance", 26),
+        ("GetUnitToLocationDistanceSqr", 26),
+        ("GetUnitToUnitDistanceSqr", 27),
+    ] {
+        assert_budget(name, minimum);
+    }
 }

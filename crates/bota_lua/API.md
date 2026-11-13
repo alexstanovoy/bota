@@ -299,3 +299,10 @@ or -1 when there is no observed match. It uses the same slot mapping as
 received storage, not pending purchase projections. Enemy stash is not searched,
 and a hidden purchase does not update remembered inventory. Owned dead kits and
 stash remain searchable; an expired foreign inventory raises an ordinary error.
+
+The unit/location distance globals use planar engine world units, with squared
+queries returning squared world units. They share the `GetLocation` observation
+policy: own remembered body positions remain usable during respawn, while expired
+foreign positions error. Vector inputs use the normal checked coordinate
+conversion. Differences are widened before squaring and summing, so opposite
+protocol-coordinate boundaries neither overflow nor saturate the distance.

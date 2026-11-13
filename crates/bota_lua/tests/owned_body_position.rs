@@ -165,6 +165,7 @@ fn script(side: Team, slot: SlotId, position: Vec2) -> LuaTeam {
             local location,origin=bot:GetLocation(),bot:GetOrigin()
             assert(location.x == ({}/65536-9216) and location.y == ({}/65536-9216))
             assert(origin.x == location.x and origin.y == location.y and origin.z == location.z)
+            assert(GetUnitToLocationDistance(bot,location)==0 and GetUnitToUnitDistanceSqr(bot,bot)==0)
             assert(bot:ActionImmediate_PurchaseItem('item_branches') == PURCHASE_ITEM_SUCCESS)
         end
     "#,
