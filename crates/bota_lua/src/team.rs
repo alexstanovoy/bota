@@ -1049,7 +1049,7 @@ fn lane_desire_values(vm: &mut Vm, args: Args) -> Result<usize, LuaError> {
                 "team lane desires must be a table of three finite numbers between zero and one",
             ));
         }
-        *output = match value { Value::Number(number) if number == 0.0 => Value::Number(0.0), _ => value };
+        *output = match value { Value::Number(0.0) => Value::Number(0.0), _ => value };
     }
     if vm.raw_get(table, Value::Number(4.0))? != Value::Nil {
         return Err(vm.error("team lane desires must have exactly three array entries"));
