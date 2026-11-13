@@ -97,6 +97,11 @@ order. Remembered observations stop updating in fog. Private inventory, gold and
 talent eligibility are copied only for the receiving side. Stock and catalogue
 information come from the received view and announced match catalogue.
 
+`GetUnitList` returns fresh arrays of currently visible living units, using the
+`UNIT_LIST_*` categories. Remembered enemy handles do not keep a hidden enemy in
+these arrays. Creeps and buildings use the public core kind metadata; enemy-side
+categories do not classify neutral units as members of the opposing team.
+
 Estimated damage is an integer projection of observed attack stats and core spell
 data over the requested duration. The availability flag restricts allied spells
 and items by the known mana and cooldowns; it does not disable ordinary attacks.
