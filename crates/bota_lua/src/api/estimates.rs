@@ -72,7 +72,12 @@ fn estimate(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaE
     )])
 }
 
-fn attack_damage(vm: &mut Vm, actor: &UnitView, target: &UnitView, seconds: f64) -> Result<f64, LuaError> {
+fn attack_damage(
+    vm: &mut Vm,
+    actor: &UnitView,
+    target: &UnitView,
+    seconds: f64,
+) -> Result<f64, LuaError> {
     let class = bota_core::attack_class_pct(actor.kind, target.kind);
     let amount = (i64::from(actor.attack_damage.max(0)) * i64::from(class) / 100)
         .min(i64::from(i32::MAX)) as i32;

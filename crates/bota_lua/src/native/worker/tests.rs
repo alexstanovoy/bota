@@ -10,31 +10,79 @@ fn a_discarded_courier_turn_retries_its_unpublished_request() {
     let (ready, startup) = mpsc::channel();
     let (entered, waiting) = mpsc::channel();
     let (release, blocked) = mpsc::channel();
-    let mut config = NativeConfig::new(Team::Radiant, vec![BotSeat { slot: SlotId(0), hero: HeroId::SHADOW_FIEND }], Keys { hash: [17,19], random: 23 });
+    let mut config = NativeConfig::new(
+        Team::Radiant,
+        vec![BotSeat {
+            slot: SlotId(0),
+            hero: HeroId::SHADOW_FIEND,
+        }],
+        Keys {
+            hash: [17, 19],
+            random: 23,
+        },
+    );
     config.hero_selection = HeroSelection::Fixed;
-    let worker = thread::Builder::new().stack_size(16 << 20).spawn(move || {
-        let (mut lua, _) = build(config, support::courier_modules(false), &input).expect("setup");
-        ready.send(()).expect("ready");
-        let mut held = false;
-        run_with_reply_hook(&mut lua, input, output, |reply| {
-            if !held && reply.as_ref().is_ok_and(|turn| turn.bots.iter().any(|bot| bot.orders.iter().any(|order| order.unit.is_some() && matches!(order.order, Order::Cast { .. })))) {
-                held = true;
-                entered.send(()).expect("courier reply");
-                blocked.recv_timeout(HANG_GUARD).expect("release reply");
-            }
-        });
-    }).expect("worker");
+    let worker = thread::Builder::new()
+        .stack_size(16 << 20)
+        .spawn(move || {
+            let (mut lua, _) =
+                build(config, support::courier_modules(false), &input).expect("setup");
+            ready.send(()).expect("ready");
+            let mut held = false;
+            run_with_reply_hook(&mut lua, input, output, |reply| {
+                if !held
+                    && reply.as_ref().is_ok_and(|turn| {
+                        turn.bots.iter().any(|bot| {
+                            bot.orders.iter().any(|order| {
+                                order.unit.is_some() && matches!(order.order, Order::Cast { .. })
+                            })
+                        })
+                    })
+                {
+                    held = true;
+                    entered.send(()).expect("courier reply");
+                    blocked.recv_timeout(HANG_GUARD).expect("release reply");
+                }
+            });
+        })
+        .expect("worker");
     startup.recv_timeout(HANG_GUARD).expect("startup");
-    let mut native = NativeTeam { requests: Some(requests), replies: Some(replies), worker: Some(worker), team: Team::Radiant, seats: Vec::new(), timeout: Duration::from_millis(33), last_tick: None, in_flight: false, late_ticks: 0, discard_previous: false };
-    assert!(matches!(native.think(&sessions[0]), Err(NativeError::Deadline)));
-    waiting.recv_timeout(HANG_GUARD).expect("withheld courier result");
+    let mut native = NativeTeam {
+        requests: Some(requests),
+        replies: Some(replies),
+        worker: Some(worker),
+        team: Team::Radiant,
+        seats: Vec::new(),
+        timeout: Duration::from_millis(33),
+        last_tick: None,
+        in_flight: false,
+        late_ticks: 0,
+        discard_previous: false,
+    };
+    assert!(matches!(
+        native.think(&sessions[0]),
+        Err(NativeError::Deadline)
+    ));
+    waiting
+        .recv_timeout(HANG_GUARD)
+        .expect("withheld courier result");
     release.send(()).expect("release");
-    for (session, stream) in sessions.iter_mut().zip(local.step(&[&[], &[]]).expect("next tick")) { support::fold(session, stream); }
+    for (session, stream) in sessions
+        .iter_mut()
+        .zip(local.step(&[&[], &[]]).expect("next tick"))
+    {
+        support::fold(session, stream);
+    }
     // The first deadline is real; retry timing is not the contract under test.
     native.timeout = Duration::from_secs(1);
     let retried = native.think(&sessions[0]).expect("retry");
     assert!(retried.failures.is_empty(), "{:?}", retried.failures);
-    assert!(retried.bots[0].orders.iter().any(|order| order.unit.is_some() && matches!(order.order, Order::Cast { .. })));
+    assert!(
+        retried.bots[0]
+            .orders
+            .iter()
+            .any(|order| order.unit.is_some() && matches!(order.order, Order::Cast { .. }))
+    );
     let worker = native.worker.take().expect("worker");
     drop(native);
     worker.join().expect("exit");

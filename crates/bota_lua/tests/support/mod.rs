@@ -187,31 +187,77 @@ pub fn durable_creep_encounter(
     panic!("no enemy creep reached the lane");
 }
 
-#[allow(dead_code, reason = "shared by courier integration and worker continuation contracts")]
+#[allow(
+    dead_code,
+    reason = "shared by courier integration and worker continuation contracts"
+)]
 pub fn courier_delivery_setup() -> (LocalMatch, Vec<ClientSession>) {
     use bota_client_core::IssuedOrder;
     use bota_proto::{ItemId, Order, Target, Vec2};
     let (mut local, mut sessions) = local(&[Team::Radiant, Team::Dire]);
-    let walk = sessions[0].issue(IssuedOrder::hero(Order::Move { target: Target::Pos(Vec2::from_ints(9216,9216)) })).expect("walk");
+    let walk = sessions[0]
+        .issue(IssuedOrder::hero(Order::Move {
+            target: Target::Pos(Vec2::from_ints(9216, 9216)),
+        }))
+        .expect("walk");
     for tick in 0..250 {
         let first = [walk];
         let orders = if tick == 0 { &first[..] } else { &[] };
-        for (session, stream) in sessions.iter_mut().zip(local.step(&[orders, &[]]).expect("walk step")) { fold(session, stream); }
+        for (session, stream) in sessions
+            .iter_mut()
+            .zip(local.step(&[orders, &[]]).expect("walk step"))
+        {
+            fold(session, stream);
+        }
     }
-    let buy = sessions[0].issue(IssuedOrder::hero(Order::Buy { item: ItemId::IRON_BRANCH })).expect("buy");
-    for (session, stream) in sessions.iter_mut().zip(local.step(&[&[buy], &[]]).expect("stash purchase")) { fold(session, stream); }
-    assert!(sessions[0].current().expect("view").players[0].stash.as_ref().expect("own stash").iter().flatten().any(|item| item.id == ItemId::IRON_BRANCH));
+    let buy = sessions[0]
+        .issue(IssuedOrder::hero(Order::Buy {
+            item: ItemId::IRON_BRANCH,
+        }))
+        .expect("buy");
+    for (session, stream) in sessions
+        .iter_mut()
+        .zip(local.step(&[&[buy], &[]]).expect("stash purchase"))
+    {
+        fold(session, stream);
+    }
+    assert!(
+        sessions[0].current().expect("view").players[0]
+            .stash
+            .as_ref()
+            .expect("own stash")
+            .iter()
+            .flatten()
+            .any(|item| item.id == ItemId::IRON_BRANCH)
+    );
     (local, sessions)
 }
 
-#[allow(dead_code, reason = "shared by courier integration and worker continuation contracts")]
+#[allow(
+    dead_code,
+    reason = "shared by courier integration and worker continuation contracts"
+)]
 pub fn courier_modules(fail_level_once: bool) -> bota_lua::ModuleBank {
     let mut modules = bota_lua::ModuleBank::new(bota_lua::Limits::DEFAULT);
-    modules.insert("mode_laning_generic", b"function GetDesire() return 1 end function Think() end").expect("mode");
-    modules.insert("item_purchase_nevermore", b"function ItemPurchaseThink() end").expect("purchase");
+    modules
+        .insert(
+            "mode_laning_generic",
+            b"function GetDesire() return 1 end function Think() end",
+        )
+        .expect("mode");
+    modules
+        .insert(
+            "item_purchase_nevermore",
+            b"function ItemPurchaseThink() end",
+        )
+        .expect("purchase");
     let usage = if fail_level_once {
         b"function AbilityUsageThink() end function ItemUsageThink() end function BuybackUsageThink() end function AbilityLevelUpThink() if not failed then failed=true error('one deferred turn') end end".as_slice()
-    } else { b"function AbilityUsageThink() end function ItemUsageThink() end function BuybackUsageThink() end function AbilityLevelUpThink() end".as_slice() };
-    modules.insert("ability_item_usage_nevermore", usage).expect("usage");
+    } else {
+        b"function AbilityUsageThink() end function ItemUsageThink() end function BuybackUsageThink() end function AbilityLevelUpThink() end".as_slice()
+    };
+    modules
+        .insert("ability_item_usage_nevermore", usage)
+        .expect("usage");
     modules
 }

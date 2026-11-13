@@ -101,11 +101,13 @@ fn options() -> Result<Options, Box<dyn std::error::Error>> {
     };
     for pair in args.as_chunks::<2>().0 {
         match pair[0].to_str().ok_or("invalid option")? {
-            "--selection" => options.hero_selection = match pair[1].to_str() {
-                Some("fixed") => HeroSelection::Fixed,
-                Some("pack") => HeroSelection::Pack,
-                _ => return Err("invalid hero selection policy".into()),
-            },
+            "--selection" => {
+                options.hero_selection = match pair[1].to_str() {
+                    Some("fixed") => HeroSelection::Fixed,
+                    Some("pack") => HeroSelection::Pack,
+                    _ => return Err("invalid hero selection policy".into()),
+                }
+            }
             "--scripts" => options.scripts = PathBuf::from(&pair[1]),
             "--runtime-scripts" => options.runtime = Some(PathBuf::from(&pair[1])),
             "--address" => options.address = pair[1].to_str().ok_or("invalid address")?.to_owned(),

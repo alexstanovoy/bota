@@ -20,12 +20,7 @@ fn local_scripts_play_a_complete_match_without_script_failures() {
 
 fn run_pack(directory: &std::path::Path, runtime: Option<&std::path::Path>, team: Team) {
     let index = usize::from(team == Team::Dire);
-    let modules = load_modules(
-        directory,
-        runtime,
-        Limits::DEFAULT,
-    )
-    .expect("local sources");
+    let modules = load_modules(directory, runtime, Limits::DEFAULT).expect("local sources");
     let mut keys = random_keys().expect("hash entropy");
     keys.random = 3;
     let mut config = NativeConfig::new(
@@ -72,5 +67,7 @@ fn run_pack(directory: &std::path::Path, runtime: Option<&std::path::Path>, team
     assert!(sent > 0);
     assert!(ended);
     assert!(!lua.retired());
-    println!("pack_conformance team={team:?} ticks={ticks} orders={sent} script_failures=0 retired=false");
+    println!(
+        "pack_conformance team={team:?} ticks={ticks} orders={sent} script_failures=0 retired=false"
+    );
 }

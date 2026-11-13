@@ -255,7 +255,11 @@ pub(crate) struct BotState {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) struct NativeCourierCommand { pub unit: EntityId, pub ability: bota_proto::AbilityId, pub issued_at: u32 }
+pub(crate) struct NativeCourierCommand {
+    pub unit: EntityId,
+    pub ability: bota_proto::AbilityId,
+    pub issued_at: u32,
+}
 
 /// Host action continuations rewind when their outbox was not accepted; Lua-visible state does not.
 #[derive(Clone, Copy)]
@@ -264,8 +268,16 @@ pub(crate) struct HostCheckpoint {
     native_courier: Option<NativeCourierCommand>,
 }
 impl BotState {
-    pub fn checkpoint(&self) -> HostCheckpoint { HostCheckpoint { pending_once: self.pending_once, native_courier: self.native_courier } }
-    pub fn restore(&mut self, checkpoint: HostCheckpoint) { self.pending_once = checkpoint.pending_once; self.native_courier = checkpoint.native_courier; }
+    pub fn checkpoint(&self) -> HostCheckpoint {
+        HostCheckpoint {
+            pending_once: self.pending_once,
+            native_courier: self.native_courier,
+        }
+    }
+    pub fn restore(&mut self, checkpoint: HostCheckpoint) {
+        self.pending_once = checkpoint.pending_once;
+        self.native_courier = checkpoint.native_courier;
+    }
 }
 
 pub(crate) struct State {
@@ -465,7 +477,11 @@ impl State {
             self.bots[index].pending_once = None;
         }
         let index = self.bot_index();
-        if order.unit.is_some_and(|unit| self.bots[index].native_courier.is_some_and(|command| command.unit == unit)) {
+        if order.unit.is_some_and(|unit| {
+            self.bots[index]
+                .native_courier
+                .is_some_and(|command| command.unit == unit)
+        }) {
             self.bots[index].native_courier = None;
         }
         self.orders.push(order);
