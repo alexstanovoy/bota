@@ -1979,3 +1979,350 @@ fn two_battle_furies_quell_as_one_and_a_quelling_blade_adds() {
         assert_eq!(got, quell, "{items:?}");
     }
 }
+
+/// Seat `slot`'s courier, walked by a validated order of its seat to `offset` from `of` and left
+/// standing there.
+fn courier_beside(world: &mut World, slot: u8, of: Entity, offset: Vec2) -> Entity {
+    let courier = world.seats[usize::from(slot)].courier.expect("a courier");
+    let at = world.pos(of).expect("standing") + offset;
+    let walk = unit_command(
+        world,
+        slot,
+        Some(wire_id(courier)),
+        Order::Move {
+            target: bota_proto::Target::Pos(at),
+        },
+    );
+    world.advance_trusted(&[walk]);
+    for _ in 0..rules::TICKS_PER_SECOND * 90 {
+        world.step();
+        if world
+            .pos(courier)
+            .is_some_and(|pos| pos.within(at, rules::units(40)))
+        {
+            let stand = unit_command(
+                world,
+                slot,
+                Some(wire_id(courier)),
+                Order::Move {
+                    target: bota_proto::Target::None,
+                },
+            );
+            world.advance_trusted(&[stand]);
+            return courier;
+        }
+    }
+    panic!("the courier never arrived");
+}
+
+/// A courier is spell immune, and Chain Lightning's bolt does not go through spell immunity (its
+/// script names no SpellImmunityType): a Shadow Fiend's swings at an enemy courier, an enemy hero
+/// beside it, roll no Chain Lightning and strike nobody with a bolt. SECONDARY-SOURCED (Liquipedia,
+/// Courier: "Couriers are spell immune", "Most abilities do not work on couriers"); on the release
+/// checklist.
+#[test]
+fn maelstrom_goes_off_on_no_swing_at_a_spell_immune_courier() {
+    let (mut world, hero, enemy) = duel(
+        HeroId::SHADOW_FIEND,
+        &[ItemId::MAELSTROM],
+        HeroId::PUDGE,
+        Vec2::from_ints(550, 0),
+    );
+    let courier = courier_beside(&mut world, 1, hero, Vec2::from_ints(350, 0));
+    assert!(world.stats.get(courier).expect("derived").spell_immune);
+    let attacks = attack_for_ticks(&mut world, hero, courier, rules::TICKS_PER_SECOND * 6);
+    assert!(!attacks.launched.is_empty(), "the courier was attacked");
+    let place = item_place(slot_holding(&world, hero, ItemId::MAELSTROM));
+    assert!(
+        !rolled(&world, hero, place),
+        "Chain Lightning rolled at the courier"
+    );
+    let maelstrom = Some(Inflictor::Item(ItemId::MAELSTROM));
+    assert!(attacks.blows.iter().all(|blow| blow.inflictor != maelstrom));
+    assert!(world.alive(enemy));
+}
+
+/// A bolt leaps onto no courier (a chain leaps onto no unit of fixed health, the neutrals' rule): an
+/// enemy courier nearer the struck than the next enemy hero is passed over, and the hero is struck.
+#[test]
+fn chain_lightning_leaps_past_a_spell_immune_courier() {
+    let (mut world, hero, enemy) = duel(
+        HeroId::PUDGE,
+        &[ItemId::MAELSTROM],
+        HeroId::PUDGE,
+        Vec2::from_ints(150, 0),
+    );
+    let next = foe(&mut world, hero, HeroId::PUDGE, Vec2::from_ints(550, 0));
+    let courier = courier_beside(&mut world, 1, hero, Vec2::from_ints(300, 100));
+    let attacks = attack_until(&mut world, hero, enemy, 12);
+    let maelstrom = Some(Inflictor::Item(ItemId::MAELSTROM));
+    let struck = |unit| {
+        attacks
+            .blows
+            .iter()
+            .any(|blow| blow.target == unit && blow.inflictor == maelstrom)
+    };
+    assert!(struck(next), "a bolt leapt on");
+    assert!(!struck(courier), "a bolt leapt onto the courier");
+    assert!(attacks.blows.iter().all(|blow| blow.target != courier));
+}
+
+/// `by` attacks `on` by a validated order for `ticks` ticks, whatever lands, and stands as soon as
+/// `on` has fallen: it swings at nothing else.
+fn attack_for_ticks(world: &mut World, by: Entity, on: Entity, ticks: u32) -> Attacks {
+    let attacker = world.owner.get(by).expect("a seat's unit").0;
+    let order = Order::Attack {
+        target: bota_proto::Target::Unit(wire_id(on)),
+    };
+    let command = unit_command(world, attacker, None, order);
+    let mut events = world.advance_trusted(&[command]);
+    let mut attacks = Attacks {
+        launched: Vec::new(),
+        blows: Vec::new(),
+    };
+    for _ in 0..ticks {
+        let tick = world.tick;
+        for event in std::mem::take(&mut events) {
+            match event.kind() {
+                EventKind::AttackLaunched { attacker, .. } if attacker == wire_id(by) => {
+                    attacks.launched.push(tick);
+                }
+                EventKind::Damaged {
+                    source: Some(source),
+                    target,
+                    amount,
+                    kind,
+                    inflictor,
+                    ..
+                } if source == wire_id(by) => {
+                    if let Some(target) =
+                        world.entities.iter().find(|&unit| wire_id(unit) == target)
+                    {
+                        attacks.blows.push(Blow {
+                            tick,
+                            target,
+                            amount,
+                            kind,
+                            inflictor,
+                        });
+                    }
+                }
+                _ => {}
+            }
+        }
+        if !world.alive(on) {
+            let stand = unit_command(
+                world,
+                attacker,
+                None,
+                Order::Move {
+                    target: bota_proto::Target::None,
+                },
+            );
+            world.advance_trusted(&[stand]);
+            return attacks;
+        }
+        events = world.step();
+    }
+    attacks
+}
+
+/// Cleave and Splitshot pass couriers over (Liquipedia, Courier: Battle Fury's Cleave "can't
+/// affect courier"; Specialist's Array: no couriers among its targets): an enemy courier in the
+/// cleave's trapezoid and in Splitshot's reach takes nothing while its owner's hero is struck.
+#[test]
+fn cleave_and_splitshot_pass_couriers_over() {
+    for (hero, item, gap, beside) in [
+        (
+            HeroId::PUDGE,
+            ItemId::BATTLE_FURY,
+            150,
+            Vec2::from_ints(350, 0),
+        ),
+        (
+            HeroId::SHADOW_FIEND,
+            ItemId::SPECIALISTS_ARRAY,
+            350,
+            Vec2::from_ints(400, 100),
+        ),
+    ] {
+        let (mut world, unit, enemy) = duel(hero, &[item], HeroId::PUDGE, Vec2::from_ints(gap, 0));
+        let courier = courier_beside(&mut world, 1, unit, beside);
+        let attacks = attack_until(&mut world, unit, enemy, 12);
+        assert!(
+            attacks.blows.iter().all(|blow| blow.target != courier),
+            "{item:?}"
+        );
+        let place = item_place(slot_holding(&world, unit, item));
+        if item == ItemId::SPECIALISTS_ARRAY {
+            assert!(
+                rolled(&world, unit, place),
+                "Splitshot rolled: the pass-over is not vacuous"
+            );
+        }
+    }
+}
+
+/// Chain Lightning's own wait outlasts a refresh: Dota's `-refresh` readies items and abilities,
+/// and the bolt's timer is neither (a Maelstrom shows no cooldown).
+#[test]
+fn a_refresh_leaves_chain_lightnings_wait_as_it_was() {
+    let (mut world, hero, enemy) = duel(
+        HeroId::PUDGE,
+        &[ItemId::MAELSTROM],
+        HeroId::PUDGE,
+        Vec2::from_ints(150, 0),
+    );
+    let place = usize::from(item_place(slot_holding(&world, hero, ItemId::MAELSTROM)));
+    let wait_of = |world: &World| {
+        let roll = world
+            .crit
+            .get(hero.index().0 as usize)
+            .and_then(Option::as_ref)
+            .and_then(|rolls| rolls.sources().get(place))
+            .and_then(Option::as_ref)?;
+        (world.tick..world.tick + 30).find(|&at| roll.ready(at))
+    };
+    attack_click(&mut world, enemy);
+    for _ in 0..rules::TICKS_PER_SECOND * 60 {
+        world.step();
+        let Some(until) = wait_of(&world).filter(|&until| until > world.tick + 2) else {
+            continue;
+        };
+        seat_cheat(&mut world, 0, Cheat::Refresh);
+        assert_eq!(wait_of(&world), Some(until), "the refresh moved the wait");
+        return;
+    }
+    panic!("no bolt in a minute");
+}
+
+/// A damage block answers to a blow's category and kind, never to who or what dealt it: a Vanguard
+/// carrier blocks a physical cleave on its run, and neither a plain physical blow nor a magical
+/// cleave (ours: blows laid on the queue with no item named, so no item can stand for the
+/// category).
+#[test]
+fn a_damage_block_answers_to_a_physical_cleave_and_nothing_else_that_is_not_an_attack() {
+    for (category, kind, blocks) in [
+        (crate::game::Category::Plain, DamageKind::Physical, false),
+        (crate::game::Category::Cleave, DamageKind::Magical, false),
+        (crate::game::Category::Cleave, DamageKind::Physical, true),
+    ] {
+        let (mut world, hero, enemy) =
+            duel(HeroId::PUDGE, &[], HeroId::PUDGE, Vec2::from_ints(150, 0));
+        seat_cheat(
+            &mut world,
+            1,
+            Cheat::Item {
+                item: ItemId::VANGUARD,
+            },
+        );
+        let mut run = Prd::new(&world, enemy, 128, C60);
+        let mut blocked = 0;
+        for _ in 0..6 {
+            world.push_hit(Some(hero), enemy, 100, kind, None);
+            world.hits.back_mut().expect("a blow queued").category = category;
+            let block = blocks && run.next();
+            blocked += usize::from(block);
+            let expected = match kind {
+                DamageKind::Physical => physical_on(&world, enemy, if block { 50 } else { 100 }),
+                _ => magical_on(&world, enemy, 100),
+            };
+            let took: Vec<i32> = world
+                .step()
+                .iter()
+                .filter_map(|event| match event.kind() {
+                    EventKind::Damaged {
+                        source: Some(source),
+                        target,
+                        amount,
+                        ..
+                    } if source == wire_id(hero) && target == wire_id(enemy) => Some(amount),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(took, vec![expected], "{category:?} {kind:?}");
+        }
+        assert_eq!(blocked > 0, blocks, "{category:?} {kind:?}");
+    }
+}
+
+/// Quell counts each kind once, for melee and ranged carriers alike: two Quelling Blades 8 / 4,
+/// two Battle Furies 10 / 5, one of each 18 / 9 (`damage_bonus`, `damage_bonus_ranged`,
+/// `quelling_bonus`, `quelling_bonus_ranged`).
+#[test]
+fn quell_counts_each_kind_once_for_melee_and_ranged_carriers() {
+    for (hero, qb, bf) in [(HeroId::PUDGE, 8, 10), (HeroId::SHADOW_FIEND, 4, 5)] {
+        for (items, quell) in [
+            ([ItemId::QUELLING_BLADE, ItemId::QUELLING_BLADE], qb),
+            ([ItemId::BATTLE_FURY, ItemId::BATTLE_FURY], bf),
+            ([ItemId::QUELLING_BLADE, ItemId::BATTLE_FURY], qb + bf),
+        ] {
+            let (world, unit, _) = duel(hero, &items, HeroId::PUDGE, Vec2::from_ints(300, 0));
+            let got = world.stats.get(unit).expect("derived").damage_to_creeps;
+            assert_eq!(got, quell, "{hero:?} {items:?}");
+        }
+    }
+}
+
+/// Splitshot never goes off on a deny: an allied lane creep (`-createcreeps`), worn down by the
+/// enemy player's attacks until it may be denied, is denied by a Shadow Fiend with a Specialist's
+/// Array through a validated attack order, and the Array rolls nothing.
+#[test]
+fn specialists_array_rolls_nothing_on_a_deny() {
+    let (mut world, hero, enemy) = duel(
+        HeroId::SHADOW_FIEND,
+        &[ItemId::SPECIALISTS_ARRAY],
+        HeroId::SHADOW_FIEND,
+        Vec2::from_ints(600, 0),
+    );
+    let at = world.pos(hero).expect("standing") + Vec2::from_ints(300, 0);
+    seat_cheat(&mut world, 0, Cheat::CreateCreeps { enemy: false, at });
+    let creep = world
+        .entities
+        .iter()
+        .filter(|&unit| {
+            world.team.get(unit) == Some(&Team::Radiant)
+                && world
+                    .kind
+                    .get(unit)
+                    .is_some_and(|kind| bota_core::kind_def(*kind).lane_creep)
+        })
+        .min_by_key(|&unit| {
+            world
+                .pos(unit)
+                .map_or(i64::MAX, |pos| pos.distance_squared(at))
+        })
+        .expect("an allied lane creep");
+    let hurt = seat_command(
+        &world,
+        1,
+        Order::Attack {
+            target: bota_proto::Target::Unit(wire_id(creep)),
+        },
+    );
+    world.advance_trusted(&[hurt]);
+    let deniable = (0..rules::TICKS_PER_SECOND * 10).any(|_| {
+        world.step();
+        world.deniable(creep)
+    });
+    assert!(
+        deniable && world.alive(creep),
+        "the enemy's swings leave a deniable creep"
+    );
+    let stop = seat_command(
+        &world,
+        1,
+        Order::Move {
+            target: bota_proto::Target::None,
+        },
+    );
+    world.advance_trusted(&[stop]);
+    let attacks = attack_for_ticks(&mut world, hero, creep, rules::TICKS_PER_SECOND * 6);
+    assert!(
+        attacks.blows.iter().any(|blow| blow.target == creep),
+        "the deny landed"
+    );
+    let place = item_place(slot_holding(&world, hero, ItemId::SPECIALISTS_ARRAY));
+    assert!(!rolled(&world, hero, place), "Splitshot rolled on a deny");
+    assert!(world.alive(enemy));
+}

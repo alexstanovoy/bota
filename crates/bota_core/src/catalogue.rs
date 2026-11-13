@@ -404,6 +404,7 @@ impl Fnv {
                     radius,
                     delay_ms,
                     wait_ms,
+                    pierces_immunity,
                 } => fnv
                     .u64(4)
                     .int(chance_pct as i64)
@@ -411,7 +412,8 @@ impl Fnv {
                     .u64(strikes as u64)
                     .int(radius as i64)
                     .int(delay_ms as i64)
-                    .int(wait_ms as i64),
+                    .int(wait_ms as i64)
+                    .flag(pierces_immunity),
                 Strike::Split {
                     chance_pct,
                     count,

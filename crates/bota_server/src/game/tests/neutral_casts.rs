@@ -523,6 +523,47 @@ fn the_stormcrafter_chains_lightning_off_a_weakened_attacker() {
     assert!(health_of(&world, second) < other, "and then it leaps");
 }
 
+/// A neutral's Chain Lightning leaps on after its caster falls (its chain outlives its source, as
+/// it always did; an item's stops with its wielder): the stormcrafter is killed (a lethal blow
+/// laid on the queue) after its cast, another of the camp keeping the leap in sight, and the
+/// bystander is still struck.
+#[test]
+fn the_stormcrafters_lightning_leaps_on_after_it_falls() {
+    let mut world = day();
+    let harpy = world.spawn_neutral(NeutralKind::HarpyStorm, CAMP, 1, 0);
+    let first = hero_at(&mut world, CAMP + Vec2::from_ints(250, 0));
+    let second = bystander(&mut world, CAMP + Vec2::from_ints(700, 0));
+    world.set_order(
+        first,
+        UnitOrder::Attack {
+            target: harpy,
+            last_seen: CAMP,
+        },
+    );
+    world.settle();
+    set_health_pct(&mut world, first, 20);
+    rouse(&mut world, harpy, first);
+    assert!(until_cast(
+        &mut world,
+        harpy,
+        NeutralAbility::ChainLightning,
+        120
+    ));
+    let watcher = world.spawn_neutral(
+        NeutralKind::HarpyStorm,
+        CAMP + Vec2::from_ints(500, 300),
+        1,
+        0,
+    );
+    world.set_order(watcher, UnitOrder::Stand);
+    let other = health_of(&world, second);
+    world.push_hit(None, harpy, 1_000_000, DamageKind::Pure, None);
+    world.step();
+    assert!(!world.alive(harpy));
+    run(&mut world, 12);
+    assert!(health_of(&world, second) < other, "the lightning leapt on");
+}
+
 #[test]
 fn the_troll_ensnares_a_hero_when_heroes_of_both_sides_are_near() {
     let mut world = day();

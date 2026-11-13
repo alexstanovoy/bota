@@ -1347,6 +1347,8 @@ const MAELSTROM_CHAIN: Strike = Strike::Chain {
     radius: int(&ITEM_MAELSTROM, "chain_radius"),
     delay_ms: ITEM_MAELSTROM.first("chain_delay").0,
     wait_ms: ITEM_MAELSTROM.first("chain_cooldown").0,
+    // Maelstrom's script names no SpellImmunityType: its bolt does not go through spell immunity.
+    pierces_immunity: matches!(ITEM_MAELSTROM.immunity, Immunity::Pierced),
 };
 
 /// What a Specialist's Array carries besides its Splitshot.

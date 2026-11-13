@@ -354,6 +354,10 @@ pub enum Strike {
         radius: i32,
         delay_ms: i32,
         wait_ms: i32,
+        /// Whether its bolt goes through spell immunity: the item's `SpellImmunityType`. One that
+        /// does not goes off on no swing at a spell-immune target (a courier). Its leaps take no
+        /// courier either way: a chain leaps onto no unit of fixed health.
+        pierces_immunity: bool,
     },
     /// A `chance_pct` chance, rolled at the attack point, that the swing throws missiles at up
     /// to `count` more enemies besides its target, within the attack's range and `range_bonus`

@@ -472,7 +472,8 @@ impl World {
 
     /// The chain lightning a swing at `on` lets loose where it lands: of the chains a unit
     /// carries, the one that deals most, rolled while off its wait, and only at an enemy unit (no
-    /// building, no ward). Its item waits from the roll that hit.
+    /// building, no ward) its bolt reaches (no spell-immune one, for a bolt that does not go
+    /// through spell immunity). Its item waits from the roll that hit.
     fn roll_chain(&mut self, attacker: Entity, on: Entity, sources: &[Source]) -> Option<ItemId> {
         if !self.foes(attacker, on) {
             return None;
@@ -481,11 +482,23 @@ impl World {
             Strike::Chain { damage, .. } => Some(damage),
             _ => None,
         })?;
-        let (Strike::Chain { chance_pct, .. }, Origin::Item { item, .. }) =
-            (source.strike, source.origin)
+        let (
+            Strike::Chain {
+                chance_pct,
+                pierces_immunity,
+                ..
+            },
+            Origin::Item { item, .. },
+        ) = (source.strike, source.origin)
         else {
             return None;
         };
+        // A bolt that spell immunity keeps off goes off on no swing at a spell-immune target (a
+        // courier): nothing is rolled.
+        let immune = self.stats.get(on).is_some_and(|stats| stats.spell_immune);
+        if immune && !pierces_immunity {
+            return None;
+        }
         if !self.strike_ready(attacker, on, source)
             || !self.rolls(attacker, source.origin, chance_pct)
         {
