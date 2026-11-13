@@ -99,10 +99,12 @@ fn run(name: &str, fuel: u64) -> Result<Vec<Value>, luagee::Error> {
 
 #[test]
 fn unit_list_fuel_has_a_fixed_minimum_for_two_received_units() {
-    assert_budget("GetUnitList", 105);
+    assert_budget("GetUnitList", 104);
 }
 
-fn assert_budget(name: &str, minimum: u64) {
+/// `host_work` is the fuel the callback charges above the bare call of a native.
+fn assert_budget(name: &str, host_work: u64) {
+    let minimum = support::bare_native_call_fuel() + host_work;
     let success = run(name, minimum);
     assert!(success.is_ok(), "{name} at {minimum}: {success:?}");
     assert!(
@@ -117,40 +119,40 @@ fn assert_budget(name: &str, minimum: u64) {
 
 #[test]
 fn modifier_readers_charge_their_fixed_minimum_with_two_received_effects() {
-    for (name, minimum) in [
-        ("NumModifiers", 34),
-        ("HasModifier", 36),
-        ("GetModifierByName", 36),
-        ("GetModifierName", 39),
-        ("GetModifierRemainingDuration", 34),
-        ("GetModifierStackCount", 34),
+    for (name, host_work) in [
+        ("NumModifiers", 33),
+        ("HasModifier", 35),
+        ("GetModifierByName", 35),
+        ("GetModifierName", 38),
+        ("GetModifierRemainingDuration", 33),
+        ("GetModifierStackCount", 33),
     ] {
-        assert_budget(name, minimum);
+        assert_budget(name, host_work);
     }
 }
 
 #[test]
 fn constant_work_queries_charge_a_fixed_minimum_for_their_host_work() {
-    for (name, minimum) in [
-        ("GetGameMode", 9),
-        ("GetOpposingTeam", 9),
-        ("Min", 9),
-        ("Max", 9),
-        ("GetLocation", 14),
-        ("GetOrigin", 14),
+    for (name, host_work) in [
+        ("GetGameMode", 8),
+        ("GetOpposingTeam", 8),
+        ("Min", 8),
+        ("Max", 8),
+        ("GetLocation", 13),
+        ("GetOrigin", 13),
     ] {
-        assert_budget(name, minimum);
+        assert_budget(name, host_work);
     }
 }
 
 #[test]
 fn clock_and_script_directory_queries_charge_their_explicit_minimum() {
-    for (name, minimum) in [
-        ("DotaTime", 9),
-        ("GameTime", 9),
-        ("RealTime", 9),
-        ("GetScriptDirectory", 13),
+    for (name, host_work) in [
+        ("DotaTime", 8),
+        ("GameTime", 8),
+        ("RealTime", 8),
+        ("GetScriptDirectory", 12),
     ] {
-        assert_budget(name, minimum);
+        assert_budget(name, host_work);
     }
 }

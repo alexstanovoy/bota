@@ -477,9 +477,10 @@ fn every_team_hook_is_attempted_after_another_team_hook_errors() {
 }
 
 #[test]
-fn lane_getters_require_exactly_three_fuel_with_a_two_fuel_read_charge() {
+fn lane_getters_require_exactly_the_bare_call_and_a_two_fuel_read_charge() {
+    let call = support::bare_native_call_fuel();
     for name in ["GetPushLaneDesire", "GetDefendLaneDesire"] {
-        for budget in [2, 3] {
+        for budget in [call + 1, call + 2] {
             let mut lua = LuaTeam::new(
                 Team::Radiant,
                 &[BotSeat {
@@ -504,12 +505,12 @@ fn lane_getters_require_exactly_three_fuel_with_a_two_fuel_read_charge() {
             let function = lua.lua.global(name).expect("getter");
             lua.lua.begin_tick();
             let result = lua.lua.call(function, &[Value::Number(2.0)]);
-            if budget == 3 {
+            if budget == call + 2 {
                 assert_eq!(result.expect("minimum fuel"), vec![Value::Number(0.5)]);
                 assert_eq!(
                     lua.lua.tick_fuel_left(),
                     0,
-                    "one top-level call fuel plus two read fuel"
+                    "the bare call plus two read fuel"
                 );
             } else {
                 assert!(

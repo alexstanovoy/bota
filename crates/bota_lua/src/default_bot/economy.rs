@@ -176,7 +176,8 @@ mod tests {
             .flatten()
             .find(|item| item.id == ItemId::IRON_BRANCH)
             .expect("owned branch");
-        for budget in [1, 2] {
+        let call = support::bare_native_call_fuel();
+        for budget in [call, call + 1] {
             let mut lua = Lua::new(
                 Limits {
                     fuel_per_tick: budget,
@@ -199,7 +200,7 @@ mod tests {
                 .expect("callback");
             lua.begin_tick();
             let result = lua.call(function, &[]);
-            if budget == 2 {
+            if budget == call + 1 {
                 assert!(result.is_ok());
                 assert_eq!(lua.tick_fuel_left(), 0);
             } else {

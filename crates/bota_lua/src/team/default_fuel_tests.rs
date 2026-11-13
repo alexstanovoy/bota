@@ -29,6 +29,7 @@ fn fixture(budget: u64) -> LuaTeam {
 
 #[test]
 fn native_mode_callbacks_charge_the_documented_work_above_the_bare_call() {
+    let bare = support::bare_native_call_fuel();
     for thinking in [false, true] {
         let probe = fixture(10000);
         let units = probe
@@ -39,8 +40,8 @@ fn native_mode_callbacks_charge_the_documented_work_above_the_bare_call() {
             .expect("snapshot")
             .units
             .len() as u64;
-        let required = 1 + 4 + units * if thinking { 3 } else { 2 };
-        for budget in [2, required - 1, required] {
+        let required = bare + 4 + units * if thinking { 3 } else { 2 };
+        for budget in [bare, required - 1, required] {
             let mut lua = fixture(budget);
             let result = lua.lua.call(
                 lua.default_mode,
@@ -61,6 +62,7 @@ fn native_mode_callbacks_charge_the_documented_work_above_the_bare_call() {
 
 #[test]
 fn native_auxiliary_and_courier_callbacks_charge_their_exact_work() {
+    let bare = support::bare_native_call_fuel();
     for phase in 0..=4 {
         let probe = fixture(10000);
         let state = probe.state.borrow();
@@ -71,15 +73,15 @@ fn native_auxiliary_and_courier_callbacks_charge_their_exact_work() {
         let effects = state.unit(own).expect("hero").effects.len() as u64;
         let slots = bota_proto::limits::INVENTORY_SLOTS as u64;
         let work = match phase {
-            0 => 1 + 8 + units * (book + 3) + book,
-            1 => 1 + 8 + units + book + snapshot.talents.len() as u64 * 8,
-            2 => 1 + 8 + units * (slots + 1) + slots * (effects + 1),
-            3 => 1 + 64 + units * 18,
-            4 => 1 + 16 + units * 4,
+            0 => bare + 8 + units * (book + 3) + book,
+            1 => bare + 8 + units + book + snapshot.talents.len() as u64 * 8,
+            2 => bare + 8 + units * (slots + 1) + slots * (effects + 1),
+            3 => bare + 64 + units * 18,
+            4 => bare + 16 + units * 4,
             _ => unreachable!(),
         };
         drop(state);
-        for budget in [2, work - 1, work] {
+        for budget in [bare, work - 1, work] {
             let mut lua = fixture(budget);
             if phase == 3 {
                 lua.state

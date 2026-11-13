@@ -120,6 +120,30 @@ pub fn fold(
     won
 }
 
+/// The fuel the interpreter takes for the host calling a native that does nothing. The fuel tests pin the host work a
+/// callback charges above this, so that a change of the interpreter's own prices does not move them.
+#[allow(
+    dead_code,
+    reason = "only the tests that pin a callback's host charge need the baseline"
+)]
+pub fn bare_native_call_fuel() -> u64 {
+    let limits = luagee::Limits::DEFAULT;
+    let mut lua = luagee::Lua::new(
+        limits,
+        luagee::Keys {
+            hash: [17, 19],
+            random: 23,
+        },
+    )
+    .expect("vm");
+    let function = lua
+        .function("bare_native", std::rc::Rc::new(|_, _| Ok(0)))
+        .expect("callback");
+    lua.begin_tick();
+    lua.call(function, &[]).expect("bare call");
+    limits.fuel_per_tick - lua.tick_fuel_left()
+}
+
 #[allow(dead_code, reason = "shared real-order encounter fixture")]
 pub fn durable_creep_encounter(
     hero: HeroId,
