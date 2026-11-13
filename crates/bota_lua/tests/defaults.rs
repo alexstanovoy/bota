@@ -14,7 +14,7 @@ fn team(files: &[(&str, &str)]) -> LuaTeam {
 }
 
 fn body(order: &IssuedOrder) -> bool {
-    matches!(order.order, Order::Move { .. } | Order::Attack { .. } | Order::Cast { .. } | Order::Use { .. })
+    order.unit.is_none() && matches!(order.order, Order::Move { .. } | Order::Attack { .. } | Order::Cast { .. } | Order::Use { .. })
 }
 
 fn observation(session: &mut bota_client_core::ClientSession, mut view: bota_proto::WorldView) {

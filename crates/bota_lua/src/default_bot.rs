@@ -4,6 +4,7 @@
 mod auxiliary;
 mod items;
 mod economy;
+mod courier;
 pub(crate) use auxiliary::{AuxiliaryHook, install as install_auxiliary};
 
 use std::rc::Rc;
@@ -26,12 +27,18 @@ pub(crate) fn install(lua: &mut Lua, state: Shared) -> Result<Value, BindingErro
 
 fn context(state: &State) -> Option<(&Snapshot, &UnitView)> {
     let snapshot = state.snapshot.as_ref()?;
-    if snapshot.map.id != bota_core::MAP2_ID || snapshot.players.len() != 2
-        || snapshot.players.iter().any(|player| player.hero != HeroId::SHADOW_FIEND) { return None; }
+    if !supported(snapshot) { return None; }
     let own = state.unit(state.own_id()?)?;
     (own.hp > 0 && own.max_hp > 0 && own.kind == UnitKind::Hero && own.hero == Some(HeroId::SHADOW_FIEND)
         && own.team == state.team && own.owner == Some(state.current_slot)
         && state.player(own.id)?.respawn_left == 0).then_some((snapshot, own))
+}
+
+fn supported(snapshot: &Snapshot) -> bool {
+    snapshot.map.id == bota_core::MAP2_ID && snapshot.players.len() == 2
+        && snapshot.players.iter().all(|player| player.hero == HeroId::SHADOW_FIEND)
+        && snapshot.players.iter().filter(|player| player.team == Team::Radiant).count() == 1
+        && snapshot.players.iter().filter(|player| player.team == Team::Dire).count() == 1
 }
 
 fn callback(vm: &mut Vm, shared: &Shared, mode: &str, thinking: bool) -> Result<usize, LuaError> {

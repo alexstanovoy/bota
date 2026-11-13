@@ -313,25 +313,25 @@ impl LuaTeam {
     }
 
     #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
-    pub(crate) fn once_checkpoint(&self) -> Vec<Option<crate::state::PendingOnce>> {
+    pub(crate) fn host_checkpoint(&self) -> Vec<crate::state::HostCheckpoint> {
         self.state
             .borrow()
             .bots
             .iter()
-            .map(|bot| bot.pending_once)
+            .map(|bot| bot.checkpoint())
             .collect()
     }
 
     #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
-    pub(crate) fn restore_once(&mut self, checkpoint: Vec<Option<crate::state::PendingOnce>>) {
+    pub(crate) fn restore_host(&mut self, checkpoint: Vec<crate::state::HostCheckpoint>) {
         let mut state = self.state.borrow_mut();
         assert_eq!(
             checkpoint.len(),
             state.bots.len(),
             "native acknowledgements belong to this team"
         );
-        for (bot, pending) in state.bots.iter_mut().zip(checkpoint) {
-            bot.pending_once = pending;
+        for (bot, checkpoint) in state.bots.iter_mut().zip(checkpoint) {
+            bot.restore(checkpoint);
         }
     }
 
@@ -355,7 +355,8 @@ impl LuaTeam {
         let seats = self.state.borrow().seats.clone();
         self.state.borrow_mut().current_slot = seats[0].slot;
         self.state.borrow_mut().orders.clear();
-        let first_once = self.complete_once(0);
+        let _ = self.complete_once(0);
+        let first_host = self.state.borrow().bots[0].checkpoint();
         let first_purchases = self.state.borrow().purchases.clone();
         let mut team_error = self.run_team().err();
         let mut result = TeamTurn::default();
@@ -364,10 +365,11 @@ impl LuaTeam {
             if index != 0 {
                 self.state.borrow_mut().orders.clear();
             }
-            let once_before = if index == 0 {
-                first_once
+            let host_before = if index == 0 {
+                first_host
             } else {
-                self.complete_once(index)
+                let _ = self.complete_once(index);
+                self.state.borrow().bots[index].checkpoint()
             };
             let purchases_before = if index == 0 {
                 first_purchases.clone()
@@ -383,7 +385,7 @@ impl LuaTeam {
             };
             let orders = if let Err(error) = ended {
                 self.state.borrow_mut().orders.clear();
-                self.state.borrow_mut().bots[index].pending_once = once_before;
+                self.state.borrow_mut().bots[index].restore(host_before);
                 self.state.borrow_mut().purchases = purchases_before;
                 result
                     .failures
@@ -633,7 +635,7 @@ impl LuaTeam {
         for (hook, default) in [
             ("AbilityUsageThink", Some(crate::default_bot::AuxiliaryHook::Ability)),
             ("ItemUsageThink", None),
-            ("CourierUsageThink", None),
+            ("CourierUsageThink", Some(crate::default_bot::AuxiliaryHook::Courier)),
             ("BuybackUsageThink", None),
             ("AbilityLevelUpThink", Some(crate::default_bot::AuxiliaryHook::Level)),
         ] {

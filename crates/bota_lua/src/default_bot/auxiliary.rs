@@ -6,13 +6,14 @@ use crate::{BindingError, api::Shared, state::{Snapshot, State}};
 use super::{context, distance, enemy, mode_is};
 
 #[derive(Clone, Copy)]
-pub(crate) enum AuxiliaryHook { Ability, Level, Item, Purchase }
+pub(crate) enum AuxiliaryHook { Ability, Level, Item, Purchase, Courier }
 
 pub(crate) fn install(lua: &mut Lua, shared: Shared) -> Result<Value, BindingError> {
     Ok(lua.function("default_auxiliary", Rc::new(move |vm, args| {
         let phase = vm.check_number(args, 0)?;
-        if phase.fract() != 0.0 || !(0.0..=3.0).contains(&phase) { return Err(vm.arg_error(args, 0, "known auxiliary hook expected")); }
+        if phase.fract() != 0.0 || !(0.0..=4.0).contains(&phase) { return Err(vm.arg_error(args, 0, "known auxiliary hook expected")); }
         if phase == 3.0 { return super::economy::purchase(vm, &shared); }
+        if phase == 4.0 { return super::courier::run(vm, &shared); }
         let mut state = shared.borrow_mut();
         let Some((snapshot, own)) = context(&state) else { return Ok(0); };
         let book = state.ability_book(own.id).unwrap_or(&[]);

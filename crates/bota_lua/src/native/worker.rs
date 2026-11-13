@@ -317,9 +317,9 @@ fn run_with_reply_hook(
         if let Some(checkpoint) = previous.take()
             && request.previous_discarded
         {
-            lua.restore_once(checkpoint);
+            lua.restore_host(checkpoint);
         }
-        let checkpoint = lua.once_checkpoint();
+        let checkpoint = lua.host_checkpoint();
         let (reply, panicked) =
             match catch_unwind(AssertUnwindSafe(|| lua.think_snapshot(request.snapshot))) {
                 Ok(result) => (

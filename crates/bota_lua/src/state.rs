@@ -251,6 +251,21 @@ pub(crate) struct BotState {
     pub mode: u8,
     pub desire: f64,
     pub pending_once: Option<PendingOnce>,
+    pub native_courier: Option<NativeCourierCommand>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) struct NativeCourierCommand { pub unit: EntityId, pub ability: bota_proto::AbilityId, pub issued_at: u32 }
+
+/// Host action continuations rewind when their outbox was not accepted; Lua-visible state does not.
+#[derive(Clone, Copy)]
+pub(crate) struct HostCheckpoint {
+    pending_once: Option<PendingOnce>,
+    native_courier: Option<NativeCourierCommand>,
+}
+impl BotState {
+    pub fn checkpoint(&self) -> HostCheckpoint { HostCheckpoint { pending_once: self.pending_once, native_courier: self.native_courier } }
+    pub fn restore(&mut self, checkpoint: HostCheckpoint) { self.pending_once = checkpoint.pending_once; self.native_courier = checkpoint.native_courier; }
 }
 
 pub(crate) struct State {
@@ -448,6 +463,10 @@ impl State {
         if order.unit.is_none() && !order.queue && self.breaks_once(order.order) {
             let index = self.bot_index();
             self.bots[index].pending_once = None;
+        }
+        let index = self.bot_index();
+        if order.unit.is_some_and(|unit| self.bots[index].native_courier.is_some_and(|command| command.unit == unit)) {
+            self.bots[index].native_courier = None;
         }
         self.orders.push(order);
         Ok(())

@@ -41,7 +41,7 @@ fn explicit_empty_auxiliary_hooks_remain_authoritative() {
     let mut lua = team(Some(b"function AbilityUsageThink() end function AbilityLevelUpThink() end"));
     let turn = lua.think(&sessions[0]).expect("turn");
     assert!(turn.failures.is_empty(), "{:?}", turn.failures);
-    assert!(!turn.bots[0].orders.iter().any(|order| matches!(order.order, Order::Learn { .. } | Order::Cast { .. })));
+    assert!(!turn.bots[0].orders.iter().any(|order| order.unit.is_none() && matches!(order.order, Order::Learn { .. } | Order::Cast { .. })));
 }
 
 #[test]

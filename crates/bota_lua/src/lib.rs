@@ -2,6 +2,9 @@
 
 #![forbid(unsafe_code)]
 
+#[cfg(test)]
+extern crate self as bota_lua;
+
 mod api;
 mod default_bot;
 mod handles;
