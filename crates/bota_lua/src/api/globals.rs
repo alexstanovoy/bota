@@ -58,6 +58,7 @@ pub(super) fn install(lua: &mut Lua, state: Shared, _vectors: Vectors) -> Result
                 let mut state = capture.borrow_mut();
                 let value = match name {
                     "DotaTime" | "GameTime" | "RealTime" => {
+                        vm.charge_fuel(super::CALL_FUEL)?;
                         let snapshot = state
                             .snapshot
                             .as_ref()

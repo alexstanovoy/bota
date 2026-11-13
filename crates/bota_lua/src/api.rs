@@ -128,6 +128,7 @@ pub(crate) fn install(lua: &mut Lua, state: Shared, vectors: Vectors) -> Result<
         lua,
         "GetScriptDirectory",
         Rc::new(|vm, _| {
+            vm.charge_fuel(CALL_FUEL)?;
             let value = vm.new_string(b"bots")?;
             vm.results(&[value])
         }),

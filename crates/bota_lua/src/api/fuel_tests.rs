@@ -63,7 +63,17 @@ fn run(name: &str, fuel: u64) -> Result<Vec<Value>, luagee::Error> {
     let function = if name == "GetUnitList" {
         args.push(Value::Number(0.0));
         lua.global(name)?
-    } else if name == "GetGameMode" || name == "GetOpposingTeam" || name == "Min" || name == "Max" {
+    } else if matches!(
+        name,
+        "GetGameMode"
+            | "GetOpposingTeam"
+            | "Min"
+            | "Max"
+            | "DotaTime"
+            | "GameTime"
+            | "RealTime"
+            | "GetScriptDirectory"
+    ) {
         if name == "Min" || name == "Max" {
             args.extend([Value::Number(1.0), Value::Number(2.0)]);
         }
@@ -128,6 +138,18 @@ fn constant_work_queries_charge_a_fixed_minimum_for_their_host_work() {
         ("Max", 9),
         ("GetLocation", 14),
         ("GetOrigin", 14),
+    ] {
+        assert_budget(name, minimum);
+    }
+}
+
+#[test]
+fn clock_and_script_directory_queries_charge_their_explicit_minimum() {
+    for (name, minimum) in [
+        ("DotaTime", 9),
+        ("GameTime", 9),
+        ("RealTime", 9),
+        ("GetScriptDirectory", 13),
     ] {
         assert_budget(name, minimum);
     }
