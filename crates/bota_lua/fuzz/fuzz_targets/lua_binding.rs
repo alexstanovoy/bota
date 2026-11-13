@@ -77,11 +77,12 @@ fuzz_target!(|data: &[u8]| {
     } else {
         structured(data)
     };
-    let kind = if data[31] & 128 == 0 { ScriptKind::Takeover } else { ScriptKind::Mode(1) };
-    if lua
-        .add_script(SlotId(0), kind, "fuzz", &source)
-        .is_err()
-    {
+    let kind = if data[31] & 128 == 0 {
+        ScriptKind::Takeover
+    } else {
+        ScriptKind::Mode(1)
+    };
+    if lua.add_script(SlotId(0), kind, "fuzz", &source).is_err() {
         return;
     }
     lua.set_gc_stress(match data[1] % 3 {
