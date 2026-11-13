@@ -158,6 +158,7 @@ fn team_players(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, 
 }
 
 fn opposing_team(context: &ApiContext, vm: &mut Vm, _args: Args) -> Result<usize, LuaError> {
+    vm.charge_fuel(super::CALL_FUEL)?;
     let team = context.state.borrow().team;
     let other = match team {
         Team::Radiant => Team::Dire,

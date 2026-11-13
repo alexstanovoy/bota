@@ -245,7 +245,8 @@ recover without requiring a launch event or a gap-free stream of snapshots.
 
 ## Compatibility and input behavior
 
-Numeric arguments retain Lua's C API `checknumber` coercion: numeric strings such
+Unless a family specifies a stricter type requirement, numeric arguments retain
+Lua's C API `checknumber` coercion: numeric strings such
 as `GetHeroLevel("0")`, `GetBarracks(2,"0")` and `Min("1",2)` are accepted. Finite,
 integer and range checks still apply after conversion; NaN, infinities and
 out-of-domain values raise the same errors as their numeric equivalents.
@@ -257,6 +258,7 @@ engine player 5; scripts must use the engine id. Configured seats and received
 rosters with more than five players on either side are rejected explicitly rather
 than dropping unmappable players from roster results.
 
-Every API callback registered as a global or member pays eight fuel units for
-the host boundary crossing, including constant-work callbacks. Scans, allocations
-and retained handles continue to pay their additional charges before work.
+Constant-work utility and position queries explicitly charge eight fuel units
+for their host work. Families that already charge for reads or scans retain their
+own cost models; registration adds no implicit surcharge. Allocations and
+retained handles continue to pay their additional charges before work.

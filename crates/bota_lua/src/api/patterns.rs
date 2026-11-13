@@ -12,6 +12,7 @@ pub(super) fn install(lua: &mut Lua, context: &ApiContext) -> Result<(), Binding
 }
 
 fn get_location(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaError> {
+    vm.charge_fuel(super::CALL_FUEL)?;
     let id = context.receiver(vm, args)?;
     let position = context
         .state
@@ -24,12 +25,14 @@ fn get_location(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, 
 }
 
 fn get_bot(context: &ApiContext, vm: &mut Vm, _args: Args) -> Result<usize, LuaError> {
+    vm.charge_fuel(super::CALL_FUEL)?;
     let id = context.state.borrow().own_id();
     let value = context.unit_value(vm, id)?;
     vm.results(&[value])
 }
 
 fn get_health(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaError> {
+    vm.charge_fuel(super::CALL_FUEL)?;
     let id = context.receiver(vm, args)?;
     let health = {
         let state = context.state.borrow();

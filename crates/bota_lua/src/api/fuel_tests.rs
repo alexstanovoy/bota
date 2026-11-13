@@ -89,7 +89,7 @@ fn run(name: &str, fuel: u64) -> Result<Vec<Value>, luagee::Error> {
 
 #[test]
 fn unit_list_fuel_has_a_fixed_minimum_for_two_received_units() {
-    assert_budget("GetUnitList", 113);
+    assert_budget("GetUnitList", 105);
 }
 
 fn assert_budget(name: &str, minimum: u64) {
@@ -108,19 +108,19 @@ fn assert_budget(name: &str, minimum: u64) {
 #[test]
 fn modifier_readers_charge_their_fixed_minimum_with_two_received_effects() {
     for (name, minimum) in [
-        ("NumModifiers", 42),
-        ("HasModifier", 44),
-        ("GetModifierByName", 44),
-        ("GetModifierName", 47),
-        ("GetModifierRemainingDuration", 42),
-        ("GetModifierStackCount", 42),
+        ("NumModifiers", 34),
+        ("HasModifier", 36),
+        ("GetModifierByName", 36),
+        ("GetModifierName", 39),
+        ("GetModifierRemainingDuration", 34),
+        ("GetModifierStackCount", 34),
     ] {
         assert_budget(name, minimum);
     }
 }
 
 #[test]
-fn constant_work_calls_charge_a_fixed_minimum_at_the_host_boundary() {
+fn constant_work_queries_charge_a_fixed_minimum_for_their_host_work() {
     for (name, minimum) in [
         ("GetGameMode", 9),
         ("GetOpposingTeam", 9),

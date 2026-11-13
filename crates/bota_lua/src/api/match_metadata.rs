@@ -10,6 +10,7 @@ pub(super) fn install(lua: &mut Lua, context: &ApiContext) -> Result<(), Binding
 }
 
 fn game_mode(context: &ApiContext, vm: &mut Vm, _args: Args) -> Result<usize, LuaError> {
+    vm.charge_fuel(super::CALL_FUEL)?;
     let state = context.state.borrow();
     let snapshot = state
         .snapshot
@@ -22,6 +23,7 @@ fn game_mode(context: &ApiContext, vm: &mut Vm, _args: Args) -> Result<usize, Lu
 }
 
 fn assigned_lane(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaError> {
+    vm.charge_fuel(super::CALL_FUEL)?;
     let id = context.receiver(vm, args)?;
     let state = context.state.borrow();
     let snapshot = state

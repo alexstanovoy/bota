@@ -18,12 +18,14 @@ fn operand(vm: &mut Vm, args: Args, index: usize) -> Result<f64, LuaError> {
 }
 
 fn minimum(_context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaError> {
+    vm.charge_fuel(super::CALL_FUEL)?;
     let left = operand(vm, args, 0)?;
     let right = operand(vm, args, 1)?;
     vm.results(&[Value::Number(if left < right { left } else { right })])
 }
 
 fn maximum(_context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaError> {
+    vm.charge_fuel(super::CALL_FUEL)?;
     let left = operand(vm, args, 0)?;
     let right = operand(vm, args, 1)?;
     vm.results(&[Value::Number(if left > right { left } else { right })])
