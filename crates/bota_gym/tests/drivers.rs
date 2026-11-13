@@ -1,5 +1,6 @@
 //! The drivers' contracts under misuse and failure, on episodes that simulate nothing.
 
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::channel;
 use std::time::Duration;
@@ -291,26 +292,149 @@ fn an_ordinary_panic_payload_is_freed_before_the_driver_hears_of_it() {
     });
 }
 
+/// A panic payload whose destructor panics again, with the data it holds as that panic's
+/// payload: an ordinary one.
+struct Twice(Option<Arc<Vec<u8>>>);
+
+impl Drop for Twice {
+    fn drop(&mut self) {
+        std::panic::panic_any(self.0.take());
+    }
+}
+
+/// A panic payload whose destructor panics with a [`Twice`]: its second payload panics too.
+struct Thrice(Option<Arc<Vec<u8>>>);
+
+impl Drop for Thrice {
+    fn drop(&mut self) {
+        std::panic::panic_any(Twice(self.0.take()));
+    }
+}
+
+/// Which payload a [`Relay`] step panics with.
+enum Payload {
+    Twice(Arc<Vec<u8>>),
+    Thrice(Arc<Vec<u8>>),
+}
+
+/// A game whose every step panics; the shared counter counts the steps that ran.
+struct Relay(GameId);
+
+impl Episode for Relay {
+    type Shared = AtomicUsize;
+    type Plan = ();
+    type Action = Payload;
+    type Finished = ();
+    type Error = Error;
+
+    fn start(_: &AtomicUsize, id: GameId, (): ()) -> Result<Self, Error> {
+        Ok(Self(id))
+    }
+
+    fn step(&mut self, ran: &AtomicUsize, payload: Payload) -> Result<Option<()>, Error> {
+        ran.fetch_add(1, Ordering::Relaxed);
+        match payload {
+            Payload::Twice(data) => std::panic::panic_any(Twice(Some(data))),
+            Payload::Thrice(data) => std::panic::panic_any(Thrice(Some(data))),
+        }
+    }
+
+    fn game(&self) -> GameId {
+        self.0
+    }
+}
+
+/// Data a payload carries, and witnesses of whether it still lives.
+type Tracked = (Vec<Arc<Vec<u8>>>, Vec<std::sync::Weak<Vec<u8>>>);
+
+fn megabytes(count: usize) -> Tracked {
+    let data: Vec<_> = (0..count).map(|_| Arc::new(vec![9u8; 1 << 20])).collect();
+    let witnesses = data.iter().map(Arc::downgrade).collect();
+    (data, witnesses)
+}
+
+fn live(witnesses: &[std::sync::Weak<Vec<u8>>]) -> usize {
+    witnesses
+        .iter()
+        .filter(|witness| witness.upgrade().is_some())
+        .count()
+}
+
 #[test]
-fn payloads_that_cannot_be_dropped_are_bounded_and_then_refused() {
+fn a_destructors_ordinary_second_payload_is_dropped_too() {
+    let ran = AtomicUsize::new(0);
+    let (data, witnesses) = megabytes(16);
+    std::thread::scope(|scope| {
+        let workers = Workers::spawn(scope, one_worker(), &ran).expect("workers");
+        let mut env: VecEnv<Relay> =
+            VecEnv::start(workers.clone(), (0..16).collect(), &()).expect("started");
+        let payloads = data.into_iter().map(Payload::Twice);
+        assert_eq!(
+            env.step(payloads, &(), |_, _| {}),
+            Err(Error(GymError::Panicked { position: 0 }))
+        );
+        // Nothing was kept, so the pool still takes jobs.
+        assert!(VecEnv::<Relay>::start(workers, vec![0], &()).is_ok());
+    });
+    assert_eq!(ran.load(Ordering::Relaxed), 16);
+    assert_eq!(live(&witnesses), 0);
+}
+
+#[test]
+fn a_pool_keeps_at_most_its_budget_of_undroppable_payloads_and_runs_no_more_jobs() {
     within_a_minute(|| {
+        let max = bota_gym::workers::MAX_UNDISPOSED_PANICS;
+        let ran = AtomicUsize::new(0);
+        let (data, witnesses) = megabytes(32);
         std::thread::scope(|scope| {
-            let workers = Workers::spawn(scope, one_worker(), &()).expect("workers");
-            for _ in 0..bota_gym::workers::MAX_UNDISPOSED_PANICS {
-                let mut env: VecEnv<Steps> =
-                    VecEnv::start(workers.clone(), vec![0], &100).expect("started");
-                assert_eq!(
-                    env.step([Act::Bomb], &100, |_, _| {}),
-                    Err(Error(GymError::Panicked { position: 0 }))
-                );
-            }
-            let refused = VecEnv::<Steps>::start(workers, vec![0], &100).err();
-            assert_eq!(refused, Some(Error(GymError::Undisposed)));
+            let config = WorkerConfig {
+                queue: 32,
+                ..one_worker()
+            };
+            let workers = Workers::spawn(scope, config, &ran).expect("workers");
+            let mut env: VecEnv<Relay> =
+                VecEnv::start(workers.clone(), (0..32).collect(), &()).expect("started");
+            // Every job is queued while the budget is open; each is answered.
+            let payloads = data.into_iter().map(Payload::Thrice);
             assert_eq!(
-                GymError::Undisposed.to_string(),
-                "the workers kept too many panic payloads that panicked when dropped, and stopped"
+                env.step(payloads, &(), |_, _| {}),
+                Err(Error(GymError::Panicked { position: 0 }))
             );
+            let refused = VecEnv::<Relay>::start(workers, vec![0], &()).err();
+            assert_eq!(refused, Some(Error(GymError::Undisposed)));
         });
+        // One worker: the jobs past the budget never ran, and only the budget's payloads live.
+        assert_eq!(ran.load(Ordering::Relaxed), max);
+        assert_eq!(live(&witnesses), max);
+        assert_eq!(
+            GymError::Undisposed.to_string(),
+            "the workers kept too many panic payloads that panicked when dropped, and stopped"
+        );
+    });
+}
+
+#[test]
+fn several_workers_keep_at_most_the_budget_plus_the_jobs_already_running() {
+    within_a_minute(|| {
+        let (max, threads) = (bota_gym::workers::MAX_UNDISPOSED_PANICS, 4);
+        let ran = AtomicUsize::new(0);
+        let (data, witnesses) = megabytes(64);
+        std::thread::scope(|scope| {
+            let config = WorkerConfig {
+                threads,
+                queue: 64,
+                ..one_worker()
+            };
+            let workers = Workers::spawn(scope, config, &ran).expect("workers");
+            let mut env: VecEnv<Relay> =
+                VecEnv::start(workers, (0..64).collect(), &()).expect("started");
+            let payloads = data.into_iter().map(Payload::Thrice);
+            assert!(env.step(payloads, &(), |_, _| {}).is_err());
+        });
+        // At most the budget, plus one for every other worker already running a job.
+        assert!(ran.load(Ordering::Relaxed) < max + threads);
+        assert!(live(&witnesses) < max + threads);
+        assert!(live(&witnesses) >= max);
     });
 }
 

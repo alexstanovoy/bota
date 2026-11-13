@@ -21,11 +21,12 @@
 //! shared worker, so a step that blocks (on I/O, a lock held elsewhere, another driver) stalls
 //! that worker for everyone. A panic in caller code is caught on the worker and reported as
 //! [`GymError::Panicked`] for that position, after its payload is dropped; the episode is lost
-//! and its driver is spent, while the workers and other drivers carry on. A payload whose own
-//! destructor panics is kept instead (leaked) and counted; after
-//! [`MAX_UNDISPOSED_PANICS`] of those the pool refuses jobs with [`GymError::Undisposed`], so
-//! what it keeps stays bounded. Only a panic during another panic's unwinding (which Rust turns
-//! into an abort) is beyond this.
+//! and its driver is spent, while the workers and other drivers carry on. A payload whose
+//! destructor panics has the payload of that panic dropped too; one more level down, the payload
+//! is kept (leaked) and counted, and after [`MAX_UNDISPOSED_PANICS`] of those the pool answers
+//! every further job with [`GymError::Undisposed`] without running it, so what it keeps stays
+//! bounded. Only a panic during another panic's unwinding (which Rust turns into an abort) is
+//! beyond this.
 
 use std::any::Any;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -39,8 +40,12 @@ use crate::{GameId, GymError};
 pub const MAX_THREADS: usize = 256;
 /// Upper bound on a worker queue.
 pub const MAX_QUEUE: usize = 4096;
-/// Panic payloads whose own destructor panicked that one pool keeps (each is leaked, never
-/// dropped) before it refuses further jobs with [`GymError::Undisposed`].
+/// Panic payloads one pool may keep before it stops: payloads raised by the destructor of a
+/// payload raised by the destructor of a caught panic's payload, which it leaks rather than
+/// drop. Once it kept this many, it runs no further job: every job, queued or submitted later,
+/// is answered with [`GymError::Undisposed`] without running. Jobs already running on other
+/// workers finish, so a pool of `threads` workers keeps at most
+/// `MAX_UNDISPOSED_PANICS + threads - 1` payloads (their sizes are the caller's).
 pub const MAX_UNDISPOSED_PANICS: usize = 8;
 
 /// The caller's code for one game of one slot, run on the [`Workers`].
@@ -116,6 +121,8 @@ pub(crate) enum Failure<Error> {
     Error(Error),
     /// The caller's code panicked; the driver turns this into its error, on its own thread.
     Panicked,
+    /// The pool's budget of kept payloads ran out before this job ran; it never ran.
+    Undisposed,
 }
 
 /// One job's result: the episode (its next game's, when a game ended and a plan was given) and
@@ -224,8 +231,17 @@ fn work<E: Episode>(
             reply: Some(reply),
         };
         // Nothing the caller's code raises escapes the worker: not a panic of the job, not a
-        // panic of dropping what a job left, not one of dropping the panic's payload.
-        if let Err(payload) = catch_unwind(AssertUnwindSafe(|| answer.send(run(job, shared)))) {
+        // panic of dropping what a job left, not one of dropping the panic's payload. Once the
+        // pool kept its budget of payloads, a job is answered without running.
+        let ran = catch_unwind(AssertUnwindSafe(|| {
+            if undisposed.load(Ordering::Relaxed) >= MAX_UNDISPOSED_PANICS {
+                answer.send(Err(Failure::Undisposed));
+                drop(job);
+            } else {
+                answer.send(run(job, shared));
+            }
+        }));
+        if let Err(payload) = ran {
             dispose(payload, undisposed);
         }
         // An answer the job never sent goes now, as a panic.
@@ -234,12 +250,14 @@ fn work<E: Episode>(
 }
 
 /// Drops a caught panic's payload, before its driver hears of the panic. A payload's destructor
-/// is caller code: should it panic too, the payload it raised is kept (leaked, never dropped,
-/// for it could panic again) and counted, and the pool takes no jobs after
-/// [`MAX_UNDISPOSED_PANICS`] of those.
+/// is caller code: should it panic, the payload that panic raised is dropped as well; should
+/// that one's destructor panic too, the third payload is kept (leaked, never dropped, for it
+/// could go on) and counted. See [`MAX_UNDISPOSED_PANICS`].
 fn dispose(payload: Box<dyn Any + Send>, undisposed: &AtomicUsize) {
-    if let Err(again) = catch_unwind(AssertUnwindSafe(|| drop(payload))) {
-        std::mem::forget(again);
+    if let Err(second) = catch_unwind(AssertUnwindSafe(|| drop(payload)))
+        && let Err(third) = catch_unwind(AssertUnwindSafe(|| drop(second)))
+    {
+        std::mem::forget(third);
         undisposed.fetch_add(1, Ordering::Relaxed);
     }
 }
@@ -388,6 +406,7 @@ impl<E: Episode> Round<E> {
         match failure {
             Some((_, Failure::Error(error))) => Err(error),
             Some((position, Failure::Panicked)) => Err(GymError::Panicked { position }.into()),
+            Some((_, Failure::Undisposed)) => Err(GymError::Undisposed.into()),
             None => Ok(()),
         }
     }

@@ -43,8 +43,8 @@ pub enum GymError {
     Poisoned,
     /// The workers stopped before answering.
     Stopped,
-    /// The workers met [`MAX_UNDISPOSED_PANICS`](crate::workers::MAX_UNDISPOSED_PANICS) panic
-    /// payloads that panicked again when dropped, kept them, and take no more jobs.
+    /// The workers kept [`MAX_UNDISPOSED_PANICS`](crate::workers::MAX_UNDISPOSED_PANICS) panic
+    /// payloads they could not drop, and run no more jobs.
     Undisposed,
     /// A counter (game ordinal, random draws) would overflow.
     CounterOverflow,
