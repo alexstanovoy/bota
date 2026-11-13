@@ -142,10 +142,16 @@ fn lane_goal(snapshot: &Snapshot, own: &UnitView) -> Vec2 {
         && matches!(known.unit.kind, UnitKind::CreepMelee | UnitKind::CreepFlagbearer | UnitKind::CreepRanged | UnitKind::CreepSiege))
         .map(|known| bota_core::clamp_to_map(known.unit.pos)).min_by_key(|point| distance(*point, enemy_base));
     let Some(front) = front.filter(|front| distance(*front, enemy_base) < distance(middle, enemy_base)) else { return middle; };
-    let behind = bota_core::point_along(front, bota_core::fountain_pos(snapshot.map, own.team), Fixed::from_int(200));
+    let home = bota_core::fountain_pos(snapshot.map, own.team);
+    let behind = bota_core::point_along(front, home, Fixed::from_int(200));
     // Stable waypoints avoid replacing a standing attack for every small movement of the wave.
-    let cell = 256 * Fixed::ONE.raw;
-    bota_core::clamp_to_map(Vec2 { x: Fixed { raw: behind.x.raw / cell * cell }, y: Fixed { raw: behind.y.raw / cell * cell } })
+    let cell = 256 * i64::from(Fixed::ONE.raw);
+    let snap = |value: Fixed, from: Fixed, towards: Fixed| {
+        let raw = i64::from(value.raw);
+        let rounded = if towards >= from { (raw + cell - 1).div_euclid(cell) * cell } else { raw.div_euclid(cell) * cell };
+        Fixed { raw: rounded.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32 }
+    };
+    bota_core::clamp_to_map(Vec2 { x: snap(behind.x, front.x, home.x), y: snap(behind.y, front.y, home.y) })
 }
 
 fn mode_is(state: &State, name: &str) -> bool {

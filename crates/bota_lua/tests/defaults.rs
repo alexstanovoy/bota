@@ -5,9 +5,13 @@ use bota_lua::{BotSeat, Keys, Limits, LuaTeam, ModuleBank};
 use bota_proto::{HeroId, Order, SlotId, Target, Team, Vec2};
 
 fn team(files: &[(&str, &str)]) -> LuaTeam {
+    team_for(Team::Radiant, SlotId(0), files)
+}
+
+fn team_for(side: Team, slot: SlotId, files: &[(&str, &str)]) -> LuaTeam {
     let mut modules = ModuleBank::new(Limits::DEFAULT);
     for &(name, source) in files { modules.insert(name, source.as_bytes()).expect("source"); }
-    let mut team = LuaTeam::new(Team::Radiant, &[BotSeat { slot: SlotId(0), hero: HeroId::SHADOW_FIEND }], Limits::DEFAULT, Keys { hash: [17,19], random: 23 }).expect("team");
+    let mut team = LuaTeam::new(side, &[BotSeat { slot, hero: HeroId::SHADOW_FIEND }], Limits::DEFAULT, Keys { hash: [17,19], random: 23 }).expect("team");
     team.set_modules(modules).expect("modules");
     team.load_pack().expect("pack");
     team
@@ -103,6 +107,30 @@ fn default_retreat_supersedes_an_unlaunched_once_request() {
     let turn = lua.think(&sessions[0]).expect("retreat");
     assert!(turn.failures.is_empty(), "{:?}", turn.failures);
     assert!(turn.bots[0].orders.iter().any(|order| order.order == Order::Move { target: Target::Pos(bota_core::fountain_pos(sessions[0].map(), Team::Radiant)) }));
+}
+
+#[test]
+fn lane_waypoints_stay_behind_the_friendly_front_for_both_sides() {
+    let (_, sessions, _) = support::durable_creep_encounter(HeroId::SHADOW_FIEND);
+    for (index, side, front) in [(0, Team::Radiant, Vec2::from_ints(9500,9500)), (1, Team::Dire, Vec2::from_ints(9000,9000))] {
+        let mut session = sessions[index].clone();
+        let mut view = session.current().expect("view").clone();
+        let home = bota_core::fountain_pos(session.map(), side);
+        let mut selected = false;
+        for unit in &mut view.units {
+            if unit.team == side && matches!(unit.kind, bota_proto::UnitKind::CreepMelee | bota_proto::UnitKind::CreepFlagbearer | bota_proto::UnitKind::CreepRanged | bota_proto::UnitKind::CreepSiege) {
+                unit.pos = if selected { home } else { selected = true; front };
+            }
+        }
+        assert!(selected, "friendly wave");
+        observation(&mut session, view);
+        let turn = team_for(side, SlotId(index as u8), &[]).think(&session).expect("turn");
+        assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+        let goal = turn.bots[0].orders.iter().find_map(|order| match order.order { Order::Attack { target: Target::Pos(goal) } if order.unit.is_none() => Some(goal), _ => None }).expect("lane waypoint");
+        let dot = (i128::from(goal.x.raw)-i128::from(front.x.raw)) * (i128::from(home.x.raw)-i128::from(front.x.raw))
+            + (i128::from(goal.y.raw)-i128::from(front.y.raw)) * (i128::from(home.y.raw)-i128::from(front.y.raw));
+        assert!(dot >= 0, "{side:?} waypoint {goal:?} is ahead of the wave {front:?}");
+    }
 }
 
 #[test]
