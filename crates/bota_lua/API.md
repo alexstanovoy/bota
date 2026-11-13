@@ -64,6 +64,13 @@ coordinates are protocol XY minus 9,216, with nearest-even Q16.16 conversion on
 orders. Engine lane IDs TOP=1, MID=2, BOT=3 are translated explicitly to core lanes.
 Vectors expose both `x/y/z` and the one-based numeric components `1/2/3`.
 
+`GetOrigin` is an explicit legacy entity-position compatibility extension, rather
+than a canonical bot-dump method. The lower-level engine
+[CBaseEntity declaration](https://docs.moddota.com/lua_server/#CBaseEntity) lists
+`GetOrigin(): vector`. Map units have no parent transform here, so it shares the
+authenticated `GetLocation` callback, coordinate conversion, remembered position
+and zero-vector result for a forgotten unit. It introduces no additional facts.
+
 Player ids are engine ids: Radiant 0–4 and Dire 5–9. Active-view queries derive
 each side's rank from its public roster's wire seat order; wire seat 1 can therefore
 be engine player 5. The host continues to use wire seats internally. Team arrays

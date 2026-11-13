@@ -67,17 +67,31 @@ fn global_unit_lists_include_visible_units_and_drop_remembered_enemies_from_both
         let mut lua = team(side, slot);
         lua.add_script(slot, ScriptKind::Takeover, "visible_lists", br#"
             local phase, enemy = 0, nil
+            local function same(left, right)
+                return left.x == right.x and left.y == right.y and left.z == right.z
+            end
             function Think()
                 phase = phase + 1
+                local bot = GetBot()
+                assert(type(bot.GetOrigin) == 'function')
+                assert(same(bot:GetOrigin(), bot:GetLocation()))
+                local ok, reason = pcall(bot.GetOrigin, {})
+                assert(not ok and string.find(tostring(reason), 'unit handle expected', 1, true))
+                assert(not pcall(bot.GetOrigin, setmetatable({}, {__index=bot})))
                 local own = GetUnitList(UNIT_LIST_ALLIED_HEROES)
                 assert(#own == 1 and own[1] == GetBot())
                 local enemies = GetUnitList(UNIT_LIST_ENEMY_HEROES)
                 if phase == 2 then
                     assert(#enemies == 1 and enemies[1]:GetTeam() == GetOpposingTeam())
                     enemy = enemies[1]
+                    assert(same(enemy:GetOrigin(), enemy:GetLocation()))
                 else
                     assert(#enemies == 0)
-                    if phase == 3 then assert(enemy and not enemy:CanBeSeen()) end
+                    if phase >= 3 then
+                        assert(enemy and not enemy:CanBeSeen())
+                        assert(same(enemy:GetOrigin(), enemy:GetLocation()))
+                        if phase == 4 then assert(same(enemy:GetOrigin(), Vector(0,0,0))) end
+                    end
                 end
                 for _, unit in ipairs(GetUnitList(UNIT_LIST_ALL)) do assert(unit:CanBeSeen()) end
                 for _, unit in ipairs(GetUnitList(UNIT_LIST_ALLIES)) do assert(unit:GetTeam() == GetTeam()) end
@@ -133,6 +147,24 @@ fn global_unit_lists_include_visible_units_and_drop_remembered_enemies_from_both
         );
         let turn = lua.think(&sessions[index]).expect("hidden enemy");
         assert_script_ran(&turn, 9319, 9416);
+        let mut view = sessions[index].current().expect("view").clone();
+        view.tick += 481;
+        let tick = view.tick;
+        sessions[index]
+            .ingest(bota_proto::ServerMsg::Snapshot { view }, &mut ())
+            .expect("expired track view");
+        sessions[index]
+            .ingest(
+                bota_proto::ServerMsg::Events {
+                    tick,
+                    events: Vec::new(),
+                },
+                &mut (),
+            )
+            .expect("events");
+        assert!(sessions[index].entity(observed_enemy).is_none());
+        let turn = lua.think(&sessions[index]).expect("forgotten enemy");
+        assert_script_ran(&turn, 9320, 9416);
     }
 }
 

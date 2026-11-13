@@ -7,6 +7,7 @@ pub(super) fn install(lua: &mut Lua, context: &ApiContext) -> Result<(), Binding
     register_global(lua, context, "GetBot", get_bot)?;
     register_unit(lua, context, "GetHealth", get_health)?;
     register_unit(lua, context, "GetLocation", get_location)?;
+    register_unit(lua, context, "GetOrigin", get_location)?;
     register_unit(lua, context, "Action_MoveToLocation", move_to_location)
 }
 
