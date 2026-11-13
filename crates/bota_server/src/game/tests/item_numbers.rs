@@ -1368,3 +1368,84 @@ fn an_octarine_core_and_a_time_warp_aura_multiply() {
         6_900
     );
 }
+
+/// "Effects of multiple quelling blades do not stack" (the install's Quelling Blade, Note0): a
+/// melee hero handed two by `-item` takes the quell of one (`damage_bonus`, 8) more off an enemy
+/// creep placed by `-createcreeps`, swing after swing, as with one.
+#[test]
+fn two_quelling_blades_quell_as_one() {
+    let quell = item_def(ItemId::QUELLING_BLADE)
+        .and_then(|def| def.value("damage_bonus"))
+        .expect("Quelling Blade's damage_bonus")[0]
+        .int();
+    for count in [1, 2] {
+        let (mut world, hero) = cheat_match(HeroId::PUDGE);
+        for _ in 0..count {
+            cheat(
+                &mut world,
+                bota_proto::Cheat::Item {
+                    item: ItemId::QUELLING_BLADE,
+                },
+            );
+        }
+        let at = world.pos(hero).expect("standing") + Vec2::from_ints(200, 0);
+        cheat(
+            &mut world,
+            bota_proto::Cheat::CreateCreeps { enemy: true, at },
+        );
+        let creep = world
+            .entities
+            .iter()
+            .filter(|&unit| {
+                world
+                    .kind
+                    .get(unit)
+                    .is_some_and(|kind| bota_core::kind_def(*kind).creep)
+                    && world.team.get(unit) == Some(&Team::Dire)
+            })
+            .min_by_key(|&unit| {
+                world
+                    .pos(unit)
+                    .map_or(i64::MAX, |pos| pos.distance_squared(at))
+            })
+            .expect("a created creep");
+        let stats = *world.stats.get(hero).expect("derived");
+        assert_eq!(stats.damage_to_creeps, quell, "{count} carried");
+        let armor = world.stats.get(creep).expect("derived").armor;
+        let span = bota_core::mitigate(
+            stats.damage + quell,
+            bota_proto::DamageKind::Physical,
+            armor,
+            0,
+        )
+            ..=bota_core::mitigate(
+                stats.damage + stats.damage_spread + quell,
+                bota_proto::DamageKind::Physical,
+                armor,
+                0,
+            );
+        attack_click(&mut world, creep);
+        let mut swings = 0;
+        for _ in 0..rules::TICKS_PER_SECOND * 3 {
+            for event in world.step() {
+                if let EventKind::Damaged {
+                    source: Some(source),
+                    target,
+                    amount,
+                    inflictor: None,
+                    ..
+                } = event.kind()
+                    && source == wire_id(hero)
+                    && target == wire_id(creep)
+                {
+                    assert!(
+                        span.contains(&amount),
+                        "{count} carried: {amount} of {span:?}"
+                    );
+                    swings += 1;
+                }
+            }
+        }
+        assert!(swings > 0, "{count} carried: no swing landed");
+    }
+}

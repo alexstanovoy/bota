@@ -975,7 +975,6 @@ pub fn carried_bonus(items: impl Iterator<Item = CarriedItem>, ranged: bool) -> 
         };
         total.hp_regen += carried.hp_regen * Fixed::from_int(regen_charges);
         total.mana_regen += carried.mana_regen;
-        total.damage_to_creeps += carried.damage_to_creeps;
         total.base_attack_speed_pct += carried.base_attack_speed_pct;
         total.evasion = total.evasion.or(carried.evasion);
         total.melee_range += carried.melee_range;
@@ -1008,7 +1007,8 @@ pub fn carried_bonus(items: impl Iterator<Item = CarriedItem>, ranged: bool) -> 
 /// A carried stat whose sources do not all stack: of the items of one source, the best counts, and
 /// sources combine by `stack`. An item's source is its lineage ([`lineage`]: an item and what is
 /// built of it hold one bonus, Dota's "multiple sources of ... do not stack" of the Yasha-, Sange-
-/// and Kaya-based items), or the stacking group its lineage belongs to.
+/// and Kaya-based items), or the stacking group its lineage belongs to; for a stat counted by
+/// [`By::Item`], the item itself.
 pub(crate) struct StackingStat {
     pub(crate) get: fn(&Carried) -> i32,
     set: fn(&mut Carried, i32),
@@ -1017,6 +1017,18 @@ pub(crate) struct StackingStat {
     /// Items, by Dota key, whose lineages share one bonus of the stat although neither is built
     /// of the other, as Dota's notes group them. A key bota does not carry yet names nothing.
     groups: &'static [&'static [&'static str]],
+    /// What one source of the stat is.
+    by: By,
+}
+
+/// What one source of a carried stat is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum By {
+    /// An item and what is built of it ([`lineage`]), or a stacking group of lineages.
+    Lineage,
+    /// Each kind of item on its own: several of one count once, and an item adds to what it is
+    /// built of.
+    Item,
 }
 
 /// Where one item's bonus of a stat counts: its lineage, or a stacking group.
@@ -1029,7 +1041,10 @@ pub(crate) enum Source {
 impl StackingStat {
     /// Where `item`'s bonus of this stat counts.
     pub(crate) fn source(&self, item: ItemId, ranged: bool) -> Source {
-        let root = lineage(item, ranged, self.get);
+        let root = match self.by {
+            By::Lineage => lineage(item, ranged, self.get),
+            By::Item => item,
+        };
         let key = item_def(root).map(|def| def.key);
         match self
             .groups
@@ -1048,54 +1063,62 @@ const fn add(first: i32, second: i32) -> i32 {
 }
 
 /// Every carried stat whose sources do not all stack, and how its sources combine.
-pub(crate) const STACKING_STATS: [StackingStat; 13] = [
+pub(crate) const STACKING_STATS: [StackingStat; 14] = [
     StackingStat {
         get: |carried| carried.move_speed_pct,
         set: |carried, value| carried.move_speed_pct = value,
         stack: add,
         groups: &[],
+        by: By::Lineage,
     },
     StackingStat {
         get: |carried| carried.slow_resist_bp,
         set: |carried, value| carried.slow_resist_bp = value,
         stack: resist_both,
         groups: &[],
+        by: By::Lineage,
     },
     StackingStat {
         get: |carried| carried.restoration_amp_bp,
         set: |carried, value| carried.restoration_amp_bp = value,
         stack: resist_both,
         groups: &[],
+        by: By::Lineage,
     },
     StackingStat {
         get: |carried| carried.spell_amp_pct,
         set: |carried, value| carried.spell_amp_pct = value,
         stack: add,
         groups: &[],
+        by: By::Lineage,
     },
     StackingStat {
         get: |carried| carried.mana_regen_amp_pct,
         set: |carried, value| carried.mana_regen_amp_pct = value,
         stack: add,
         groups: &[],
+        by: By::Lineage,
     },
     StackingStat {
         get: |carried| carried.status_resist_bp,
         set: |carried, value| carried.status_resist_bp = value,
         stack: resist_both,
         groups: &[],
+        by: By::Lineage,
     },
     StackingStat {
         get: |carried| carried.mana_cost_cut_bp,
         set: |carried, value| carried.mana_cost_cut_bp = value,
         stack: resist_both,
         groups: &[],
+        by: By::Lineage,
     },
     StackingStat {
         get: |carried| carried.cast_speed_pct,
         set: |carried, value| carried.cast_speed_pct = value,
         stack: add,
         groups: &[],
+        by: By::Lineage,
     },
     // Dota 7.41, Dagon: "Cast Range Bonus does not stack with Aether Lens or multiple Dagons"; a
     // source outside the group (a neutral enhancement, a talent) adds.
@@ -1104,6 +1127,7 @@ pub(crate) const STACKING_STATS: [StackingStat; 13] = [
         set: |carried, value| carried.cast_range_bonus = value,
         stack: add,
         groups: &[&["item_aether_lens", "item_dagon"]],
+        by: By::Lineage,
     },
     // Cooldown reductions of different sources multiply (Dota 7.31: "Cooldown Reduction stacking
     // is now multiplicative"); several Octarine Cores count once.
@@ -1112,6 +1136,7 @@ pub(crate) const STACKING_STATS: [StackingStat; 13] = [
         set: |carried, value| carried.cooldown_cut_bp = value,
         stack: resist_both,
         groups: &[],
+        by: By::Lineage,
     },
     // Dragon Lance and what is built of it (Hurricane Pike, Hydra's Breath) count once.
     StackingStat {
@@ -1119,6 +1144,7 @@ pub(crate) const STACKING_STATS: [StackingStat; 13] = [
         set: |carried, value| carried.ranged_range = value,
         stack: add,
         groups: &[],
+        by: By::Lineage,
     },
     // "Area of Effect bonuses from multiple Chasm Stones or its upgrades do not stack".
     StackingStat {
@@ -1126,6 +1152,7 @@ pub(crate) const STACKING_STATS: [StackingStat; 13] = [
         set: |carried, value| carried.aoe_bonus = value,
         stack: add,
         groups: &[],
+        by: By::Lineage,
     },
     // "Multiple instances of Behemoth's Blood don't stack" (7.40).
     StackingStat {
@@ -1133,6 +1160,16 @@ pub(crate) const STACKING_STATS: [StackingStat; 13] = [
         set: |carried, value| carried.missing_hp_regen_bp = value,
         stack: add,
         groups: &[],
+        by: By::Lineage,
+    },
+    // Quelling Blade: "Effects of multiple quelling blades do not stack". Each kind of quell counts
+    // once, and kinds add up.
+    StackingStat {
+        get: |carried| carried.damage_to_creeps,
+        set: |carried, value| carried.damage_to_creeps = value,
+        stack: add,
+        groups: &[],
+        by: By::Item,
     },
 ];
 

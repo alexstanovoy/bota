@@ -56,22 +56,8 @@ impl AdmittedWire {
 /// corpus, or whose corpus this build plays otherwise, fails that test: a change that moves it
 /// changes the rules, and takes the entry out. See `DEVELOPMENT.md`, "Admitted wires".
 pub const ADMITTED_WIRES: &[AdmittedWire] = &[
-    // The commit Dota 7.41f item batch 1 was made on.
-    AdmittedWire {
-        wire: 0x4df9_74f2_6e20_47eb,
-        catalogue: CataloguePrefix {
-            items: 94,
-            digest: 12_760_854_504_706_889_410,
-        },
-    },
-    // Item batch 1; the item names left bota after it, no rule moved.
-    AdmittedWire {
-        wire: 0x4390_805b_3714_564b,
-        catalogue: CataloguePrefix {
-            items: 116,
-            digest: 6_682_987_802_388_131_638,
-        },
-    },
+    // None: Quelling Blades stopped stacking (Dota's "Effects of multiple quelling blades do not
+    // stack"), a rule of old items every earlier build plays otherwise.
 ];
 
 /// The earlier build of `wire`, when this build admits it.
