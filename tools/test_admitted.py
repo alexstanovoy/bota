@@ -197,7 +197,50 @@ class AdmittedBuilds(unittest.TestCase):
         self.cache.symlink_to(real)
         done = self.build()
         self.assertNotEqual(done.returncode, 0)
-        self.assertIn("is a symbolic link", done.stderr)
+        self.assertIn("tools/admitted.sh: the cache path", done.stderr)
+        self.assertEqual(list(real.iterdir()), [])
+
+    def test_no_spelling_of_a_cache_path_reaches_through_a_symbolic_link(self):
+        # A wire directory with data of its own, outside, reached through links or odd spellings.
+        external = self.scratch / "external"
+        (external / WIRE).mkdir(parents=True)
+        (external / WIRE / "sentinel").write_text("keep\n")
+        (self.scratch / "alias").symlink_to(external)
+        (self.scratch / "parent-alias").symlink_to(self.scratch)
+        real = self.scratch / "real"
+        real.mkdir()
+        spellings = [
+            f"{self.scratch}/alias",
+            f"{self.scratch}/alias/",
+            f"{self.scratch}/alias//",
+            f"{self.scratch}/alias/.",
+            f"{self.scratch}/alias/./",
+            f"{self.scratch}/alias/../alias",
+            f"{self.scratch}/real/../alias",
+            f"{self.scratch}/parent-alias/external",
+            f"{self.scratch}/parent-alias/new-cache",
+            f"{self.scratch}/real/",
+            f"{self.scratch}//real",
+            f"{self.scratch}/./real",
+        ]
+        for spelling in spellings:
+            with self.subTest(spelling=spelling):
+                done = self.build(ADMITTED_BUILDS=spelling)
+                self.assertNotEqual(done.returncode, 0)
+                self.assertIn("tools/admitted.sh: the cache path", done.stderr)
+                self.assertEqual((external / WIRE / "sentinel").read_text(), "keep\n")
+                self.assertEqual(list(real.iterdir()), [])
+                self.assertFalse((external / "new-cache").exists())
+        self.assertEqual(sorted(path.name for path in external.iterdir()), [WIRE])
+        self.assertEqual(self.build(ADMITTED_BUILDS=str(real)).returncode, 0, "the plain spelling builds")
+
+    def test_a_default_cache_under_a_symbolic_link_is_refused(self):
+        real = self.scratch / "real-target"
+        real.mkdir()
+        (self.scratch / "linked-target").symlink_to(real)
+        done = self.build(FAKE_TARGET=str(self.scratch / "linked-target"))
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("tools/admitted.sh: the cache path", done.stderr)
         self.assertEqual(list(real.iterdir()), [])
 
     def test_a_malformed_budget_is_refused_before_any_work(self):

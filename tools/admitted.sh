@@ -19,7 +19,8 @@
 # Nothing is trusted unchecked: a cached entry is served only when it is a real directory whose
 # stamp matches, whose executables are regular files matching their sums, and whose server says
 # the wire recorded; any other entry is deleted and built again, so nothing of an earlier build is
-# run after a failed rebuild. The cache directory may not be a symbolic link; runs on one cache
+# run after a failed rebuild. The cache path must be physical (plain spelling, no symbolic link in
+# any component) and every operation uses it, so no delete reaches outside it; runs on one cache
 # take turns by a lock on the directory itself (no lock file is written or followed). Every
 # failure exits non-zero. Retention: `build` deletes the entries of wires no corpus names, in the
 # default cache only (an ADMITTED_BUILDS directory may be another worktree's); the cache must stay
@@ -63,10 +64,33 @@ else
     cache=$target/admitted
     own_cache=true
 fi
-cache=${cache%/}
-[ -L "$cache" ] && fail "the cache $cache is a symbolic link"
-mkdir -p -- "$cache" || fail "cannot make the cache $cache"
-[ -d "$cache" ] && [ ! -L "$cache" ] || fail "the cache $cache is not a directory"
+
+# Makes the cache directory, once its path is found physical: absolute, in its plain spelling (no
+# empty, `.` or `..` component, no trailing slash) and through no symbolic link, so that every
+# later operation, which uses this path alone, stays inside it. Fails otherwise, touching nothing.
+make_cache() {
+    local path=$1 existing physical
+    case "$path/" in
+        //* | *//* | */./* | */../*)
+            fail "the cache path ${path@Q} is not in its plain spelling (no empty, . or .. \
+component, no trailing /)"
+            ;;
+    esac
+    existing=$path
+    while [ ! -e "$existing" ] && [ ! -L "$existing" ]; do
+        existing=${existing%/*}
+        existing=${existing:-/}
+    done
+    physical=$(cd -P -- "$existing" && pwd -P) ||
+        fail "the cache path ${path@Q} passes through $existing, which is no directory"
+    [ "$physical" = "$existing" ] ||
+        fail "the cache path ${path@Q} passes through a symbolic link: $existing is $physical"
+    mkdir -p -- "$path" || fail "cannot make the cache $path"
+    physical=$(cd -P -- "$path" && pwd -P) || fail "the cache path ${path@Q} is no directory"
+    [ "$physical" = "$path" ] ||
+        fail "the cache path ${path@Q} passes through a symbolic link: it is $physical"
+}
+make_cache "$cache"
 # One run at a time on a cache: a lock on the directory, opened for reading.
 exec 9<"$cache" || fail "cannot open $cache"
 flock 9 || fail "cannot lock $cache"

@@ -223,8 +223,8 @@ Retention: only the verified executables of a wire are kept (`WIRE/bin`, with `W
 are deleted after the build. Nothing cached is served unchecked: an entry is reused only when it is a real directory
 whose stamp matches, whose executables are regular files matching their sums, and whose server says the recorded wire;
 any other entry is deleted and built again, so nothing of an earlier build runs after a failed rebuild. The cache
-directory may not be a symbolic link, and runs on one cache take turns by a lock on the directory itself, so no lock
-file is written or followed. In the default cache `build` deletes the entries of wires no corpus names; a cache named
+path must be physical (its plain spelling, no symbolic link in any component; anything else is refused), and runs on
+one cache take turns by a lock on the directory itself, so no lock file is written or followed. In the default cache `build` deletes the entries of wires no corpus names; a cache named
 by `ADMITTED_BUILDS` may be another worktree's and is never pruned. The cache must stay under `ADMITTED_MAX_BYTES` (a
 whole number of bytes, 1 GiB by default; anything else is refused before any work), or the script fails. A build
 takes a minute or two; an unchanged stamp builds nothing.
