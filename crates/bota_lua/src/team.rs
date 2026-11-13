@@ -677,7 +677,10 @@ impl LuaTeam {
     }
 
     fn run_team(&mut self) -> Result<(), Error> {
-        let index = self.scripts.iter().position(|script| script.kind == ScriptKind::TeamDesires);
+        let index = self
+            .scripts
+            .iter()
+            .position(|script| script.kind == ScriptKind::TeamDesires);
         let Some(index) = index else {
             self.state.borrow_mut().team_desires = crate::state::TeamDesires::default();
             return Ok(());
@@ -685,11 +688,18 @@ impl LuaTeam {
         let team_think = self.call_hook(index, "TeamThink", &[]);
         let push = self.lane_desires(index, "UpdatePushLaneDesires");
         let defend = self.lane_desires(index, "UpdateDefendLaneDesires");
-        let lanes = push.and_then(|push| defend.map(|defend| crate::state::TeamDesires { push, defend }));
-        if let Ok(desires) = &lanes { self.state.borrow_mut().team_desires = *desires; }
+        let lanes =
+            push.and_then(|push| defend.map(|defend| crate::state::TeamDesires { push, defend }));
+        if let Ok(desires) = &lanes {
+            self.state.borrow_mut().team_desires = *desires;
+        }
         team_think?;
         lanes?;
-        for hook in ["UpdateFarmLaneDesires", "UpdateRoamDesire", "UpdateRoshanDesire"] {
+        for hook in [
+            "UpdateFarmLaneDesires",
+            "UpdateRoamDesire",
+            "UpdateRoshanDesire",
+        ] {
             self.call_hook(index, hook, &[])?;
         }
         Ok(())
@@ -707,7 +717,9 @@ impl LuaTeam {
         let decoded = self.lua.call(self.lane_desire_reader, &[value])?;
         match decoded.as_slice() {
             [Value::Number(top), Value::Number(mid), Value::Number(bot)] => {
-                Ok(Some(crate::state::LaneDesires::from_engine_order([*top, *mid, *bot])))
+                Ok(Some(crate::state::LaneDesires::from_engine_order([
+                    *top, *mid, *bot,
+                ])))
             }
             _ => Err(runtime_error("invalid host lane-desire decoder result")),
         }
@@ -1049,7 +1061,10 @@ fn lane_desire_values(vm: &mut Vm, args: Args) -> Result<usize, LuaError> {
                 "team lane desires must be a table of three finite numbers between zero and one",
             ));
         }
-        *output = match value { Value::Number(0.0) => Value::Number(0.0), _ => value };
+        *output = match value {
+            Value::Number(0.0) => Value::Number(0.0),
+            _ => value,
+        };
     }
     if vm.raw_get(table, Value::Number(4.0))? != Value::Nil {
         return Err(vm.error("team lane desires must have exactly three array entries"));

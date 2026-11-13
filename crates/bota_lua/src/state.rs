@@ -333,7 +333,11 @@ impl BotState {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Lane { Top, Mid, Bot }
+pub(crate) enum Lane {
+    Top,
+    Mid,
+    Bot,
+}
 impl Lane {
     pub fn from_core(lane: u8) -> Option<Self> {
         match lane {
@@ -357,9 +361,15 @@ impl Lane {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct LaneDesires([f64; 3]);
 impl LaneDesires {
-    pub fn from_engine_order(values: [f64; 3]) -> Self { Self(values) }
+    pub fn from_engine_order(values: [f64; 3]) -> Self {
+        Self(values)
+    }
     pub fn get(self, lane: Lane) -> f64 {
-        match lane { Lane::Top => self.0[0], Lane::Mid => self.0[1], Lane::Bot => self.0[2] }
+        match lane {
+            Lane::Top => self.0[0],
+            Lane::Mid => self.0[1],
+            Lane::Bot => self.0[2],
+        }
     }
 }
 

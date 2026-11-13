@@ -250,9 +250,29 @@ fn structured(data: &[u8]) -> Vec<u8> {
 }
 
 fn structured_team(data: &[u8]) -> Vec<u8> {
-    let values = ["nil", "false", "true", "0", "-0.0", "0.5", "1", "-1", "1e308", "0/0", "math.huge", "'x'", "{}", "bot", "Vector(0,0,0)"];
+    let values = [
+        "nil",
+        "false",
+        "true",
+        "0",
+        "-0.0",
+        "0.5",
+        "1",
+        "-1",
+        "1e308",
+        "0/0",
+        "math.huge",
+        "'x'",
+        "{}",
+        "bot",
+        "Vector(0,0,0)",
+    ];
     let value = |index: usize| values[usize::from(data[index]) % values.len()];
     let extra = if data[31] & 8 == 0 { "nil" } else { value(7) };
-    let unrelated = if data[31] & 16 == 0 { "" } else { "function UpdateRoshanDesire() error('unrelated team hook') end" };
+    let unrelated = if data[31] & 16 == 0 {
+        ""
+    } else {
+        "function UpdateRoshanDesire() error('unrelated team hook') end"
+    };
     format!("local bot=GetBot() function UpdatePushLaneDesires() return {{{},{},{},{}}} end function UpdateDefendLaneDesires() return {{{},{},{}}} end {}", value(4), value(5), value(6), extra, value(8), value(9), value(10), unrelated).into_bytes()
 }
