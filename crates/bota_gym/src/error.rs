@@ -22,6 +22,9 @@ pub enum GymError {
     SetupEnded,
     /// A step was given orders for a different number of seats than the match has.
     OrderCount { expected: usize, got: usize },
+    /// A seat's batch for one tick holds more orders than the server lets take effect for one
+    /// seat on one tick ([`MAX_ORDERS_PER_TICK`](crate::MAX_ORDERS_PER_TICK)); nothing was given.
+    OrderBatch { seat: usize, len: usize },
     /// A step was asked of a match that already ended.
     MatchOver,
     /// A step was asked of a match standing on its tick limit.
@@ -67,6 +70,11 @@ impl fmt::Display for GymError {
             Self::OrderCount { expected, got } => write!(
                 formatter,
                 "orders for {got} seats given to a match of {expected} seats"
+            ),
+            Self::OrderBatch { seat, len } => write!(
+                formatter,
+                "seat {seat} gave {len} orders for one tick; at most {} take effect",
+                bota_proto::limits::MAX_ORDERS_PER_TICK
             ),
             Self::MatchOver => formatter.write_str("the match cannot step after MatchOver"),
             Self::TickLimit { tick, limit } => write!(

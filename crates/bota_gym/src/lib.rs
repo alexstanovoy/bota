@@ -9,8 +9,9 @@
 //! # The pieces
 //!
 //! - [`Game`]: one lockstep match. Each seat gets exactly the stream its connection to a server
-//!   would carry; [`MatchSpec`] picks the map, heroes, rules, order delays, a scenario's setup
-//!   cheats and the tick limit. The hidden state is behind [`Game::truth`], which exists only on
+//!   would carry, and gives one order a tick or a batch of them ([`Game::step_batches`]: clients
+//!   may issue several orders per turn); [`MatchSpec`] picks the map, heroes, rules, order
+//!   delays, a scenario's setup cheats and the tick limit. The hidden state is behind [`Game::truth`], which exists only on
 //!   `Game<Privileged>`: what a policy may read and what only training signals may read are
 //!   different types.
 //! - [`Episode`]: the caller's code for one game of one slot (its match and whatever its seats'
@@ -73,10 +74,15 @@ pub mod workers;
 
 pub use error::GymError;
 #[cfg(feature = "simulation")]
-pub use game::{Access, Advance, Game, MAX_ADVANCE_TICKS, MAX_SEATS, Player, Privileged, Truth};
+pub use game::{
+    Access, Advance, Game, MAX_ADVANCE_TICKS, MAX_ORDERS_PER_TICK, MAX_SEATS, Player, Privileged,
+    Truth,
+};
 pub use parallel::run_indexed;
 #[cfg(feature = "simulation")]
-pub use player_env::{Finished, PlayerEnv, PlayerEnvConfig, SeatOrders, SpecFn};
+pub use player_env::{
+    Finished, PlayerEnv, PlayerEnvConfig, SeatActions, SeatBatches, SeatOrders, SpecFn,
+};
 pub use seed::{
     GameId, MAX_PLANS, MAX_SLOTS, Pairing, SplitMix64, derive_seed, paired_games, seat_seed,
 };

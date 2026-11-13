@@ -58,6 +58,9 @@ use crate::spec::{MAX_SETUP_CHEATS, MAX_TICK_LIMIT, MatchSpec};
 pub const MAX_ADVANCE_TICKS: u32 = 1 << 16;
 /// Upper bound on the seats of a match.
 pub const MAX_SEATS: usize = bota_proto::limits::MAX_SEATS;
+/// Upper bound on one seat's orders for one tick: what the server lets take effect for one seat
+/// on one tick.
+pub const MAX_ORDERS_PER_TICK: usize = bota_proto::limits::MAX_ORDERS_PER_TICK;
 
 pub(crate) mod sealed {
     use super::{Game, GymError, Meta};
@@ -254,25 +257,46 @@ impl<A: Access> Game<A> {
 
     /// Gives each seat at most one order and advances one tick; returns each seat's stream of
     /// the tick: rejections of its orders, `Snapshot`, `Events`, and `MatchOver` once the
-    /// match ended (a [`Team::Neutral`] winner is a draw).
+    /// match ended (a [`Team::Neutral`] winner is a draw). [`Self::step_batches`] with one order
+    /// or none per seat.
     pub fn step(
         &mut self,
         orders: &[Option<OutgoingOrder>],
+    ) -> Result<Vec<Vec<ServerMsg>>, GymError> {
+        self.at_most_a_seat_each(orders.len())?;
+        self.step_batches(&one_each(orders)[..orders.len()])
+    }
+
+    /// Gives each seat its batch of orders, in slot order, and advances one tick. A client may
+    /// issue several orders in one turn (stop, learn, buy, then attack); each seat's batch is
+    /// given in its order, exactly as a server takes a connection's orders arriving within one
+    /// tick, and each refused order is answered by its own `OrderRejected` in the seat's
+    /// stream. A batch holds at most [`MAX_ORDERS_PER_TICK`] orders, what the server lets take
+    /// effect for one seat on one tick (beyond that it refuses each further order with
+    /// `QueueFull`); a longer batch is refused whole, before anything is given.
+    pub fn step_batches(
+        &mut self,
+        orders: &[&[OutgoingOrder]],
     ) -> Result<Vec<Vec<ServerMsg>>, GymError> {
         self.step_told(orders).map(|(streams, _)| streams)
     }
 
     fn step_told(
         &mut self,
-        orders: &[Option<OutgoingOrder>],
+        orders: &[&[OutgoingOrder]],
     ) -> Result<(Vec<Vec<ServerMsg>>, Option<Team>), GymError> {
         if self.result.is_some() {
             return Err(GymError::MatchOver);
         }
-        if orders.len() != self.seats {
-            return Err(GymError::OrderCount {
-                expected: self.seats,
-                got: orders.len(),
+        self.count_orders(orders.len())?;
+        if let Some((seat, batch)) = orders
+            .iter()
+            .enumerate()
+            .find(|(_, batch)| batch.len() > MAX_ORDERS_PER_TICK)
+        {
+            return Err(GymError::OrderBatch {
+                seat,
+                len: batch.len(),
             });
         }
         let tick = self.local.tick();
@@ -282,11 +306,7 @@ impl<A: Access> Game<A> {
                 limit: self.limit,
             });
         }
-        let mut given: [&[OutgoingOrder]; MAX_SEATS] = [&[]; MAX_SEATS];
-        for (slot, order) in given.iter_mut().zip(orders) {
-            *slot = order.as_slice();
-        }
-        let streams = self.local.step(&given[..self.seats]).map_err(local_error)?;
+        let streams = self.local.step(orders).map_err(local_error)?;
         self.record();
         let views: [&[ServerMsg]; MAX_SEATS] =
             core::array::from_fn(|seat| streams.get(seat).map_or(&[][..], Vec::as_slice));
@@ -303,9 +323,22 @@ impl<A: Access> Game<A> {
 
     /// Steps up to `ticks` ticks, `orders` given on the first, handing each tick's streams to
     /// `each_tick`; stops early when the match ends, and at the tick limit.
+    /// [`Self::advance_batches`] with one order or none per seat.
     pub fn advance<E: From<GymError>>(
         &mut self,
         orders: &[Option<OutgoingOrder>],
+        ticks: u32,
+        each_tick: impl FnMut(Vec<Vec<ServerMsg>>) -> Result<(), E>,
+    ) -> Result<Advance, E> {
+        self.at_most_a_seat_each(orders.len())?;
+        self.advance_batches(&one_each(orders)[..orders.len()], ticks, each_tick)
+    }
+
+    /// [`Self::advance`] with a batch of orders per seat on the first tick, as
+    /// [`Self::step_batches`] gives them.
+    pub fn advance_batches<E: From<GymError>>(
+        &mut self,
+        orders: &[&[OutgoingOrder]],
         ticks: u32,
         mut each_tick: impl FnMut(Vec<Vec<ServerMsg>>) -> Result<(), E>,
     ) -> Result<Advance, E> {
@@ -314,7 +347,7 @@ impl<A: Access> Game<A> {
         }
         let start = self.local.tick();
         let ticks = ticks.min(self.limit.saturating_sub(start)).max(1);
-        let none = [None; MAX_SEATS];
+        let none: [&[OutgoingOrder]; MAX_SEATS] = [&[]; MAX_SEATS];
         let mut advance = Advance {
             ticks: 0,
             winner: None,
@@ -324,7 +357,7 @@ impl<A: Access> Game<A> {
             let given = if advance.ticks == 0 {
                 orders
             } else {
-                &none[..self.seats]
+                &none[..orders.len().min(MAX_SEATS)]
             };
             let (streams, winner) = self.step_told(given)?;
             advance.ticks += 1;
@@ -336,6 +369,25 @@ impl<A: Access> Game<A> {
         }
         advance.limited = self.local.tick() >= self.limit;
         Ok(advance)
+    }
+
+    /// Refuses more seats' orders than any match has; the exact count is checked as a step
+    /// begins, after whether the match is over.
+    fn at_most_a_seat_each(&self, seats: usize) -> Result<(), GymError> {
+        if seats > MAX_SEATS {
+            return self.count_orders(seats);
+        }
+        Ok(())
+    }
+
+    fn count_orders(&self, seats: usize) -> Result<(), GymError> {
+        if seats != self.seats {
+            return Err(GymError::OrderCount {
+                expected: self.seats,
+                got: seats,
+            });
+        }
+        Ok(())
     }
 
     pub fn tick(&self) -> u32 {
@@ -437,6 +489,15 @@ impl<'a> Truth<'a> {
     pub fn full_view(self) -> WorldView {
         self.local.world().view_full()
     }
+}
+
+/// One-order-per-seat orders (as many as a match has seats) as batches of one or none.
+fn one_each(orders: &[Option<OutgoingOrder>]) -> [&[OutgoingOrder]; MAX_SEATS] {
+    let mut given: [&[OutgoingOrder]; MAX_SEATS] = [&[]; MAX_SEATS];
+    for (slot, order) in given.iter_mut().zip(orders) {
+        *slot = order.as_slice();
+    }
+    given
 }
 
 fn validate(spec: &MatchSpec) -> Result<(), GymError> {

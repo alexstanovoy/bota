@@ -4,11 +4,79 @@ use bota_client_core::{AckPolicy, ClientSession, IssuedOrder, MatchStatic, Sessi
 use bota_proto::{MatchStats, OutgoingOrder, ServerMsg};
 use bota_replay::meta::Meta;
 
-use crate::game::{Access, Advance, MAX_SEATS, Player, Privileged, Truth};
+use crate::game::{Access, Advance, MAX_ORDERS_PER_TICK, MAX_SEATS, Player, Privileged, Truth};
 use crate::{Episode, Game, GameId, GymError, MatchSpec};
 
-/// One order per seat, or none: what a [`PlayerEnv`] step takes.
+/// One order per seat, or none: what a [`PlayerEnv`] step takes by default.
 pub type SeatOrders = [Option<IssuedOrder>; MAX_SEATS];
+
+/// What one [`PlayerEnv`] step hands its seats: each seat's orders for the turn, in the order
+/// its client issues them.
+pub trait SeatActions: Send {
+    /// Most orders one seat issues in one turn; at most [`MAX_ORDERS_PER_TICK`].
+    const PER_SEAT: usize;
+
+    /// Seat `seat`'s orders; `None` entries are skipped.
+    fn seat(&self, seat: usize) -> &[Option<IssuedOrder>];
+}
+
+impl SeatActions for SeatOrders {
+    const PER_SEAT: usize = 1;
+
+    fn seat(&self, seat: usize) -> &[Option<IssuedOrder>] {
+        core::slice::from_ref(&self[seat])
+    }
+}
+
+/// Up to `N` orders per seat for one turn, in the order given: clients may issue several orders
+/// per turn (stop, learn an ability, buy, then attack). `N` is at most [`MAX_ORDERS_PER_TICK`],
+/// what the server lets take effect for one seat on one tick; the storage is fixed, nothing is
+/// allocated.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SeatBatches<const N: usize> {
+    orders: [[Option<IssuedOrder>; N]; MAX_SEATS],
+}
+
+impl<const N: usize> SeatBatches<N> {
+    const FITS: () = assert!(N >= 1 && N <= MAX_ORDERS_PER_TICK);
+
+    /// No orders for any seat.
+    pub const fn new() -> Self {
+        let () = Self::FITS;
+        Self {
+            orders: [[None; N]; MAX_SEATS],
+        }
+    }
+
+    /// Adds `order` after seat `seat`'s others; refuses a seat beyond [`MAX_SEATS`] or a
+    /// full batch.
+    pub fn push(&mut self, seat: usize, order: IssuedOrder) -> Result<(), GymError> {
+        let batch = self
+            .orders
+            .get_mut(seat)
+            .ok_or(GymError::Config("a seat must be below MAX_SEATS"))?;
+        let free = batch
+            .iter_mut()
+            .find(|slot| slot.is_none())
+            .ok_or(GymError::OrderBatch { seat, len: N + 1 })?;
+        *free = Some(order);
+        Ok(())
+    }
+}
+
+impl<const N: usize> Default for SeatBatches<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<const N: usize> SeatActions for SeatBatches<N> {
+    const PER_SEAT: usize = N;
+
+    fn seat(&self, seat: usize) -> &[Option<IssuedOrder>] {
+        &self.orders[seat]
+    }
+}
 
 /// How a [`PlayerEnv`] run makes the match of a game from its id and plan.
 pub type SpecFn<P> = dyn Fn(GameId, &P) -> MatchSpec + Send + Sync;
@@ -40,21 +108,25 @@ pub struct Finished<P> {
 
 /// One game seen through its seats' own clients: each seat's [`ClientSession`] folds exactly the
 /// stream a connection to a server would carry, on the worker, and the caller's policy reads
-/// those sessions between steps and answers with one [`IssuedOrder`] per seat.
+/// those sessions between steps and answers with the seats' orders: one per seat with
+/// [`SeatOrders`] (the default), or up to `N` per seat with `PlayerEnv<P, A, SeatBatches<N>>`.
 ///
 /// The caller plays every seat, so it holds every seat's session: a policy acting for one seat
 /// should read that seat's session alone, as its client would. `PlayerEnv<P, Privileged>` also
 /// offers [`PlayerEnv::truth`] for training signals that may see everything;
 /// `PlayerEnv<P>` (= `PlayerEnv<P, Player>`) has no way to it, and its finished games carry only
 /// what every seat was told.
-pub struct PlayerEnv<P, A: Access = Player> {
+pub struct PlayerEnv<P, A: Access = Player, Act: SeatActions = SeatOrders> {
     id: GameId,
     plan: P,
     game: Game<A>,
     sessions: Vec<ClientSession>,
+    /// The turn's orders as sent, sized once for every seat's most orders.
+    outgoing: Vec<OutgoingOrder>,
+    actions: core::marker::PhantomData<fn(Act)>,
 }
 
-impl<P, A: Access> PlayerEnv<P, A> {
+impl<P, A: Access, Act: SeatActions> PlayerEnv<P, A, Act> {
     /// What seat `seat`'s client knows: its side's current view, the tracks of what it saw,
     /// its own orders.
     pub fn seat(&self, seat: usize) -> &ClientSession {
@@ -74,7 +146,7 @@ impl<P, A: Access> PlayerEnv<P, A> {
     }
 }
 
-impl<P> PlayerEnv<P, Privileged> {
+impl<P, Act: SeatActions> PlayerEnv<P, Privileged, Act> {
     /// The whole truth of the match: for training signals and measurements, never a policy's
     /// input.
     pub fn truth(&self) -> Truth<'_> {
@@ -82,10 +154,10 @@ impl<P> PlayerEnv<P, Privileged> {
     }
 }
 
-impl<P: Clone + Send, A: Access> Episode for PlayerEnv<P, A> {
+impl<P: Clone + Send, A: Access, Act: SeatActions> Episode for PlayerEnv<P, A, Act> {
     type Shared = PlayerEnvConfig<P>;
     type Plan = P;
-    type Action = SeatOrders;
+    type Action = Act;
     type Finished = Finished<P>;
     type Error = GymError;
 
@@ -124,40 +196,53 @@ impl<P: Clone + Send, A: Access> Episode for PlayerEnv<P, A> {
             }
             sessions.push(session);
         }
+        let outgoing = Vec::with_capacity(sessions.len() * Act::PER_SEAT);
         Ok(Self {
             id,
             plan,
             game,
             sessions,
+            outgoing,
+            actions: core::marker::PhantomData,
         })
     }
 
     fn step(
         &mut self,
         shared: &Self::Shared,
-        action: SeatOrders,
+        action: Act,
     ) -> Result<Option<Finished<P>>, GymError> {
-        let mut orders: [Option<OutgoingOrder>; MAX_SEATS] = [None; MAX_SEATS];
-        for (seat, (session, order)) in self.sessions.iter_mut().zip(action).enumerate() {
-            if let Some(order) = order {
-                orders[seat] = Some(session.issue(order).map_err(|error| GymError::Session {
+        // Every seat's orders, issued by its session in the order given, then each seat's run.
+        self.outgoing.clear();
+        let mut ends = [0; MAX_SEATS];
+        for (seat, session) in self.sessions.iter_mut().enumerate() {
+            for order in action.seat(seat).iter().flatten() {
+                let sent = session.issue(*order).map_err(|error| GymError::Session {
                     seat,
                     error: error.to_string(),
-                })?);
+                })?;
+                self.outgoing.push(sent);
             }
+            ends[seat] = self.outgoing.len();
+        }
+        let mut batches: [&[OutgoingOrder]; MAX_SEATS] = [&[]; MAX_SEATS];
+        let mut begin = 0;
+        for (batch, &end) in batches.iter_mut().zip(&ends).take(self.sessions.len()) {
+            *batch = &self.outgoing[begin..end];
+            begin = end;
         }
         let sessions = &mut self.sessions;
         let seats = sessions.len();
-        let end = self
-            .game
-            .advance(&orders[..seats], shared.decision_ticks, |streams| {
-                for (seat, (session, stream)) in sessions.iter_mut().zip(streams).enumerate() {
-                    for message in stream {
-                        ingest(session, seat, message)?;
+        let end =
+            self.game
+                .advance_batches(&batches[..seats], shared.decision_ticks, |streams| {
+                    for (seat, (session, stream)) in sessions.iter_mut().zip(streams).enumerate() {
+                        for message in stream {
+                            ingest(session, seat, message)?;
+                        }
                     }
-                }
-                Ok::<(), GymError>(())
-            })?;
+                    Ok::<(), GymError>(())
+                })?;
         if !end.done() {
             return Ok(None);
         }

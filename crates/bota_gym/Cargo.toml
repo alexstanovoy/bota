@@ -37,5 +37,9 @@ required-features = ["simulation"]
 name = "e2e"
 required-features = ["simulation"]
 
+[[test]]
+name = "batches"
+required-features = ["simulation"]
+
 [lints]
 workspace = true
