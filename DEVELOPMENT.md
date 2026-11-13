@@ -181,6 +181,32 @@ module; its existing client read helpers stay wire-only, with no extra build wat
 checkout is required, including the server rule sources even for client builds.
 Packaging individual crates for crates.io is not supported by this build arrangement; publication policy is separate.
 
+### Admitted wires
+
+A change that only adds items (their rows and the mechanics only they reach) leaves every older build's games as they
+were, and may let the older build's clients, servers and replays in: `bota_core::ADMITTED_WIRES` lists such wires, each
+with the catalogue prefix its build holds. An entry is a claim that the older build's rules are unchanged, and its evidence is the wire's
+corpus, `crates/bota_server/tests/admitted/WIRE/`: replays of the scripted matches of
+`crates/bota_server/tests/admitted/scenarios.rs`, which buy and use every item of the catalogue and exercise spell
+damage, cooldowns, cast ranges, regeneration, slows and damage over time, recorded by a build of that wire, and
+`corpus.txt`, that build's count of their records, snapshots and world fingerprints. The `admitted` test of
+`bota_server` plays the matches again and fails on the first record that departs, on a wire without a corpus and on a
+corpus of a wire no longer admitted.
+
+To admit the wire of commit `C` (the commit the change was branched from):
+
+1. `tools/admitted.sh corpus C` exports `C` with `git archive`, lays this tree's corpus programs over it, builds it in
+   release under `target/admitted/` (`ADMITTED_BUILDS` names another directory; the radovid checkout beside this
+   repository is linked in, as `bota_radovid`'s manifest names it) and writes the corpus. It refuses a corpus whose
+   matches leave an item unheld or unused.
+2. Add the entry: the wire the script printed and `Catalogue::FULL.prefix()` of `C`. A build-time check refuses a
+   catalogue this build does not hold alike.
+3. Run the `admitted` test. A departure is a rules change: fix it, or drop the entry and its corpus and say so.
+
+A change to the scripted
+matches changes every corpus: write them again from their commits. A finite corpus is evidence, not proof: what it
+does not play, it does not check.
+
 ## Determinism
 
 The same seed and orders give the same match, bit for bit, on any platform:

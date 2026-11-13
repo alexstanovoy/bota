@@ -279,15 +279,23 @@ tests = [{ crate = "bota_server", target = "lib", filters = [
 
 [[group]]
 name = "game_determinism"
-about = "the pins (whole matches replay their fingerprints) and the dummy bench's digests: any change of the simulation"
-paths = ["crates/bota_server/src/game/tests/determinism.rs", "crates/bota_server/benches/**"]
+about = "the pins (whole matches replay their fingerprints), the admitted wires' corpora and the dummy bench's digests: any change of the simulation"
+paths = [
+    "crates/bota_server/src/game/tests/determinism.rs",
+    "crates/bota_server/benches/**",
+    "crates/bota_server/tests/admitted.rs",
+    "crates/bota_server/tests/admitted/**",
+]
 # a change there runs this group as well, but does not count as naming the file: each still needs a group of its own
 also_paths = [
     "crates/bota_server/src/game/**",
     "crates/bota_server/src/engine/**",
     "crates/bota_server/src/profile/**",
 ]
-tests = [{ crate = "bota_server", target = "lib", filters = ["game::tests::determinism::"] }]
+tests = [
+    { crate = "bota_server", target = "lib", filters = ["game::tests::determinism::"] },
+    { crate = "bota_server", target = "test:admitted" },
+]
 # the bench's digest checks (criterion's --test mode), on the product build
 commands = [["cargo", "bench", "-q", "-p", "bota_server", "--bench", "dummy", "--", "--test"]]
 

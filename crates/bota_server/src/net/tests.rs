@@ -387,7 +387,10 @@ fn match_start_picks(msg: ServerMsg) -> Option<usize> {
 /// rules unchanged for every item it holds) is greeted and seated as one of this build's.
 #[test]
 fn a_client_of_an_admitted_earlier_wire_takes_a_seat() {
-    let earlier = *bota_core::ADMITTED_WIRES.first().expect("an admitted wire");
+    let earlier = bota_core::ADMITTED_WIRES
+        .first()
+        .expect("an admitted wire")
+        .wire;
     assert_ne!(earlier, bota_core::WIRE_FINGERPRINT);
     let addr = start_server(realtime(5));
     let mut client = TestClient::connect(addr);

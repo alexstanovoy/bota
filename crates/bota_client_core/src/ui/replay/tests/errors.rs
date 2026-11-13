@@ -236,7 +236,10 @@ fn reader_failure_keeps_the_io_kind_and_context() {
 /// own nor admitted is refused.
 #[test]
 fn a_replay_of_an_admitted_earlier_wire_plays() {
-    let earlier = *bota_core::ADMITTED_WIRES.first().expect("an admitted wire");
+    let earlier = bota_core::ADMITTED_WIRES
+        .first()
+        .expect("an admitted wire")
+        .wire;
     assert_ne!(earlier, WIRE_FINGERPRINT);
     let header = ReplayRecord::Header(ReplayHeader::new(earlier));
     let mut player = ReplayPlayer::from_reader(Cursor::new(frames(&[header, snapshot(0)])));
