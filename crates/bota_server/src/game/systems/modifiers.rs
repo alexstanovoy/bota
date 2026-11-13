@@ -12,14 +12,30 @@ use super::grenade::grenade_of;
 use crate::engine::Entity;
 
 /// Whether a modifier is a disable or slow that status resistance shortens.
-/// A neutral's spell counts when it slows the bearer. Dota shortens roots,
-/// disarms and breaks like stuns.
+/// Dota shortens roots, disarms and breaks like stuns. One rule by kind of
+/// debuff:
+///
+/// - A slow: its duration, whatever lays it (a neutral's spell, an item's
+///   attack passive, a hero's spell). Valve's Dota 7.34 patch notes: "Status
+///   Resistance no longer affects the impact of slows. About a half of
+///   existing slows in the game had both duration and impact reduced by
+///   Status Resistance, but now it affects only the duration of slows". The
+///   strength is slow resistance's.
+/// - Damage over time alone (a burn, Orb of Venom's poison since Dota 7.38's
+///   "Poison Attack no longer slows movement speed"): left whole. No patch
+///   note says status resistance shortens it.
+/// - A slow that also deals damage over time (a Blood Grenade, an enemy's
+///   rot, an attack passive laying both): one effect with one duration, which
+///   the slow's rule shortens, its damage with it.
 fn shortened_by_resistance(kind: ModifierKind) -> bool {
     match kind {
         ModifierKind::Control { .. } => true,
         ModifierKind::Spell { ability, level, .. } => {
             spell_buff(ability).is_some_and(|buff| buff.get(Stat::MovePct, level) < 0)
         }
+        ModifierKind::Laid { item, .. } => item_def(item)
+            .and_then(|def| def.on_attack)
+            .is_some_and(|laid| laid.slow_pct > 0 || laid.ranged_slow_pct > 0),
         _ => matches!(
             kind,
             ModifierKind::Stunned
@@ -42,11 +58,16 @@ fn shortened_by_resistance(kind: ModifierKind) -> bool {
 /// Every timed disable and slow passes here, whatever hands it out: an
 /// ability, an item or an aura.
 pub fn resisted_ticks(stats: &Table<Stats>, on: Entity, kind: ModifierKind, ticks: u32) -> u32 {
+    resisted_by(stats.get(on), kind, ticks)
+}
+
+/// How long a disable or slow holds on a bearer of `stats` (none: no
+/// resistance), as [`resisted_ticks`] tells.
+pub fn resisted_by(stats: Option<&Stats>, kind: ModifierKind, ticks: u32) -> u32 {
     if !shortened_by_resistance(kind) {
         return ticks;
     }
     let resist = stats
-        .get(on)
         .map_or(0, |stats| stats.status_resist_bp)
         .clamp(0, rules::NOMINAL_BP - 1);
     let kept =

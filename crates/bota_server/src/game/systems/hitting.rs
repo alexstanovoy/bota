@@ -12,7 +12,7 @@ use crate::game::{
 };
 
 use super::bubble::soak;
-use super::modifiers::resisted_ticks;
+use super::modifiers::{resisted_by, resisted_ticks};
 
 use std::collections::VecDeque;
 
@@ -348,17 +348,18 @@ fn lay(blow: Hit, struck: Struck<'_>, on_it: Option<&mut Modifiers>, tick: u32) 
         if worn.is_none() {
             fresh_cut += laid.armor;
         }
+        let kind = ModifierKind::Laid {
+            item,
+            since: worn.unwrap_or(tick),
+        };
         on_it.put(Modifier::new(
-            ModifierKind::Laid {
-                item,
-                since: worn.unwrap_or(tick),
-            },
+            kind,
             blow.source,
             Some(Inflictor::Item(item)),
             // One that beats holds the tick of its last beat too, so that beat lands before it
             // lifts: three beats in three seconds (Liquipedia, Orb of Venom: "resulting in 3
             // instances").
-            Some(laid.ticks + u32::from(laid.dps > 0)),
+            Some(resisted_by(Some(struck.stat), kind, laid.ticks) + u32::from(laid.dps > 0)),
         ));
     }
     fresh_cut

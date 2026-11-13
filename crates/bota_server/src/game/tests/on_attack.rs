@@ -668,6 +668,48 @@ fn an_orb_of_frost_cuts_health_restoration_fifteen_percent() {
     assert!(world.health.get(mark).expect("alive").hp >= Fixed::from_int(270) + regen);
 }
 
+/// What is left of the Frost an Orb of Frost's first blow laid on a foe of `status_resist` basis
+/// points of status resistance (put on through the seat by the stat-change cheat), and how fast the
+/// foe walks under it.
+fn frost_on_a_foe_resisting(status_resist: i32) -> (u32, Fixed) {
+    let (mut world, hero, mark, _) = first_landing(&[ItemId::ORB_OF_FROST], move |world, at| {
+        let foe = foe_hero(world, at);
+        world.cheats = true;
+        let spec = bota_proto::ModifierSpec {
+            status_resist,
+            ..bota_proto::ModifierSpec::NOMINAL
+        };
+        let cheat = bota_proto::Cheat::ApplyModifier {
+            target: bota_proto::Target::Unit(wire_id(foe)),
+            spec,
+            ticks: bota_proto::MAX_MODIFIER_TICKS,
+        };
+        seat_order(world, bota_proto::Order::Cheat { cheat });
+        foe
+    });
+    world.set_order(hero, crate::game::UnitOrder::Stand);
+    let (worn, left) = laid_on(&world, mark, ItemId::ORB_OF_FROST);
+    assert_eq!(worn, 1, "frosted");
+    world.step();
+    let pace = world.stats.get(mark).expect("derived").move_speed;
+    (left.expect("Frost runs out"), pace)
+}
+
+/// Status resistance shortens a slow and leaves its strength alone (Valve, Dota 7.34 patch notes:
+/// "Status Resistance no longer affects the impact of slows. About a half of existing slows in the
+/// game had both duration and impact reduced by Status Resistance, but now it affects only the
+/// duration of slows"; the strength is slow resistance's, a stat of its own since then). Frost
+/// lasts 3 seconds (`duration` "3"), 90 ticks; on a foe of 16% status resistance it lasts
+/// 3 s × 0.84 = 2.52 s, 75.6 ticks, which the duration rule every disable already takes
+/// (`resisted_ticks`) rounds down to 75: 15 ticks fewer. The foe walks as slowly either way.
+#[test]
+fn status_resistance_shortens_frost_and_leaves_its_slow_as_strong() {
+    let (bare, bare_pace) = frost_on_a_foe_resisting(0);
+    let (resisted, resisted_pace) = frost_on_a_foe_resisting(1_600);
+    assert_eq!(bare - resisted, 90 - 75, "{bare} and {resisted} ticks left");
+    assert_eq!(resisted_pace, bare_pace);
+}
+
 /// Frost lands on enemy units alone (Liquipedia, Orb of Frost: not "Buildings", "Ward-type units",
 /// "Couriers"; Dota 7.41e: "Frost no longer applies when attacking allies"), and spell immunity
 /// keeps it off (no `SpellImmunityType`).
