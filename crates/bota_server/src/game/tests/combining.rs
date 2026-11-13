@@ -134,3 +134,37 @@ fn a_purchase_counts_the_parts_on_the_courier_and_in_the_stash() {
     );
     assert!(ids(world.inventory.get(hero).expect("bag")).is_empty());
 }
+
+/// A match on an earlier catalogue builds only that catalogue's items: no item past it is sold,
+/// held or told in the match (`bota_proto::MatchInfo::catalogue`). A Ring of Health and a Void
+/// Stone bought in a match of the first 94 items stay as they are, while a match of every item
+/// builds them into a Perseverance (`item_pers`: "item_ring_of_health;item_void_stone").
+#[test]
+fn a_match_on_an_earlier_catalogue_builds_none_of_the_later_items() {
+    let item = |key| bota_core::item_by_key(key).expect("an item of the catalogue");
+    let parts = [item("item_ring_of_health"), item("item_void_stone")];
+    for (items, built) in [
+        (94, parts.to_vec()),
+        (
+            bota_core::Catalogue::FULL.items(),
+            vec![ItemId::PERSEVERANCE],
+        ),
+    ] {
+        let mut cfg = config();
+        cfg.catalogue = bota_core::Catalogue::first(items).expect("a prefix");
+        let mut world = World::for_match(&cfg, cfg.rng());
+        let hero = world.seats[0].unit.expect("stood up");
+        world.seats[0].gold = 10_000;
+        world.settle();
+        world.step();
+        for item in parts {
+            seat_order(&mut world, Order::Buy { item });
+        }
+        world.step();
+        assert_eq!(
+            ids(world.inventory.get(hero).expect("bag")),
+            built,
+            "{items} items"
+        );
+    }
+}

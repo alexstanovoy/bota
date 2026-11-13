@@ -1,10 +1,10 @@
 //! Items carried and abilities held: what they add, and what they cost.
 
 use bota_core::{
-    AllyUse, Berth, Carried, CarriedItem, DisassembleRule, ITEMS, ItemDef, MAX_COMPONENTS, Mend,
-    ModifierKind, Pool, PurchaseCarrier, PurchaseContext, Spends, clamp_to_map, effect_def,
-    hero_def, item_def, learn_group, move_towards, place_shop_purchase, purchase_pool, rules,
-    shop_access,
+    AllyUse, Berth, Carried, CarriedItem, Catalogue, DisassembleRule, ITEMS, ItemDef,
+    MAX_COMPONENTS, Mend, ModifierKind, Pool, PurchaseCarrier, PurchaseContext, Spends,
+    clamp_to_map, effect_def, hero_def, item_def, learn_group, move_towards, place_shop_purchase,
+    purchase_pool, rules, shop_access,
 };
 use bota_proto::{
     AbilityId, Aim, Attribute, EventKind, Fixed, HeroId, Inflictor, ItemId, RejectReason, SlotId,
@@ -204,26 +204,32 @@ fn build_by_charges(
 const POOL_STRIDE: usize = 16;
 
 /// Builds whatever a pool of containers holds the parts of, again for as long
-/// as a build hands the next its last part: the first item in the catalog
-/// whose parts they all hold, of the first of its recipes they cover, set to
-/// that recipe's attribute.
+/// as a build hands the next its last part: the first item of the match's
+/// catalogue whose parts they all hold, of the first of its recipes they
+/// cover, set to that recipe's attribute. An item past the catalogue is never
+/// built: the match neither sells, holds nor tells of it.
 ///
 /// A part somebody else bought, a part marked for sale and a part locked against
 /// combining take no part. The
 /// build lands in the lowest slot of the first container any of its parts
 /// came out of, so it stays in the inventory when a part was there.
-fn assemble_pool(owner: SlotId, tick: u32, pool: &mut [&mut Inventory]) {
+fn assemble_pool(catalogue: Catalogue, owner: SlotId, tick: u32, pool: &mut [&mut Inventory]) {
     assert!(pool.iter().all(|bag| bag.slots.len() <= POOL_STRIDE));
     // Each build leaves fewer stacks than it took, so the run ends.
     for _ in 0..pool.iter().map(|bag| bag.slots.len()).sum::<usize>() {
-        if !assemble_once(owner, tick, pool) {
+        if !assemble_once(catalogue, owner, tick, pool) {
             break;
         }
     }
 }
 
 /// One build of [`assemble_pool`].
-fn assemble_once(owner: SlotId, tick: u32, pool: &mut [&mut Inventory]) -> bool {
+fn assemble_once(
+    catalogue: Catalogue,
+    owner: SlotId,
+    tick: u32,
+    pool: &mut [&mut Inventory],
+) -> bool {
     let held: Vec<(usize, ItemStack)> = pool
         .iter()
         .enumerate()
@@ -235,7 +241,11 @@ fn assemble_once(owner: SlotId, tick: u32, pool: &mut [&mut Inventory]) -> bool 
         })
         .filter(|(_, stack)| stack.owner == owner && !stack.for_sale && !stack.locked)
         .collect();
-    for (index, def) in ITEMS.iter().enumerate() {
+    for (index, def) in ITEMS
+        .iter()
+        .enumerate()
+        .take(usize::from(catalogue.items()))
+    {
         let Some((spent, mode)) = def
             .recipes()
             .filter(|recipe| !recipe.by_charges)
@@ -478,12 +488,12 @@ impl World {
                     bag.combine_wards();
                 }
             }
-            let (owner, tick) = (self.seats[seat].slot, self.tick);
+            let (catalogue, owner, tick) = (self.catalogue, self.seats[seat].slot, self.tick);
             if let Some(bag) = self.seats[seat]
                 .courier
                 .and_then(|courier| self.inventory.get_mut(courier))
             {
-                assemble_pool(owner, tick, &mut [bag]);
+                assemble_pool(catalogue, owner, tick, &mut [bag]);
             }
             let stash_in_reach = self.seats[seat].unit.is_some_and(|unit| self.at_shop(unit));
             let dead = self.seats[seat].dead();
@@ -494,14 +504,14 @@ impl World {
                 .and_then(|unit| self.inventory.get_mut(unit));
             match hero {
                 Some(hero) if stash_in_reach || dead => {
-                    assemble_pool(owner, tick, &mut [hero, stash]);
+                    assemble_pool(catalogue, owner, tick, &mut [hero, stash]);
                 }
                 Some(hero) => {
-                    assemble_pool(owner, tick, &mut [hero]);
-                    assemble_pool(owner, tick, &mut [stash]);
+                    assemble_pool(catalogue, owner, tick, &mut [hero]);
+                    assemble_pool(catalogue, owner, tick, &mut [stash]);
                 }
                 None => {
-                    assemble_pool(owner, tick, &mut [stash]);
+                    assemble_pool(catalogue, owner, tick, &mut [stash]);
                 }
             }
         }
