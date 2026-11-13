@@ -105,6 +105,7 @@ pub(crate) struct Snapshot {
     pub talents: Vec<TalentView>,
     pub stock: Vec<StockView>,
     pub catalogue: bota_core::Catalogue,
+    pub glyph_cooldown: Option<u32>,
     pub attacks: Vec<AttackFact>,
 }
 
@@ -266,6 +267,11 @@ impl Snapshot {
                 .collect(),
             stock: view.stock.clone(),
             catalogue: session.statics().catalogue(),
+            glyph_cooldown: view
+                .glyphs
+                .iter()
+                .find(|glyph| glyph.team == session.team())
+                .and_then(|glyph| glyph.ready_after),
             attacks: attack_facts(session, view),
             units: session
                 .entities()

@@ -306,3 +306,10 @@ policy: own remembered body positions remain usable during respawn, while expire
 foreign positions error. Vector inputs use the normal checked coordinate
 conversion. Differences are widened before squaring and summing, so opposite
 protocol-coordinate boundaries neither overflow nor saturate the distance.
+
+`GetGlyphCooldown` returns seconds from the viewer's received `ready_after` field;
+it never uses the retired zero-valued `ready_in` field or the other side's timer.
+Missing cooldown knowledge raises an ordinary error. `ActionImmediate_Glyph`
+requires the active bot's authenticated hero handle and emits an ordinary Glyph
+request. Game-rule validation remains with the simulation; the getter does not
+predict or reserve future activations.

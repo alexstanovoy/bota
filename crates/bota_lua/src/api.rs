@@ -18,6 +18,7 @@ mod distances;
 mod estimates;
 mod geometry;
 mod globals;
+mod glyph;
 mod item_queries;
 mod lane_desires;
 mod match_metadata;
@@ -158,6 +159,7 @@ pub(crate) fn install(lua: &mut Lua, state: Shared, vectors: Vectors) -> Result<
     abilities::install(lua, methods, state.clone())?;
     shop::install(lua, &context)?;
     item_queries::install(lua, &context)?;
+    glyph::install(lua, &context)?;
     install_unit_reads(lua, methods, state.clone())?;
     install_bot_state(lua, methods, state.clone())?;
     install_actions(lua, methods, state, vectors)?;

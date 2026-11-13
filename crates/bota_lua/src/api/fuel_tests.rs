@@ -97,6 +97,7 @@ fn run(name: &str, fuel: u64) -> Result<Vec<Value>, luagee::Error> {
             | "GameTime"
             | "RealTime"
             | "GetScriptDirectory"
+            | "GetGlyphCooldown"
     ) {
         if name == "Min" || name == "Max" {
             args.extend([Value::Number(1.0), Value::Number(2.0)]);
@@ -235,4 +236,10 @@ fn distance_queries_pay_for_each_observed_position_lookup() {
     ] {
         assert_budget(name, minimum);
     }
+}
+
+#[test]
+fn glyph_cooldown_and_request_pay_their_explicit_minimum() {
+    assert_budget("GetGlyphCooldown", 9);
+    assert_budget("ActionImmediate_Glyph", 12);
 }
