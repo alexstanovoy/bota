@@ -57,15 +57,30 @@ pub(super) fn selected_hero(state: &State, id: i32) -> Option<HeroId> {
     if let Some(snapshot) = &state.snapshot {
         return player(snapshot, id).map(|player| player.hero);
     }
-    let base = match state.team { Team::Radiant => 0, Team::Dire => 5, _ => return None };
+    let base = match state.team {
+        Team::Radiant => 0,
+        Team::Dire => 5,
+        _ => return None,
+    };
     let rank = usize::try_from(id.checked_sub(base)?).ok()?;
-    if rank >= 5 { return None; }
+    if rank >= 5 {
+        return None;
+    }
     // Without a roster, only a contiguous prefix from wire slot zero proves a rank.
     // A missing lower slot could belong to another player on this same side.
     for lower in 0..=rank {
-        if !state.seats.iter().any(|seat| usize::from(seat.slot.0) == lower) { return None; }
+        if !state
+            .seats
+            .iter()
+            .any(|seat| usize::from(seat.slot.0) == lower)
+        {
+            return None;
+        }
     }
-    let index = state.seats.iter().position(|seat| usize::from(seat.slot.0) == rank)?;
+    let index = state
+        .seats
+        .iter()
+        .position(|seat| usize::from(seat.slot.0) == rank)?;
     Some(state.picks[index].unwrap_or(state.seats[index].hero))
 }
 
@@ -115,7 +130,11 @@ fn team_players(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, 
     found.sort_unstable();
     let table = vm.new_table()?;
     for (index, id) in found.into_iter().enumerate() {
-        vm.raw_set(table, Value::Number((index + 1) as f64), Value::Number(f64::from(id)))?;
+        vm.raw_set(
+            table,
+            Value::Number((index + 1) as f64),
+            Value::Number(f64::from(id)),
+        )?;
     }
     vm.results(&[Value::Table(table)])
 }
@@ -186,9 +205,15 @@ fn last_seen(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, Lua
     let known = if player.unit.is_some() {
         player.last_seen.into_iter().collect::<Vec<_>>()
     } else {
-        snapshot.units.iter().filter(|known|
-            known.unit.kind == bota_proto::UnitKind::Hero && known.unit.owner == Some(player.slot))
-            .map(|known| known.last_visible).collect()
+        snapshot
+            .units
+            .iter()
+            .filter(|known| {
+                known.unit.kind == bota_proto::UnitKind::Hero
+                    && known.unit.owner == Some(player.slot)
+            })
+            .map(|known| known.last_visible)
+            .collect()
     };
     let table = vm.new_table()?;
     for (index, (tick, position)) in known.into_iter().enumerate() {
@@ -202,7 +227,11 @@ fn last_seen(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, Lua
             key,
             Value::Number(seconds(snapshot.tick.saturating_sub(tick))),
         )?;
-        vm.raw_set(table, Value::Number((index + 1) as f64), Value::Table(entry))?;
+        vm.raw_set(
+            table,
+            Value::Number((index + 1) as f64),
+            Value::Table(entry),
+        )?;
     }
     vm.results(&[Value::Table(table)])
 }

@@ -5,8 +5,17 @@ use bota_proto::{EntityId, HeroId, Order, SlotId, Target, Team, UnitView, Vec2};
 
 fn assert_move(turn: &bota_lua::TeamTurn, x: i32, y: i32) {
     assert!(turn.failures.is_empty(), "{:?}", turn.failures);
-    assert_eq!(turn.bots[0].orders.len(), 1, "the script reached its final action");
-    assert_eq!(turn.bots[0].orders[0].order, Order::Move { target: Target::Pos(Vec2::from_ints(x, y)) });
+    assert_eq!(
+        turn.bots[0].orders.len(),
+        1,
+        "the script reached its final action"
+    );
+    assert_eq!(
+        turn.bots[0].orders[0].order,
+        Order::Move {
+            target: Target::Pos(Vec2::from_ints(x, y))
+        }
+    );
 }
 
 fn enemy_observation(body: &UnitView, id: EntityId, position: Vec2) -> UnitView {
@@ -14,12 +23,29 @@ fn enemy_observation(body: &UnitView, id: EntityId, position: Vec2) -> UnitView 
     let previous = shown.id;
     shown.id = id;
     shown.pos = position;
-    for ability in &mut shown.abilities { ability.learnable = None; }
-    for item in shown.items.iter_mut().flatten().chain(shown.town_portal.iter_mut()) {
-        item.selling = None; item.locked = None; item.disassembly = None; item.rune = None;
+    for ability in &mut shown.abilities {
+        ability.learnable = None;
     }
-    shown.effects.retain(|effect| bota_core::effect_def(effect.id).is_some_and(|definition| !definition.own_side_only));
-    for effect in &mut shown.effects { effect.caster = effect.caster.filter(|caster| *caster == previous).map(|_| id); }
+    for item in shown
+        .items
+        .iter_mut()
+        .flatten()
+        .chain(shown.town_portal.iter_mut())
+    {
+        item.selling = None;
+        item.locked = None;
+        item.disassembly = None;
+        item.rune = None;
+    }
+    shown.effects.retain(|effect| {
+        bota_core::effect_def(effect.id).is_some_and(|definition| !definition.own_side_only)
+    });
+    for effect in &mut shown.effects {
+        effect.caster = effect
+            .caster
+            .filter(|caster| *caster == previous)
+            .map(|_| id);
+    }
     shown.queue.clear();
     shown
 }
@@ -74,7 +100,14 @@ fn player_queries_translate_both_sides_and_preserve_hidden_locations() {
         "#
             .replace("__PLAYER__", &player.to_string())
             .replace("__OPPONENT__", &opponent.to_string())
-            .replace("__OPPOSING_TEAM__", if side == Team::Radiant { "TEAM_DIRE" } else { "TEAM_RADIANT" });
+            .replace(
+                "__OPPOSING_TEAM__",
+                if side == Team::Radiant {
+                    "TEAM_DIRE"
+                } else {
+                    "TEAM_RADIANT"
+                },
+            );
             lua.add_script(
                 slot,
                 ScriptKind::Takeover,
@@ -135,7 +168,8 @@ fn host_bot_declarations_are_bounded_and_distinct_and_frozen_before_execution() 
     let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
     let mut lua = team(Team::Radiant, SlotId(0));
     let all = std::array::from_fn::<_, 10, _>(|index| SlotId(index as u8));
-    lua.set_bot_declarations(&all).expect("all ten distinct slots, including nine");
+    lua.set_bot_declarations(&all)
+        .expect("all ten distinct slots, including nine");
     assert_eq!(
         lua.set_bot_declarations(&[SlotId(10)])
             .expect_err("invalid slot")
@@ -227,7 +261,11 @@ fn last_seen_info_uses_received_body_memory_after_entity_tracking_expires() {
     let enemy = sessions[0].current().expect("view").players[1]
         .unit
         .expect("enemy identity");
-    let shown = enemy_observation(sessions[1].own_hero().expect("enemy body"), enemy, Vec2::from_ints(9316, 9416));
+    let shown = enemy_observation(
+        sessions[1].own_hero().expect("enemy body"),
+        enemy,
+        Vec2::from_ints(9316, 9416),
+    );
     let mut view = sessions[0].current().expect("view").clone();
     view.tick += 1;
     view.players[1].seen_at = Some(view.tick);
@@ -293,27 +331,64 @@ fn last_seen_info_uses_received_body_memory_after_entity_tracking_expires() {
 #[test]
 fn player_queries_keep_roster_ranks_with_interleaved_wire_seats_and_distinct_values() {
     use bota_proto::ServerMsg;
-    let heroes = std::array::from_fn::<_,10,_>(|index| if index % 2 == 0 {
-        (Team::Radiant, HeroId::SHADOW_FIEND)
-    } else { (Team::Dire, HeroId::PUDGE) });
+    let heroes = std::array::from_fn::<_, 10, _>(|index| {
+        if index % 2 == 0 {
+            (Team::Radiant, HeroId::SHADOW_FIEND)
+        } else {
+            (Team::Dire, HeroId::PUDGE)
+        }
+    });
     let (_, mut sessions) = support::local_with_modifiers(&heroes, Vec::new());
     let mut view = sessions[9].current().expect("view").clone();
     view.tick += 1;
-    for player in &mut view.players { player.level = player.slot.0 + 2; player.deaths = u16::from(player.slot.0) * 3; }
+    for player in &mut view.players {
+        player.level = player.slot.0 + 2;
+        player.deaths = u16::from(player.slot.0) * 3;
+    }
     for unit in &mut view.units {
-        if unit.hero.is_some() && let Some(owner) = unit.owner { unit.level = owner.0 + 2; }
+        if unit.hero.is_some()
+            && let Some(owner) = unit.owner
+        {
+            unit.level = owner.0 + 2;
+        }
     }
     let deceased = view.players[1].unit.expect("a hero");
     view.players[1].respawn_left = 30;
     view.units.retain(|unit| unit.id != deceased);
     view.aggro.retain(|entry| entry.unit != deceased);
     let tick = view.tick;
-    sessions[9].ingest(ServerMsg::Snapshot { view }, &mut ()).expect("received roster");
-    sessions[9].ingest(ServerMsg::Events { tick, events: Vec::new() }, &mut ()).expect("events");
-    let mut lua = LuaTeam::new(Team::Dire, &[BotSeat { slot: SlotId(9), hero: HeroId::PUDGE }],
-        Limits::DEFAULT, Keys { hash: [17,19], random: 23 }).expect("team");
-    lua.set_bot_declarations(&[SlotId(1)]).expect("declared foreign bot");
-    lua.add_script(SlotId(9), ScriptKind::Takeover, "roster_ranks", br#"
+    sessions[9]
+        .ingest(ServerMsg::Snapshot { view }, &mut ())
+        .expect("received roster");
+    sessions[9]
+        .ingest(
+            ServerMsg::Events {
+                tick,
+                events: Vec::new(),
+            },
+            &mut (),
+        )
+        .expect("events");
+    let mut lua = LuaTeam::new(
+        Team::Dire,
+        &[BotSeat {
+            slot: SlotId(9),
+            hero: HeroId::PUDGE,
+        }],
+        Limits::DEFAULT,
+        Keys {
+            hash: [17, 19],
+            random: 23,
+        },
+    )
+    .expect("team");
+    lua.set_bot_declarations(&[SlotId(1)])
+        .expect("declared foreign bot");
+    lua.add_script(
+        SlotId(9),
+        ScriptKind::Takeover,
+        "roster_ranks",
+        br#"
         function Think()
             local radiant, dire = GetTeamPlayers(TEAM_RADIANT), GetTeamPlayers(TEAM_DIRE)
             assert(#radiant == 5 and #dire == 5)
@@ -329,24 +404,40 @@ fn player_queries_keep_roster_ranks_with_interleaved_wire_seats_and_distinct_val
             assert(IsPlayerBot(9) and IsPlayerBot(5) and not IsPlayerBot(6))
             GetBot():Action_MoveToLocation(Vector(123,456,0))
         end
-    "#).expect("script");
+    "#,
+    )
+    .expect("script");
     assert_move(&lua.think(&sessions[9]).expect("think"), 9339, 9672);
 }
 
 #[test]
 fn hero_name_lookup_does_not_guess_ranks_before_a_roster_is_received() {
     let mut lua = team(Team::Radiant, SlotId(1));
-    lua.add_script(SlotId(1), ScriptKind::HeroSelection, "selection_roster", br#"
+    lua.add_script(
+        SlotId(1),
+        ScriptKind::HeroSelection,
+        "selection_roster",
+        br#"
         function Think()
             assert(GetSelectedHeroName(0) == '')
             SelectHero(1, 'npc_dota_hero_pudge')
         end
-    "#).expect("script");
+    "#,
+    )
+    .expect("script");
     let selected = lua.select_heroes(0).expect("selection");
     assert!(selected.failures.is_empty(), "{:?}", selected.failures);
-    assert_eq!(selected.seats[0].hero, HeroId::PUDGE, "the hook reached its final selection action");
-    assert_eq!(lua.set_bot_declarations(&[]).expect_err("selection already started").to_string(),
-        "bot declarations must be set before execution");
+    assert_eq!(
+        selected.seats[0].hero,
+        HeroId::PUDGE,
+        "the hook reached its final selection action"
+    );
+    assert_eq!(
+        lua.set_bot_declarations(&[])
+            .expect_err("selection already started")
+            .to_string(),
+        "bot declarations must be set before execution"
+    );
 }
 
 #[test]
@@ -357,17 +448,47 @@ fn last_seen_info_reports_received_candidates_without_identifying_a_hidden_real_
     view.tick += 1;
     view.players[1].unit = None;
     view.players[1].seen_at = Some(view.tick);
-    let next = view.units.iter().map(|unit| unit.id.idx).max().expect("units") + 1;
+    let next = view
+        .units
+        .iter()
+        .map(|unit| unit.id.idx)
+        .max()
+        .expect("units")
+        + 1;
     let body = sessions[1].own_hero().expect("hero");
-    for (offset, position) in [(0, Vec2::from_ints(9316,9416)), (1, Vec2::from_ints(9516,9616))] {
-        view.units.push(enemy_observation(body, EntityId { idx: next + offset, generation: 0 }, position));
+    for (offset, position) in [
+        (0, Vec2::from_ints(9316, 9416)),
+        (1, Vec2::from_ints(9516, 9616)),
+    ] {
+        view.units.push(enemy_observation(
+            body,
+            EntityId {
+                idx: next + offset,
+                generation: 0,
+            },
+            position,
+        ));
     }
     view.units.sort_unstable_by_key(|unit| unit.id);
     let tick = view.tick;
-    sessions[0].ingest(ServerMsg::Snapshot { view }, &mut ()).expect("ambiguous visible bodies");
-    sessions[0].ingest(ServerMsg::Events { tick, events: Vec::new() }, &mut ()).expect("events");
+    sessions[0]
+        .ingest(ServerMsg::Snapshot { view }, &mut ())
+        .expect("ambiguous visible bodies");
+    sessions[0]
+        .ingest(
+            ServerMsg::Events {
+                tick,
+                events: Vec::new(),
+            },
+            &mut (),
+        )
+        .expect("events");
     let mut lua = team(Team::Radiant, SlotId(0));
-    lua.add_script(SlotId(0), ScriptKind::Takeover, "last_seen_candidates", br#"
+    lua.add_script(
+        SlotId(0),
+        ScriptKind::Takeover,
+        "last_seen_candidates",
+        br#"
         function Think()
             local seen, first, second = GetHeroLastSeenInfo(5), false, false
             assert(#seen == 2)
@@ -380,7 +501,9 @@ fn last_seen_info_reports_received_candidates_without_identifying_a_hidden_real_
             assert(first and second)
             GetBot():Action_MoveToLocation(Vector(123,456,0))
         end
-    "#).expect("script");
+    "#,
+    )
+    .expect("script");
     assert_move(&lua.think(&sessions[0]).expect("think"), 9339, 9672);
 }
 
@@ -389,7 +512,11 @@ fn player_id_rejects_an_expired_creep_handle() {
     use bota_client_core::IssuedOrder;
     let (mut local, mut sessions, target) = support::durable_creep_encounter(HeroId::SHADOW_FIEND);
     let mut lua = team(Team::Radiant, SlotId(0));
-    lua.add_script(SlotId(0), ScriptKind::Takeover, "expired_player_id", br#"
+    lua.add_script(
+        SlotId(0),
+        ScriptKind::Takeover,
+        "expired_player_id",
+        br#"
         local held, turns = nil, 0
         function Think()
             turns = turns + 1
@@ -402,15 +529,32 @@ fn player_id_rejects_an_expired_creep_handle() {
             end
             GetBot():Action_MoveToLocation(Vector(turns,222,0))
         end
-    "#).expect("script");
-    assert_move(&lua.think(&sessions[0]).expect("observed creep"), 9217, 9438);
+    "#,
+    )
+    .expect("script");
+    assert_move(
+        &lua.think(&sessions[0]).expect("observed creep"),
+        9217,
+        9438,
+    );
     let fountain = bota_core::fountain_pos(sessions[0].map(), Team::Radiant);
     for _ in 0..3600 {
-        if sessions[0].entity(target).is_none() { break; }
-        let order = sessions[0].issue(IssuedOrder::hero(Order::Move { target: Target::Pos(fountain) })).expect("move");
+        if sessions[0].entity(target).is_none() {
+            break;
+        }
+        let order = sessions[0]
+            .issue(IssuedOrder::hero(Order::Move {
+                target: Target::Pos(fountain),
+            }))
+            .expect("move");
         let streams = local.step(&[&[order], &[]]).expect("step");
-        for (session, stream) in sessions.iter_mut().zip(streams) { support::fold(session, stream); }
+        for (session, stream) in sessions.iter_mut().zip(streams) {
+            support::fold(session, stream);
+        }
     }
-    assert!(sessions[0].entity(target).is_none(), "the received creep observation expired");
+    assert!(
+        sessions[0].entity(target).is_none(),
+        "the received creep observation expired"
+    );
     assert_move(&lua.think(&sessions[0]).expect("expired creep"), 9218, 9438);
 }

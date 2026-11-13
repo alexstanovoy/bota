@@ -173,7 +173,8 @@ impl Snapshot {
                         hero: player.hero,
                         level: player.level,
                         deaths: player.deaths,
-                        last_seen: player.unit
+                        last_seen: player
+                            .unit
                             .and_then(|id| session.known(id))
                             .map(|(unit, age)| (view.tick.saturating_sub(age), unit.pos)),
                         unit: player.unit,
