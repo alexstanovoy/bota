@@ -14,6 +14,7 @@ pub(crate) mod context;
 mod estimates;
 mod geometry;
 mod globals;
+mod modifiers;
 mod patterns;
 pub(crate) mod players;
 mod queries;
@@ -130,6 +131,7 @@ pub(crate) fn install(lua: &mut Lua, state: Shared, vectors: Vectors) -> Result<
     players::install(lua, &context)?;
     unit_lists::install(lua, &context)?;
     unit_statistics::install(lua, &context)?;
+    modifiers::install(lua, &context)?;
     queries::install(lua, methods, state.clone(), vectors)?;
     abilities::install(lua, methods, state.clone())?;
     shop::install(lua, &context)?;

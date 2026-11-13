@@ -121,6 +121,13 @@ Owned scalar statistics remain available from the session's received body memory
 while a dead hero's short-lived entity track is absent. They remain last-observed
 values until a new body observation arrives; this does not refresh hidden data.
 
+Modifier indices are zero-based positions in the received effect list. Names come
+from the public effect catalogue. An absent named modifier returns index -1;
+uncounted stacks return zero and a permanent duration returns -1. Condition reads
+use received status flags or effect ids. In particular, `IsIllusion` tests only
+the reported illusion effect; it does not identify an enemy real hero from
+information withheld by the side's view.
+
 Estimated damage is an integer projection of observed attack stats and core spell
 data over the requested duration. The availability flag restricts allied spells
 and items by the known mana and cooldowns; it does not disable ordinary attacks.
