@@ -208,10 +208,26 @@ pub fn place_shop_purchase<P: HeldItem>(
     parts: &[ItemId],
     context: &PurchaseContext<'_, P>,
 ) -> Result<Vec<Berth>, RejectReason> {
+    let mut berths = vec![Berth::Bag(0); parts.len()];
+    let count = place_shop_purchase_into(buyer, parts, context, &mut berths)?;
+    berths.truncate(count);
+    Ok(berths)
+}
+
+/// The allocation-free form of [`place_shop_purchase`]. The output must hold every part.
+pub fn place_shop_purchase_into<P: HeldItem>(
+    buyer: SlotId,
+    parts: &[ItemId],
+    context: &PurchaseContext<'_, P>,
+    output: &mut [Berth],
+) -> Result<usize, RejectReason> {
     if parts.is_empty() {
         return Err(RejectReason::NothingToBuy);
     }
-    let mut berths = Vec::with_capacity(parts.len());
+    if output.len() < parts.len() {
+        return Err(RejectReason::InventoryFull);
+    }
+    let mut count = 0;
     for part in parts {
         let item = sold(*part).ok_or(RejectReason::UnknownItem)?;
         if item.stack_limit > 0 {
@@ -226,24 +242,31 @@ pub fn place_shop_purchase<P: HeldItem>(
             if hero.is_none() && courier.is_none() {
                 return Err(RejectReason::NotAtShop);
             }
-            hero.and_then(|carrier| purchase_slot(buyer, item, &carrier.bag, Berth::Bag, &berths))
-                .or_else(|| {
-                    courier.and_then(|carrier| {
-                        purchase_slot(buyer, item, &carrier.bag, Berth::Courier, &berths)
-                    })
+            hero.and_then(|carrier| {
+                purchase_slot(buyer, item, &carrier.bag, Berth::Bag, &output[..count])
+            })
+            .or_else(|| {
+                courier.and_then(|carrier| {
+                    purchase_slot(buyer, item, &carrier.bag, Berth::Courier, &output[..count])
                 })
+            })
         } else {
             context
                 .hero
                 .as_ref()
                 .filter(|carrier| carrier.shops.base || context.respawning)
-                .and_then(|carrier| purchase_slot(buyer, item, &carrier.bag, Berth::Bag, &berths))
-                .or_else(|| purchase_slot(buyer, item, &context.stash, Berth::Stash, &berths))
+                .and_then(|carrier| {
+                    purchase_slot(buyer, item, &carrier.bag, Berth::Bag, &output[..count])
+                })
+                .or_else(|| {
+                    purchase_slot(buyer, item, &context.stash, Berth::Stash, &output[..count])
+                })
         }
         .ok_or(RejectReason::InventoryFull)?;
-        berths.push(berth);
+        output[count] = berth;
+        count += 1;
     }
-    Ok(berths)
+    Ok(count)
 }
 
 fn purchase_slot<P: HeldItem>(

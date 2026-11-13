@@ -1,26 +1,15 @@
 //! The surface a match runs a world through: what the game loop asks of it.
 
+use bota_core::order_halts as is_halt;
 use bota_core::{AllyUse, ItemDef, clamp_to_map, hero_spawn_pos, item_def, map_of, rules};
-use bota_proto::{Aim, ItemId, MatchStats, Order, RejectReason, SlotId, SlotStats, Target, Team};
+use bota_proto::{Aim, MatchStats, Order, RejectReason, SlotId, SlotStats, Target, Team};
 
 use crate::game::{
-    ActionPhase, ActionState, BAG_SLOTS, Command, Entity, Event, MatchConfig, MatchRng,
-    PendingCast, Seat, UnitOrder, World, in_backpack, in_stash, in_town_portal, wire_id,
+    ActionPhase, ActionState, Command, Entity, Event, MatchConfig, MatchRng, PendingCast, Seat,
+    UnitOrder, World, in_backpack, in_stash, wire_id,
 };
 
-/// Whether an order aims at the kind of thing something takes.
-pub fn aimed_right(aim: Aim, target: &Target) -> bool {
-    match aim {
-        Aim::Own => matches!(target, Target::None),
-        // A tree is named by the ground it stands on; which one was meant is
-        // settled where the use is carried out.
-        Aim::Point | Aim::Tree => matches!(target, Target::Pos(_)),
-        // A building is named by a spot near it, by itself, or, by naming
-        // nothing, the fountain.
-        Aim::Building => true,
-        Aim::Unit => matches!(target, Target::Unit(_)),
-    }
-}
+pub use bota_core::aimed_right;
 
 impl World {
     /// A world at tick zero for a match: the map standing, the setup's
@@ -305,9 +294,12 @@ impl World {
     /// other order replaces whatever waits. Refused when the casts waiting
     /// fill [`MAX_QUEUED_ORDERS`](bota_core::rules::MAX_QUEUED_ORDERS).
     fn wait_for_cast(&mut self, seat: SlotId, unit: Entity, order: Order, seq: u32) {
-        let is_cast = |order: &Order| matches!(order, Order::Cast { .. } | Order::Use { .. });
         let mut waiting = self.waiting.remove(unit).unwrap_or_default();
-        if !is_cast(&order) || !waiting.iter().all(|queued| is_cast(&queued.order)) {
+        if !bota_core::order_is_cast(order)
+            || !waiting
+                .iter()
+                .all(|queued| bota_core::order_is_cast(queued.order))
+        {
             waiting = crate::game::OrderQueue::default();
         }
         if !waiting.push(crate::game::Queued { order, seq }) {
@@ -607,14 +599,12 @@ impl World {
                 .map_or(Ok(()), Err),
             Order::Use { slot, target } => self.check_use(unit, seat, usize::from(slot.0), target),
             Order::Cheat { cheat } => self.check_cheat(slot, Some(unit), cheat),
-            Order::LearnTalent { talent } => self
-                .can_learn_talent(unit, *talent)
-                .then_some(())
-                .ok_or(RejectReason::CannotLearn),
-            Order::LearnAttributeBonus => self
-                .can_learn_attribute_bonus(unit)
-                .then_some(())
-                .ok_or(RejectReason::CannotLearn),
+            Order::LearnTalent { talent } => {
+                bota_core::learning_refusal(self.can_learn_talent(unit, *talent))
+            }
+            Order::LearnAttributeBonus => {
+                bota_core::learning_refusal(self.can_learn_attribute_bonus(unit))
+            }
             _ => Ok(()),
         }
     }
@@ -683,18 +673,13 @@ impl World {
             return Err(RejectReason::WrongTargetKind);
         };
         let mark = self.seen_by(seat, *named)?;
-        // A rune is taken by a hero and no other unit.
-        let takes = if self.rune.get(mark).is_some() {
-            self.is_real_hero(unit)
-        } else {
+        bota_core::take_refusal(
+            self.rune.contains(mark),
+            self.is_real_hero(unit),
             self.loot
                 .get(mark)
-                .is_some_and(|loot| self.may_receive_item(unit, loot.0.id))
-        };
-        if !takes {
-            return Err(RejectReason::WrongTargetKind);
-        }
-        Ok(())
+                .is_some_and(|loot| self.may_receive_item(unit, loot.0.id)),
+        )
     }
 
     /// The entity a seat names on the wire, while its side's view shows it:
@@ -787,54 +772,24 @@ impl World {
 
     /// Whether a bag slot holds the Ward Dispenser an order would switch.
     fn check_switch(&self, unit: Entity, at: usize) -> Result<(), RejectReason> {
-        if in_stash(at) {
-            return Err(RejectReason::NotInBag);
-        }
         let held = self
             .inventory
             .get(unit)
-            .and_then(|bag| bag.slot(at).copied().flatten())
-            .ok_or(RejectReason::EmptySlot)?;
-        if held.id == ItemId::WARD_DISPENSER {
-            Ok(())
-        } else {
-            Err(RejectReason::NotCastable)
-        }
+            .and_then(|bag| bag.slot(at).copied().flatten());
+        bota_core::switch_refusal(at, held.map(|held| held.id))
     }
 
     /// Whether a seat may sell or mark what one of its slots holds. Away
     /// from the shop the order marks rather than sells, so only a stack
     /// that is not the seat's own is refused.
     fn check_sale(&self, unit: Entity, seat: &Seat, at: usize) -> Result<(), RejectReason> {
-        if !in_stash(at) && self.copied_inventory(unit) {
-            return Err(RejectReason::ItemRestricted);
-        }
-        let held = if in_stash(at) {
-            seat.stash.slots.get(at - BAG_SLOTS).copied().flatten()
-        } else {
-            self.inventory
-                .get(unit)
-                .and_then(|bag| bag.slot(at).copied().flatten())
-        };
-        let held = held.ok_or(RejectReason::EmptySlot)?;
-        if held.owner != seat.slot {
-            return Err(RejectReason::NotYourItem);
-        }
-        if item_def(held.id).is_some_and(|def| !def.limits.sellable) {
-            return Err(RejectReason::Unsellable);
-        }
-        if held.free_charges > 0 {
-            return Err(RejectReason::Unsellable);
-        }
-        if held.rune.is_some() {
-            return Err(RejectReason::HoldsRune);
-        }
-        // Nothing is ever carried out of the town portal slot, so it sells
-        // only at the shop and is never marked.
-        if in_town_portal(at) && !self.at_any_shop(unit) {
-            return Err(RejectReason::NotAtShop);
-        }
-        Ok(())
+        bota_core::sale_refusal(
+            at,
+            self.copied_inventory(unit),
+            self.stack_at(unit, seat, at).map(Into::into),
+            seat.slot,
+            self.at_any_shop(unit),
+        )
     }
 
     /// What a seat whose hero lies dead may still do: buy into its inventory
@@ -890,25 +845,8 @@ impl World {
         at: usize,
         target: &Target,
     ) -> Result<(), RejectReason> {
-        if self.copied_inventory(unit) {
-            return Err(RejectReason::ItemRestricted);
-        }
-        if at >= BAG_SLOTS {
-            return Err(RejectReason::NotInBag);
-        }
-        if !self.holds(unit, seat, at) {
-            return Err(RejectReason::EmptySlot);
-        }
-        if self
-            .held_in_bag(unit, at)
-            .and_then(|stack| item_def(stack.id))
-            .is_some_and(|def| !def.limits.droppable)
-        {
-            return Err(RejectReason::ItemRestricted);
-        }
-        if self.holds_rune_at(unit, at) {
-            return Err(RejectReason::HoldsRune);
-        }
+        let held = self.held_in_bag(unit, at);
+        bota_core::put_item_refusal(at, self.copied_inventory(unit), held.map(Into::into))?;
         match target {
             Target::None => Ok(()),
             Target::Pos(pos) => self
@@ -918,15 +856,11 @@ impl World {
                 .ok_or(RejectReason::ClosedGround),
             Target::Unit(target) => {
                 let to = self.seen_by(seat, *target)?;
-                if to == unit
-                    || self.team.get(to) != Some(&seat.team)
-                    || self
-                        .held_in_bag(unit, at)
-                        .is_none_or(|s| !self.may_receive_item(to, s.id))
-                {
-                    return Err(RejectReason::WrongTargetKind);
-                }
-                Ok(())
+                bota_core::put_recipient_refusal(
+                    to == unit,
+                    self.team.get(to) == Some(&seat.team),
+                    held.is_some_and(|held| self.may_receive_item(to, held.id)),
+                )
             }
         }
     }
@@ -1035,27 +969,6 @@ impl World {
         }
     }
 
-    /// Whether a bag slot of a unit holds a Bottle with a rune in it.
-    fn holds_rune_at(&self, unit: Entity, at: usize) -> bool {
-        self.held_in_bag(unit, at)
-            .is_some_and(|stack| stack.rune.is_some())
-    }
-
-    /// Whether one of a seat's slots holds anything at all.
-    fn holds(&self, unit: Entity, seat: &Seat, slot: usize) -> bool {
-        if in_stash(slot) {
-            return seat
-                .stash
-                .slots
-                .get(slot - BAG_SLOTS)
-                .is_some_and(|held| held.is_some());
-        }
-        self.inventory
-            .get(unit)
-            .and_then(|bag| bag.slot(slot))
-            .is_some_and(|held| held.is_some())
-    }
-
     /// The entity behind a handle from the wire, while it still stands.
     pub fn of_wire(&self, id: bota_proto::EntityId) -> Option<Entity> {
         self.entities
@@ -1089,19 +1002,6 @@ impl World {
                 .collect(),
         }
     }
-}
-
-/// Whether an order is a stop or a hold: the orders that break a cast off in
-/// its cast point.
-fn is_halt(order: Order) -> bool {
-    matches!(
-        order,
-        Order::Move {
-            target: Target::None
-        } | Order::Attack {
-            target: Target::None
-        }
-    )
 }
 
 /// Transactions mutate storage immediately, beside the body's queued action.

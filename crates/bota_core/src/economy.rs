@@ -157,10 +157,17 @@ pub fn purchase_pool<'a, P: HeldItem + 'a>(
     buyer: SlotId,
     held: impl IntoIterator<Item = &'a P>,
 ) -> Vec<ItemId> {
+    purchase_pool_iter(buyer, held).collect()
+}
+
+/// The allocation-free ownership filter used by [`purchase_pool`].
+pub fn purchase_pool_iter<'a, P: HeldItem + 'a>(
+    buyer: SlotId,
+    held: impl IntoIterator<Item = &'a P>,
+) -> impl Iterator<Item = ItemId> {
     held.into_iter()
-        .filter(|stack| stack.owner() == buyer && !stack.for_sale() && !stack.locked())
+        .filter(move |stack| stack.owner() == buyer && !stack.for_sale() && !stack.locked())
         .map(HeldItem::id)
-        .collect()
 }
 
 /// What buying `item` still takes, as the items to buy, given what the buyer
@@ -189,71 +196,266 @@ pub struct PurchaseRequirements {
     pub remaining_owned: Vec<ItemId>,
 }
 
+/// Maximum nodes of a catalogue recipe expansion, including intermediate builds.
+pub const MAX_PURCHASE_TREE: usize = 64;
+
 pub fn purchase_requirements(
     item: ItemId,
     held: &[ItemId],
     primary: Option<Attribute>,
 ) -> PurchaseRequirements {
-    let recipes_of = |id: ItemId| item_def(id).into_iter().flat_map(ItemDef::recipes);
-    let first_parts = |id: ItemId| recipes_of(id).next().map_or(&[][..], |recipe| recipe.parts);
-    let cost_of = |id: ItemId| item_def(id).map_or(0, |def| def.cost);
-    let mut best: Option<(i32, bool, PurchaseRequirements)> = None;
-    for recipe in recipes_of(item) {
-        let mut spare = held.to_vec();
-        let mut wanted = Vec::new();
-        for part in recipe.parts {
-            parts_beyond(*part, &mut spare, &mut wanted, &first_parts);
-        }
-        let cost = wanted
-            .iter()
-            .fold(0i32, |sum, part| sum.saturating_add(cost_of(*part)));
-        let own = recipe.mode.is_some() && recipe.mode == primary;
-        let better = best
-            .as_ref()
-            .is_none_or(|(least, was_own, _)| cost < *least || (cost == *least && own && !was_own));
-        if better {
-            best = Some((
-                cost,
-                own,
-                PurchaseRequirements {
-                    wanted,
-                    remaining_owned: spare,
-                },
-            ));
-        }
+    let (wanted, remaining_owned) =
+        evaluate_purchase::<Vec<ItemId>, Vec<ItemId>>(item, held.to_vec(), primary)
+            .unwrap_or_else(|never| match never {});
+    PurchaseRequirements {
+        wanted,
+        remaining_owned,
     }
-    best.map_or_else(
-        || PurchaseRequirements {
-            wanted: vec![item],
-            remaining_owned: held.to_vec(),
-        },
-        |(_, _, result)| result,
-    )
 }
 
-/// Lays out what one part still costs, spending `held` as it goes.
-fn parts_beyond<'a>(
+/// Fixed-capacity recipe evaluation for clients that cannot allocate per order.
+/// Nothing when the caller's ownership buffer or the catalogue expansion exceeds its bound.
+pub fn bounded_purchase_requirements<const HELD: usize>(
     item: ItemId,
-    held: &mut Vec<ItemId>,
-    wanted: &mut Vec<ItemId>,
-    parts_of: &impl Fn(ItemId) -> &'a [ItemId],
-) {
-    if let Some(at) = held.iter().position(|id| *id == item) {
-        held.remove(at);
-        return;
+    held: &[ItemId],
+    primary: Option<Attribute>,
+) -> Option<BoundedPurchaseRequirements> {
+    let mut owned = RecipeBuffer::<HELD>::default();
+    for &item in held {
+        RecipeItems::push(&mut owned, item).ok()?;
     }
-    match parts_of(item) {
-        [] => wanted.push(item),
-        parts => {
-            for part in parts {
-                parts_beyond(*part, held, wanted, parts_of);
+    let (wanted, _) =
+        evaluate_purchase::<_, RecipeBuffer<MAX_PURCHASE_TREE>>(item, owned, primary).ok()?;
+    Some(BoundedPurchaseRequirements { wanted })
+}
+
+/// The missing leaves of a purchase, in the same order as [`missing_parts`].
+pub struct BoundedPurchaseRequirements {
+    wanted: RecipeBuffer<MAX_PURCHASE_TREE>,
+}
+
+impl BoundedPurchaseRequirements {
+    pub fn wanted(&self) -> &[ItemId] {
+        self.wanted.items()
+    }
+}
+
+trait RecipeItems: Clone + Default {
+    type Error;
+    fn items(&self) -> &[ItemId];
+    fn take(&mut self, item: ItemId) -> bool;
+    fn push(&mut self, item: ItemId) -> Result<(), Self::Error>;
+}
+
+impl RecipeItems for Vec<ItemId> {
+    type Error = std::convert::Infallible;
+    fn items(&self) -> &[ItemId] {
+        self
+    }
+    fn take(&mut self, item: ItemId) -> bool {
+        if let Some(at) = self.iter().position(|id| *id == item) {
+            self.remove(at);
+            true
+        } else {
+            false
+        }
+    }
+    fn push(&mut self, item: ItemId) -> Result<(), Self::Error> {
+        Vec::push(self, item);
+        Ok(())
+    }
+}
+
+#[derive(Clone)]
+struct RecipeBuffer<const N: usize> {
+    items: [ItemId; N],
+    length: usize,
+}
+
+impl<const N: usize> Default for RecipeBuffer<N> {
+    fn default() -> Self {
+        Self {
+            items: [ItemId(0); N],
+            length: 0,
+        }
+    }
+}
+
+impl<const N: usize> RecipeItems for RecipeBuffer<N> {
+    type Error = ();
+    fn items(&self) -> &[ItemId] {
+        &self.items[..self.length]
+    }
+    fn take(&mut self, item: ItemId) -> bool {
+        let Some(at) = self.items().iter().position(|id| *id == item) else {
+            return false;
+        };
+        self.items.copy_within(at + 1..self.length, at);
+        self.length -= 1;
+        true
+    }
+    fn push(&mut self, item: ItemId) -> Result<(), Self::Error> {
+        let place = self.items.get_mut(self.length).ok_or(())?;
+        *place = item;
+        self.length += 1;
+        Ok(())
+    }
+}
+
+fn evaluate_purchase<P: RecipeItems, W: RecipeItems>(
+    item: ItemId,
+    held: P,
+    primary: Option<Attribute>,
+) -> Result<(W, P), W::Error> {
+    let mut best: Option<(i32, bool, W, P)> = None;
+    for recipe in item_def(item).into_iter().flat_map(ItemDef::recipes) {
+        let mut spare = held.clone();
+        let mut wanted = W::default();
+        for &part in recipe.parts {
+            parts_beyond(part, &mut spare, &mut wanted)?;
+        }
+        let cost = wanted.items().iter().fold(0_i32, |sum, part| {
+            sum.saturating_add(item_def(*part).map_or(0, |def| def.cost))
+        });
+        let own = recipe.mode.is_some() && recipe.mode == primary;
+        if best.as_ref().is_none_or(|(least, was_own, _, _)| {
+            cost < *least || (cost == *least && own && !was_own)
+        }) {
+            best = Some((cost, own, wanted, spare));
+        }
+    }
+    match best {
+        Some((_, _, wanted, spare)) => Ok((wanted, spare)),
+        None => {
+            let mut wanted = W::default();
+            RecipeItems::push(&mut wanted, item)?;
+            Ok((wanted, held))
+        }
+    }
+}
+
+/// Depth-first traversal of the compile-time checked catalogue. Invalid wire ids are leaves.
+fn parts_beyond<P: RecipeItems, W: RecipeItems>(
+    item: ItemId,
+    held: &mut P,
+    wanted: &mut W,
+) -> Result<(), W::Error> {
+    let mut pending = [ItemId(0); MAX_PURCHASE_TREE];
+    pending[0] = item;
+    let mut length = 1;
+    for _ in 0..MAX_PURCHASE_TREE {
+        if length == 0 {
+            break;
+        }
+        length -= 1;
+        let part = pending[length];
+        if held.take(part) {
+            continue;
+        }
+        let children = item_def(part).map_or(&[][..], first_recipe);
+        if children.is_empty() {
+            RecipeItems::push(wanted, part)?;
+        } else {
+            for &child in children.iter().rev() {
+                pending[length] = child;
+                length += 1;
             }
         }
     }
+    Ok(())
+}
+
+const fn first_recipe(def: &ItemDef) -> &'static [ItemId] {
+    if !def.components.is_empty() {
+        def.components
+    } else if !def.alternatives.is_empty() {
+        def.alternatives[0].parts
+    } else if !def.charge_recipes.is_empty() {
+        def.charge_recipes[0]
+    } else {
+        &[]
+    }
+}
+
+// Every alternative is bounded, including charge recipes and cycles. Descendants use
+// their first recipe, as the planner does. Both pending nodes and output leaves fit.
+const _: () = {
+    let mut row = 0;
+    while row < ITEMS.len() {
+        let def = &ITEMS[row];
+        assert!(recipe_fits(def.components));
+        let mut at = 0;
+        while at < def.alternatives.len() {
+            assert!(recipe_fits(def.alternatives[at].parts));
+            at += 1;
+        }
+        at = 0;
+        while at < def.charge_recipes.len() {
+            assert!(recipe_fits(def.charge_recipes[at]));
+            at += 1;
+        }
+        row += 1;
+    }
+};
+
+const fn recipe_fits(parts: &[ItemId]) -> bool {
+    let mut pending = [ItemId(0); MAX_PURCHASE_TREE];
+    if parts.len() > MAX_PURCHASE_TREE {
+        return false;
+    }
+    let mut length = parts.len();
+    let mut at = 0;
+    while at < length {
+        pending[at] = parts[at];
+        at += 1;
+    }
+    let mut visited = 0;
+    while length > 0 && visited < MAX_PURCHASE_TREE {
+        length -= 1;
+        let id = pending[length].0 as usize;
+        if id >= ITEMS.len() {
+            return false;
+        }
+        let children = first_recipe(&ITEMS[id]);
+        at = 0;
+        while at < children.len() {
+            if length == MAX_PURCHASE_TREE {
+                return false;
+            }
+            pending[length] = children[at];
+            length += 1;
+            at += 1;
+        }
+        visited += 1;
+    }
+    length == 0
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn order_legality_recipe_buffer_covers_all_rows_and_consumes_each_held_part_once() {
+        use bota_proto::ItemId;
+        for def in &crate::ITEMS {
+            if def.retired {
+                continue;
+            }
+            assert!(
+                super::bounded_purchase_requirements::<0>(def.id, &[], None).is_some(),
+                "{:?}",
+                def.id
+            );
+        }
+        let plan =
+            super::bounded_purchase_requirements::<1>(ItemId::BRACER, &[ItemId::GAUNTLETS], None)
+                .expect("bounded recipe");
+        assert_eq!(plan.wanted(), &[ItemId::CIRCLET, ItemId::RECIPE_BRACER]);
+        assert!(
+            super::bounded_purchase_requirements::<0>(ItemId::BRACER, &[ItemId::GAUNTLETS], None)
+                .is_none()
+        );
+    }
+
     #[test]
     fn assist_gold_zero_earning_worth_uses_a_neutral_multiplier() {
         assert_eq!(super::assist_gold(4000, 2, 0, 4000), 114);

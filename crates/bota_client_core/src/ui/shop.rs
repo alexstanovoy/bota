@@ -94,7 +94,7 @@ impl App {
         self.view()
             .and_then(|view| view.unit(id))
             .zip(self.statics())
-            .and_then(|(unit, statics)| crate::shop::purchase_carrier(unit, statics))
+            .and_then(|(unit, statics)| crate::shop::purchase_carrier(unit, statics.as_ref()))
     }
 
     pub fn secret_shop_accessible(&self) -> bool {

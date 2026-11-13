@@ -161,6 +161,21 @@ and no cast or learning slot. Owned kit and talent views preserve handles while 
 hero is dead. Item slots are inventory 0–5, backpack 6–8, stash 9–14 and TP 15;
 backpack and stash items are not fully castable.
 
+`IsFullyCastable` uses shared admission readiness before choosing a target; it checks
+learned state, cooldown, mana, charges, backpack inactivity and visible disables.
+Owned illusions are never fully castable. Negative costs return false. Abilities whose
+data permits casting while stunned retain that exception (currently a neutral ability,
+not a hero-kit ability). A stored Bottle rune needs no charge. Uncertain rounded mana (including a Mango
+at its shown maximum) returns false. Unknown root/hidden-control state returns true
+when the other readiness checks pass, so an unexposed hook followthrough does not
+make every ability of its caster permanently unavailable. `CanAbilityBeUpgraded`
+requires an affirmative own-side learnability fact; an absent fact returns false.
+The [engine API dump](https://github.com/ModDota/API/blob/master/dump/script_help2.lua)
+only specifies a boolean castability result; it does not specify partial-information
+fallbacks. These fallbacks are explicit host approximations: identical filtered
+views can correspond to different engine answers. Neither method promises that
+an order will execute or have an effect.
+
 Nearby and AoE queries consider only current visible units. AoE delay extrapolates
 the observed displacement between visible samples; it reads no standing enemy
 order. Remembered observations stop updating in fog. Private inventory, gold and
@@ -197,7 +212,7 @@ information withheld by the side's view.
 
 Ability and item mana cost, remaining cooldown and current charges come from
 the received ability book or inventory, including an owned dead hero's kit.
-Cooldowns are seconds; readiness tests the cooldown alone, independently of mana
+Cooldowns are seconds; `IsCooldownReady` tests the cooldown alone, independently of mana
 or status effects. Items without charges return zero. `AbilityView` has no charge
 field: `GetCurrentCharges` currently returns zero for every ability, including
 charged abilities. That value does not establish that an ability is exhausted.
@@ -213,10 +228,13 @@ The carrier's side determines observation, rather than the item's original buyer
 own-side items and owned dead-hero kits retain their received cooldowns.
 
 Estimated damage is an integer projection of observed attack stats and core spell
-data over the requested duration. The availability flag restricts allied spells
-and items by the known mana and cooldowns; it does not disable ordinary attacks.
-Enemy availability is assumed, as specified by the API. Mitigation and spell
-piercing use core rules, without positional assumptions.
+data over the requested duration. For allied casters, `available=true` uses the same
+shared readiness and uncertainty fallback as `IsFullyCastable`, including known
+disables and inventory copies, plus the remaining projected mana budget. Ordinary
+attacks and passive attack projections do not require cast readiness. Enemy
+availability is assumed, as specified by the API; withheld cooldown placeholders
+are not used as evidence of readiness. Mitigation and spell piercing use core
+rules, without positional assumptions.
 
 Purchase results reserve gold, stock and placement for the team's current turn.
 They use core recipe and stacking rules. A failed bot turn releases its own

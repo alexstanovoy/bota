@@ -6,8 +6,8 @@ use crate::ui::app::{App, CueKind, FeedKind, Killer, Tap, Victim, tap_again};
 use crate::ui::slots::{Look, Press, Slot, ability_look, decide, item_look, order_for};
 use bota_proto::{
     AbilityId, AbilitySlot, AbilityView, Aim, Angle, Attributes, EntityId, EventKind, Fixed,
-    HeroId, ItemId, ItemView, Order, PlayerView, SlotId, StatusFlags, Target, Team, UnitKind,
-    UnitView, Vec2, WorldView,
+    HeroId, ItemId, ItemSlot, ItemView, Order, PlayerView, SlotId, StatusFlags, Target, Team,
+    UnitKind, UnitView, Vec2, WorldView,
 };
 
 #[test]
@@ -3033,4 +3033,102 @@ fn an_aether_lens_lengthens_the_drawn_reach_of_a_blink_dagger() {
         vec![a_seat(SlotId(0), Some(id))],
     ));
     assert_eq!(app.reach_of(Slot::Item(0)), blink + 225);
+}
+
+#[test]
+fn order_legality_ledger_replaces_same_tick_orders_and_forgets_rejections() {
+    use crate::order_legality::pseudo_queue::PseudoQueue;
+    use crate::{ControlledUnit, IssuedOrder};
+    let mut unit = a_unit();
+    unit.abilities.push(an_ability(1, 0, 50, false, false));
+    unit.cast = Some(bota_proto::CastView {
+        ability: Some(AbilityId::MEAT_HOOK),
+        goes_off_in: 10,
+    });
+    let cast = IssuedOrder::hero(Order::Cast {
+        slot: AbilitySlot(0),
+        target: Target::Pos(unit.pos),
+    });
+    let mut ledger = PseudoQueue::default();
+    ledger.observe(Some(&unit), None);
+    ledger.give(1, cast, 10, &unit);
+    ledger.give(2, cast, 10, &unit);
+    assert!(
+        !ledger.waits(1),
+        "same-tick replacement must roll back the earlier issue"
+    );
+    assert!(ledger.waits(2));
+    assert_eq!(ledger.owed(ControlledUnit::Hero).len(), 1);
+    ledger.reject(2);
+    assert!(ledger.owed(ControlledUnit::Hero).is_empty());
+    ledger.give(3, cast, 11, &unit);
+    unit.hp = 0;
+    ledger.observe(Some(&unit), None);
+    assert!(!ledger.waits(3), "death clears the previous body's debt");
+}
+
+#[test]
+fn order_legality_reservations_keep_pending_mana_and_item_slots_until_a_halt() {
+    use crate::order_legality::{Reservations, pseudo_queue::PseudoQueue};
+    use crate::{ControlledUnit, IssuedOrder};
+    let mut unit = a_unit();
+    let mut first = an_ability(1, 0, 100, false, false);
+    first.id = AbilityId::RAZE_NEAR;
+    unit.abilities.push(first);
+    unit.cast = Some(bota_proto::CastView {
+        ability: Some(first.id),
+        goes_off_in: 10,
+    });
+    let mut ledger = PseudoQueue::default();
+    ledger.observe(Some(&unit), None);
+    ledger.give(
+        1,
+        IssuedOrder::hero(Order::Put {
+            slot: ItemSlot(2),
+            target: Target::None,
+        }),
+        1,
+        &unit,
+    );
+    let reserved = Reservations::of(&unit, ledger.owed(ControlledUnit::Hero));
+    assert!(reserved.names(2));
+    assert!(!reserved.allows_take());
+    assert!(!reserved.allows_cast(149, AbilityId::MEAT_HOOK, 50, true));
+    assert!(reserved.allows_cast(150, AbilityId::MEAT_HOOK, 50, true));
+    assert!(
+        !reserved.allows_cast(300, first.id, 100, false),
+        "the spell in hand is ahead of itself"
+    );
+    ledger.give(
+        2,
+        IssuedOrder::hero(Order::Move {
+            target: Target::None,
+        }),
+        2,
+        &unit,
+    );
+    unit.cast = None;
+    ledger.observe(Some(&unit), None);
+    let free = Reservations::of(&unit, ledger.owed(ControlledUnit::Hero));
+    assert!(!free.names(2));
+    assert!(free.allows_take());
+    assert!(free.allows_cast(50, AbilityId::MEAT_HOOK, 50, true));
+}
+
+#[test]
+fn order_legality_slot_hints_require_proven_resources_and_accept_a_stored_rune() {
+    let ability = an_ability(1, 0, 1, false, false);
+    assert!(!ability_look(Some(&ability), 1).usable);
+    assert!(ability_look(Some(&ability), 2).usable);
+    let negative = an_ability(1, 0, -1, false, false);
+    assert!(!ability_look(Some(&negative), 100).usable);
+    let mut bottle = an_item(Some(0), 0, 0, Some(Aim::Own));
+    bottle.id = ItemId::BOTTLE;
+    bottle.rune = Some(bota_proto::StoredRune {
+        kind: bota_proto::RuneKind::Haste,
+        ticks_left: 100,
+    });
+    assert!(item_look(Some(&bottle), 0, 0).usable);
+    bottle.rune = None;
+    assert!(!item_look(Some(&bottle), 0, 0).usable);
 }

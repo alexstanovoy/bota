@@ -800,14 +800,7 @@ impl World {
         stack: &ItemStack,
         def: &ItemDef,
     ) -> Result<Aim, RejectReason> {
-        if stack.mute > 0 {
-            return Err(RejectReason::NotReady);
-        }
-        let aim = def.aim.ok_or(RejectReason::NotCastable)?;
-        if self.wears_illusion(unit) {
-            return Err(RejectReason::NotCastable);
-        }
-        Ok(aim)
+        bota_core::item_usability(def.aim, stack.mute, self.wears_illusion(unit))
     }
 
     /// Whether a usable stack is ready: its cooldown and any wait it shares
@@ -820,16 +813,14 @@ impl World {
         def: &ItemDef,
         gives: bool,
     ) -> Result<(), RejectReason> {
-        if !gives
-            && (stack.cooldown > 0
-                || (def.shared_wait && self.owes_wait(unit, def.wait_key.unwrap_or(stack.id))))
-        {
-            return Err(RejectReason::OnCooldown);
-        }
-        if (def.charges > 0 || def.cast_charges > 0) && stack.charges == 0 && stack.rune.is_none() {
-            return Err(RejectReason::NoCharges);
-        }
-        Ok(())
+        bota_core::item_readiness(
+            stack.cooldown > 0
+                || (def.shared_wait && self.owes_wait(unit, def.wait_key.unwrap_or(stack.id))),
+            gives,
+            def.charges > 0 || def.cast_charges > 0,
+            stack.charges,
+            stack.rune.is_some(),
+        )
     }
 
     /// Whether a unit holds less mana than a use of the item costs it.
@@ -1245,53 +1236,23 @@ impl World {
         from: usize,
         to: usize,
     ) -> Option<bota_proto::RejectReason> {
-        use bota_proto::RejectReason;
-        if !(in_stash(from) && in_stash(to)) && self.copied_inventory(unit) {
-            return Some(RejectReason::ItemRestricted);
-        }
-        let total = BAG_SLOTS + seat.stash.slots.len();
-        let named = |at: usize| at < total || in_town_portal(at);
-        if from == to || !named(from) || !named(to) {
-            return Some(RejectReason::EmptySlot);
-        }
-        let held = if in_stash(from) {
-            seat.stash.slots.get(from - BAG_SLOTS).copied().flatten()
-        } else {
-            self.held_in_bag(unit, from)
-        };
-        let Some(held) = held else {
-            return Some(RejectReason::EmptySlot);
-        };
-        if (in_stash(from) || in_stash(to))
-            && !(self.at_shop(unit)
-                || (seat.dead() && seat.reincarnating_at.is_none() && seat.unit == Some(unit)))
-        {
-            return Some(RejectReason::NotAtShop);
-        }
-        // A Bottle holding a rune stays among the items in hand, in whichever
-        // slot of them.
-        let leaves_the_hand = |stack: Option<ItemStack>, slot: usize| {
-            stack.is_some_and(|stack| stack.rune.is_some()) && !in_inventory(slot)
-        };
-        if leaves_the_hand(Some(held), to) || leaves_the_hand(self.stack_at(unit, seat, to), from) {
-            return Some(RejectReason::HoldsRune);
-        }
-        let restricted = |stack: Option<ItemStack>, at: usize| {
-            stack
-                .and_then(|stack| item_def(stack.id))
-                .is_some_and(|def| !def.limits.backpack && !in_inventory(at))
-        };
-        if restricted(Some(held), to) || restricted(self.stack_at(unit, seat, to), from) {
-            return Some(RejectReason::ItemRestricted);
-        }
-        let has_portal = self
-            .inventory
-            .get(unit)
-            .is_some_and(|bag| bag.town_portal.is_some());
-        if in_town_portal(from) || (in_town_portal(to) && (!has_portal || !held.is_scroll())) {
-            return Some(RejectReason::WrongTargetKind);
-        }
-        None
+        bota_core::swap_refusal(
+            from,
+            to,
+            self.stack_at(unit, seat, from).map(Into::into),
+            self.stack_at(unit, seat, to).map(Into::into),
+            bota_core::SwapConditions {
+                copied: self.copied_inventory(unit),
+                stash_slots: seat.stash.slots.len(),
+                stash_access: self.at_shop(unit)
+                    || (seat.dead() && seat.reincarnating_at.is_none() && seat.unit == Some(unit)),
+                has_portal: self
+                    .inventory
+                    .get(unit)
+                    .is_some_and(|bag| bag.town_portal.is_some()),
+            },
+        )
+        .err()
     }
 
     /// The stack in one of a seat's slots: the stash's, else the unit's bag

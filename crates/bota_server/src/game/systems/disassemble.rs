@@ -33,21 +33,17 @@ impl World {
         seat: &Seat,
         at: usize,
     ) -> Result<(), RejectReason> {
-        if !in_stash(at) && self.copied_inventory(unit) {
-            return Err(RejectReason::ItemRestricted);
-        }
-        let held = self
-            .stack_at(unit, seat, at)
-            .ok_or(RejectReason::EmptySlot)?;
-        if held.owner != seat.slot {
-            return Err(RejectReason::NotYourItem);
-        }
-        if in_stash(at) && !seat.dead() && !self.at_shop(unit) {
-            return Err(RejectReason::NotAtShop);
-        }
-        bota_core::disassembly(held.id, held.disassemble_until.saturating_sub(self.tick))
-            .map(|_| ())
-            .ok_or(RejectReason::NotDisassemblable)
+        let held = bota_core::owned_item(
+            at,
+            self.copied_inventory(unit),
+            self.stack_at(unit, seat, at).map(Into::into),
+            seat.slot,
+        )?;
+        let eligible = self.stack_at(unit, seat, at).is_some_and(|stack| {
+            bota_core::disassembly(held.id, stack.disassemble_until.saturating_sub(self.tick))
+                .is_some()
+        });
+        bota_core::disassembly_refusal(in_stash(at), seat.dead(), self.at_shop(unit), eligible)
     }
 
     /// Why a seat may not lock what one of its slots holds, or nothing when
@@ -58,18 +54,13 @@ impl World {
         seat: &Seat,
         at: usize,
     ) -> Result<(), RejectReason> {
-        if !in_stash(at) && self.copied_inventory(unit) {
-            return Err(RejectReason::ItemRestricted);
-        }
-        let held = self
-            .stack_at(unit, seat, at)
-            .ok_or(RejectReason::EmptySlot)?;
-        if held.owner != seat.slot {
-            return Err(RejectReason::NotYourItem);
-        }
-        bota_core::is_part_of_a_recipe(held.id)
-            .then_some(())
-            .ok_or(RejectReason::CannotLockCombining)
+        let held = bota_core::owned_item(
+            at,
+            self.copied_inventory(unit),
+            self.stack_at(unit, seat, at).map(Into::into),
+            seat.slot,
+        )?;
+        bota_core::lock_refusal(held.id)
     }
 
     /// Takes the build in a slot apart into its parts, every one locked. The

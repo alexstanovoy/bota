@@ -128,9 +128,7 @@ fn spell_damage(
     let mut damage = 0.0;
     let mut mana = actor.mana.max(0);
     for ability in &actor.abilities {
-        if ability.level == 0
-            || available && (ability.cooldown_left > 0 || ability.mana_cost > mana)
-        {
+        if ability.level == 0 {
             continue;
         }
         let Some(definition) = bota_core::ability_def(ability.id) else {
@@ -156,6 +154,14 @@ fn spell_damage(
         {
             continue;
         }
+        if available
+            && projection.cadence != DamageCadence::Attack
+            && (!super::abilities::fully_castable(
+                bota_client_core::order_legality::ability_readiness(actor, ability),
+            ) || !budget_readiness(actor, mana, ability.mana_cost).is_legal())
+        {
+            continue;
+        }
         let casts = match projection.cadence {
             DamageCadence::Cast => cast_count(ability, duration, available, mana),
             DamageCadence::Continuous => 1.0,
@@ -169,6 +175,17 @@ fn spell_damage(
         damage += mitigated(projection.amount * casts, projection.kind, target);
     }
     (damage, mana)
+}
+
+// Reservations are integer lower bounds, not new wire observations: a remainder of
+// one from a larger pool does not acquire the wire's fractional-one ambiguity.
+fn budget_readiness(
+    actor: &UnitView,
+    remaining: i32,
+    cost: i32,
+) -> bota_client_core::order_legality::Verdict {
+    let reserved = actor.mana.saturating_sub(remaining).max(0);
+    bota_client_core::order_legality::mana_affordability(actor.mana, reserved.saturating_add(cost))
 }
 
 fn cast_count(ability: &AbilityView, duration: f64, available: bool, mana: i32) -> f64 {
@@ -204,9 +221,17 @@ fn item_damage(
         .items
         .iter()
         .take(bota_proto::limits::INVENTORY_SLOTS)
-        .flatten()
-        .filter_map(|item| {
-            if available && (item.cooldown_left > 0 || item.mute_left > 0 || item.mana_cost > mana)
+        .enumerate()
+        .filter_map(|(slot, item)| {
+            let item = item.as_ref()?;
+            if available
+                && (!super::abilities::fully_castable(
+                    bota_client_core::order_legality::item_readiness(
+                        actor,
+                        bota_proto::ItemSlot(slot as u8),
+                        item,
+                    ),
+                ) || !budget_readiness(actor, mana, item.mana_cost).is_legal())
             {
                 return None;
             }

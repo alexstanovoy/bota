@@ -100,6 +100,10 @@ pub const HERO_DEF: HeroDef = HeroDef {
 };
 
 pub const MEAT_HOOK: AbilityDef = AbilityDef {
+    caster_modifiers: &[(
+        crate::ModifierKind::HookFollowthrough,
+        crate::rules::HOOK_FOLLOWTHROUGH_TICKS,
+    )],
     id: AbilityId::MEAT_HOOK,
     key: PUDGE_MEAT_HOOK.key,
     name: "Meat Hook",

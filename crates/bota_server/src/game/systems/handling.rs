@@ -18,11 +18,7 @@ impl World {
         self.inventory.contains(unit) && !self.copied_inventory(unit)
     }
     pub(crate) fn may_receive_item(&self, unit: Entity, item: bota_proto::ItemId) -> bool {
-        self.physical_inventory(unit)
-            && bota_core::item_def(item).is_some_and(|def| match def.pickup {
-                bota_core::PickupEligibility::InventoryCarrier => true,
-                bota_core::PickupEligibility::RealHero => self.is_real_hero(unit),
-            })
+        bota_core::may_receive_item(self.physical_inventory(unit), self.is_real_hero(unit), item)
     }
 
     /// Starts walking an item out of one of a unit's bag slots.

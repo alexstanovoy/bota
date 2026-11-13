@@ -31,15 +31,12 @@ impl World {
         };
         let damage_amp_bp = self.outgoing_spell_amp_bp(Some(caster), DamageKind::Pure);
         let with = Some(Inflictor::Ability(AbilityId::MEAT_HOOK));
-        self.put_modifier(
-            caster,
-            Modifier::new(
-                ModifierKind::HookFollowthrough,
-                Some(caster),
-                with,
-                Some(rules::HOOK_FOLLOWTHROUGH_TICKS),
-            ),
-        );
+        for &(kind, ticks) in bota_core::ability_def(AbilityId::MEAT_HOOK)
+            .into_iter()
+            .flat_map(|def| def.caster_modifiers)
+        {
+            self.put_modifier(caster, Modifier::new(kind, Some(caster), with, Some(ticks)));
+        }
         let hook = self.spawn_placed(from, facing_towards(from, aim), side);
         let links = std::array::from_fn(|_| self.spawn_mark(AbilityId::MEAT_HOOK, caster, from, 0));
         self.hook.insert(
@@ -130,11 +127,12 @@ impl World {
     /// the spot, and what it caught is executed, or held and hurt.
     fn hook_hit(&mut self, hook: &mut Hook, caught: Entity) {
         hook.returning = true;
-        self.take_modifier(
-            hook.owner,
-            ModifierKind::HookFollowthrough,
-            Some(hook.owner),
-        );
+        for &(kind, _) in bota_core::ability_def(AbilityId::MEAT_HOOK)
+            .into_iter()
+            .flat_map(|def| def.caster_modifiers)
+        {
+            self.take_modifier(hook.owner, kind, Some(hook.owner));
+        }
         // Its side sees where it latched for a while.
         if let (Some(at), Some(side)) = (self.pos(caught), self.team.get(hook.owner).copied()) {
             self.add_fow_viewer(

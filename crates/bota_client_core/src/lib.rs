@@ -57,6 +57,7 @@ mod latency;
 mod limits;
 mod match_static;
 mod observer;
+pub mod order_legality;
 mod orders;
 mod ping;
 mod play;

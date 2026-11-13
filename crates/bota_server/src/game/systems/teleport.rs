@@ -45,7 +45,7 @@ impl World {
             }
             Target::None => {
                 let from = self.pos(user)?;
-                if from.within(fountain, rules::units(rules::SCROLL_FOUNTAIN_MIN_DISTANCE)) {
+                if !bota_core::may_scroll_to_fountain(from, fountain) {
                     return None;
                 }
                 let building = self.entities.iter().find(|entity| {

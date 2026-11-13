@@ -51,6 +51,7 @@ mod neutral_casts;
 mod neutral_passives;
 mod objectives;
 mod on_attack;
+mod order_legality;
 mod orders;
 mod pudge;
 mod pudge_talents;

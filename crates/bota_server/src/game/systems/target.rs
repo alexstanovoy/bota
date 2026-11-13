@@ -99,10 +99,12 @@ impl World {
         ) else {
             return false;
         };
-        if mine == theirs || !self.alive(target) {
-            return false;
-        }
-        if self.stats.get(target).is_some_and(|s| s.invulnerable) {
+        if !bota_core::hostile_body(
+            Some(mine),
+            Some(theirs),
+            self.alive(target),
+            self.stats.get(target).is_some_and(|s| s.invulnerable),
+        ) {
             return false;
         }
         if mine == Team::Neutral

@@ -67,3 +67,20 @@ pub const fn order_queues(order: Order) -> bool {
         | Order::Glyph => false,
     }
 }
+
+/// Stops and holds interrupt a cast point instead of waiting behind it.
+pub const fn order_halts(order: Order) -> bool {
+    matches!(
+        order,
+        Order::Move {
+            target: bota_proto::Target::None
+        } | Order::Attack {
+            target: bota_proto::Target::None
+        }
+    )
+}
+
+/// Casts and item uses append to a cast-point queue; other body orders replace it.
+pub const fn order_is_cast(order: Order) -> bool {
+    matches!(order, Order::Cast { .. } | Order::Use { .. })
+}

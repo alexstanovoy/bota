@@ -5,10 +5,9 @@
 //! experience, a respawn as a respawn, waves and camps as the spawners lay
 //! them), so a match with cheats stays as deterministic as one without.
 
-use bota_core::{hero_def, hero_spawn_pos, rules};
+use bota_core::{hero_spawn_pos, rules};
 use bota_proto::{
     Cheat, CreepSide, EventKind, ItemId, RejectReason, SlotId, Target, Team, UnitKind, Vec2,
-    modifier_ticks_bounded,
 };
 
 use crate::game::{
@@ -136,32 +135,26 @@ impl World {
         unit: Option<Entity>,
         cheat: &Cheat,
     ) -> Result<(), RejectReason> {
-        if !self.cheats {
-            return Err(RejectReason::NoCheats);
-        }
+        bota_core::cheat_access(self.cheats)?;
         let seat = self.seat(slot).ok_or(RejectReason::NotYourUnit)?;
         if seat.created {
             return Err(RejectReason::NotYourUnit);
         }
+        bota_core::cheat_refusal(
+            self.cheats,
+            *cheat,
+            self.catalogue,
+            !self.map.rune_spots.is_empty(),
+        )?;
         match cheat {
-            Cheat::ApplyModifier {
-                target,
-                spec,
-                ticks,
-            } => {
-                if !spec.is_bounded() || !modifier_ticks_bounded(*ticks) {
-                    return Err(RejectReason::BadCheat);
-                }
+            Cheat::ApplyModifier { target, .. } => {
                 self.cheat_target(unit.ok_or(RejectReason::HeroDead)?, *target)?;
             }
             Cheat::ClearModifiers { target } => {
                 self.cheat_target(unit.ok_or(RejectReason::HeroDead)?, *target)?;
             }
-            Cheat::Item { item } => {
-                self.catalogue.item(*item).ok_or(RejectReason::BadCheat)?;
-            }
-            Cheat::CreateHero { hero, at, .. } => {
-                hero_def(*hero).ok_or(RejectReason::BadCheat)?;
+            Cheat::Item { .. } => {}
+            Cheat::CreateHero { at, .. } => {
                 if self.seats.len() >= MAX_SEATS_WITH_CHEATS {
                     return Err(RejectReason::BadCheat);
                 }
@@ -171,7 +164,7 @@ impl World {
                 self.open_landing(*at).ok_or(RejectReason::ClosedGround)?;
             }
             Cheat::SpawnRune { kind, at } => {
-                if self.map.rune_spots.is_empty() || !self.runes.has(*kind) {
+                if !self.runes.has(*kind) {
                     return Err(RejectReason::BadCheat);
                 }
                 self.nearest_rune_spot(*at).ok_or(RejectReason::BadCheat)?;

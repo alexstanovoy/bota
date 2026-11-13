@@ -17,6 +17,16 @@ pub fn fountain_pos(map: &MapDef, team: Team) -> Vec2 {
     }
 }
 
+/// The minimum-distance rule for a scroll aimed at the fountain by naming no target.
+/// Widened arithmetic also accepts the full signed wire coordinate range safely.
+#[must_use]
+pub fn may_scroll_to_fountain(from: Vec2, fountain: Vec2) -> bool {
+    let horizontal = i128::from(from.x.raw) - i128::from(fountain.x.raw);
+    let vertical = i128::from(from.y.raw) - i128::from(fountain.y.raw);
+    let radius = i128::from(rules::SCROLL_FOUNTAIN_MIN_DISTANCE) << bota_proto::Fixed::FRAC_BITS;
+    horizontal * horizontal + vertical * vertical > radius * radius
+}
+
 /// Whether a unit of `team` standing at `pos` is in its home shop: within the
 /// shop range of its own fountain.
 #[inline]
@@ -176,5 +186,34 @@ mod tests {
             tower_tier_at(map, Team::Radiant, Vec2::from_ints(1, 1)),
             None
         );
+    }
+}
+
+#[cfg(test)]
+mod order_legality_tests {
+    use super::*;
+    use bota_proto::Fixed;
+
+    #[test]
+    fn order_legality_fountain_distance_handles_the_boundary_and_full_wire_range() {
+        let edge = Vec2::from_ints(rules::SCROLL_FOUNTAIN_MIN_DISTANCE, 0);
+        assert!(!may_scroll_to_fountain(edge, Vec2::ZERO));
+        let outside = Vec2 {
+            x: Fixed {
+                raw: edge.x.raw + 1,
+            },
+            ..edge
+        };
+        assert!(may_scroll_to_fountain(outside, Vec2::ZERO));
+        assert!(may_scroll_to_fountain(
+            Vec2 {
+                x: Fixed::MIN,
+                y: Fixed::MIN
+            },
+            Vec2 {
+                x: Fixed::MAX,
+                y: Fixed::MAX
+            }
+        ));
     }
 }

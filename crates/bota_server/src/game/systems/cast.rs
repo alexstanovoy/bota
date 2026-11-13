@@ -133,24 +133,17 @@ impl World {
         ability: crate::game::AbilityState,
         def: &bota_core::AbilityDef,
     ) -> Option<RejectReason> {
-        if def.passive || self.wears_illusion(entity) {
-            return Some(RejectReason::NotCastable);
-        }
-        if ability.level == 0 {
-            return Some(RejectReason::NotLearned);
-        }
-        if ability.cooldown > 0 {
-            return Some(RejectReason::OnCooldown);
-        }
-        // A channel is no bar: an order breaks it off, as in Dota. What Dota
-        // lets begin despite a stun (Roshan's roar) begins despite a fear too.
-        if !def.cast_while_stunned && (self.held(entity) || self.feared(entity)) {
-            return Some(RejectReason::Disabled);
-        }
-        if def.root_disables && self.rooted(entity) {
-            return Some(RejectReason::Disabled);
-        }
-        None
+        bota_core::cast_refusal(
+            def,
+            bota_core::CastConditions {
+                illusion: self.wears_illusion(entity),
+                level: ability.level,
+                cooldown: ability.cooldown,
+                held: self.held(entity),
+                feared: self.feared(entity),
+                rooted: self.rooted(entity),
+            },
+        )
     }
 
     /// Whether an entity has less mana than a cast of the ability in a slot

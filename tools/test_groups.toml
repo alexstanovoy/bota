@@ -317,6 +317,7 @@ paths = [
     "crates/bota_server/src/game/tests/forest_paths.rs",
     "crates/bota_server/src/game/tests/tree_gaps.rs",
     "crates/bota_server/src/game/tests/orders.rs",
+    "crates/bota_server/src/game/tests/order_legality.rs",
     "crates/bota_server/src/game/tests/queue.rs",
     "crates/bota_server/src/game/components/tests/movement.rs",
 ]
@@ -327,6 +328,7 @@ tests = [{ crate = "bota_server", target = "lib", filters = [
     "game::tests::forest_paths::",
     "game::tests::tree_gaps::",
     "game::tests::orders::",
+    "game::tests::order_legality::",
     "game::tests::queue::",
     "game::components::tests::movement::",
 ] }]

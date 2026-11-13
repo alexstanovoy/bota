@@ -99,6 +99,15 @@ pub fn purchase_context<'a>(
     player: &'a PlayerView,
     statics: &MatchStatic,
 ) -> PurchaseContext<'a, bota_proto::ItemView> {
+    purchase_context_on(view, player, statics, statics.metadata().universal_shop)
+}
+
+pub(crate) fn purchase_context_on<'a>(
+    view: &'a WorldView,
+    player: &'a PlayerView,
+    geometry: &impl bota_core::ShopGeometry,
+    universal_shop: bool,
+) -> PurchaseContext<'a, bota_proto::ItemView> {
     let [hero, courier] = carriers(view, player);
     PurchaseContext {
         hero: if player.respawn_left > 0 {
@@ -111,15 +120,15 @@ pub fn purchase_context<'a>(
                 shops: Default::default(),
             })
         } else {
-            hero.and_then(|unit| purchase_carrier(unit, statics))
+            hero.and_then(|unit| purchase_carrier(unit, geometry))
         },
-        courier: courier.and_then(|unit| purchase_carrier(unit, statics)),
+        courier: courier.and_then(|unit| purchase_carrier(unit, geometry)),
         stash: Shelf {
             slots: player.stash.as_deref().unwrap_or_default(),
             town_portal: None,
             combines: false,
         },
-        universal_shop: statics.metadata().universal_shop,
+        universal_shop,
         respawning: player.respawn_left > 0
             && player.kit.as_ref().is_some_and(|kit| !kit.reincarnating),
     }
@@ -136,7 +145,7 @@ fn carriers<'a>(view: &'a WorldView, player: &PlayerView) -> [Option<&'a UnitVie
 
 pub(crate) fn purchase_carrier<'a>(
     unit: &'a UnitView,
-    statics: &MatchStatic,
+    geometry: &impl bota_core::ShopGeometry,
 ) -> Option<PurchaseCarrier<'a, bota_proto::ItemView>> {
     if unit.hp <= 0 {
         return None;
@@ -147,6 +156,6 @@ pub(crate) fn purchase_carrier<'a>(
             town_portal: (unit.kind == UnitKind::Hero).then_some(&unit.town_portal),
             combines: true,
         },
-        shops: shop_access(statics, unit.pos, unit.bound),
+        shops: shop_access(geometry, unit.pos, unit.bound),
     })
 }

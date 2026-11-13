@@ -101,11 +101,8 @@ impl World {
     /// Whether an ability may be aimed at a unit by its filter: the unit's
     /// kind, and its side against the caster's.
     pub(crate) fn aimable(&self, caster: Entity, def: &AbilityDef, mark: Entity) -> bool {
-        let Some(kind) = self.kind.get(mark).copied() else {
-            return def.targets.any_kind();
-        };
         let own = self.team.get(caster).is_some() && self.team.get(caster) == self.team.get(mark);
-        def.targets.takes(kind, own)
+        bota_core::ability_target_kind(def, self.kind.get(mark).copied(), own)
     }
 
     /// The slot of the hidden ability an order at a unit casts instead of

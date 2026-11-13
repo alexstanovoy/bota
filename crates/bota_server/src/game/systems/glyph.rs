@@ -13,10 +13,10 @@ impl World {
     pub fn check_glyph(&self, slot: SlotId) -> Result<(), RejectReason> {
         let seat = self.seat(slot).ok_or(RejectReason::HeroDead)?;
         let index = side_index(seat.team).ok_or(RejectReason::NotYourUnit)?;
-        if self.tick < self.glyphs[index].ready_at {
-            return Err(RejectReason::OnCooldown);
-        }
-        Ok(())
+        bota_core::glyph_refusal(
+            seat.team,
+            self.glyphs[index].ready_at.saturating_sub(self.tick),
+        )
     }
 
     /// Activates the Glyph of a seat's side, if it is ready.

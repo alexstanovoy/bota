@@ -51,6 +51,8 @@ mod map;
 mod modifier;
 mod movement;
 mod objective;
+mod order_rules;
+pub use order_rules::*;
 mod place;
 mod progress;
 mod protect;

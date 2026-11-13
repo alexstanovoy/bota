@@ -607,27 +607,17 @@ impl Inventory {
     }
 }
 
-/// Slots a hero carries on itself: the inventory proper and the backpack.
-pub const BAG_SLOTS: usize = bota_core::rules::INVENTORY_SLOTS + bota_core::rules::BACKPACK_SLOTS;
+pub use bota_core::{BAG_SLOTS, in_backpack, in_inventory, in_stash, in_town_portal};
 
-/// Whether a slot number is one of the inventory proper, where items work.
-pub fn in_inventory(slot: usize) -> bool {
-    slot < bota_core::rules::INVENTORY_SLOTS
-}
-
-/// Whether a slot number is one of the backpack, where they are carried inert.
-pub fn in_backpack(slot: usize) -> bool {
-    (bota_core::rules::INVENTORY_SLOTS..BAG_SLOTS).contains(&slot)
-}
-
-/// Whether a slot number is one of the stash at the shop.
-pub fn in_stash(slot: usize) -> bool {
-    (BAG_SLOTS..bota_core::rules::TOWN_PORTAL_SLOT).contains(&slot)
-}
-
-/// Whether a slot number is the town portal slot.
-pub fn in_town_portal(slot: usize) -> bool {
-    slot == bota_core::rules::TOWN_PORTAL_SLOT
+impl From<ItemStack> for bota_core::OrderItemFacts {
+    fn from(stack: ItemStack) -> Self {
+        Self {
+            id: stack.id,
+            owner: stack.owner,
+            rune: stack.rune.is_some(),
+            free_charges: stack.free_charges,
+        }
+    }
 }
 
 state_hash!(ItemStack {

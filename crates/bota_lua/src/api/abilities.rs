@@ -1,4 +1,6 @@
-use bota_proto::{AbilityId, AbilitySlot, EntityId, ItemId, ItemSlot, StatusFlags, TalentSlot};
+use bota_proto::{AbilityId, AbilitySlot, EntityId, ItemId, ItemSlot, TalentSlot};
+
+use bota_client_core::order_legality::{UnknownReason, Verdict};
 
 use super::globals::{integer, seconds, string};
 use super::*;
@@ -61,10 +63,6 @@ fn view(state: &State, identity: Identity) -> Option<View> {
         .player(identity.owner())
         .is_none_or(|player| player.respawn_left == 0)
         && unit.is_some_and(|unit| unit.hp > 0);
-    let able = alive
-        && unit.is_some_and(|unit| {
-            unit.statuses.bits & (StatusFlags::STUNNED | StatusFlags::FEARED) == 0
-        });
     match identity {
         Identity::Talent { unit, slot } => {
             let player = state.player(unit)?;
@@ -117,10 +115,12 @@ fn view(state: &State, identity: Identity) -> Option<View> {
                 level: ability.level,
                 range: ability.range,
                 castable: Some(
-                    able && ability.level > 0
-                        && !ability.passive
-                        && ability.cooldown_left == 0
-                        && unit.is_some_and(|unit| unit.mana >= ability.mana_cost),
+                    alive
+                        && unit.is_some_and(|unit| {
+                            fully_castable(bota_client_core::order_legality::ability_readiness(
+                                unit, ability,
+                            ))
+                        }),
                 ),
                 learnable: alive && ability.learnable == Some(true),
                 mana_cost: ability.mana_cost,
@@ -141,13 +141,14 @@ fn view(state: &State, identity: Identity) -> Option<View> {
                 key: bota_core::item_def(id)?.key,
                 level: item.level,
                 range: item.range,
-                castable: observed.then_some(
-                    able && (slot.0 < 6 || slot == ItemSlot::TOWN_PORTAL)
-                        && item.aim.is_some()
-                        && item.cooldown_left == 0
-                        && item.mute_left == 0
-                        && unit.is_some_and(|unit| unit.mana >= item.mana_cost),
-                ),
+                castable: observed.then(|| {
+                    alive
+                        && unit.is_some_and(|unit| {
+                            fully_castable(bota_client_core::order_legality::item_readiness(
+                                unit, slot, item,
+                            ))
+                        })
+                }),
                 learnable: false,
                 mana_cost: item.mana_cost,
                 cooldown_left: observed.then_some(item.cooldown_left),
@@ -155,6 +156,16 @@ fn view(state: &State, identity: Identity) -> Option<View> {
             })
         }
     }
+}
+
+// This targetless boolean is a readiness hint. Unexposed body controls do not
+// permanently disable every handle capable of such a control; unproven resource
+// budgets, unlike body controls, cannot establish that an ability is fully ready.
+pub(super) fn fully_castable(verdict: Verdict) -> bool {
+    matches!(
+        verdict,
+        Verdict::Legal | Verdict::Unknown(UnknownReason::HiddenState | UnknownReason::RootState)
+    )
 }
 
 pub(crate) fn valid(state: &State, identity: Identity) -> bool {

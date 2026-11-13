@@ -326,6 +326,7 @@ pub fn order_for(slot: Slot, target: Target) -> Order {
 }
 
 /// How one ability slot should be drawn, given the mana its holder has.
+/// `usable` requires provable resource readiness; caster control and targets need a unit view.
 pub fn ability_look(held: Option<&AbilityView>, mana: i32) -> Look {
     let Some(held) = held else {
         return Look::default();
@@ -333,10 +334,7 @@ pub fn ability_look(held: Option<&AbilityView>, mana: i32) -> Look {
     Look {
         filled: true,
         learned: held.level > 0,
-        usable: held.level > 0
-            && held.cooldown_left == 0
-            && !held.passive
-            && mana >= held.mana_cost,
+        usable: crate::order_legality::ability_resources(held, mana).is_legal(),
         toggled: held.on,
         passive: held.passive,
         cooldown_left: held.cooldown_left,
@@ -354,12 +352,7 @@ pub fn item_look(item: Option<&ItemView>, at: u8, mana: i32) -> Look {
     Look {
         filled: true,
         learned: true,
-        usable: (at < INVENTORY_SLOTS || at == TOWN_PORTAL_SLOT)
-            && item.aim.is_some()
-            && item.cooldown_left == 0
-            && item.mute_left == 0
-            && item.charges.is_none_or(|left| left > 0)
-            && mana >= item.mana_cost,
+        usable: crate::order_legality::item_resources(item, ItemSlot(at), mana).is_legal(),
         toggled: false,
         // An item with nothing to activate is worn rather than used, which is
         // what a passive ability is.

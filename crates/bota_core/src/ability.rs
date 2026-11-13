@@ -122,6 +122,8 @@ pub struct AbilityDef {
     pub immediate: bool,
     /// Whether this spell can begin despite a stun or silence.
     pub cast_while_stunned: bool,
+    /// Modifiers placed on its caster while its effect travels, with their tick limits.
+    pub caster_modifiers: &'static [(crate::ModifierKind, u32)],
     pub cast_while_silenced: bool,
     /// Whether ordering it while a channel runs leaves the channel be:
     /// Dota's `DOTA_ABILITY_BEHAVIOR_IGNORE_CHANNEL`. Only an ability with
@@ -202,6 +204,7 @@ pub(crate) const BARE_ABILITY: AbilityDef = AbilityDef {
     at_an_enemy: false,
     immediate: false,
     cast_while_stunned: false,
+    caster_modifiers: &[],
     cast_while_silenced: false,
     ignores_channel: false,
     mana: &[],
@@ -412,5 +415,17 @@ pub fn level_floor(def: &AbilityDef, level: u8) -> u8 {
             .unwrap_or(u8::MAX)
     } else {
         2 * (level + 1) - 1
+    }
+}
+
+impl AbilityDef {
+    /// Whether its caster can have admission blocked without a public status bit.
+    pub fn hidden_caster_control(&self) -> bool {
+        self.caster_modifiers.iter().any(|&(kind, _)| {
+            kind.mutes()
+                || (kind.controls(crate::Control::Stun)
+                    && kind.statuses() & bota_proto::StatusFlags::STUNNED == 0)
+                || kind.controls(crate::Control::Root)
+        })
     }
 }
