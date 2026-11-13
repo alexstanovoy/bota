@@ -447,8 +447,6 @@ pub struct ItemDef {
     /// Dota's internal name of the item, its line of the id registry: what
     /// every data file and asset knows it by.
     pub key: &'static str,
-    /// What it is called.
-    pub name: &'static str,
     /// Price in gold.
     pub cost: i32,
     /// Dota's `SecretShop`: the item needs a carrier at a secret shop.
@@ -805,7 +803,6 @@ pub(crate) const PLAIN: ItemDef = ItemDef {
     expiry_recovery: None,
     id: ItemId(u16::MAX),
     key: "",
-    name: "",
     cost: 0,
     secret_shop: false,
     charges: 0,

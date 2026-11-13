@@ -21,7 +21,7 @@ const STACKING: [ItemId; 7] = [
 ];
 
 fn bought_whole(def: &ItemDef) -> bool {
-    def.components.is_empty() && !def.unbuyable && !def.retired && def.name != "Town Portal Scroll"
+    def.components.is_empty() && !def.unbuyable && !def.retired && def.key != "item_tpscroll"
 }
 
 #[test]
@@ -39,12 +39,12 @@ fn a_second_purchase_stacks_exactly_the_items_dota_stacks() {
             assert!(
                 world.buy(bota_proto::SlotId(0), id, &mut Vec::new()),
                 "{}",
-                def.name
+                def.key
             );
         }
         let slots = world.inventory.get(hero).expect("bag").held().count();
         let expected = if STACKING.contains(&id) { 1 } else { 2 };
-        assert_eq!(slots, expected, "{} takes {expected} slot(s)", def.name);
+        assert_eq!(slots, expected, "{} takes {expected} slot(s)", def.key);
     }
 }
 

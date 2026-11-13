@@ -469,7 +469,6 @@ pub(crate) const fn item_digest(def: &ItemDef) -> u64 {
         expiry_recovery,
         id,
         key,
-        name: _,
         cost,
         secret_shop,
         charges,

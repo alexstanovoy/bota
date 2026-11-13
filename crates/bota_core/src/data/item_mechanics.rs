@@ -168,7 +168,6 @@ const fn bracer_kin(d: &ItemData, which: Attribute, five: &str, two: &str) -> At
 /// Every item, each its script's row and what bota does with it.
 pub(crate) static ITEM_ROWS: &[ItemDef] = &[
     ItemDef {
-        name: "Boots of Speed",
         carried: Carried {
             move_speed: int(&ITEM_BOOTS, "bonus_movement_speed"),
             ..NOTHING
@@ -176,7 +175,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_BOOTS)
     },
     ItemDef {
-        name: "Clarity",
         aim: Some(Aim::Unit),
         spends: Spends::One,
         effect: UseSpec::Mend(mend(
@@ -191,7 +189,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_CLARITY)
     },
     ItemDef {
-        name: "Healing Salve",
         aim: Some(Aim::Unit),
         spends: Spends::One,
         effect: UseSpec::Mend(mend(
@@ -206,7 +203,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_FLASK)
     },
     ItemDef {
-        name: "Iron Branch",
         // One planting: the planted branch is gone.
         charges: 1,
         carried: Carried {
@@ -221,7 +217,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_BRANCHES)
     },
     ItemDef {
-        name: "Observer Ward",
         aim: Some(Aim::Point),
         spends: Spends::One,
         effect: UseSpec::Ward {
@@ -233,7 +228,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_WARD_OBSERVER)
     },
     ItemDef {
-        name: "Quelling Blade",
         carried: Carried {
             damage_to_creeps: int(&ITEM_QUELLING_BLADE, "damage_bonus"),
             ..NOTHING
@@ -247,7 +241,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_QUELLING_BLADE)
     },
     ItemDef {
-        name: "Sentry Ward",
         aim: Some(Aim::Point),
         spends: Spends::One,
         effect: UseSpec::Ward {
@@ -259,7 +252,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_WARD_SENTRY)
     },
     ItemDef {
-        name: "Tango",
         aim: Some(Aim::Tree),
         spends: Spends::One,
         effect: UseSpec::Mend(mend(
@@ -278,7 +270,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
     // Town Portal Scroll: also the official patch notes 7.33 to 7.41f and Liquipedia's *Town
     // Portal Scroll* (read 2026-10-11). A stack's charges are a byte here, more than a match buys.
     ItemDef {
-        name: "Town Portal Scroll",
         shared_wait: true,
         aim: Some(Aim::Building),
         effect: UseSpec::Teleport(Scroll {
@@ -289,7 +280,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_TPSCROLL)
     },
     ItemDef {
-        name: "Circlet",
         carried: Carried {
             attributes: Attributes::all(int(&ITEM_CIRCLET, "bonus_all_stats")),
             ..NOTHING
@@ -297,19 +287,15 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_CIRCLET)
     },
     ItemDef {
-        name: "Gauntlets of Strength",
         ..attribute(&ITEM_GAUNTLETS, Attribute::Strength, "bonus_strength")
     },
     ItemDef {
-        name: "Slippers of Agility",
         ..attribute(&ITEM_SLIPPERS, Attribute::Agility, "bonus_agility")
     },
     ItemDef {
-        name: "Mantle of Intelligence",
         ..attribute(&ITEM_MANTLE, Attribute::Intelligence, "bonus_intellect")
     },
     ItemDef {
-        name: "Belt of Strength",
         ..attribute(
             &ITEM_BELT_OF_STRENGTH,
             Attribute::Strength,
@@ -317,23 +303,18 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         )
     },
     ItemDef {
-        name: "Band of Elvenskin",
         ..attribute(&ITEM_BOOTS_OF_ELVES, Attribute::Agility, "bonus_agility")
     },
     ItemDef {
-        name: "Robe of the Magi",
         ..attribute(&ITEM_ROBE, Attribute::Intelligence, "bonus_intellect")
     },
     ItemDef {
-        name: "Ogre Axe",
         ..attribute(&ITEM_OGRE_AXE, Attribute::Strength, "bonus_strength")
     },
     ItemDef {
-        name: "Blade of Alacrity",
         ..attribute(&ITEM_BLADE_OF_ALACRITY, Attribute::Agility, "bonus_agility")
     },
     ItemDef {
-        name: "Staff of Wizardry",
         ..attribute(
             &ITEM_STAFF_OF_WIZARDRY,
             Attribute::Intelligence,
@@ -341,7 +322,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         )
     },
     ItemDef {
-        name: "Gloves of Haste",
         carried: Carried {
             attack_speed: int(&ITEM_GLOVES, "bonus_attack_speed"),
             ..NOTHING
@@ -349,15 +329,12 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_GLOVES)
     },
     ItemDef {
-        name: "Blades of Attack",
         ..damage(&ITEM_BLADES_OF_ATTACK)
     },
     ItemDef {
-        name: "Broadsword",
         ..damage(&ITEM_BROADSWORD)
     },
     ItemDef {
-        name: "Quarterstaff",
         carried: Carried {
             damage: int(&ITEM_QUARTERSTAFF, "bonus_damage"),
             attack_speed: int(&ITEM_QUARTERSTAFF, "bonus_speed"),
@@ -366,7 +343,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_QUARTERSTAFF)
     },
     ItemDef {
-        name: "Ring of Protection",
         carried: Carried {
             armor: armor(&ITEM_RING_OF_PROTECTION, "bonus_armor"),
             ..NOTHING
@@ -374,7 +350,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_RING_OF_PROTECTION)
     },
     ItemDef {
-        name: "Chainmail",
         carried: Carried {
             armor: armor(&ITEM_CHAINMAIL, "bonus_armor"),
             ..NOTHING
@@ -382,7 +357,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_CHAINMAIL)
     },
     ItemDef {
-        name: "Ring of Regen",
         carried: Carried {
             hp_regen: regen(&ITEM_RING_OF_REGEN, "bonus_health_regen"),
             ..NOTHING
@@ -390,7 +364,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_RING_OF_REGEN)
     },
     ItemDef {
-        name: "Sage's Mask",
         carried: Carried {
             mana_regen: regen(&ITEM_SOBI_MASK, "bonus_mana_regen"),
             ..NOTHING
@@ -398,7 +371,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_SOBI_MASK)
     },
     ItemDef {
-        name: "Vitality Booster",
         carried: Carried {
             hp: int(&ITEM_VITALITY_BOOSTER, "bonus_health"),
             ..NOTHING
@@ -406,7 +378,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_VITALITY_BOOSTER)
     },
     ItemDef {
-        name: "Energy Booster",
         carried: Carried {
             mana: int(&ITEM_ENERGY_BOOSTER, "bonus_mana"),
             ..NOTHING
@@ -416,7 +387,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
     // Power Treads are built three ways, `item_recipe_power_treads` requirements 01, 04 and 06:
     // a Belt sets them to strength, a Robe to intelligence, a Band to agility.
     ItemDef {
-        name: "Power Treads",
         mode: Some(Attribute::Strength),
         mode_bonus: int(&ITEM_POWER_TREADS, "bonus_stat"),
         alternatives: &[
@@ -447,7 +417,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_POWER_TREADS)
     },
     ItemDef {
-        name: "Phase Boots",
         carried: Carried {
             move_speed: int(&ITEM_PHASE_BOOTS, "bonus_movement_speed"),
             damage: int(&ITEM_PHASE_BOOTS, "bonus_damage_melee"),
@@ -470,7 +439,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_PHASE_BOOTS)
     },
     ItemDef {
-        name: "Blink Dagger",
         breaks_on_damage: ticks(&ITEM_BLINK, "blink_damage_cooldown"),
         aim: Some(Aim::Point),
         effect: UseSpec::Blink {
@@ -480,7 +448,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_BLINK)
     },
     ItemDef {
-        name: "Bracer",
         carried: Carried {
             attributes: bracer_kin(
                 &ITEM_BRACER,
@@ -495,7 +462,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_BRACER)
     },
     ItemDef {
-        name: "Wraith Band",
         carried: Carried {
             attributes: bracer_kin(
                 &ITEM_WRAITH_BAND,
@@ -510,7 +476,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_WRAITH_BAND)
     },
     ItemDef {
-        name: "Null Talisman",
         carried: Carried {
             attributes: bracer_kin(
                 &ITEM_NULL_TALISMAN,
@@ -525,7 +490,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_NULL_TALISMAN)
     },
     ItemDef {
-        name: "Magic Stick",
         cast_charges: byte(&ITEM_MAGIC_STICK, "max_charges"),
         aim: Some(Aim::Own),
         spends: Spends::All,
@@ -537,7 +501,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_MAGIC_STICK)
     },
     ItemDef {
-        name: "Magic Wand",
         cast_charges: byte(&ITEM_MAGIC_WAND, "max_charges"),
         carried: Carried {
             attributes: Attributes::all(int(&ITEM_MAGIC_WAND, "bonus_all_stats")),
@@ -555,27 +518,21 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
     // Retired: Phase Boots build of their parts alone since Dota made the recipe free. The id
     // keeps its place.
     ItemDef {
-        name: "Recipe: Phase Boots",
         ..from(&ITEM_RECIPE_PHASE_BOOTS)
     },
     ItemDef {
-        name: "Recipe: Bracer",
         ..from(&ITEM_RECIPE_BRACER)
     },
     ItemDef {
-        name: "Recipe: Wraith Band",
         ..from(&ITEM_RECIPE_WRAITH_BAND)
     },
     ItemDef {
-        name: "Recipe: Null Talisman",
         ..from(&ITEM_RECIPE_NULL_TALISMAN)
     },
     ItemDef {
-        name: "Recipe: Magic Wand",
         ..from(&ITEM_RECIPE_MAGIC_WAND)
     },
     ItemDef {
-        name: "Enchanted Mango",
         carried: Carried {
             hp_regen: regen(&ITEM_ENCHANTED_MANGO, "hp_regen"),
             ..NOTHING
@@ -591,15 +548,12 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_ENCHANTED_MANGO)
     },
     ItemDef {
-        name: "Eaglesong",
         ..attribute(&ITEM_EAGLE, Attribute::Agility, "bonus_agility")
     },
     ItemDef {
-        name: "Claymore",
         ..damage(&ITEM_CLAYMORE)
     },
     ItemDef {
-        name: "Talisman of Evasion",
         carried: Carried {
             evasion: odds(&ITEM_TALISMAN_OF_EVASION, "bonus_evasion"),
             ..NOTHING
@@ -607,7 +561,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_TALISMAN_OF_EVASION)
     },
     ItemDef {
-        name: "Butterfly",
         carried: Carried {
             attributes: points(Attribute::Agility, int(&ITEM_BUTTERFLY, "bonus_agility")),
             damage: int(&ITEM_BUTTERFLY, "bonus_damage"),
@@ -618,7 +571,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_BUTTERFLY)
     },
     ItemDef {
-        name: "Javelin",
         carried: Carried {
             pierce: odds(&ITEM_JAVELIN, "bonus_chance"),
             pierce_damage: int(&ITEM_JAVELIN, "bonus_chance_damage"),
@@ -627,11 +579,9 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_JAVELIN)
     },
     ItemDef {
-        name: "Demon Edge",
         ..damage(&ITEM_DEMON_EDGE)
     },
     ItemDef {
-        name: "Blitz Knuckles",
         carried: Carried {
             attack_speed: int(&ITEM_BLITZ_KNUCKLES, "bonus_attack_speed"),
             ..NOTHING
@@ -639,11 +589,9 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_BLITZ_KNUCKLES)
     },
     ItemDef {
-        name: "Recipe: Monkey King Bar",
         ..from(&ITEM_RECIPE_MONKEY_KING_BAR)
     },
     ItemDef {
-        name: "Monkey King Bar",
         carried: Carried {
             damage: int(&ITEM_MONKEY_KING_BAR, "bonus_damage"),
             attack_speed: int(&ITEM_MONKEY_KING_BAR, "bonus_attack_speed"),
@@ -657,7 +605,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
     },
     // Wind Lace and Blood Grenade: also Liquipedia's *Blood Grenade* and *Movement Speed*.
     ItemDef {
-        name: "Wind Lace",
         carried: Carried {
             lace_speed: int(&ITEM_WIND_LACE, "movement_speed"),
             ..NOTHING
@@ -665,7 +612,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_WIND_LACE)
     },
     ItemDef {
-        name: "Blood Grenade",
         carried: Carried {
             hp: int(&ITEM_BLOOD_GRENADE, "bonus_health"),
             ..NOTHING
@@ -687,7 +633,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
     // seat holds (one Observer and one Sentry Ward are the recipe; the item keeps the count of
     // each), is never sold, and plants the kind it is switched to by the entry of that ward.
     ItemDef {
-        name: "Ward Dispenser",
         charges: 1,
         components: &[],
         aim: Some(Aim::Point),
@@ -701,7 +646,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
     // 3.5 health a second is 7.40's (Liquipedia's *Tango*), and it is gone `duration_to_use`
     // after it is made. Never bought, never sold.
     ItemDef {
-        name: "Tango (Shared)",
         aim: Some(Aim::Tree),
         spends: Spends::One,
         effect: UseSpec::Mend(mend(
@@ -718,7 +662,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
     // empty one stays, to be filled at the fountain), used beside whatever the body is doing, on
     // its user or an allied hero in reach; it keeps a rune its holder takes.
     ItemDef {
-        name: "Bottle",
         aim: Some(Aim::Own),
         spends: Spends::One,
         immediate: true,
@@ -737,13 +680,12 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
     // on the user or on an allied hero in reach, one wait of five seconds shared by the three
     // kinds. Each is built by charges as the script's recipes say (`ItemRecipeConsumesCharges`):
     // three Healing Lotuses make a Great one, two Great ones a Greater one.
-    lotus("Healing Lotus", &ITEM_FAMANGO),
-    lotus("Great Healing Lotus", &ITEM_GREAT_FAMANGO),
-    lotus("Greater Healing Lotus", &ITEM_GREATER_FAMANGO),
+    lotus(&ITEM_FAMANGO),
+    lotus(&ITEM_GREAT_FAMANGO),
+    lotus(&ITEM_GREATER_FAMANGO),
     // Cheese: eaten at once by its holder alone. Roshan drops it; where it comes from is not
     // this table's.
     ItemDef {
-        name: "Cheese",
         aim: Some(Aim::Own),
         spends: Spends::One,
         immediate: true,
@@ -758,7 +700,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
     // script has no recipe for it). Eaten at once by its holder alone. Its damage barrier (shield
     // 500, regeneration 100 a second) is not modelled yet.
     ItemDef {
-        name: "Block of Cheese",
         aim: Some(Aim::Own),
         spends: Spends::One,
         immediate: true,
@@ -776,7 +717,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
     },
     // The basic shop's stat items: what each adds and nothing else.
     ItemDef {
-        name: "Crown",
         carried: Carried {
             attributes: Attributes::all(int(&ITEM_CROWN, "bonus_all_stats")),
             ..NOTHING
@@ -784,7 +724,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_CROWN)
     },
     ItemDef {
-        name: "Diadem",
         carried: Carried {
             attributes: Attributes::all(int(&ITEM_DIADEM, "bonus_all_stats")),
             ..NOTHING
@@ -792,7 +731,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_DIADEM)
     },
     ItemDef {
-        name: "Splintmail",
         carried: Carried {
             armor: armor(&ITEM_SPLINTMAIL, "bonus_armor"),
             ..NOTHING
@@ -800,7 +738,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_SPLINTMAIL)
     },
     ItemDef {
-        name: "Helm of Iron Will",
         carried: Carried {
             armor: armor(&ITEM_HELM_OF_IRON_WILL, "bonus_armor"),
             hp_regen: regen(&ITEM_HELM_OF_IRON_WILL, "bonus_regen"),
@@ -809,11 +746,9 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_HELM_OF_IRON_WILL)
     },
     ItemDef {
-        name: "Mithril Hammer",
         ..damage(&ITEM_MITHRIL_HAMMER)
     },
     ItemDef {
-        name: "Fluffy Hat",
         carried: Carried {
             hp: int(&ITEM_FLUFFY_HAT, "bonus_health"),
             ..NOTHING
@@ -821,7 +756,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_FLUFFY_HAT)
     },
     ItemDef {
-        name: "Wizard Hat",
         carried: Carried {
             mana: int(&ITEM_WIZARD_HAT, "bonus_mana"),
             ..NOTHING
@@ -829,7 +763,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_WIZARD_HAT)
     },
     ItemDef {
-        name: "Ring of Health",
         carried: Carried {
             hp_regen: regen(&ITEM_RING_OF_HEALTH, "bonus_health_regen"),
             ..NOTHING
@@ -837,7 +770,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_RING_OF_HEALTH)
     },
     ItemDef {
-        name: "Void Stone",
         carried: Carried {
             mana_regen: regen(&ITEM_VOID_STONE, "bonus_mana_regen"),
             ..NOTHING
@@ -845,7 +777,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_VOID_STONE)
     },
     ItemDef {
-        name: "Platemail",
         carried: Carried {
             armor: armor(&ITEM_PLATEMAIL, "bonus_armor"),
             ..NOTHING
@@ -853,7 +784,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_PLATEMAIL)
     },
     ItemDef {
-        name: "Ring of Tarrasque",
         carried: Carried {
             hp_regen: regen(&ITEM_RING_OF_TARRASQUE, "bonus_health_regen"),
             ..NOTHING
@@ -861,7 +791,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_RING_OF_TARRASQUE)
     },
     ItemDef {
-        name: "Tiara of Selemene",
         carried: Carried {
             mana_regen: regen(&ITEM_TIARA_OF_SELEMENE, "bonus_mana_regen"),
             ..NOTHING
@@ -869,7 +798,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_TIARA_OF_SELEMENE)
     },
     ItemDef {
-        name: "Hyperstone",
         carried: Carried {
             attack_speed: int(&ITEM_HYPERSTONE, "bonus_attack_speed"),
             ..NOTHING
@@ -877,7 +805,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_HYPERSTONE)
     },
     ItemDef {
-        name: "Point Booster",
         carried: Carried {
             hp: int(&ITEM_POINT_BOOSTER, "bonus_health"),
             mana: int(&ITEM_POINT_BOOSTER, "bonus_mana"),
@@ -886,15 +813,12 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_POINT_BOOSTER)
     },
     ItemDef {
-        name: "Sacred Relic",
         ..damage(&ITEM_RELIC)
     },
     ItemDef {
-        name: "Reaver",
         ..attribute(&ITEM_REAVER, Attribute::Strength, "bonus_strength")
     },
     ItemDef {
-        name: "Mystic Staff",
         ..attribute(
             &ITEM_MYSTIC_STAFF,
             Attribute::Intelligence,
@@ -902,7 +826,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         )
     },
     ItemDef {
-        name: "Ultimate Orb",
         carried: Carried {
             attributes: Attributes::all(int(&ITEM_ULTIMATE_ORB, "bonus_all_stats")),
             ..NOTHING
@@ -912,7 +835,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
     // Shawl and Cloak: magic resistance, stacking as Dota's does (the items' notes: "Stacks
     // multiplicatively with other sources of magic resistance").
     ItemDef {
-        name: "Shawl",
         carried: Carried {
             magic_resist_bp: magic_resist(&ITEM_SHAWL, "bonus_magical_armor"),
             ..NOTHING
@@ -920,7 +842,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_SHAWL)
     },
     ItemDef {
-        name: "Cloak",
         carried: Carried {
             magic_resist_bp: magic_resist(&ITEM_CLOAK, "bonus_magical_armor"),
             ..NOTHING
@@ -930,7 +851,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
     // Morbid Mask: also Liquipedia's *Lifesteal* (7.38: lifesteal heals off physical attack
     // damage alone, and less off what is no hero).
     ItemDef {
-        name: "Morbid Mask",
         carried: Carried {
             lifesteal_pct: int(&ITEM_LIFESTEAL, "lifesteal_percent"),
             ..NOTHING
@@ -940,7 +860,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
     // Voodoo Mask: also Liquipedia's *Spell Lifesteal* and *Voodoo Mask* (several of one source do
     // not stack).
     ItemDef {
-        name: "Voodoo Mask",
         carried: Carried {
             spell_lifesteal_pct: int(&ITEM_VOODOO_MASK, "spell_lifesteal"),
             ..NOTHING
@@ -950,7 +869,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
     // Faerie Fire: eaten at once by its holder alone (no target), for health; its damage while
     // carried.
     ItemDef {
-        name: "Faerie Fire",
         carried: Carried {
             damage: int(&ITEM_FAERIE_FIRE, "bonus_damage"),
             ..NOTHING
@@ -967,7 +885,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
     // Orb of Blight (`item_blight_stone`): Lesser Corruption, the armor its carrier's attacks take
     // off.
     ItemDef {
-        name: "Orb of Blight",
         on_attack: Some(OnAttack {
             effect: EffectId::CORRUPTION,
             ticks: ticks(&ITEM_BLIGHT_STONE, "corruption_duration"),
@@ -986,7 +903,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
     // Orb of Venom: Poison Attack, at most once each `AbilityCooldown`, decided as the attack is
     // let go (Dota 7.38: "Poison Attack now has a 9s cooldown").
     ItemDef {
-        name: "Orb of Venom",
         on_attack: Some(OnAttack {
             effect: EffectId::POISON_ATTACK,
             ticks: ticks(&ITEM_ORB_OF_VENOM, "poison_duration"),
@@ -1007,7 +923,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
     // Orb of Frost: Frost, a slow by the struck's attack and a cut of its Health Restoration (Dota
     // 7.39: "now reduces Health Restoration"; 7.41: "Now also modifies incoming healing").
     ItemDef {
-        name: "Orb of Frost",
         on_attack: Some(OnAttack {
             effect: EffectId::FROST,
             ticks: ticks(&ITEM_ORB_OF_FROST, "duration"),
@@ -1025,7 +940,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_ORB_OF_FROST)
     },
     ItemDef {
-        name: "Aegis of the Immortal",
         limits: ITEM_AEGIS.limits,
         // Valve 2012-03-22: couriers cannot pick up Aegis; this is an engine rule.
         pickup: crate::PickupEligibility::RealHero,
@@ -1042,7 +956,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_AEGIS)
     },
     ItemDef {
-        name: "Refresher Shard",
         limits: ITEM_REFRESHER_SHARD.limits,
         cooldown_in_inventory: ITEM_REFRESHER_SHARD.cooldown_in_inventory,
         aim: Some(Aim::Own),
@@ -1054,7 +967,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_REFRESHER_SHARD)
     },
     ItemDef {
-        name: "Roshan's Banner",
         public_placement: true,
         aim: Some(Aim::Point),
         charges: 1,
@@ -1069,7 +981,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
     // Infused Raindrops: Magical Damage Block, a charge and its cooldown a block; its charges
     // spent, it is gone. Its mana regeneration while carried.
     ItemDef {
-        name: "Infused Raindrops",
         carried: Carried {
             mana_regen: regen(&ITEM_INFUSED_RAINDROP, "mana_regen"),
             ..NOTHING
@@ -1084,7 +995,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
     // order (`DOTA_ABILITY_BEHAVIOR_IMMEDIATE`). The ethereal cooldown it shares with Ethereal
     // Blade and Crella's Crozier (`AbilitySharedCooldown`) waits on neither: bota sells neither.
     ItemDef {
-        name: "Ghost Scepter",
         carried: Carried {
             attributes: Attributes::all(int(&ITEM_GHOST, "bonus_all_stats")),
             ..NOTHING
@@ -1100,7 +1010,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
     },
     // Chasm Stone: its AoE bonus, the best of several carried counting.
     ItemDef {
-        name: "Chasm Stone",
         carried: Carried {
             aoe_bonus: int(&ITEM_CHASM_STONE, "aoe_bonus"),
             hp: int(&ITEM_CHASM_STONE, "bonus_health"),
@@ -1110,7 +1019,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
     },
     // Upgrades that carry stats and nothing else, built of their parts as the install says.
     ItemDef {
-        name: "Oblivion Staff",
         carried: Carried {
             attributes: points(
                 Attribute::Intelligence,
@@ -1123,7 +1031,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_OBLIVION_STAFF)
     },
     ItemDef {
-        name: "Perseverance",
         carried: Carried {
             hp_regen: regen(&ITEM_PERS, "bonus_health_regen"),
             mana_regen: regen(&ITEM_PERS, "bonus_mana_regen"),
@@ -1132,7 +1039,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_PERS)
     },
     ItemDef {
-        name: "Soul Booster",
         carried: Carried {
             hp: int(&ITEM_SOUL_BOOSTER, "bonus_health"),
             mana: int(&ITEM_SOUL_BOOSTER, "bonus_mana"),
@@ -1141,11 +1047,9 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_SOUL_BOOSTER)
     },
     ItemDef {
-        name: "Recipe: Falcon Blade",
         ..from(&ITEM_RECIPE_FALCON_BLADE)
     },
     ItemDef {
-        name: "Falcon Blade",
         carried: Carried {
             hp: int(&ITEM_FALCON_BLADE, "bonus_health"),
             mana_regen: regen(&ITEM_FALCON_BLADE, "bonus_mana_regen"),
@@ -1155,12 +1059,10 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_FALCON_BLADE)
     },
     ItemDef {
-        name: "Recipe: Yasha",
         ..from(&ITEM_RECIPE_YASHA)
     },
     // Yasha: its movement speed counts once with what is built of it (`lineage`).
     ItemDef {
-        name: "Yasha",
         carried: Carried {
             attributes: points(Attribute::Agility, int(&ITEM_YASHA, "bonus_agility")),
             attack_speed: int(&ITEM_YASHA, "bonus_attack_speed"),
@@ -1170,12 +1072,10 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_YASHA)
     },
     ItemDef {
-        name: "Recipe: Sange",
         ..from(&ITEM_RECIPE_SANGE)
     },
     // Sange: its slow resistance and Health Restoration count once with what is built of it.
     ItemDef {
-        name: "Sange",
         carried: Carried {
             attributes: points(Attribute::Strength, int(&ITEM_SANGE, "bonus_strength")),
             slow_resist_bp: bp(&ITEM_SANGE, "slow_resistance"),
@@ -1185,12 +1085,10 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_SANGE)
     },
     ItemDef {
-        name: "Recipe: Kaya",
         ..from(&ITEM_RECIPE_KAYA)
     },
     // Kaya: its spell and mana regeneration amplifications count once with what is built of it.
     ItemDef {
-        name: "Kaya",
         carried: Carried {
             attributes: points(Attribute::Intelligence, int(&ITEM_KAYA, "bonus_intellect")),
             spell_amp_pct: int(&ITEM_KAYA, "spell_amp"),
@@ -1201,13 +1099,11 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
     },
     // The three pairs: each holds the stats of the two it is built of, a lineage with each.
     ItemDef {
-        name: "Sange and Yasha",
         carried: sange_and_yasha("movement_speed_percent_bonus_melee"),
         ranged: Some(sange_and_yasha("movement_speed_percent_bonus")),
         ..from(&ITEM_SANGE_AND_YASHA)
     },
     ItemDef {
-        name: "Kaya and Sange",
         carried: Carried {
             attributes: Attributes {
                 strength: Fixed::from_int(int(&ITEM_KAYA_AND_SANGE, "bonus_strength")),
@@ -1224,18 +1120,15 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_KAYA_AND_SANGE)
     },
     ItemDef {
-        name: "Yasha and Kaya",
         carried: yasha_and_kaya("movement_speed_percent_bonus_melee"),
         ranged: Some(yasha_and_kaya("movement_speed_percent_bonus")),
         ..from(&ITEM_YASHA_AND_KAYA)
     },
     ItemDef {
-        name: "Recipe: Aether Lens",
         ..from(&ITEM_RECIPE_AETHER_LENS)
     },
     // Aether Lens: every cast of its carrier's reaches further, the best of several counting.
     ItemDef {
-        name: "Aether Lens",
         carried: Carried {
             mana: int(&ITEM_AETHER_LENS, "bonus_mana"),
             mana_regen: regen(&ITEM_AETHER_LENS, "bonus_mana_regen"),
@@ -1245,12 +1138,10 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_AETHER_LENS)
     },
     ItemDef {
-        name: "Recipe: Octarine Core",
         ..from(&ITEM_RECIPE_OCTARINE_CORE)
     },
     // Octarine Core: a cut of every cooldown, the best of several counting.
     ItemDef {
-        name: "Octarine Core",
         carried: Carried {
             hp: int(&ITEM_OCTARINE_CORE, "bonus_health"),
             mana: int(&ITEM_OCTARINE_CORE, "bonus_mana"),
@@ -1262,13 +1153,11 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_OCTARINE_CORE)
     },
     ItemDef {
-        name: "Recipe: Dragon Lance",
         ..from(&ITEM_RECIPE_DRAGON_LANCE)
     },
     // Dragon Lance: attack range for a ranged carrier (`base_attack_range`) and for a melee one
     // (`base_attack_range_melee`), the best of several counting.
     ItemDef {
-        name: "Dragon Lance",
         carried: Carried {
             attributes: Attributes {
                 strength: Fixed::from_int(int(&ITEM_DRAGON_LANCE, "bonus_strength")),
@@ -1282,12 +1171,10 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         ..from(&ITEM_DRAGON_LANCE)
     },
     ItemDef {
-        name: "Recipe: Heart of Tarrasque",
         ..from(&ITEM_RECIPE_HEART)
     },
     // Heart of Tarrasque: a share of the maximum health and of the missing health regenerated.
     ItemDef {
-        name: "Heart of Tarrasque",
         carried: Carried {
             attributes: points(Attribute::Strength, int(&ITEM_HEART, "bonus_strength")),
             max_hp_regen_bp: hundredths_bp(&ITEM_HEART, "hp_regen"),
@@ -1336,9 +1223,8 @@ const fn yasha_and_kaya(move_speed_key: &str) -> Carried {
 }
 
 /// One kind of lotus, as its script gives it.
-const fn lotus(name: &'static str, d: &ItemData) -> ItemDef {
+const fn lotus(d: &ItemData) -> ItemDef {
     ItemDef {
-        name,
         aim: Some(Aim::Own),
         spends: Spends::One,
         immediate: true,

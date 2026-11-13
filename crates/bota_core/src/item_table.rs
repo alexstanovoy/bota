@@ -25,7 +25,7 @@ pub const ITEM_COUNT: usize = ITEM_ROWS.len();
 ///    the item). A number where Dota 7.41f is not the install is an override
 ///    in the tool, with its evidence.
 /// 2. Add its row to `ITEM_ROWS` in `data/item_mechanics.rs`:
-///    `ItemDef { name, ..from(&ITEM_X) }` plus what it does, every number read
+///    `ItemDef { ..from(&ITEM_X) }` plus what it does, every number read
 ///    by its Dota key. A recipe is two rows, the recipe scroll and the build;
 ///    the build's parts come from the recipe's requirements.
 /// 3. Nothing else moves: the wire fingerprint holds no items, so older

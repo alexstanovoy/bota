@@ -55,13 +55,24 @@ impl AdmittedWire {
 /// records, snapshots and world fingerprints (`bota_server`'s `admitted` test). A wire without a
 /// corpus, or whose corpus this build plays otherwise, fails that test: a change that moves it
 /// changes the rules, and takes the entry out. See `DEVELOPMENT.md`, "Admitted wires".
-pub const ADMITTED_WIRES: &[AdmittedWire] = &[AdmittedWire {
-    wire: 0x4df9_74f2_6e20_47eb,
-    catalogue: CataloguePrefix {
-        items: 94,
-        digest: 12_760_854_504_706_889_410,
+pub const ADMITTED_WIRES: &[AdmittedWire] = &[
+    // The commit Dota 7.41f item batch 1 was made on.
+    AdmittedWire {
+        wire: 0x4df9_74f2_6e20_47eb,
+        catalogue: CataloguePrefix {
+            items: 94,
+            digest: 12_760_854_504_706_889_410,
+        },
     },
-}];
+    // Item batch 1; the item names left bota after it, no rule moved.
+    AdmittedWire {
+        wire: 0x4390_805b_3714_564b,
+        catalogue: CataloguePrefix {
+            items: 116,
+            digest: 6_682_987_802_388_131_638,
+        },
+    },
+];
 
 /// The earlier build of `wire`, when this build admits it.
 pub const fn admitted_wire(wire: u64) -> Option<AdmittedWire> {
