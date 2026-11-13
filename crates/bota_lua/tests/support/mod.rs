@@ -1,6 +1,6 @@
 use bota_client_core::{AckPolicy, ClientSession, Ingested, MatchStatic, SessionOptions};
 use bota_core::{Catalogue, MAP2_ID, map_of};
-use bota_proto::{HeroId, Pick, ServerMsg, SlotId, Team, TickMode};
+use bota_proto::{HeroId, MapId, Pick, ServerMsg, SlotId, Team, TickMode};
 use bota_server::{
     game::{MatchConfig, OrderDelay},
     local::LocalMatch,
@@ -13,14 +13,16 @@ pub fn opening(teams: &[Team]) -> (LocalMatch, Vec<Vec<ServerMsg>>) {
             .map(|&team| (team, HeroId::SHADOW_FIEND))
             .collect::<Vec<_>>(),
         Vec::new(),
+        MAP2_ID,
     )
 }
 
 fn opening_heroes(
     heroes: &[(Team, HeroId)],
     spawn_modifiers: Vec<bota_server::game::SpawnModifier>,
+    map_id: MapId,
 ) -> (LocalMatch, Vec<Vec<ServerMsg>>) {
-    let map = map_of(MAP2_ID);
+    let map = map_of(map_id);
     let config = MatchConfig {
         match_id: 7,
         master_key: [7; 32],
@@ -34,7 +36,7 @@ fn opening_heroes(
                 hero,
             })
             .collect(),
-        map: MAP2_ID,
+        map: map_id,
         mode: TickMode::Lockstep,
         ack_timeout_ticks: 150,
         cheats: false,
@@ -71,7 +73,7 @@ pub fn local_with_modifiers(
     heroes: &[(Team, HeroId)],
     modifiers: Vec<bota_server::game::SpawnModifier>,
 ) -> (LocalMatch, Vec<ClientSession>) {
-    let (local, opening) = opening_heroes(heroes, modifiers);
+    let (local, opening) = opening_heroes(heroes, modifiers, MAP2_ID);
     (
         local,
         sessions(
@@ -260,4 +262,17 @@ pub fn courier_modules(fail_level_once: bool) -> bota_lua::ModuleBank {
         .insert("ability_item_usage_nevermore", usage)
         .expect("usage");
     modules
+}
+
+#[allow(dead_code, reason = "shared fixture used by match metadata queries")]
+pub fn local_on_map(teams: &[Team], map: MapId) -> (LocalMatch, Vec<ClientSession>) {
+    let heroes: Vec<_> = teams
+        .iter()
+        .map(|&team| (team, HeroId::SHADOW_FIEND))
+        .collect();
+    let (local, opening) = opening_heroes(&heroes, Vec::new(), map);
+    (
+        local,
+        sessions(opening, &vec![HeroId::SHADOW_FIEND; teams.len()]),
+    )
 }

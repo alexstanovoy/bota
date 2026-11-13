@@ -53,3 +53,41 @@ fn solo_mid_reports_its_engine_mode_and_assigned_mid_lane_on_both_sides() {
         );
     }
 }
+
+#[test]
+fn a_non_solo_mid_map_rejects_an_unmapped_engine_mode_and_has_no_lane_assignment() {
+    let (_, sessions) = support::local_on_map(&[Team::Radiant, Team::Dire], bota_proto::MapId(1));
+    for (index, side) in [(0, Team::Radiant), (1, Team::Dire)] {
+        let slot = SlotId(index as u8);
+        let mut lua = LuaTeam::new(
+            side,
+            &[BotSeat {
+                slot,
+                hero: HeroId::SHADOW_FIEND,
+            }],
+            Limits::DEFAULT,
+            Keys {
+                hash: [17, 19],
+                random: 23,
+            },
+        )
+        .expect("team");
+        lua.add_script(slot, ScriptKind::Takeover, "unmapped_engine_mode", br#"
+            function Think()
+                local ok, reason = pcall(GetGameMode)
+                assert(not ok and string.find(tostring(reason), 'the configured map has no engine game-mode mapping', 1, true))
+                assert(GetBot():GetAssignedLane() == 0)
+                GetBot():Action_MoveToLocation(Vector(123,456,0))
+            end
+        "#).expect("script");
+        let turn = lua.think(&sessions[index]).expect("think");
+        assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+        assert_eq!(turn.bots[0].orders.len(), 1);
+        assert_eq!(
+            turn.bots[0].orders[0].order,
+            Order::Move {
+                target: Target::Pos(Vec2::from_ints(9339, 9672))
+            }
+        );
+    }
+}
