@@ -110,6 +110,12 @@ information come from the received view and announced match catalogue.
 these arrays. Creeps and buildings use the public core kind metadata; enemy-side
 categories do not classify neutral units as members of the opposing team.
 
+Unit statistics read the received whole-point mana and damage fields without
+narrowing them through fixed-point conversion. Floating-point regeneration,
+armor, evasion and bounding radius retain Q16.16 precision. Integer range, speed,
+attribute and facing reads return whole units; facing uses engine degrees rather
+than protocol brads. Attack intervals are returned in seconds.
+
 Estimated damage is an integer projection of observed attack stats and core spell
 data over the requested duration. The availability flag restricts allied spells
 and items by the known mana and cooldowns; it does not disable ordinary attacks.

@@ -20,6 +20,7 @@ mod queries;
 pub(crate) mod shop;
 mod unit_lists;
 mod unit_names;
+mod unit_statistics;
 
 pub(crate) type Shared = Rc<RefCell<State>>;
 
@@ -128,6 +129,7 @@ pub(crate) fn install(lua: &mut Lua, state: Shared, vectors: Vectors) -> Result<
     globals::install(lua, state.clone(), vectors)?;
     players::install(lua, &context)?;
     unit_lists::install(lua, &context)?;
+    unit_statistics::install(lua, &context)?;
     queries::install(lua, methods, state.clone(), vectors)?;
     abilities::install(lua, methods, state.clone())?;
     shop::install(lua, &context)?;
