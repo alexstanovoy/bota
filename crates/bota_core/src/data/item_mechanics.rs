@@ -9,8 +9,8 @@ use super::items::*;
 use crate::{
     Affects, AllyUse, Carried, DamageBlock, Dec, DisassembleRule, Dispel, Drink, Grenade, Immunity,
     ItemData, ItemDef, LOTUS_TAKE_RANGE, MagicBlock, Mend, NOTHING, Odds, OnAttack, PLAIN, Pool,
-    Recipe, Scroll, Spends, Stock, Strike, UseSpec, hundredths_per_second, points, points_with,
-    rules,
+    ProcTargets, Recipe, Scroll, Spends, Stock, Strike, UseSpec, hundredths_per_second, points,
+    points_with, rules,
 };
 
 /// The row of an item as its script gives it; a row of the catalog adds what bota does with it.
@@ -1296,7 +1296,7 @@ const fn crit(d: &ItemData, magic: bool) -> Strike {
         chance_pct: int(d, "crit_chance"),
         mult_pct: [int(d, "crit_multiplier"); 4],
         magic,
-        buildings: false,
+        targets: ProcTargets::EnemyUnits,
     }
 }
 
@@ -1312,6 +1312,8 @@ const fn bash(d: &ItemData, chance_key: &str) -> Strike {
         damage: [int(d, "bonus_chance_damage"); 4],
         stun_ms: [d.first("bash_duration").0; 4],
         effect: EffectId::BASHED,
+        rolls_at: ProcTargets::Any,
+        lands_on: ProcTargets::Units,
     }
 }
 
@@ -1347,8 +1349,6 @@ const MAELSTROM_CHAIN: Strike = Strike::Chain {
     radius: int(&ITEM_MAELSTROM, "chain_radius"),
     delay_ms: ITEM_MAELSTROM.first("chain_delay").0,
     wait_ms: ITEM_MAELSTROM.first("chain_cooldown").0,
-    // Maelstrom's script names no SpellImmunityType: its bolt does not go through spell immunity.
-    pierces_immunity: matches!(ITEM_MAELSTROM.immunity, Immunity::Pierced),
 };
 
 /// What a Specialist's Array carries besides its Splitshot.

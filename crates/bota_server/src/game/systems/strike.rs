@@ -2,7 +2,7 @@
 //! attack point, and what a blow that landed leaves on its target.
 
 use bota_core::{
-    AttackClass, MAX_ITEM_STRIKES, ModifierKind, NeutralAbility, Odds, Spell, Strike,
+    AttackClass, MAX_ITEM_STRIKES, ModifierKind, NeutralAbility, Odds, ProcTargets, Spell, Strike,
     ability_cooldown, at_level, carried_strikes, class_pct, rules, ticks_of_ms,
 };
 use bota_proto::{DamageKind, Fixed, Inflictor, ItemId, UnitKind, Vec2};
@@ -375,16 +375,16 @@ impl World {
             boost.accurate = source.roll(stats.accuracy);
         }
         let sources = self.sources(attacker);
-        let building = self.structure(on);
         let mut crits: Vec<(i32, Source, i32, i32, bool)> = sources
             .iter()
+            .filter(|source| self.aimed_at(attacker, on, source.strike.rolls_at()))
             .filter_map(|source| match source.strike {
                 Strike::Crit {
                     chance_pct,
                     mult_pct,
                     magic,
-                    buildings,
-                } if buildings || !building => {
+                    ..
+                } => {
                     let mult = at_level(&mult_pct, source.origin.level());
                     let strength = if magic { 100 + mult } else { mult };
                     Some((strength, *source, chance_pct, mult, magic))
@@ -412,39 +412,41 @@ impl World {
     }
 
     /// Conditional attack bonuses roll once at the attack point and survive flight: a bash, of a
-    /// unit's bashes the one that deals most, rolled while it is off its wait. No illusion bashes
-    /// and nothing bashes a ward; an item's bash never a building.
+    /// unit's bashes the one that deals most, rolled while it is off its wait on what its
+    /// `rolls_at` allows, and landing only on what its `lands_on` does (an item's: rolled on every
+    /// swing, landing on a hero or a creep of either side). No illusion bashes.
     fn conditional_proc(
         &mut self,
         attacker: Entity,
         on: Entity,
         sources: &[Source],
     ) -> Option<crate::game::AttackProc> {
-        if self.wears_illusion(attacker)
-            || self.kind.get(on).is_some_and(|k| {
-                bota_core::kind_def(*k).target_class == bota_core::TargetClass::Ward
-            })
-        {
+        if self.wears_illusion(attacker) {
             return None;
         }
-        let building = self.structure(on);
         let (source, _) = strongest(sources, |strike, level| match strike {
             Strike::Bash { damage, .. } => Some(at_level(&damage, level)),
             _ => None,
-        })
-        .filter(|(source, _)| matches!(source.origin, Origin::Ability { .. }) || !building)?;
+        })?;
         let Strike::Bash {
             chance_pct,
             damage,
             stun_ms,
             effect,
+            rolls_at,
+            lands_on,
         } = source.strike
         else {
             return None;
         };
-        if !self.strike_ready(attacker, on, source)
+        if !self.aimed_at(attacker, on, rolls_at)
+            || !self.strike_ready(attacker, on, source)
             || !self.rolls(attacker, source.origin, chance_pct)
         {
+            return None;
+        }
+        // A bash that rolled at what it cannot land on is spent on nothing: no wait, no stun.
+        if !self.aimed_at(attacker, on, lands_on) {
             return None;
         }
         self.start_wait(attacker, on, source);
@@ -475,28 +477,16 @@ impl World {
     /// building, no ward) its bolt reaches (no spell-immune one, for a bolt that does not go
     /// through spell immunity). Its item waits from the roll that hit.
     fn roll_chain(&mut self, attacker: Entity, on: Entity, sources: &[Source]) -> Option<ItemId> {
-        if !self.foes(attacker, on) {
-            return None;
-        }
         let (source, _) = strongest(sources, |strike, _| match strike {
             Strike::Chain { damage, .. } => Some(damage),
             _ => None,
         })?;
-        let (
-            Strike::Chain {
-                chance_pct,
-                pierces_immunity,
-                ..
-            },
-            Origin::Item { item, .. },
-        ) = (source.strike, source.origin)
+        let (Strike::Chain { chance_pct, .. }, Origin::Item { item, .. }) =
+            (source.strike, source.origin)
         else {
             return None;
         };
-        // A bolt that spell immunity keeps off goes off on no swing at a spell-immune target (a
-        // courier): nothing is rolled.
-        let immune = self.stats.get(on).is_some_and(|stats| stats.spell_immune);
-        if immune && !pierces_immunity {
+        if !self.aimed_at(attacker, on, source.strike.rolls_at()) {
             return None;
         }
         if !self.strike_ready(attacker, on, source)
@@ -517,9 +507,6 @@ impl World {
         on: Entity,
         sources: &[Source],
     ) -> Option<SplitShot> {
-        if !self.proc_target(attacker, on) {
-            return None;
-        }
         let (source, _) = strongest(sources, |strike, _| match strike {
             Strike::Split { count, .. } => Some(i32::from(count)),
             _ => None,
@@ -535,6 +522,9 @@ impl World {
         else {
             return None;
         };
+        if !self.aimed_at(attacker, on, source.strike.rolls_at()) {
+            return None;
+        }
         self.rolls(attacker, source.origin, chance_pct)
             .then_some(SplitShot {
                 count,
@@ -586,7 +576,23 @@ impl World {
     /// Whether an item's attack proc reaches `on`: a unit `by` fights, no building, ward or
     /// courier.
     fn proc_target(&self, by: Entity, on: Entity) -> bool {
-        self.foes(by, on) && self.kind.get(on) != Some(&UnitKind::Courier)
+        self.aimed_at(by, on, ProcTargets::EnemyUnits)
+    }
+
+    /// Whether a swing of `by` at `on` is one a strike of `targets` rolls on or lands on.
+    fn aimed_at(&self, by: Entity, on: Entity, targets: ProcTargets) -> bool {
+        let kind = self.kind.get(on).copied();
+        let ward = kind.is_some_and(|kind| {
+            bota_core::kind_def(kind).target_class == bota_core::TargetClass::Ward
+        });
+        let unit =
+            !ward && !self.structure(on) && kind.is_some() && kind != Some(UnitKind::Courier);
+        match targets {
+            ProcTargets::Any => true,
+            ProcTargets::NoWards => !ward,
+            ProcTargets::Units => unit,
+            ProcTargets::EnemyUnits => unit && self.foes(by, on),
+        }
     }
 
     /// Answers to the blows that landed this tick: what their attackers'
@@ -708,7 +714,10 @@ impl World {
         else {
             return;
         };
-        let Some(from) = self.pos(by) else {
+        let Some(from) = self
+            .pos(by)
+            .filter(|_| self.aimed_at(by, blow.target, strike.rolls_at()))
+        else {
             return;
         };
         let cone = Cone {

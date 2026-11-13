@@ -366,24 +366,28 @@ impl Fnv {
                     chance_pct,
                     mult_pct,
                     magic,
-                    buildings,
+                    targets,
                 } => fnv
                     .u64(1)
                     .int(chance_pct as i64)
                     .levels(&mult_pct)
                     .flag(magic)
-                    .flag(buildings),
+                    .u64(targets as u64),
                 Strike::Bash {
                     chance_pct,
                     damage,
                     stun_ms,
                     effect,
+                    rolls_at,
+                    lands_on,
                 } => fnv
                     .u64(2)
                     .int(chance_pct as i64)
                     .levels(&damage)
                     .levels(&stun_ms)
-                    .u64(effect.0 as u64),
+                    .u64(effect.0 as u64)
+                    .u64(rolls_at as u64)
+                    .u64(lands_on as u64),
                 Strike::Cleave {
                     hero_pct,
                     creep_pct,
@@ -404,7 +408,6 @@ impl Fnv {
                     radius,
                     delay_ms,
                     wait_ms,
-                    pierces_immunity,
                 } => fnv
                     .u64(4)
                     .int(chance_pct as i64)
@@ -412,8 +415,7 @@ impl Fnv {
                     .u64(strikes as u64)
                     .int(radius as i64)
                     .int(delay_ms as i64)
-                    .int(wait_ms as i64)
-                    .flag(pierces_immunity),
+                    .int(wait_ms as i64),
                 Strike::Split {
                     chance_pct,
                     count,

@@ -305,8 +305,10 @@ pub enum Strike {
         /// top as magical damage (Revenant's Brooch's Phantom Critical, "considered a Critical
         /// Strike for other sources of Critical Strikes").
         magic: bool,
-        /// Whether it works on buildings ("Critical Strike does not work against buildings").
-        buildings: bool,
+        /// What it rolls on: an item's on a swing at an enemy hero or creep alone ("Critical
+        /// Strike does not work against buildings"; Dota's native callbacks check the target's
+        /// unit type and side before they roll).
+        targets: ProcTargets,
     },
     /// Every other enemy within `radius` of the struck takes `pct` percent of
     /// the blow, as physical damage.
@@ -327,6 +329,12 @@ pub enum Strike {
         damage: Lv,
         stun_ms: Lv,
         effect: EffectId,
+        /// What it rolls on: an item's on every swing, whatever it is aimed at (Dota's native
+        /// Skull Basher rolls before it looks at the target).
+        rolls_at: ProcTargets,
+        /// What a bash that rolled lands on: an item's on a hero or a creep of either side, a
+        /// deny's too (no side check in Dota's native bash).
+        lands_on: ProcTargets,
     },
     /// Every enemy unit but the struck (no building, ward or courier) in a trapezoid that opens
     /// at the attacker towards the struck takes `hero_pct` percent of the blow (`creep_pct` for a
@@ -354,10 +362,6 @@ pub enum Strike {
         radius: i32,
         delay_ms: i32,
         wait_ms: i32,
-        /// Whether its bolt goes through spell immunity: the item's `SpellImmunityType`. One that
-        /// does not goes off on no swing at a spell-immune target (a courier). Its leaps take no
-        /// courier either way: a chain leaps onto no unit of fixed health.
-        pierces_immunity: bool,
     },
     /// A `chance_pct` chance, rolled at the attack point, that the swing throws missiles at up
     /// to `count` more enemies besides its target, within the attack's range and `range_bonus`
@@ -375,7 +379,38 @@ pub enum Strike {
     },
 }
 
+/// What a strike rolls on, or lands on, by what the swing is aimed at.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProcTargets {
+    /// Whatever it is aimed at: a neutral's critical strike, as it always was.
+    Any,
+    /// Anything but a ward: Roshan's bash, as it always was.
+    NoWards,
+    /// A hero or a creep of either side: no building, ward or courier.
+    Units,
+    /// A hero or a creep of the other side: no ally (a deny), building, ward or courier.
+    EnemyUnits,
+}
+
 impl Strike {
+    /// What its roll asks of the swing's target: an item's critical strike, chain lightning,
+    /// split shot and cleave an enemy hero or creep (Dota's native callbacks compare the sides
+    /// and the target's unit type before they roll: no deny, no courier, no building).
+    pub const fn rolls_at(self) -> ProcTargets {
+        match self {
+            Strike::Crit { targets, .. } => targets,
+            Strike::Bash { rolls_at, .. } => rolls_at,
+            Strike::Cleave { .. } | Strike::Chain { .. } | Strike::Split { .. } => {
+                ProcTargets::EnemyUnits
+            }
+            Strike::Disarm { .. }
+            | Strike::Break { .. }
+            | Strike::Lay { .. }
+            | Strike::Splash { .. }
+            | Strike::Petrify { .. } => ProcTargets::Any,
+        }
+    }
+
     /// Whether an illusion's attacks go through it. An illusion strikes critically (its
     /// weakened attack, and a Phantom Critical's magic as weakened), but it bashes, cleaves,
     /// lets loose chain lightning and splits its shots never: these procs of a unit's items are
@@ -1072,7 +1107,7 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
             chance_pct: 20,
             mult_pct: lv(200, 225, 250, 300),
             magic: false,
-            buildings: true,
+            targets: ProcTargets::Any,
         }),
     ),
     entry(
@@ -1984,6 +2019,8 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
             damage: all(crate::roshan_data::ROSHAN_BASH.first("bonus_damage").int()),
             stun_ms: all(crate::roshan_data::ROSHAN_BASH.first("stun_duration").0),
             effect: EffectId::BASHED,
+            rolls_at: ProcTargets::NoWards,
+            lands_on: ProcTargets::NoWards,
         }),
     ),
     entry(

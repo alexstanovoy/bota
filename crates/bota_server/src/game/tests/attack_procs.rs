@@ -33,6 +33,7 @@ fn item_place(slot: usize) -> u8 {
 
 /// Dota's pseudo-random distribution of constant `c`, drawing from the hidden stream of one
 /// source of a unit's item procs.
+#[derive(Clone)]
 struct Prd {
     stream: Stream,
     c: u64,
@@ -46,6 +47,11 @@ impl Prd {
             c,
             misses: 0,
         }
+    }
+
+    /// Whether the next attempt would proc, the run left as it is.
+    fn peek(&self) -> bool {
+        self.clone().next()
     }
 
     /// Whether the next attempt procs.
@@ -693,8 +699,11 @@ fn two_skull_bashers_bash_as_one() {
     assert!(second.is_none_or(Option::is_none), "the second rolled");
 }
 
-/// An item's critical strike "does not work against buildings", and a Skull Basher bashes none:
-/// a Daedalus and Skull Basher carrier's swings on a tower roll neither, and none is critical.
+/// An item's critical strike "does not work against buildings" and rolls on none (Dota's native
+/// crit callback checks the target's unit type before its roll), while a Skull Basher rolls on
+/// every swing and bashes no building (its native roll comes before it looks at the target): a
+/// Daedalus and Skull Basher carrier's swings on a tower roll the Basher alone, none is critical,
+/// and the Basher never waits.
 #[test]
 fn no_item_critical_strike_or_bash_lands_on_a_building() {
     let (mut world, hero, _) = duel(
@@ -731,18 +740,53 @@ fn no_item_critical_strike_or_bash_lands_on_a_building() {
     })
     .expect("open ground beside the tower");
     seat_cheat(&mut world, 0, Cheat::Teleport { at });
-    let blows = attack_blows(&attack_until(&mut world, hero, tower, 6).blows, tower);
+    // Kept standing by our Invulnerable cheat (Dota's Demo Hero's) through 13 swings: Dota's 25% run
+    // hits by its twelfth attempt, so the Basher rolls a bash it cannot land at least once.
+    seat_cheat(&mut world, 0, Cheat::Invulnerable { on: true });
+    let mut run = Prd::new(
+        &world,
+        hero,
+        item_place(slot_holding(&world, hero, ItemId::SKULL_BASHER)),
+        C25,
+    );
+    let attacks = attack_until(&mut world, hero, tower, 13);
+    let blows = attack_blows(&attacks.blows, tower);
+    // A melee swing lands the tick it goes off: the k-th roll is the k-th blow's.
+    let procs: Vec<bool> = blows.iter().map(|_| run.next()).collect();
+    assert!(procs.contains(&true), "a bash rolled true at the tower");
+    // A bash that landed would add its 100 to its swing; the damage rolls of plain swings lie
+    // within a tenth of each other.
+    let least = blows.iter().map(|blow| blow.amount).min().expect("blows");
+    for blow in &blows {
+        assert!(
+            blow.amount * 10 <= least * 11,
+            "a bash's damage landed on the tower: {blow:?}"
+        );
+    }
     let least = blows.iter().map(|blow| blow.amount).min().expect("blows");
     assert!(
         blows.iter().all(|blow| blow.amount * 100 < least * 160),
         "{blows:?}"
     );
-    let opened = world
-        .crit
-        .get(hero.index().0 as usize)
-        .and_then(Option::as_ref)
-        .is_some_and(|rolls| rolls.sources().iter().any(Option::is_some));
-    assert!(!opened, "an item proc rolled against a building");
+    let place = |item| item_place(slot_holding(&world, hero, item));
+    assert!(
+        !rolled(&world, hero, place(ItemId::DAEDALUS)),
+        "a crit rolled at a building"
+    );
+    assert!(
+        rolled(&world, hero, place(ItemId::SKULL_BASHER)),
+        "the bash rolled every swing"
+    );
+    let basher = slot_of(
+        &world,
+        hero,
+        slot_holding(&world, hero, ItemId::SKULL_BASHER),
+    );
+    assert_eq!(
+        basher.expect("carried").cooldown,
+        0,
+        "no bash landed to wait on"
+    );
 }
 
 /// Where `at` lies from a cone opening at `from` towards `towards`: how far along its axis and how
@@ -2015,13 +2059,11 @@ fn courier_beside(world: &mut World, slot: u8, of: Entity, offset: Vec2) -> Enti
     panic!("the courier never arrived");
 }
 
-/// A courier is spell immune, and Chain Lightning's bolt does not go through spell immunity (its
-/// script names no SpellImmunityType): a Shadow Fiend's swings at an enemy courier, an enemy hero
-/// beside it, roll no Chain Lightning and strike nobody with a bolt. SECONDARY-SOURCED (Liquipedia,
-/// Courier: "Couriers are spell immune", "Most abilities do not work on couriers"); on the release
-/// checklist.
+/// Chain Lightning rolls on no swing at a courier (Dota's native Maelstrom callback skips the
+/// courier unit type before its roll): a Shadow Fiend's swings at an enemy courier, an enemy hero
+/// beside it, roll no Chain Lightning and strike nobody with a bolt.
 #[test]
-fn maelstrom_goes_off_on_no_swing_at_a_spell_immune_courier() {
+fn maelstrom_goes_off_on_no_swing_at_a_courier() {
     let (mut world, hero, enemy) = duel(
         HeroId::SHADOW_FIEND,
         &[ItemId::MAELSTROM],
@@ -2095,9 +2137,11 @@ fn attack_for_ticks(world: &mut World, by: Entity, on: Entity, ticks: u32) -> At
                     inflictor,
                     ..
                 } if source == wire_id(by) => {
-                    if let Some(target) =
-                        world.entities.iter().find(|&unit| wire_id(unit) == target)
-                    {
+                    // The struck may be gone by now (a denied creep): it is named by its wire id.
+                    let known = (target == wire_id(on))
+                        .then_some(on)
+                        .or_else(|| world.entities.iter().find(|&unit| wire_id(unit) == target));
+                    if let Some(target) = known {
                         attacks.blows.push(Blow {
                             tick,
                             target,
@@ -2264,9 +2308,330 @@ fn quell_counts_each_kind_once_for_melee_and_ranged_carriers() {
     }
 }
 
-/// Splitshot never goes off on a deny: an allied lane creep (`-createcreeps`), worn down by the
-/// enemy player's attacks until it may be denied, is denied by a Shadow Fiend with a Specialist's
-/// Array through a validated attack order, and the Array rolls nothing.
+/// Seat 0's `hero` carrying `items`, and an allied lane creep (`-createcreeps`) beside it, worn down by
+/// the enemy player's validated attacks (a melee Pudge) until it may be denied; the enemy then
+/// stands.
+fn a_deny_at_hand(hero: HeroId, items: &[ItemId]) -> (World, Entity, Entity, Entity) {
+    // A melee enemy: no missile of its own is still in flight once it stands.
+    let (mut world, unit, enemy) = duel(hero, items, HeroId::PUDGE, Vec2::from_ints(600, 0));
+    let at = world.pos(unit).expect("standing") + Vec2::from_ints(300, 0);
+    seat_cheat(&mut world, 0, Cheat::CreateCreeps { enemy: false, at });
+    let creep = world
+        .entities
+        .iter()
+        .filter(|&other| {
+            world.team.get(other) == Some(&Team::Radiant)
+                && world
+                    .kind
+                    .get(other)
+                    .is_some_and(|kind| bota_core::kind_def(*kind).lane_creep)
+        })
+        .min_by_key(|&other| {
+            world
+                .pos(other)
+                .map_or(i64::MAX, |pos| pos.distance_squared(at))
+        })
+        .expect("an allied lane creep");
+    let hurt = seat_command(
+        &world,
+        1,
+        Order::Attack {
+            target: bota_proto::Target::Unit(wire_id(creep)),
+        },
+    );
+    world.advance_trusted(&[hurt]);
+    let deniable = (0..rules::TICKS_PER_SECOND * 10).any(|_| {
+        world.step();
+        world.deniable(creep)
+    });
+    assert!(
+        deniable && world.alive(creep),
+        "the enemy's swings leave a deniable creep"
+    );
+    let stop = seat_command(
+        &world,
+        1,
+        Order::Move {
+            target: bota_proto::Target::None,
+        },
+    );
+    world.advance_trusted(&[stop]);
+    assert!(
+        world.alive(creep) && world.deniable(creep),
+        "the creep waits to be denied"
+    );
+    (world, unit, creep, enemy)
+}
+
+/// An item's critical strike rolls on no deny: Dota's native Crystalys, Daedalus and Revenant's
+/// Brooch callbacks compare the attacker's side with the target's before they roll. A Pudge
+/// with all three denies an allied creep, and none of their runs is rolled (the PRD state stays
+/// as it was) and no Phantom Critical magic lands.
+#[test]
+fn no_critical_strike_rolls_on_a_deny() {
+    let items = [
+        ItemId::CRYSTALYS,
+        ItemId::DAEDALUS,
+        ItemId::REVENANTS_BROOCH,
+    ];
+    let (mut world, hero, creep, _) = a_deny_at_hand(HeroId::PUDGE, &items);
+    let attacks = attack_for_ticks(&mut world, hero, creep, rules::TICKS_PER_SECOND * 6);
+    assert!(
+        attacks.blows.iter().any(|blow| blow.target == creep),
+        "the deny landed"
+    );
+    assert!(
+        attacks.blows.iter().all(|blow| blow.inflictor.is_none()),
+        "{:?}",
+        attacks.blows
+    );
+    for item in items {
+        let place = item_place(slot_holding(&world, hero, item));
+        assert!(!rolled(&world, hero, place), "{item:?} rolled on a deny");
+    }
+}
+
+/// A Skull Basher rolls on a deny and bashes the denied creep (Dota's native Skull Basher rolls
+/// before it looks at the target and checks no side, only that the target is a hero or a creep).
+/// A melee Pudge swings at the enemy hero until the Basher is off its wait and its run says the
+/// next roll bashes, then denies an allied creep with that swing: the bash lands on the creep, and
+/// the Basher waits its cooldown.
+#[test]
+fn a_skull_basher_rolls_and_bashes_on_a_deny() {
+    let (mut world, hero, creep, enemy) = a_deny_at_hand(HeroId::PUDGE, &[ItemId::SKULL_BASHER]);
+    let slot = slot_holding(&world, hero, ItemId::SKULL_BASHER);
+    let mut run = Prd::new(&world, hero, item_place(slot), C25);
+    let waits = |world: &World| slot_of(world, hero, slot).expect("carried").cooldown > 0;
+    let swing = seat_command(
+        &world,
+        0,
+        Order::Attack {
+            target: bota_proto::Target::Unit(wire_id(enemy)),
+        },
+    );
+    world.advance_trusted(&[swing]);
+    for _ in 0..rules::TICKS_PER_SECOND * 60 {
+        if !waits(&world) && run.peek() {
+            break;
+        }
+        let ready = !waits(&world);
+        let launched = world.step().iter().any(|event| {
+            matches!(event.kind(), EventKind::AttackLaunched { attacker, .. } if attacker == wire_id(hero))
+        });
+        if launched && ready {
+            run.next();
+        }
+    }
+    assert!(!waits(&world) && run.peek(), "the next roll bashes");
+    assert!(
+        world.alive(creep) && world.deniable(creep),
+        "the creep waits to be denied"
+    );
+    let attacks = attack_for_ticks(&mut world, hero, creep, rules::TICKS_PER_SECOND * 6);
+    assert_eq!(attacks.launched.len(), 1, "one swing denies");
+    assert!(
+        attacks.blows.iter().any(|blow| blow.target == creep),
+        "the deny landed"
+    );
+    assert!(waits(&world), "the bash landed on the denied creep");
+}
+
+/// Chain Lightning, Phantom Critical's magic and Cleave go off on no deny: a Pudge with a
+/// Maelstrom, a Revenant's Brooch and a Battle Fury denies an allied creep with an enemy hero
+/// beside and behind it, and no item damage lands on anybody; the Maelstrom's and the Brooch's
+/// runs stay unrolled.
+#[test]
+fn no_chain_phantom_magic_or_cleave_goes_off_on_a_deny() {
+    let items = [
+        ItemId::MAELSTROM,
+        ItemId::REVENANTS_BROOCH,
+        ItemId::BATTLE_FURY,
+    ];
+    let (mut world, hero, creep, _) = a_deny_at_hand(HeroId::PUDGE, &items);
+    let behind = world.pos(creep).expect("standing") - world.pos(hero).expect("standing");
+    let other = foe(
+        &mut world,
+        hero,
+        HeroId::PUDGE,
+        behind + Vec2::from_ints(150, 0),
+    );
+    let attacks = attack_for_ticks(&mut world, hero, creep, rules::TICKS_PER_SECOND * 6);
+    assert!(
+        attacks.blows.iter().any(|blow| blow.target == creep),
+        "the deny landed"
+    );
+    assert!(
+        attacks
+            .blows
+            .iter()
+            .all(|blow| blow.inflictor.is_none() && blow.target != other),
+        "{:?}",
+        attacks.blows
+    );
+    for item in [ItemId::MAELSTROM, ItemId::REVENANTS_BROOCH] {
+        let place = item_place(slot_holding(&world, hero, item));
+        assert!(!rolled(&world, hero, place), "{item:?} rolled on a deny");
+    }
+}
+
+/// An item's critical strike rolls on no courier and a Skull Basher's bash, rolled, lands on none
+/// (Dota's native callbacks skip the courier unit type): a Shadow Fiend with a Daedalus and a Skull
+/// Basher shoots an enemy courier its seat walked beside it.
+#[test]
+fn a_courier_takes_no_critical_strike_and_no_bash() {
+    let (mut world, hero, _) = duel(
+        HeroId::SHADOW_FIEND,
+        &[ItemId::DAEDALUS, ItemId::SKULL_BASHER],
+        HeroId::PUDGE,
+        Vec2::from_ints(900, 0),
+    );
+    let courier = courier_beside(&mut world, 1, hero, Vec2::from_ints(350, 0));
+    let attacks = attack_for_ticks(&mut world, hero, courier, rules::TICKS_PER_SECOND * 6);
+    assert!(!attacks.launched.is_empty(), "the courier was shot");
+    let place = |item| item_place(slot_holding(&world, hero, item));
+    assert!(
+        !rolled(&world, hero, place(ItemId::DAEDALUS)),
+        "a crit rolled at a courier"
+    );
+    assert!(
+        rolled(&world, hero, place(ItemId::SKULL_BASHER)),
+        "the bash rolled"
+    );
+    let basher = slot_of(
+        &world,
+        hero,
+        slot_holding(&world, hero, ItemId::SKULL_BASHER),
+    );
+    assert_eq!(
+        basher.expect("carried").cooldown,
+        0,
+        "no bash landed on the courier"
+    );
+}
+
+/// Seat 1's Observer Ward, planted `offset` from seat 0's `hero` by a validated use order of the
+/// `-item` cheat's ward, with seat 0's Sentry Ward planted beside it so that the hero sees it.
+fn an_enemy_ward_beside(world: &mut World, hero: Entity, enemy: Entity, offset: Vec2) -> Entity {
+    let at = world.pos(hero).expect("standing") + offset;
+    for (seat, by, ward) in [
+        (1, enemy, ItemId::OBSERVER_WARD),
+        (0, hero, ItemId::SENTRY_WARD),
+    ] {
+        seat_cheat(world, seat, Cheat::Item { item: ward });
+        let plant = seat_command(
+            world,
+            seat,
+            Order::Use {
+                slot: bota_proto::ItemSlot(slot_holding(world, by, ward) as u8),
+                target: bota_proto::Target::Pos(at),
+            },
+        );
+        world.advance_trusted(&[plant]);
+        run(world, 30);
+    }
+    world
+        .entities
+        .iter()
+        .find(|&unit| {
+            world.kind.get(unit) == Some(&UnitKind::Ward)
+                && world.team.get(unit) == Some(&Team::Dire)
+        })
+        .expect("the enemy's observer ward planted")
+}
+
+/// A ward is no unit an item crit, Chain Lightning or Splitshot rolls on (Dota's native callbacks
+/// skip it by unit type before their rolls), while Skull Basher rolls on every swing: a Shadow
+/// Fiend's swings at an enemy Observer Ward roll its Basher and nothing else.
+#[test]
+fn a_ward_rolls_no_critical_strike_chain_or_split_but_the_bash() {
+    let items = [
+        ItemId::DAEDALUS,
+        ItemId::SKULL_BASHER,
+        ItemId::MAELSTROM,
+        ItemId::SPECIALISTS_ARRAY,
+    ];
+    let (mut world, hero, enemy) = duel(
+        HeroId::SHADOW_FIEND,
+        &items,
+        HeroId::PUDGE,
+        Vec2::from_ints(400, 0),
+    );
+    let ward = an_enemy_ward_beside(&mut world, hero, enemy, Vec2::from_ints(200, 0));
+    let attacks = attack_for_ticks(&mut world, hero, ward, rules::TICKS_PER_SECOND * 6);
+    assert!(!attacks.launched.is_empty(), "the ward was shot");
+    let place = |item| item_place(slot_holding(&world, hero, item));
+    for item in [
+        ItemId::DAEDALUS,
+        ItemId::MAELSTROM,
+        ItemId::SPECIALISTS_ARRAY,
+    ] {
+        assert!(
+            !rolled(&world, hero, place(item)),
+            "{item:?} rolled at a ward"
+        );
+    }
+    assert!(
+        rolled(&world, hero, place(ItemId::SKULL_BASHER)),
+        "the bash rolled"
+    );
+}
+
+/// A bash that procs on a swing at a ward lands nothing (Dota's native Skull Basher records a bash
+/// only on a hero or a creep): a melee Pudge swings at the enemy hero until its Basher is off its
+/// wait and the next roll bashes, then swings at an enemy Observer Ward: the Basher starts no wait.
+#[test]
+fn a_skull_basher_that_procs_on_a_ward_bashes_nothing() {
+    let (mut world, hero, enemy) = duel(
+        HeroId::PUDGE,
+        &[ItemId::SKULL_BASHER],
+        HeroId::PUDGE,
+        Vec2::from_ints(150, 0),
+    );
+    let ward = an_enemy_ward_beside(&mut world, hero, enemy, Vec2::from_ints(0, 150));
+    let slot = slot_holding(&world, hero, ItemId::SKULL_BASHER);
+    let mut run = Prd::new(&world, hero, item_place(slot), C25);
+    let waits = |world: &World| slot_of(world, hero, slot).expect("carried").cooldown > 0;
+    let launched_by = |events: &[crate::game::Event]| {
+        events.iter().any(|event| {
+            matches!(event.kind(), EventKind::AttackLaunched { attacker, .. } if attacker == wire_id(hero))
+        })
+    };
+    let swing = seat_command(
+        &world,
+        0,
+        Order::Attack {
+            target: bota_proto::Target::Unit(wire_id(enemy)),
+        },
+    );
+    world.advance_trusted(&[swing]);
+    for _ in 0..rules::TICKS_PER_SECOND * 60 {
+        if !waits(&world) && run.peek() {
+            break;
+        }
+        let ready = !waits(&world);
+        if launched_by(&world.step()) && ready {
+            run.next();
+        }
+    }
+    assert!(!waits(&world) && run.peek(), "the next roll bashes");
+    let at_ward = seat_command(
+        &world,
+        0,
+        Order::Attack {
+            target: bota_proto::Target::Unit(wire_id(ward)),
+        },
+    );
+    let mut swung = launched_by(&world.advance_trusted(&[at_ward]));
+    for _ in 0..rules::TICKS_PER_SECOND * 6 {
+        if swung {
+            break;
+        }
+        swung = launched_by(&world.step());
+    }
+    assert!(swung, "the ward was struck at");
+    assert!(!waits(&world), "a bash landed on the ward");
+}
+
 #[test]
 fn specialists_array_rolls_nothing_on_a_deny() {
     let (mut world, hero, enemy) = duel(
