@@ -136,6 +136,18 @@ pub struct LuaTeam {
 }
 
 impl LuaTeam {
+    /// Declares bot-controlled wire seats supplied by the trusted host, before execution.
+    /// Scripted seats are always bots; every other undeclared seat is treated as human.
+    pub fn set_bot_declarations(&mut self, slots: &[SlotId]) -> Result<(), BindingError> {
+        if self.last_tick.is_some() || self.last_selection_tick.is_some() {
+            return Err(BindingError::Configuration(
+                "bot declarations must be set before execution",
+            ));
+        }
+        self.state.borrow_mut().declared_bots = crate::api::players::bot_declarations(slots)?;
+        Ok(())
+    }
+
     /// Lists the actual installed API in an isolated interpreter, without loading a pack.
     /// Each line is a tab-separated namespace and name; this is a presence inventory, not a signature check.
     pub fn api_catalogue() -> Result<String, BindingError> {

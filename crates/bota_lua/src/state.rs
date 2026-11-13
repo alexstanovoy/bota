@@ -18,6 +18,8 @@ pub(crate) struct Player {
     pub team: Team,
     pub hero: HeroId,
     pub level: u8,
+    pub deaths: u16,
+    pub last_seen: Option<(u32, bota_proto::Vec2)>,
     pub unit: Option<EntityId>,
     pub gold: Option<i32>,
     pub kit: Option<Kit>,
@@ -170,6 +172,11 @@ impl Snapshot {
                         team: player.team,
                         hero: player.hero,
                         level: player.level,
+                        deaths: player.deaths,
+                        last_seen: session
+                            .body_of(player.slot)
+                            .and_then(|id| session.known(id))
+                            .map(|(unit, age)| (view.tick.saturating_sub(age), unit.pos)),
                         unit: player.unit,
                         gold: own.then_some(player.gold).flatten(),
                         kit: own.then(|| player.kit.clone()).flatten(),
@@ -283,6 +290,7 @@ impl BotState {
 pub(crate) struct State {
     pub team: Team,
     pub seats: Vec<BotSeat>,
+    pub declared_bots: [bool; 10],
     pub current_slot: SlotId,
     pub snapshot: Option<Snapshot>,
     pub orders: Vec<IssuedOrder>,
@@ -303,6 +311,7 @@ impl State {
         Self {
             team,
             seats: seats.to_vec(),
+            declared_bots: [false; 10],
             current_slot: seats[0].slot,
             snapshot: None,
             orders: Vec::with_capacity(MAX_ORDERS),

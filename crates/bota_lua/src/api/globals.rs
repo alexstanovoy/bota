@@ -9,6 +9,20 @@ pub(super) fn integer(vm: &mut Vm, args: Args, index: usize) -> Result<i64, LuaE
     Ok(vector::number(vm, args, index)?.trunc() as i64)
 }
 
+pub(crate) fn bounded_integer(
+    vm: &mut Vm,
+    args: Args,
+    index: usize,
+    minimum: i32,
+    maximum: i32,
+) -> Result<i32, LuaError> {
+    let value = vector::number(vm, args, index)?;
+    if value < f64::from(minimum) || value > f64::from(maximum) || value != value.trunc() {
+        return Err(vm.arg_error(args, index, "integer within bounds expected"));
+    }
+    Ok(value as i32)
+}
+
 pub(super) fn string(vm: &mut Vm, args: Args, index: usize) -> Result<&[u8], LuaError> {
     let string = vm.check_string(args, index)?;
     let length = vm
@@ -59,26 +73,9 @@ pub(super) fn install(lua: &mut Lua, state: Shared, _vectors: Vectors) -> Result
                         )
                     }
                     "GetSelectedHeroName" => {
-                        let slot = integer(vm, args, 0)?;
-                        let hero = state
-                            .snapshot
-                            .as_ref()
-                            .and_then(|snapshot| {
-                                snapshot
-                                    .players
-                                    .iter()
-                                    .find(|player| i64::from(player.slot.0) == slot)
-                                    .map(|player| player.hero)
-                            })
-                            .or_else(|| {
-                                state
-                                    .seats
-                                    .iter()
-                                    .position(|seat| i64::from(seat.slot.0) == slot)
-                                    .map(|index| {
-                                        state.picks[index].unwrap_or(state.seats[index].hero)
-                                    })
-                            });
+                        let player = bounded_integer(vm, args, 0, 0, 9)?;
+                        vm.charge_fuel(384)?;
+                        let hero = super::players::selected_hero(&state, player);
                         vm.new_string(
                             hero.and_then(bota_core::hero_def)
                                 .map_or("", |hero| hero.key)

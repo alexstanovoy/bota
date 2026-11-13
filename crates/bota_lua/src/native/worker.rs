@@ -1,6 +1,6 @@
 use crate::{BotSeat, Keys, Limits, LuaTeam, ModuleBank, TeamTurn, state::Snapshot};
 use bota_client_core::ClientSession;
-use bota_proto::Team;
+use bota_proto::{SlotId, Team};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender};
@@ -25,6 +25,8 @@ pub struct NativeConfig {
     pub think_timeout: Duration,
     pub startup_timeout: Duration,
     pub hero_selection: HeroSelection,
+    /// Trusted wire-seat declarations. Undeclared foreign seats are treated as human.
+    pub declared_bot_slots: Vec<SlotId>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -44,6 +46,7 @@ impl NativeConfig {
             think_timeout: Duration::from_millis(33),
             startup_timeout: Duration::from_secs(30),
             hero_selection: HeroSelection::Pack,
+            declared_bot_slots: Vec::new(),
         }
     }
 }
@@ -101,6 +104,7 @@ impl NativeTeam {
         modules: ModuleBank,
         before_start: impl FnOnce() + Send + 'static,
     ) -> Result<Self, NativeError> {
+        crate::api::players::bot_declarations(&config.declared_bot_slots).map_err(setup)?;
         if config.startup_timeout.is_zero()
             || config.startup_timeout > Duration::from_secs(120)
             || config.think_timeout > Duration::from_secs(10)
@@ -291,6 +295,8 @@ fn build(
 ) -> Result<(LuaTeam, Vec<BotSeat>), NativeError> {
     let mut lua =
         LuaTeam::new(config.team, &config.seats, config.limits, config.keys).map_err(setup)?;
+    lua.set_bot_declarations(&config.declared_bot_slots)
+        .map_err(setup)?;
     lua.set_modules(modules).map_err(setup)?;
     if config.hero_selection == HeroSelection::Pack {
         lua.prepare_selection().map_err(setup)?;

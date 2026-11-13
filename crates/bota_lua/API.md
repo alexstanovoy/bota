@@ -64,6 +64,26 @@ coordinates are protocol XY minus 9,216, with nearest-even Q16.16 conversion on
 orders. Engine lane IDs TOP=1, MID=2, BOT=3 are translated explicitly to core lanes.
 Vectors expose both `x/y/z` and the one-based numeric components `1/2/3`.
 
+Player ids are engine ids: Radiant 0–4 and Dire 5–9. Active-view queries derive
+each side's rank from its public roster's wire seat order; wire seat 1 can therefore
+be engine player 5. The host continues to use wire seats internally. Team arrays
+contain occupied roster entries only. Out-of-range or fractional player/team ids
+raise ordinary Lua errors; an unoccupied player id supplies no fabricated row.
+`GetHeroLastSeenInfo` returns an array with the last received `location` and
+`time_since_seen`, or an empty array for a hero never observed. It uses the
+session's remembered body even after short-lived entity tracking expires.
+
+`IsPlayerBot` is a host-declared fact. Configured scripted seats always answer
+true. The trusted launcher may additionally set `NativeConfig.declared_bot_slots`
+or call `LuaTeam::set_bot_declarations` before execution. These declarations use
+wire seat ids, contain at most ten distinct entries in 0–9, and default to empty.
+Every other seat answers false, conservatively treating an undeclared controller
+as human. This does not disclose controller information from the wire.
+
+New bounded integer arguments use `api/globals::bounded_integer`: finite whole
+numbers must fall within the specified bounds before conversion. The older
+general numeric helper retains its existing callers' conversion behavior.
+
 Unknown ability names and empty or invalid item slots return nil. Ability names
 come from core definitions, including the hero's separate innate and talent tree.
 Unlearned abilities retain handles at level zero. Innates have their granted level
