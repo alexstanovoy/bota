@@ -123,6 +123,7 @@ dependencies = [
  "bota_proto",
  "bota_server",
  "libfuzzer-sys",
+ "luagee",
 ]
 
 [[package]]
@@ -463,6 +464,8 @@ checksum = "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
 [[package]]
 name = "luagee"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a541e355862d7a7b4bf5cc534ef3a8a879bbf07b0c21efcb6c786fc0a6d3231c"
 
 [[package]]
 name = "miniz_oxide"
