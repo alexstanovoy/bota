@@ -5,7 +5,7 @@
 //! which camps the jungle holds. The forest and the ground are published
 //! with the match itself.
 
-use bota_proto::{HeroId, MapId, ObjectiveKind, ObjectiveSet, RuneSet, Vec2};
+use bota_proto::{HeroId, MapId, ObjectiveKind, ObjectiveSet, RuneSet, UnitKind, Vec2};
 
 use crate::{
     CampDef, CampKind, DOTA_RUNE_SPOTS, OutpostDef, Protection, RuneSpot, SIMULATED_OBJECTIVES,
@@ -80,6 +80,23 @@ pub const DOTA_BOSS_ZONES: [PitZone; 2] = [
         ],
     },
 ];
+
+/// Whether a unit standing at `from` may attack a unit of the kind `target` on `map`: any unit may,
+/// except one whose attackers must stand inside a boss pit (Roshan), and then only from inside one
+/// [SRV: an attack order from outside does not begin an attack, the attacker walks towards the
+/// target instead, and spells and item actives are not asked]. It holds wherever the target stands, in
+/// a pit or on his way between them: he is not untargetable or invulnerable then.
+pub fn attackable_from(map: &MapDef, target: UnitKind, from: Vec2) -> bool {
+    !pit_attacked(target) || map.boss_zones.iter().any(|zone| zone.contains(from))
+}
+
+/// Whether the kind is attacked only from inside a boss pit.
+pub const fn pit_attacked(kind: UnitKind) -> bool {
+    match kind {
+        UnitKind::Roshan => crate::ROSHAN.pit_attacked,
+        _ => false,
+    }
+}
 
 /// One playable map.
 #[derive(Clone, Copy, Debug)]

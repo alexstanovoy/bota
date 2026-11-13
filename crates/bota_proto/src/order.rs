@@ -337,6 +337,10 @@ pub enum Order {
     ///
     /// The unit walks over to it first when it has to. Any unit with a bag may
     /// take any ground item, whoever dropped it.
+    ///
+    /// It is also the only way a rune is taken: a real hero (not a courier, a summon or an
+    /// illusion) walks to within 150 units of the rune and takes it at once. Standing or walking
+    /// near a rune takes nothing; an attack order at a rune destroys it instead.
     Take {
         /// The ground item to take. Must be [`Target::Unit`]; anything else
         /// is rejected with

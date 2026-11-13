@@ -3032,3 +3032,222 @@ fn public_lair_roar_confirms_life_globally_but_a_death_in_the_same_tick_clears_t
         assert_eq!(public_lair(&world, Team::Dire).alive_known_by.dire, !dies);
     }
 }
+
+/// A spot outside every pit within a few hundred units of Roshan, where a hero can stand to see him
+/// and reach him with a ranged attack.
+fn spot_outside_the_pits_near(world: &World, boss: crate::game::Entity) -> bota_proto::Vec2 {
+    use bota_proto::Vec2;
+    let at = world.pos(boss).expect("Roshan stands somewhere");
+    (0..16)
+        .map(|turn| {
+            let (x, y) = [(300, 0), (0, 300), (-300, 0), (0, -300)][turn % 4];
+            at + Vec2::from_ints(x * (1 + turn as i32 / 4) / 2, y * (1 + turn as i32 / 4) / 2)
+        })
+        .find(|spot| {
+            !world.map.boss_zones.iter().any(|zone| zone.contains(*spot))
+                && world.clearance.stands_clear(*spot)
+        })
+        .expect("a spot outside the pits near him")
+}
+
+/// Everything an attack order at Roshan could leave behind in a world: a swing begun, a cooldown
+/// spent, an attack launched, a blow on him.
+fn attack_traces(
+    world: &World,
+    attackers: &[crate::game::Entity],
+    boss: crate::game::Entity,
+    events: &[crate::game::Event],
+) -> Vec<String> {
+    use crate::game::{ActionState, wire_id};
+    let mut traces = Vec::new();
+    for &attacker in attackers {
+        let action = world.action.get(attacker).expect("it acts");
+        if action.state != ActionState::Ready {
+            traces.push(format!("{attacker:?} is in {:?}", action.state));
+        }
+        if action.attack_cooldown != 0 {
+            traces.push(format!(
+                "{attacker:?} spent {} beats",
+                action.attack_cooldown
+            ));
+        }
+    }
+    for event in events {
+        match event.kind() {
+            bota_proto::EventKind::AttackLaunched { target, .. }
+                if target == Some(wire_id(boss)) =>
+            {
+                traces.push("an attack was launched at him".to_owned());
+            }
+            bota_proto::EventKind::Damaged { target, .. } if target == wire_id(boss) => {
+                traces.push("he was hurt".to_owned());
+            }
+            _ => {}
+        }
+    }
+    traces
+}
+
+/// Roshan on his way between his pits is attacked by nobody who stands outside them
+/// ([`bota_core::attackable_from`]) [SRV]: an attack order for him begins no swing for a hero
+/// or anything else, spends no cooldown, launches nothing and rolls nothing. It is not refused
+/// either, as in the game: the unit walks towards him.
+#[test]
+fn roshan_walking_between_pits_is_attacked_by_nobody_outside_them_in_either_direction() {
+    use crate::game::{Command, UnitOrder, wire_id};
+    use bota_core::{MELEE_CREEP, rules};
+    use bota_proto::{Order, Target, Team};
+    // The day pit to the night pit at 15:00, and back at 20:00.
+    for minute in [15, 20] {
+        let mut world = match_with_roshan();
+        world.immortal_heroes = true;
+        let it = boss(&world);
+        let hero = world.seats[0].unit.expect("hero");
+        world.clock_shift.game =
+            world.schedule().horn + minute * 60 * rules::TICKS_PER_SECOND - world.tick - 1;
+        if minute == 20 {
+            // He walked the first leg: he stands in the night pit when the day comes.
+            world.clock_shift.game =
+                world.schedule().horn + 15 * 60 * rules::TICKS_PER_SECOND - world.tick - 1;
+            world.step();
+            run(&mut world, 90 * rules::TICKS_PER_SECOND);
+            world.clock_shift.game =
+                world.schedule().horn + 20 * 60 * rules::TICKS_PER_SECOND - world.tick - 1;
+        }
+        world.step();
+        assert!(world.migrating(it), "{minute}:00 sets him walking");
+        let from = world.pos(it).expect("he walks");
+        run(&mut world, 3 * rules::TICKS_PER_SECOND);
+        let spot = spot_outside_the_pits_near(&world, it);
+        world.transform.get_mut(hero).expect("hero").pos = spot;
+        world.set_order(hero, UnitOrder::Stand);
+        // A summon of the hero's side attacks as well.
+        let summon = world.spawn_unit(&MELEE_CREEP, Team::Radiant, spot);
+        world.set_order(
+            summon,
+            UnitOrder::Attack {
+                target: it,
+                last_seen: spot,
+            },
+        );
+        world.settle();
+        let order = Order::Attack {
+            target: Target::Unit(wire_id(it)),
+        };
+        assert_eq!(
+            world.validate_order(world.seats[0].slot, None, &order),
+            Ok(()),
+            "the order is not refused: he is seen and is no invulnerable or untargetable"
+        );
+        let mut events = world.advance_trusted(&[Command {
+            slot: world.seats[0].slot,
+            unit: None,
+            order,
+            seq: 0,
+            queue: false,
+        }]);
+        for _ in 0..8 * rules::TICKS_PER_SECOND {
+            events.extend(world.step());
+            let seen = attack_traces(&world, &[hero, summon], it, &events);
+            assert!(seen.is_empty(), "{minute}:00: {seen:?}");
+            // Stay outside the pits with him.
+            world.transform.get_mut(hero).expect("hero").pos = spot;
+            world.transform.get_mut(summon).expect("summon").pos = spot;
+        }
+        assert!(
+            world.pos(it).expect("walking").distance_squared(from) > 0,
+            "he walked meanwhile"
+        );
+        assert_eq!(
+            world.health.get(it).expect("alive").hp,
+            world.stats.get(it).expect("stats").max_hp,
+            "{minute}:00: not a scratch"
+        );
+    }
+}
+
+/// The same rule at his pit's edge: a hero outside it gets no swing at him standing in it, one
+/// inside does ([`roshan_can_be_attacked_from_inside_either_pit_and_ignores_outside_attacks`]
+/// for the blows).
+#[test]
+fn a_hero_outside_the_pit_begins_no_swing_at_roshan_standing_in_it() {
+    use crate::game::{Command, wire_id};
+    use bota_core::rules;
+    use bota_proto::{Order, Target, Team, Vec2};
+    let mut world = match_with_roshan();
+    world.immortal_heroes = true;
+    let it = boss(&world);
+    let at = world.pos(it).expect("boss");
+    let hero = world.seats[0].unit.expect("hero");
+    let spot = at + Vec2::from_ints(-450, 0);
+    assert!(!world.map.boss_zones.iter().any(|zone| zone.contains(spot)));
+    world.transform.get_mut(hero).expect("hero").pos = spot;
+    world.spawn_unit(
+        &bota_core::OBSERVER_WARD,
+        Team::Radiant,
+        at + Vec2::from_ints(0, 50),
+    );
+    world.settle();
+    let order = Order::Attack {
+        target: Target::Unit(wire_id(it)),
+    };
+    let mut events = world.advance_trusted(&[Command {
+        slot: world.seats[0].slot,
+        unit: None,
+        order,
+        seq: 0,
+        queue: false,
+    }]);
+    for _ in 0..4 * rules::TICKS_PER_SECOND {
+        events.extend(world.step());
+        world.transform.get_mut(hero).expect("hero").pos = spot;
+        let seen = attack_traces(&world, &[hero], it, &events);
+        assert!(seen.is_empty(), "{seen:?}");
+    }
+}
+
+/// Spells and item actives are not asked where the attacker stands [SRV]: the trigger rule lives
+/// in the attack paths only. A spell and a thrown item reach Roshan on his way as they reach him
+/// anywhere he is in sight.
+#[test]
+fn spells_and_item_actives_reach_roshan_walking_between_pits() {
+    use bota_core::rules;
+    use bota_proto::{AbilitySlot, HeroId, ItemId, Target};
+    let mut cfg = config();
+    cfg.map = MapId(0);
+    cfg.objectives = ObjectiveSet::of(ObjectiveKind::Roshan);
+    cfg.picks[0].hero = HeroId::PUDGE;
+    let mut world = World::for_match(&cfg, cfg.rng());
+    world.creeps_halted = true;
+    let it = boss(&world);
+    let hero = world.seats[0].unit.expect("hero");
+    world.clock_shift.game =
+        world.schedule().horn + 15 * 60 * rules::TICKS_PER_SECOND - world.tick - 1;
+    world.step();
+    run(&mut world, 3 * rules::TICKS_PER_SECOND);
+    assert!(world.migrating(it));
+    let spot = spot_outside_the_pits_near(&world, it);
+    world.transform.get_mut(hero).expect("hero").pos = spot;
+    set_level(&mut world, hero, 3, 1);
+    world.fill_pools(hero);
+    world.settle();
+    assert!(world.hostile(hero, it), "he is in sight");
+    let mana = world.mana.get(hero).expect("mana").mana;
+    assert!(
+        world.begin_ability(hero, AbilitySlot(3), Target::Unit(crate::game::wire_id(it))),
+        "a spell at him begins"
+    );
+    assert!(world.mana.get(hero).expect("mana").mana < mana, "and costs");
+    world.cancel_action(hero);
+    hand_item(&mut world, hero, ItemId::BLOOD_GRENADE, 1);
+    let at = world.pos(it).expect("walking");
+    let order = bota_proto::Order::Use {
+        slot: bota_proto::ItemSlot(0),
+        target: Target::Pos(at),
+    };
+    assert_eq!(
+        world.validate_order(world.seats[0].slot, None, &order),
+        Ok(()),
+        "an item active at him is accepted"
+    );
+}

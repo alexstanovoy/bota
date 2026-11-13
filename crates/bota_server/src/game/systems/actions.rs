@@ -881,11 +881,13 @@ impl World {
 
     /// Leaves what a swing that came due turns into.
     fn strike(&mut self, attacker: Entity, on: Entity, stats: &Stats) {
-        if self.def.get(on).is_some_and(|def| def.0.pit_attacked)
-            && !self
-                .pos(attacker)
-                .is_some_and(|at| self.map.boss_zones.iter().any(|zone| zone.contains(at)))
-        {
+        // A swing that began is never struck from where it may not be: [`World::worth_swinging_at`]
+        // breaks it off first, so this is a guard and not the rule.
+        debug_assert!(
+            self.open_to_attack_from(attacker, on),
+            "a swing began where the target may not be attacked from"
+        );
+        if !self.open_to_attack_from(attacker, on) {
             return;
         }
 
@@ -1290,7 +1292,20 @@ impl World {
             .is_some_and(|health| health.hp > Fixed::ZERO)
             && self.can_see_of(attacker, on)
             && !self.attack_immune(on)
+            && self.open_to_attack_from(attacker, on)
             && self.within_reach(attacker, on, reach)
+    }
+
+    /// Whether the attacker stands where the target may be attacked from
+    /// ([`bota_core::attackable_from`]): no swing begins, no cooldown is spent and nothing is
+    /// rolled for an attacker who does not, so a click on Roshan from outside his pit walks the
+    /// attacker to him and attacks nothing.
+    pub(crate) fn open_to_attack_from(&self, attacker: Entity, on: Entity) -> bool {
+        let Some(kind) = self.kind.get(on).copied() else {
+            return true;
+        };
+        self.pos(attacker)
+            .is_some_and(|at| bota_core::attackable_from(self.map, kind, at))
     }
 }
 

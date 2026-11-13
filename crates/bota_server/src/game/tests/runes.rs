@@ -305,13 +305,21 @@ fn rune_denial_audience_follows_the_spot_and_always_tells_the_attacker() {
     }
 }
 
+/// Sends a hero to take the rune a view shows, as the order to take it does.
+pub(super) fn send_to_take(world: &mut World, taker: Entity, rune: &bota_proto::RuneView) {
+    assert!(world.take_item(taker, rune.id), "the hero may take it");
+}
+
 /// A match whose first seat's hero stands at the river spot with a rune of a
-/// kind lying under it, one tick before it is taken.
+/// kind lying under it and the order to take it given, one tick before it is
+/// taken. The hero takes nothing unasked: the order is what takes it.
 pub(super) fn rune_under_hero(sides: &[Team], kind: RuneKind) -> (World, Entity) {
     let mut world = rune_match(sides);
     let taker = hero(&world, 0);
     world.put_rune(kind, RIVER_TOP);
     place(&mut world, taker, spots()[RIVER_TOP]);
+    let rune = lying(&world)[0];
+    send_to_take(&mut world, taker, &rune);
     (world, taker)
 }
 
@@ -324,7 +332,7 @@ fn took(sides: &[Team], kind: RuneKind) -> (World, Entity) {
             event.kind(),
             EventKind::RuneActivated { kind: got, bottled: false, .. } if got == kind
         )),
-        "the rune took effect on the tick the hero stood on it"
+        "the rune took effect on the tick the hero was ordered to take it standing on it"
     );
     assert!(lying(&world).is_empty(), "and is gone");
     (world, taker)
@@ -632,23 +640,51 @@ fn solo_mid_asked_for_runes_skips_the_first_set_and_plays_the_rest() {
 }
 
 #[test]
-fn a_hero_within_reach_takes_a_rune_and_nobody_else_does() {
+fn a_hero_standing_on_a_rune_takes_nothing_unasked() {
+    let mut world = rune_match(&radiant_and_dire());
+    let hero_at = hero(&world, 0);
+    world.put_rune(RuneKind::Haste, RIVER_TOP);
+    place(&mut world, hero_at, spots()[RIVER_TOP]);
+    let events = {
+        let mut events = Vec::new();
+        for _ in 0..5 * rules::TICKS_PER_SECOND {
+            events.extend(world.step());
+        }
+        events
+    };
+    assert_eq!(lying(&world).len(), 1, "the rune still lies under the hero");
+    assert!(!carries(&world, hero_at, ModifierKind::RuneHaste));
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event.kind(), EventKind::RuneActivated { .. })),
+        "and nothing was told of a pickup"
+    );
+}
+
+#[test]
+fn an_ordered_hero_takes_a_rune_from_within_150_units_and_a_courier_never_does() {
     let mut world = rune_match(&radiant_and_dire());
     let taker = hero(&world, 0);
     let courier = the_courier(&world);
     world.put_rune(RuneKind::Haste, RIVER_TOP);
     let spot = spots()[RIVER_TOP];
-    // A courier standing on it takes nothing.
+    // A courier standing on it takes nothing, and may not be told to.
     world.transform.get_mut(courier).expect("standing").pos = spot;
     run(&mut world, 3);
     assert_eq!(lying(&world).len(), 1, "a courier takes no rune");
-    // A hero 200 away does not take it; one 140 away does.
-    let near = Vec2::from_ints(spot.x.to_int() + 200, spot.y.to_int());
-    place(&mut world, taker, near);
-    run(&mut world, 3);
-    assert_eq!(lying(&world).len(), 1, "out of reach");
+    let rune = wire_id(
+        world
+            .entities
+            .iter()
+            .find(|&entity| world.rune.get(entity).is_some())
+            .expect("a rune"),
+    );
+    assert!(!world.take_item(courier, rune), "a courier cannot be sent");
+    // A hero 140 away takes it the tick the order is carried out.
     let reach = Vec2::from_ints(spot.x.to_int() + 140, spot.y.to_int());
     place(&mut world, taker, reach);
+    assert!(world.take_item(taker, rune));
     world.step();
     assert!(lying(&world).is_empty(), "taken from 140 units");
     assert!(carries(&world, taker, ModifierKind::RuneHaste));
@@ -806,8 +842,13 @@ fn a_bounty_rune_pays_every_hero_of_the_side_that_takes_it_and_nobody_else() {
         .max();
     assert_eq!(fresh, Some(Some(52)));
     place(&mut world, taker, jungle);
-    // The take is at the hero's feet: both runes there (8:00's and 0:00's
-    // are 12 minutes' worth apart); one world step takes everything in reach.
+    // Two runes lie at the hero's feet (8:00's and 0:00's are 12 minutes'
+    // worth apart); the order names the fresh one.
+    let fresh = lying(&world)
+        .into_iter()
+        .find(|rune| rune.gold == Some(52) && rune.pos == jungle)
+        .expect("the fresh rune");
+    send_to_take(&mut world, taker, &fresh);
     world.step();
     let after: Vec<i32> = world.seats.iter().map(|seat| seat.gold).collect();
     let paid: Vec<i32> = after.iter().zip(&before).map(|(a, b)| a - b).collect();
@@ -1314,6 +1355,28 @@ fn a_seat_that_names_a_rune_as_its_view_does_takes_it() {
 }
 
 #[test]
+fn a_seat_that_walks_over_a_rune_does_not_take_it() {
+    let (mut local, _) = seat_sees_a_rune();
+    let spot = spots()[RIVER_TOP];
+    let across = Vec2::from_ints(spot.x.to_int() + 500, spot.y.to_int());
+    let order = Order::Move {
+        target: Target::Pos(across),
+    };
+    seat_orders(&mut local, order, |world| {
+        world
+            .pos(hero(world, 0))
+            .is_some_and(|at| at.within(across, Fixed::from_int(20)))
+    });
+    let world = local.world();
+    assert_eq!(
+        lying(world).len(),
+        1,
+        "the hero walked over it, and it lies"
+    );
+    assert!(!carries(world, hero(world, 0), ModifierKind::RuneHaste));
+}
+
+#[test]
 fn a_seat_that_names_a_rune_as_its_view_does_destroys_it_by_an_attack_order() {
     let (mut local, name) = seat_sees_a_rune();
     let order = Order::Attack {
@@ -1324,156 +1387,170 @@ fn a_seat_that_names_a_rune_as_its_view_does_destroys_it_by_an_attack_order() {
     assert!(!carries(world, hero(world, 0), ModifierKind::RuneHaste));
 }
 
-/// Untaken jungle bounties remain alongside each newer spawn (Valve 7.29), not overlapped.
+/// The runes lying at one spawner, in the order they appeared (where no entity slot was reused).
+fn lying_at_spot(world: &World, spot: usize) -> Vec<(bota_proto::RuneView, Vec2)> {
+    let mut runes = lying(world);
+    runes.sort_by_key(|rune| (rune.id.idx, rune.id.generation));
+    runes
+        .into_iter()
+        .filter(|rune| {
+            world
+                .entities
+                .iter()
+                .find(|&entity| wire_id(entity) == rune.id)
+                .and_then(|entity| world.rune.get(entity))
+                .is_some_and(|held| usize::from(held.spot) == spot)
+        })
+        .map(|rune| (rune, rune.pos))
+        .collect()
+}
+
+/// Whether `at` lies `units` from `origin`, give or take one unit of rounding.
+fn about(origin: Vec2, at: Vec2, units: i32) -> bool {
+    let d2 = origin.distance_squared(at);
+    rules::units(units - 1).squared_raw() <= d2 && d2 <= rules::units(units + 1).squared_raw()
+}
+
+/// Whether every two of some positions lie at least the spawner's spacing apart.
+fn spaced(positions: &[Vec2]) -> bool {
+    let least = rules::units(bota_core::RUNE_SPACING).squared_raw();
+    positions.iter().enumerate().all(|(i, a)| {
+        positions[i + 1..]
+            .iter()
+            .all(|b| a.distance_squared(*b) >= least)
+    })
+}
+
+/// Untaken jungle bounties remain alongside each newer spawn (Valve 7.29), not overlapped: the
+/// first at the spawner's origin, every later one on the ring 90 units round it [SRV, see
+/// `bota_core::rune_spot`], at least 70 from every other.
 #[test]
-fn unpicked_bounty_runes_keep_their_own_positions_across_natural_spawns() {
+fn unpicked_bounty_runes_stack_on_the_ring_ninety_units_round_the_first() {
     let mut world = rune_match(&radiant_and_dire());
-    for minute in [0, 4, 8] {
+    for minute in [0, 4, 8, 12] {
         step_at_minute(&mut world, minute, 0);
     }
     for spot in [DIRE_JUNGLE, RADIANT_JUNGLE] {
-        let positions: Vec<_> = world
-            .entities
-            .iter()
-            .filter(|&entity| {
-                world.rune.get(entity).is_some_and(|rune| {
-                    usize::from(rune.spot) == spot && rune.kind == RuneKind::Bounty
-                })
-            })
-            .map(|entity| world.pos(entity).expect("a rune has a position"))
-            .collect();
-        assert_eq!(
-            positions.len(),
-            3,
-            "opening, four-minute and eight-minute bounties persist"
-        );
-        let distinct: std::collections::BTreeSet<_> = positions.iter().copied().collect();
-        assert_eq!(
-            distinct.len(),
-            positions.len(),
-            "each accumulated bounty stands alongside the others: {positions:?}"
-        );
         let origin = spots()[spot];
-        let expected = [
-            origin,
-            origin + Vec2::from_ints(128, 0),
-            origin + Vec2::from_ints(0, 128),
-        ]
-        .into_iter()
-        .collect();
+        // Told apart by the gold each was worth when it appeared: 40, 46, 52, 58.
+        let mut stacked = lying_at_spot(&world, spot);
+        stacked.sort_by_key(|(rune, _)| rune.gold);
+        let golds: Vec<_> = stacked.iter().map(|(rune, _)| rune.gold).collect();
         assert_eq!(
-            distinct, expected,
-            "the nearest slots use a fixed counterclockwise tie order"
+            golds,
+            [Some(40), Some(46), Some(52), Some(58)],
+            "opening, four-, eight- and twelve-minute bounties persist, each with its own gold"
         );
-    }
-}
-
-#[test]
-fn picking_a_ring_bounty_frees_the_nearest_slot_for_the_next_natural_spawn() {
-    let mut world = rune_match(&[Team::Radiant]);
-    let at = spots()[RADIANT_JUNGLE];
-    for minute in [0, 4, 8] {
-        step_at_minute(&mut world, minute, 0);
-    }
-    let east = at + Vec2::from_ints(128, 0);
-    let rune = lying(&world)
-        .into_iter()
-        .find(|r| r.pos == east)
-        .expect("the first ring bounty is east of the occupied origin");
-    let viewer = hero(&world, 0);
-    place(&mut world, viewer, at + Vec2::from_ints(400, 0));
-    advance_validated(
-        &mut world,
-        None,
-        Order::Move {
-            target: Target::Pos(at + Vec2::from_ints(270, 0)),
-        },
-    );
-    for _ in 0..180 {
-        if !lying(&world).iter().any(|r| r.id == rune.id) {
-            break;
+        let positions: Vec<Vec2> = stacked.iter().map(|(_, at)| *at).collect();
+        assert_eq!(positions[0], origin, "the first lies on the spawner");
+        for later in &positions[1..] {
+            assert!(
+                about(origin, *later, 90),
+                "spot {spot}: a later bounty lies 90 units from the spawner: {later:?} of {origin:?}"
+            );
         }
-        world.step();
+        assert!(spaced(&positions), "spot {spot}: {positions:?}");
     }
-    assert!(
-        !lying(&world).iter().any(|r| r.id == rune.id),
-        "the move order picks up the east bounty"
-    );
-    let survivors: Vec<_> = lying(&world)
-        .into_iter()
-        .filter(|r| r.pos.within(at, rules::units(200)))
-        .collect();
-    assert_eq!(
-        survivors.len(),
-        2,
-        "only the reached ring slot is picked up"
-    );
-    place(&mut world, viewer, at + Vec2::from_ints(400, 0));
-    let events = step_at_minute(&mut world, 12, 0);
-    assert!(
-        spawned(&events).contains(&(RuneKind::Bounty, east)),
-        "the new bounty reuses the nearest vacant slot"
-    );
-    let now = lying(&world);
-    for old in survivors {
+}
+
+#[test]
+fn at_every_spawner_of_the_map_a_second_rune_lies_ninety_units_from_the_first() {
+    for spot in 0..spots().len() {
+        let mut world = rune_match(&radiant_and_dire());
+        world.put_rune(RuneKind::Bounty, spot);
+        world.put_rune(RuneKind::Bounty, spot);
+        let stacked = lying_at_spot(&world, spot);
+        assert_eq!(stacked.len(), 2, "spawner {spot}");
+        assert_eq!(stacked[0].1, spots()[spot], "the first on the spawner");
         assert!(
-            now.iter()
-                .any(|r| r.id == old.id && r.pos == old.pos && r.gold == old.gold),
-            "unpicked bounties keep their positions and creation gold"
+            about(spots()[spot], stacked[1].1, 90),
+            "spawner {spot}: {:?} of {:?}",
+            stacked[1].1,
+            spots()[spot]
         );
     }
 }
 
 #[test]
-fn accumulated_bounties_have_distinct_slots_up_to_the_existing_spawner_cap() {
+fn a_third_and_a_fourth_stack_keep_the_ring_and_the_spacing() {
     let mut world = rune_match(&radiant_and_dire());
-    for spawn in 0..=bota_proto::MAX_RUNES_AT_SPOT {
-        step_at_minute(&mut world, spawn as u32 * 4, 0);
+    for _ in 0..4 {
+        world.put_rune(RuneKind::Bounty, RADIANT_JUNGLE);
+        world.tick += 1;
     }
-    for spot in [DIRE_JUNGLE, RADIANT_JUNGLE] {
-        let positions: std::collections::BTreeSet<_> = world
-            .entities
+    let origin = spots()[RADIANT_JUNGLE];
+    let positions: Vec<Vec2> = lying_at_spot(&world, RADIANT_JUNGLE)
+        .iter()
+        .map(|(_, at)| *at)
+        .collect();
+    assert_eq!(positions.len(), 4);
+    assert!(positions[1..].iter().all(|at| about(origin, *at, 90)));
+    assert!(spaced(&positions), "{positions:?}");
+}
+
+/// The ring is turned by a phase drawn for each placement from the match's own randomness: the
+/// same match gives the same places, and the direction is not always the same one.
+#[test]
+fn the_ring_is_turned_by_a_draw_that_the_match_repeats_and_that_differs_between_moments() {
+    let second = |ticks: u32| {
+        let mut world = rune_match(&radiant_and_dire());
+        world.put_rune(RuneKind::Bounty, RADIANT_JUNGLE);
+        world.tick += ticks;
+        world.put_rune(RuneKind::Bounty, RADIANT_JUNGLE);
+        lying_at_spot(&world, RADIANT_JUNGLE)[1].1
+    };
+    assert_eq!(second(7), second(7), "same match, same moment, same place");
+    let places: std::collections::BTreeSet<_> = (1..=12).map(second).collect();
+    assert!(
+        places.len() >= 6,
+        "the direction varies with the moment: {places:?}"
+    );
+}
+
+#[test]
+fn a_rune_taken_from_the_spawner_frees_it_for_the_next_spawn() {
+    let mut world = rune_match(&[Team::Radiant]);
+    let origin = spots()[RADIANT_JUNGLE];
+    world.put_rune(RuneKind::Bounty, RADIANT_JUNGLE);
+    world.put_rune(RuneKind::Bounty, RADIANT_JUNGLE);
+    let first = lying_at_spot(&world, RADIANT_JUNGLE)[0].0;
+    let taker = hero(&world, 0);
+    place(&mut world, taker, origin);
+    send_to_take(&mut world, taker, &first);
+    world.step();
+    assert_eq!(lying_at_spot(&world, RADIANT_JUNGLE).len(), 1, "taken");
+    world.put_rune(RuneKind::Bounty, RADIANT_JUNGLE);
+    let at: Vec<Vec2> = lying_at_spot(&world, RADIANT_JUNGLE)
+        .iter()
+        .map(|(_, at)| *at)
+        .collect();
+    assert_eq!(at.len(), 2);
+    assert!(
+        at.contains(&origin),
+        "the new rune stands on the spawner again: {at:?}"
+    );
+}
+
+#[test]
+fn accumulated_bounties_keep_to_the_spawner_cap_stand_clear_and_can_be_reached() {
+    let mut world = rune_match(&radiant_and_dire());
+    for spot in 0..spots().len() {
+        for _ in 0..=bota_proto::MAX_RUNES_AT_SPOT {
+            world.put_rune(RuneKind::Bounty, spot);
+            world.tick += 1;
+        }
+        let positions: Vec<Vec2> = lying_at_spot(&world, spot)
             .iter()
-            .filter(|&entity| {
-                world
-                    .rune
-                    .get(entity)
-                    .is_some_and(|r| usize::from(r.spot) == spot)
-            })
-            .map(|entity| world.pos(entity).unwrap())
+            .map(|(_, at)| *at)
             .collect();
-        let count = world
-            .entities
-            .iter()
-            .filter(|&entity| {
-                world
-                    .rune
-                    .get(entity)
-                    .is_some_and(|r| usize::from(r.spot) == spot)
-            })
-            .count();
-        assert_eq!(
-            count,
-            bota_proto::MAX_RUNES_AT_SPOT,
-            "the cap still belongs to the original spawner"
-        );
         assert_eq!(
             positions.len(),
-            count,
-            "every retained bounty has a separate slot"
+            bota_proto::MAX_RUNES_AT_SPOT,
+            "spawner {spot}: the cap is the wire's bound"
         );
-        let candidates = std::iter::once((0, 0)).chain(
-            (-2_i32..=2)
-                .flat_map(|x| (-2_i32..=2).map(move |y| (x, y)))
-                .filter(|(x, y)| x.abs() == 2 || y.abs() == 2)
-                .map(|(x, y)| (x * 64, y * 64)),
-        );
-        for (x, y) in candidates {
-            let at = spots()[spot] + Vec2::from_ints(x, y);
-            assert!(
-                world.clearance.walkable(at),
-                "each bounty slot is on reachable jungle ground: {at:?}"
-            );
+        assert!(spaced(&positions), "spawner {spot}: {positions:?}");
+        for at in positions {
+            assert!(world.clearance.stands_clear(at), "spawner {spot}: {at:?}");
             let path = crate::game::find_path(
                 &world.clearance,
                 spots()[spot] + Vec2::from_ints(400, 0),
@@ -1489,123 +1566,90 @@ fn accumulated_bounties_have_distinct_slots_up_to_the_existing_spawner_cap() {
     }
 }
 
+/// Not the reference: where nothing can stand, no rune is put (a rune nobody can come within
+/// reach of would be lost).
 #[test]
-fn occupied_rune_slots_make_a_full_ring_retry_on_the_next_cadence() {
-    let mut world = rune_match(&radiant_and_dire());
-    let at = spots()[RADIANT_JUNGLE];
-    // Artificial occupancy fixture: fill every slot with runes whose source
-    // spawners are elsewhere, without bypassing the per-spawner cap.
-    let offsets = std::iter::once((0, 0)).chain(
-        (-2_i32..=2)
-            .flat_map(|x| (-2_i32..=2).map(move |y| (x, y)))
-            .filter(|(x, y)| x.abs() == 2 || y.abs() == 2)
-            .map(|(x, y)| (x * 64, y * 64)),
-    );
-    let mut centre = None;
-    for (index, (x, y)) in offsets.enumerate() {
-        let source = if index < bota_proto::MAX_RUNES_AT_SPOT {
-            DIRE_JUNGLE
-        } else {
-            RIVER_TOP
-        };
-        world.put_rune(RuneKind::Bounty, source);
-        let entity = world
-            .entities
-            .iter()
-            .find(|&entity| {
-                world
-                    .rune
-                    .get(entity)
-                    .is_some_and(|r| usize::from(r.spot) == source)
-                    && world.pos(entity) == Some(spots()[source])
-            })
-            .expect("the new occupancy fixture rune");
-        world.transform.get_mut(entity).unwrap().pos = at + Vec2::from_ints(x, y);
-        if x == 0 && y == 0 {
-            centre = Some(entity);
-        }
-    }
-    let events = step_at_minute(&mut world, 0, 0);
-    assert!(
-        !spawned(&events)
-            .iter()
-            .any(|(_, pos)| pos.within(at, rules::units(200))),
-        "a full ring never spawns an overlapping bounty"
-    );
-    assert!(!world.entities.iter().any(|entity| {
-        world
-            .rune
-            .get(entity)
-            .is_some_and(|r| usize::from(r.spot) == RADIANT_JUNGLE)
-    }));
-    let centre = centre.expect("the occupied origin");
-    world.transform.get_mut(centre).unwrap().pos = at + Vec2::from_ints(500, 0);
-    let events = step_at_minute(&mut world, 4, 0);
-    assert!(
-        spawned(&events).contains(&(RuneKind::Bounty, at)),
-        "the next cadence reuses the freed nearest slot"
-    );
-    assert_eq!(
-        world.rune.get(centre).unwrap().spot as usize,
-        DIRE_JUNGLE,
-        "fixture relocation preserves the original spawner cap"
-    );
-}
-
-#[test]
-fn accumulated_bounties_stand_clear_at_all_four_spawners() {
-    let mut world = rune_match(&radiant_and_dire());
-    for spot in 0..spots().len() {
-        for _ in 0..bota_proto::MAX_RUNES_AT_SPOT {
-            world.put_rune(RuneKind::Bounty, spot);
-        }
-        let positions: std::collections::BTreeSet<_> = world
-            .entities
-            .iter()
-            .filter(|&entity| {
-                world
-                    .rune
-                    .get(entity)
-                    .is_some_and(|rune| usize::from(rune.spot) == spot)
-            })
-            .map(|entity| world.pos(entity).unwrap())
-            .collect();
-        assert_eq!(positions.len(), bota_proto::MAX_RUNES_AT_SPOT);
-        for at in positions {
-            assert!(world.clearance.stands_clear(at), "spawner {spot}: {at:?}");
-        }
-    }
-}
-
-#[test]
-fn a_bounty_skips_a_slot_blocked_by_navigation_clearance() {
+fn a_bounty_is_not_put_on_ground_nothing_can_stand_on() {
     let mut world = rune_match(&radiant_and_dire());
     let origin = spots()[RADIANT_JUNGLE];
-    let east = origin + Vec2::from_ints(128, 0);
     let mut circles = world.clearance.circles().to_vec();
-    circles.push((east, rules::units(32)));
+    // Everything within 130 of the spawner, the first ring (90) and not the second (180).
+    circles.push((origin, rules::units(130)));
     world.clearance.set_circles(circles);
-    assert!(!world.clearance.stands_clear(east));
     world.put_rune(RuneKind::Bounty, RADIANT_JUNGLE);
     world.put_rune(RuneKind::Bounty, RADIANT_JUNGLE);
-    let positions: std::collections::BTreeSet<_> = world
-        .entities
-        .iter()
-        .filter(|&entity| {
-            world
-                .rune
-                .get(entity)
-                .is_some_and(|rune| usize::from(rune.spot) == RADIANT_JUNGLE)
-        })
-        .map(|entity| world.pos(entity).unwrap())
-        .collect();
-    assert_eq!(positions.len(), 2);
-    assert!(positions.contains(&origin));
-    assert!(
-        positions.contains(&(origin + Vec2::from_ints(0, 128))),
-        "the next nearest clear slot wins"
+    let stacked = lying_at_spot(&world, RADIANT_JUNGLE);
+    assert_eq!(stacked.len(), 2);
+    assert_eq!(
+        stacked[0].1, origin,
+        "the spawner's own spot is taken as it is"
     );
-    for at in positions {
-        assert!(world.clearance.stands_clear(at));
+    assert!(
+        about(origin, stacked[1].1, 180),
+        "the second ring: {:?}",
+        stacked[1].1
+    );
+    assert!(world.clearance.stands_clear(stacked[1].1));
+}
+
+/// Seat 0 orders its hero to take the rune `rune` and the match plays one tick.
+fn ordered_to_take(local: &mut crate::local::LocalMatch, rune: bota_proto::EntityId) {
+    let given = bota_proto::OutgoingOrder {
+        seq: 1,
+        unit: None,
+        order: Order::Take {
+            target: Target::Unit(rune),
+        },
+        seen: local.tick(),
+        queue: false,
+    };
+    local.step(&[&[given], &[]]).expect("a step");
+}
+
+/// A hero that cannot act takes no rune, in reach or not, like it does nothing else it is
+/// ordered; the order waits and is carried out when the stun lifts.
+#[test]
+fn a_stunned_hero_in_reach_takes_the_rune_only_when_the_stun_lifts() {
+    let (mut local, name) = seat_sees_a_rune();
+    let world = local.world_mut();
+    let taker = hero(world, 0);
+    place(world, taker, spots()[RIVER_TOP]);
+    put_on(world, taker, ModifierKind::Stunned, 45);
+    world.settle();
+    ordered_to_take(&mut local, name);
+    assert_eq!(
+        lying(local.world()).len(),
+        1,
+        "the stunned hero does not take it"
+    );
+    for _ in 0..30 {
+        local.step(&[&[], &[]]).expect("a step");
     }
+    assert_eq!(lying(local.world()).len(), 1, "still stunned");
+    for _ in 0..30 {
+        local.step(&[&[], &[]]).expect("a step");
+    }
+    assert!(
+        lying(local.world()).is_empty(),
+        "the stun lifted and the order was carried out"
+    );
+}
+
+/// Two spawners that place a rune on one tick do not draw one phase between them.
+#[test]
+fn spawners_placing_runes_on_one_tick_draw_different_phases() {
+    let mut world = rune_match(&radiant_and_dire());
+    world.clearance = crate::game::Clearance::open();
+    let mut offsets = Vec::new();
+    for spot in [RIVER_TOP, RIVER_BOT] {
+        world.put_rune(RuneKind::Bounty, spot);
+        world.put_rune(RuneKind::Bounty, spot);
+        let positions = lying_at_spot(&world, spot);
+        assert_eq!(positions.len(), 2);
+        offsets.push(positions[1].1 - positions[0].1);
+    }
+    assert_ne!(
+        offsets[0], offsets[1],
+        "the spawner is part of the key of the placement's draw"
+    );
 }

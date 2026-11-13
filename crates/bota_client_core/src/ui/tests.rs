@@ -2337,6 +2337,87 @@ fn a_match_whose_end_is_still_on_the_way_when_the_link_closes_is_not_lost() {
     assert!(!app.lost, "a match that ended is not a lost connection");
 }
 
+/// An app whose hero and Roshan stand at the places given, one snapshot into a match on the
+/// whole Dota map.
+fn an_app_with_roshan(hero_at: Vec2, roshan_at: Vec2) -> (App, EntityId) {
+    let mut app = a_silent_app();
+    app.my_slot = Some(SlotId(0));
+    let mut start = a_match_start();
+    if let bota_proto::ServerMsg::MatchStart { info } = &mut start {
+        info.terrain_cells = 288;
+        info.terrain_rle = vec![(41_472, 0x80), (41_472, 0x80)];
+    }
+    app.handle(start);
+    let mut me = owned(1, UnitKind::Hero, Some(SlotId(0)));
+    me.pos = hero_at;
+    let mut roshan = a_unit();
+    roshan.id = EntityId {
+        idx: 2,
+        generation: 1,
+    };
+    roshan.kind = UnitKind::Roshan;
+    roshan.team = Team::Neutral;
+    roshan.pos = roshan_at;
+    let mut player = a_player();
+    player.unit = Some(me.id);
+    app.handle(snapshot_of(1, vec![me, roshan.clone()], vec![player]));
+    app.handle(bota_proto::ServerMsg::Events {
+        tick: 1,
+        events: Vec::new(),
+    });
+    assert!(
+        !app.lost,
+        "the stream holds: {:?}",
+        app.feed
+            .iter()
+            .map(|line| format!("{:?}", line.kind))
+            .collect::<Vec<_>>()
+    );
+    (app, roshan.id)
+}
+
+/// Roshan is attacked only from inside his pits ([`bota_core::attackable_from`], the rule the
+/// server holds attacks to): a click on him from outside is a click on the ground under it, and
+/// the front end is told he is no attack target; from inside the click attacks.
+#[test]
+fn a_click_on_roshan_from_outside_the_pits_is_a_click_on_the_ground_and_from_inside_an_attack() {
+    use crate::ui::intent::Intent;
+    let ground = (7010.0, 7010.0);
+    let (mut outside, roshan) =
+        an_app_with_roshan(Vec2::from_ints(7000, 6600), Vec2::from_ints(7000, 7000));
+    assert!(outside.attack_closed(roshan), "outside the pits");
+    outside.act(Intent::Smart {
+        at: ground,
+        unit: Some(roshan),
+    });
+    assert!(
+        matches!(
+            outside.shown_orders.last().map(|shown| shown.order),
+            Some(Order::Move {
+                target: Target::Pos(_)
+            })
+        ),
+        "a walk to the ground: {:?}",
+        outside.shown_orders.last()
+    );
+    let (mut inside, roshan) = an_app_with_roshan(
+        bota_core::ROSHAN_DAY_PIT + Vec2::from_ints(200, 0),
+        bota_core::ROSHAN_DAY_PIT,
+    );
+    assert!(!inside.attack_closed(roshan), "inside a pit");
+    inside.act(Intent::Smart {
+        at: ground,
+        unit: Some(roshan),
+    });
+    assert_eq!(
+        inside.shown_orders.last().map(|shown| shown.order),
+        Some(Order::Attack {
+            target: Target::Unit(roshan)
+        }),
+        "from inside, the click attacks"
+    );
+}
+
 #[test]
 fn a_respawning_heros_kit_accepts_base_items_but_no_dead_carrier_grants_secret_access() {
     let mut hero = a_unit();

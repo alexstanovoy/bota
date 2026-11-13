@@ -962,7 +962,6 @@ impl World {
 
     /// Attack orders tended, pools regenerated, actions run, missiles flown; what they told of goes into the tick's events.
     fn step_actions(&mut self, events: &mut Vec<crate::game::Event>) {
-        self.take_runes();
         self.tend_attack_orders();
         regenerate(
             &self.entities,

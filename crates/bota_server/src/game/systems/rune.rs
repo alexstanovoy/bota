@@ -3,11 +3,12 @@
 
 use bota_core::{
     BOTTLE_LESSER_RUNE_CHARGES, BOTTLE_REFILL_PERIOD_TICKS, BOTTLE_RUNE_TICKS, Drink, ModifierKind,
-    POWER_ROTATION, RUNE_PICKUP_RANGE, RuneSpot, RuneSpotKind, SHIELD_BARRIER_PCT, WATER_RUNE_HP,
-    WATER_RUNE_MANA, bounty_rune_gold, rules, rune_ticks, runes_due, side_index,
+    POWER_ROTATION, RUNE_PLACEMENT_ATTEMPTS, RUNE_SPACING, RuneSpot, RuneSpotKind,
+    SHIELD_BARRIER_PCT, WATER_RUNE_HP, WATER_RUNE_MANA, bounty_rune_gold, rules, rune_spot,
+    rune_ticks, runes_due, side_index,
 };
 use bota_proto::{
-    EntityId, EventKind, Fixed, Inflictor, ItemId, RuneKind, RuneSet, Target, Team, Vec2,
+    Angle, EntityId, EventKind, Fixed, Inflictor, ItemId, RuneKind, RuneSet, Target, Team, Vec2,
 };
 
 use crate::game::{
@@ -125,14 +126,7 @@ impl World {
         if lying >= bota_proto::MAX_RUNES_AT_SPOT {
             return;
         }
-        let at = if kind == RuneKind::Bounty {
-            let Some(at) = self.vacant_bounty_position(origin) else {
-                return;
-            };
-            at
-        } else {
-            origin
-        };
+        let at = self.rune_position(origin, spot);
         let gold = if kind == RuneKind::Bounty {
             bounty_rune_gold(self.clock(), self.schedule())
         } else {
@@ -166,53 +160,54 @@ impl World {
         });
     }
 
-    /// Bounties persist alongside older ones (Valve 7.29; Liquipedia Runes).
-    /// The local map's default_ents.vents defines only each spawner's origin,
-    /// not its accumulation geometry. These are bota-specific slots: the origin
-    /// and a square ring of half-width 128, with 64 units between neighbours.
-    /// Choose the nearest free slot; ties follow the ring counterclockwise
-    /// from east. Skip slots blocked by navigation clearance.
-    /// A fully occupied or blocked ring skips this spawn; the next cadence
-    /// retries the bounded search. The cap still counts original spawners.
-    fn vacant_bounty_position(&self, origin: Vec2) -> Option<Vec2> {
-        const OFFSETS: [(i32, i32); 17] = [
-            (0, 0),
-            (128, 0),
-            (128, 64),
-            (128, 128),
-            (64, 128),
-            (0, 128),
-            (-64, 128),
-            (-128, 128),
-            (-128, 64),
-            (-128, 0),
-            (-128, -64),
-            (-128, -128),
-            (-64, -128),
-            (0, -128),
-            (64, -128),
-            (128, -128),
-            (128, -64),
-        ];
-        const _: () = assert!(bota_proto::MAX_RUNES_AT_SPOT < OFFSETS.len());
-        // Reserve current rune positions; a pickup frees its slot immediately.
-        let occupied: Vec<_> = self
+    /// Where a new rune appears for a spawner at `origin`: on the origin itself unless a rune
+    /// lies nearer than [`RUNE_SPACING`] to it, as the installed server does [SRV, see
+    /// [`bota_core::rune_spot`]]; else on the first spot of the rings around it, turned by a
+    /// phase drawn at random for this placement, that has no rune nearer than that. Runes
+    /// stay where they appeared (Valve 7.29: a Bounty Rune no longer disappears when a new one
+    /// spawns, it spawns alongside the previous one). The one addition to the reference: a spot
+    /// on ground nothing can stand on is skipped, so that no rune lies out of a hero's reach.
+    /// After all the attempts the last spot is taken, as the server takes it.
+    fn rune_position(&self, origin: Vec2, spot: usize) -> Vec2 {
+        let occupied: Vec<Vec2> = self
             .entities
             .iter()
             .filter(|&entity| self.rune.get(entity).is_some())
             .filter_map(|entity| self.pos(entity))
             .collect();
-        let clearance = rules::units(64).squared_raw();
-        OFFSETS
-            .into_iter()
-            .map(|(x, y)| origin + Vec2::from_ints(x, y))
-            .filter(|at| self.clearance.stands_clear(*at))
-            .filter(|at| {
-                occupied
-                    .iter()
-                    .all(|other| at.distance_squared(*other) >= clearance)
-            })
-            .min_by_key(|at| at.distance_squared(origin))
+        let spacing = rules::units(RUNE_SPACING).squared_raw();
+        let free = |at: Vec2| {
+            occupied
+                .iter()
+                .all(|other| at.distance_squared(*other) >= spacing)
+        };
+        if free(origin) {
+            return origin;
+        }
+        // The stream is the spawner's at this clock (`for_unit` keys the unit's index and the
+        // source, not its generation): two spawners placing on one tick do not share a phase. A
+        // spawner that places several runes on one tick takes the draws in turn, the nth rune
+        // standing on the map after the nth, so that no two placements share one.
+        let key = EntityId {
+            idx: self.clock(),
+            generation: 0,
+        };
+        let source = u8::try_from(spot).expect("a map has fewer than 256 rune spawners");
+        let mut stream = self.rng.for_unit(Purpose::RunePlace, key, source);
+        for _ in 0..occupied.len() {
+            stream.below(1 << 16);
+        }
+        let phase = Angle {
+            brads: stream.below(1 << 16) as u16,
+        };
+        let mut last = origin;
+        for attempt in 1..RUNE_PLACEMENT_ATTEMPTS {
+            last = rune_spot(origin, phase, attempt);
+            if free(last) && self.clearance.stands_clear(last) {
+                return last;
+            }
+        }
+        last
     }
 
     /// A spawn discloses exactly the rune that the completed tick's snapshot shows.
@@ -231,49 +226,19 @@ impl World {
         }
     }
 
-    /// Hands every rune within reach of a hero to the hero, the first hero of
-    /// the tick's order to stand within reach of it, but a rune a hook drags. A courier, a creep or
-    /// an illusion takes none. A hero with a Bottle in hand that holds no
-    /// rune keeps it there; any other takes effect at once.
-    pub(crate) fn take_runes(&mut self) {
-        if self.rune.is_empty() {
-            return;
-        }
-        // A copy: taking a rune may need the snapshot itself (the illusions'
-        // do).
-        let snapshot = self.take_entity_snapshot();
-        let entities = snapshot.clone();
-        self.recycle_entity_snapshot(snapshot);
-        let heroes: Vec<(Entity, Vec2)> = entities
+    /// Whether a hook is dragging a rune: what a hook drags is nobody's
+    /// until it lies again.
+    pub(crate) fn rune_is_dragged(&self, rune: Entity) -> bool {
+        self.entities
             .iter()
-            .copied()
-            .filter(|&entity| self.is_real_hero(entity) && self.alive(entity))
-            .filter_map(|hero| Some((hero, self.pos(hero)?)))
-            .collect();
-        let reach = bota_core::rules::units(RUNE_PICKUP_RANGE);
-        // What a hook drags is nobody's until it lies again.
-        let dragged: Vec<Entity> = entities
-            .iter()
-            .filter_map(|&hook| self.hook.get(hook).and_then(|hook| hook.caught))
-            .collect();
-        for rune in entities.iter().copied() {
-            let (Some(held), Some(at)) = (self.rune.get(rune).copied(), self.pos(rune)) else {
-                continue;
-            };
-            if dragged.contains(&rune) {
-                continue;
-            }
-            let Some(&(taker, _)) = heroes.iter().find(|(_, pos)| pos.within(at, reach)) else {
-                continue;
-            };
-            self.rune.remove(rune);
-            self.despawn(rune);
-            self.take_rune(taker, held);
-        }
+            .filter_map(|hook| self.hook.get(hook).and_then(|hook| hook.caught))
+            .any(|caught| caught == rune)
     }
 
-    /// A hero takes a rune: into its Bottle, or into effect.
-    fn take_rune(&mut self, hero: Entity, rune: Rune) {
+    /// A hero takes a rune it was ordered to take and stands within reach of:
+    /// into its Bottle, or into effect. Nothing takes a rune unasked, not a
+    /// hero standing on it: only the order does (`Order::Take`).
+    pub(crate) fn take_rune(&mut self, hero: Entity, rune: Rune) {
         let Rune { kind, gold, .. } = rune;
         if let Some(slot) = self.empty_bottle_of(hero)
             && let Some(stack) = self

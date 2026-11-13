@@ -47,6 +47,10 @@ pub enum Purpose {
     /// The chance procs of the items a unit carries (critical strikes, bashes, chain lightning,
     /// split shots, damage blocks), each source on a stream of its own, keyed by its place.
     ItemProc = 18,
+    /// Where around its spawner a new rune is put when the spawner's own spot is taken: the turn
+    /// of the rings of spots, drawn from the stream of each placement alone, keyed by the game
+    /// clock and the spawner.
+    RunePlace = 19,
 }
 
 /// The purposes with a stream of the match as a whole, whose draws the

@@ -5,14 +5,17 @@
 //! entities of the map's `maps/dota/entities/default_ents.vents` (7.41f),
 //! shifted by half the map like every landmark; `[BIN]` a server convar
 //! default of the 6966 build; `[LOC key]` the game's English tooltip;
-//! `[I:n]` the lines of `scripts/npc/items.txt` (client 6966); `[PN v]`
+//! `[I:n]` the lines of `scripts/npc/items.txt` (client 6966); `[SRV]` the behaviour
+//! of the installed server (build 6975), where no data or note says; `[PN v]`
 //! Valve's patch notes of version `v`; `[LIQ page]` Liquipedia's article
 //! (read 2026-10-30), which is also where the Archive of its Bottle page
 //! and its Bottle changelog are quoted. The install is newer than 7.41f; no
 //! patch note after 7.41 touches a rune or the Bottle, and where a source
 //! disagrees with the install's, the line says which was taken.
 
-use bota_proto::{ItemId, MAX_RUNES_AT_SPOT, MAX_SNAPSHOT_RUNES, RuneKind, RuneSet, Team, Vec2};
+use bota_proto::{
+    Angle, Fixed, ItemId, MAX_RUNES_AT_SPOT, MAX_SNAPSHOT_RUNES, RuneKind, RuneSet, Team, Vec2,
+};
 
 use crate::ITEMS;
 use crate::rules::{self, Schedule, TICKS_PER_SECOND};
@@ -219,9 +222,52 @@ pub const fn runes_due(clock: u32, schedule: Schedule) -> RunesDue {
     }
 }
 
-/// How near a hero must stand to take a rune: `Activate Distance` 150
-/// [LIQ Runes]. It faces nothing and waits for nothing.
+/// How near a hero must stand to take a rune it was ordered to take: 150 units,
+/// measured on the ground between origins [SRV: a hero takes the rune on
+/// arriving within 150 units of ground distance, with no facing test;
+/// `Activate Distance` 150 in LIQ Runes]. The pickup is instant. Nothing
+/// takes a rune but that order: the server has no pickup by proximity [SRV].
 pub const RUNE_PICKUP_RANGE: i32 = 150;
+
+/// How near another rune a new one may stand: it is put at its spawner's origin
+/// unless a rune lies nearer than this to the origin [SRV: a spot with a
+/// rune closer than 70 units, whatever the kinds, is rejected].
+pub const RUNE_SPACING: i32 = 70;
+/// How much farther from the spawner's origin each further ring of spots lies
+/// [SRV: 90 units].
+pub const RUNE_RING_STEP: i32 = 90;
+/// The turn from one spot of a ring to the next: 45 degrees [SRV].
+pub const RUNE_RING_TURN: Angle = Angle { brads: 8192 };
+/// How many spots a ring holds: eight turns of 45 degrees, and a ninth that the
+/// server's single-precision arithmetic reaches just short of the full turn
+/// (it repeats the first) [SRV].
+pub const RUNE_RING_SPOTS: u32 = 9;
+/// How many spots the server tries before it gives up and takes the last
+/// [SRV: 100].
+pub const RUNE_PLACEMENT_ATTEMPTS: u32 = 100;
+
+/// The `attempt`th spot a new rune is tried at around a spawner's `origin`
+/// (counted from zero), the rings turned by `phase`: the origin itself, then
+/// the rings of [`RUNE_RING_SPOTS`] spots at [`RUNE_RING_STEP`], twice that,
+/// and so on, each turning counterclockwise from `phase` [SRV: the phase is
+/// drawn at random for each placement; the first spot is the origin].
+pub fn rune_spot(origin: Vec2, phase: Angle, attempt: u32) -> Vec2 {
+    if attempt == 0 {
+        return origin;
+    }
+    let past = attempt - 1;
+    let ring = past / RUNE_RING_SPOTS + 1;
+    let turns = past % RUNE_RING_SPOTS;
+    // Eight turns make the full circle, which a u16 wraps to zero: widen first.
+    let turned = (u32::from(phase.brads) + turns * u32::from(RUNE_RING_TURN.brads)) & 0xffff;
+    crate::point_ahead(
+        origin,
+        Angle {
+            brads: turned as u16,
+        },
+        Fixed::from_int((ring as i32) * RUNE_RING_STEP),
+    )
+}
 
 /// Gold a Bounty Rune pays every hero of the side that takes it, fixed when
 /// the rune appears [PN 7.40]: `40 + 6` for every whole four minutes since

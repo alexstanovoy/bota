@@ -83,8 +83,8 @@ impl World {
         let Some(mark) = self.of_wire(target) else {
             return false;
         };
-        // A rune is walked to, and a hero within reach of it takes it
-        // ([`World::take_runes`]); a ground item goes into a free slot.
+        // A rune is walked to and taken there ([`World::walk_to_rune`]); a
+        // ground item goes into a free slot.
         let takes = if self.rune.get(mark).is_some() {
             self.is_real_hero(unit)
         } else {
@@ -102,7 +102,7 @@ impl World {
     /// Carries every item errand one tick on.
     ///
     /// A unit not yet in reach walks; one in reach does the thing and is left
-    /// standing. An errand that comes to nothing (the slot emptied, the target
+    /// standing; one that cannot act waits. An errand that comes to nothing (the slot emptied, the target
     /// fallen or full, the item taken by somebody quicker) ends where it is
     /// found, the same way.
     pub fn tick_handling(&mut self) {
@@ -113,6 +113,11 @@ impl World {
             };
             if !self.alive(unit) {
                 self.handling.remove(unit);
+                continue;
+            }
+            // A unit that cannot act (stunned, carried, feared) does nothing of its errand, in
+            // reach or not, like every other order; the errand waits for it.
+            if self.held(unit) || self.feared(unit) {
                 continue;
             }
             let done = match errand {
@@ -310,17 +315,26 @@ impl World {
         true
     }
 
-    /// Walks a hero over to a rune until it is within reach: the rune is
-    /// taken the tick the hero is, by [`World::take_runes`]. An errand ends
-    /// with the rune, taken by anyone or gone with the next spawn.
+    /// Walks a hero over to a rune and takes it there: the only way a rune is
+    /// taken, since standing near one takes nothing. An errand ends with the
+    /// rune, taken by anyone or gone with the next spawn; a rune a hook drags
+    /// is followed until it lies again.
     fn walk_to_rune(&mut self, unit: Entity, rune: Entity) -> bool {
-        let Some(spot) = self.pos(rune) else {
+        let (Some(held), Some(spot)) = (self.rune.get(rune).copied(), self.pos(rune)) else {
             return true;
         };
-        if self.pos(unit).is_none() {
+        if !self.is_real_hero(unit) || self.pos(unit).is_none() {
             return true;
         }
-        self.walk_into_reach(unit, spot, bota_core::RUNE_PICKUP_RANGE)
+        if !self.walk_into_reach(unit, spot, bota_core::RUNE_PICKUP_RANGE)
+            || self.rune_is_dragged(rune)
+        {
+            return false;
+        }
+        self.rune.remove(rune);
+        self.despawn(rune);
+        self.take_rune(unit, held);
+        true
     }
 
     /// Whether a unit stands within `range` of a spot, sending it walking

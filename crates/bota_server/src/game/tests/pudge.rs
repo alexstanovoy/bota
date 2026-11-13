@@ -1253,11 +1253,21 @@ fn a_hook_drags_a_rune_home_and_gives_back_its_mana() {
     assert!(flew, "the hook flew");
     events.extend(world.step());
     assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event.kind(), bota_proto::EventKind::RuneActivated { .. })),
+        "a rune dragged home is not taken unasked"
+    );
+    let dragged = super::runes::lying(&world);
+    assert_eq!(dragged.len(), 1, "it lies where the hook brought it");
+    assert!(world.take_item(pudge, dragged[0].id), "Pudge is sent to it");
+    events.extend(world.step());
+    assert!(
         events.iter().any(|event| matches!(
             event.kind(),
             bota_proto::EventKind::RuneActivated { unit, .. } if unit == wire_id(pudge)
         )),
-        "Pudge takes the rune it dragged home"
+        "Pudge takes the rune he dragged home when he is told to"
     );
     let now = world.mana.get(pudge).expect("has mana").mana;
     assert!(
@@ -1268,7 +1278,7 @@ fn a_hook_drags_a_rune_home_and_gives_back_its_mana() {
 
 /// A hooked rune leaves its spot: nobody takes it while the hook drags it, not a hero it
 /// passes within reach of; it lies where the hook brings it, an ordinary rune the first hero
-/// there takes, the enemy's as well; and it keeps its own end, cleared when its river turns
+/// sent to it takes, the enemy's as well; and it keeps its own end, cleared when its river turns
 /// over (owner, 2026-11-06).
 #[test]
 fn a_hooked_rune_is_nobodys_in_the_drag_and_anybodys_where_it_lands() {
@@ -1320,6 +1330,7 @@ fn a_hooked_rune_is_nobodys_in_the_drag_and_anybodys_where_it_lands() {
     );
     assert_eq!(lies[0].expires_at, rune.expires_at, "keeping its own end");
     super::runes::place(&mut world, foe, home + Vec2::from_ints(60, 0));
+    assert!(world.take_item(foe, lies[0].id), "the enemy hero is sent");
     let taken = world.step();
     assert!(
         taken.iter().any(|event| matches!(

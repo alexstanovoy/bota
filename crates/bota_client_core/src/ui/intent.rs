@@ -286,7 +286,9 @@ impl App {
     /// An armed attack-move click. A unit the front end found takes the
     /// attack order itself: on an ally this is the aggro-drop click.
     fn attack_at(&mut self, at: (f32, f32), unit: Option<EntityId>) {
-        let unit = unit.or_else(|| self.lying_at(at).map(|lying| lying.id));
+        let unit = unit
+            .filter(|id| !self.attack_closed(*id))
+            .or_else(|| self.lying_at(at).map(|lying| lying.id));
         let target = match unit {
             Some(target) => Target::Unit(target),
             None => Target::Pos(world_vec(at)),
@@ -303,6 +305,8 @@ impl App {
             });
             return;
         };
+        // A unit that cannot be attacked from here is no target: the click is on the ground.
+        let unit = unit.filter(|id| !self.attack_closed(*id));
         let order = if let Some(id) = unit {
             let own = view
                 .unit(id)
@@ -509,6 +513,23 @@ impl App {
     /// The item, else the rune, that a smart click at a world point takes.
     pub fn lying_at(&self, at: (f32, f32)) -> Option<Lying> {
         self.loot_at(at).or_else(|| self.rune_at(at))
+    }
+
+    /// Whether a click that attacks this unit would go nowhere now: its kind is attacked only
+    /// from inside a boss pit (Roshan), and the unit this client commands stands outside them
+    /// ([`bota_core::attackable_from`], the rule the server holds the attack to). The front end
+    /// shows no attack cursor on it then, and a click on it is a click on the ground under it.
+    pub fn attack_closed(&self, unit: EntityId) -> bool {
+        let (Some(view), Some(session)) = (self.view(), self.session()) else {
+            return false;
+        };
+        let Some(target) = view.unit(unit) else {
+            return false;
+        };
+        let Some(from) = self.commanded().and_then(|id| view.unit(id)) else {
+            return false;
+        };
+        !bota_core::attackable_from(session.map(), target.kind, from.pos)
     }
 
     /// Whether a click on the ground gives the hero an order now: the seat's hero stands, what is

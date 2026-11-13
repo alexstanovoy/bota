@@ -11,7 +11,9 @@ use crate::game::{Entity, ItemStack, World, wire_id};
 /// The Bottle's row of the catalog.
 const BOTTLE: ItemDef = ITEMS[ItemId::BOTTLE.0 as usize];
 
-use super::runes::{fraction, hero, lying, place, rune_match, rune_under_hero, step_at_minute};
+use super::runes::{
+    fraction, hero, lying, place, rune_match, rune_under_hero, send_to_take, step_at_minute,
+};
 use super::support::*;
 
 const RIVER_TOP: usize = 0;
@@ -417,6 +419,12 @@ fn a_stored_bounty_rune_pays_what_it_was_worth_when_it_appeared() {
     step_at_minute(&mut world, 4, 0);
     let jungle = world.map.rune_spots[3].at;
     place(&mut world, taker, jungle);
+    let fresh = lying(&world)
+        .into_iter()
+        .filter(|rune| rune.pos == jungle)
+        .max_by_key(|rune| rune.gold)
+        .expect("the 4:00 bounty lies at the spot");
+    send_to_take(&mut world, taker, &fresh);
     let events = world.step();
     assert!(events.iter().any(|event| matches!(
         event.kind(),
@@ -440,6 +448,11 @@ fn a_second_rune_takes_effect_at_once_while_the_bottle_holds_one() {
     bottled(&mut world, taker, 3);
     world.step();
     world.put_rune(RuneKind::Arcane, RIVER_TOP);
+    let arcane = lying(&world)
+        .into_iter()
+        .find(|rune| rune.kind == RuneKind::Arcane)
+        .expect("the second rune lies there");
+    send_to_take(&mut world, taker, &arcane);
     let events = world.step();
     assert!(events.iter().any(|event| matches!(
         event.kind(),
