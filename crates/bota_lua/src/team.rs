@@ -491,6 +491,14 @@ impl LuaTeam {
                 && fact.source == pending.source
                 && fact.target.is_none_or(|target| target == pending.target)
         });
+        if !pending.launched
+            && pending
+                .expires_at
+                .is_some_and(|deadline| snapshot.tick >= deadline)
+        {
+            state.bots[index].pending_once = None;
+            return None;
+        }
         state.bots[index].pending_once = Some(pending);
         if pending.launched {
             assert!(
@@ -1150,3 +1158,7 @@ pub(crate) const BOT_MODES: &[&str] = &[
 #[cfg(test)]
 #[path = "team/desire_tests.rs"]
 mod desire_tests;
+
+#[cfg(test)]
+#[path = "team/default_fuel_tests.rs"]
+mod default_fuel_tests;

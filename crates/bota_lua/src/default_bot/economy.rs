@@ -98,7 +98,10 @@ fn goal(
         }
         let mut count = 0;
         for item in &held {
-            count += components(vm, *item, id, &mut work)?;
+            let Some(projected) = components(vm, *item, id, &mut work)? else {
+                return Ok(None);
+            };
+            count += projected;
         }
         if count < needed {
             return Ok(Some(id));
@@ -112,12 +115,12 @@ fn components(
     held: ItemView,
     wanted: ItemId,
     work: &mut usize,
-) -> Result<u16, LuaError> {
+) -> Result<Option<u16>, LuaError> {
     let mut pending = vec![(held.id, held.mode, 0u8)];
     let mut count = 0u16;
     while let Some((id, mode, depth)) = pending.pop() {
         if *work == 0 || depth > 16 {
-            return Err(vm.error("equipment component projection limit exceeded"));
+            return Ok(None);
         }
         *work -= 1;
         vm.charge_fuel(1)?;
@@ -134,10 +137,119 @@ fn components(
             .or_else(|| definition.recipes().find(|recipe| !recipe.by_charges));
         if let Some(recipe) = recipe {
             if pending.len() + recipe.parts.len() > RECIPE_WORK {
-                return Err(vm.error("equipment component projection limit exceeded"));
+                return Ok(None);
             }
             pending.extend(recipe.parts.iter().map(|part| (*part, None, depth + 1)));
         }
     }
-    Ok(count)
+    Ok(Some(count))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use luagee::{Error, Keys, Limit, Limits, Lua};
+    use std::rc::Rc;
+    mod support {
+        include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/support/mod.rs"));
+    }
+    #[test]
+    fn each_equipment_component_visit_costs_one_fuel_beyond_the_call() {
+        let (mut local, mut sessions) =
+            support::local(&[bota_proto::Team::Radiant, bota_proto::Team::Dire]);
+        let buy = sessions[0]
+            .issue(bota_client_core::IssuedOrder::hero(Order::Buy {
+                item: ItemId::IRON_BRANCH,
+            }))
+            .expect("buy");
+        for (session, stream) in sessions
+            .iter_mut()
+            .zip(local.step(&[&[buy], &[]]).expect("purchase"))
+        {
+            support::fold(session, stream);
+        }
+        let held = *sessions[0]
+            .own_hero()
+            .expect("hero")
+            .items
+            .iter()
+            .flatten()
+            .find(|item| item.id == ItemId::IRON_BRANCH)
+            .expect("owned branch");
+        for budget in [1, 2] {
+            let mut lua = Lua::new(
+                Limits {
+                    fuel_per_tick: budget,
+                    ..Limits::DEFAULT
+                },
+                Keys {
+                    hash: [17, 19],
+                    random: 23,
+                },
+            )
+            .expect("vm");
+            let function = lua
+                .function(
+                    "component_projection",
+                    Rc::new(move |vm, _| {
+                        assert_eq!(components(vm, held, ItemId::IRON_BRANCH, &mut 10)?, Some(1));
+                        Ok(0)
+                    }),
+                )
+                .expect("callback");
+            lua.begin_tick();
+            let result = lua.call(function, &[]);
+            if budget == 2 {
+                assert!(result.is_ok());
+                assert_eq!(lua.tick_fuel_left(), 0);
+            } else {
+                assert!(matches!(result, Err(Error::Limit(Limit::FuelPerTick))));
+            }
+        }
+    }
+    #[test]
+    fn component_budget_exhaustion_skips_the_optional_equipment_projection() {
+        let (mut local, mut sessions) =
+            support::local(&[bota_proto::Team::Radiant, bota_proto::Team::Dire]);
+        let buy = sessions[0]
+            .issue(bota_client_core::IssuedOrder::hero(Order::Buy {
+                item: ItemId::IRON_BRANCH,
+            }))
+            .expect("buy");
+        for (session, stream) in sessions
+            .iter_mut()
+            .zip(local.step(&[&[buy], &[]]).expect("purchase"))
+        {
+            support::fold(session, stream);
+        }
+        let held = *sessions[0]
+            .own_hero()
+            .expect("hero")
+            .items
+            .iter()
+            .flatten()
+            .find(|item| item.id == ItemId::IRON_BRANCH)
+            .expect("owned branch");
+        let mut lua = Lua::new(
+            Limits::DEFAULT,
+            Keys {
+                hash: [17, 19],
+                random: 23,
+            },
+        )
+        .expect("vm");
+        let function = lua
+            .function(
+                "bounded_projection",
+                Rc::new(move |vm, _| {
+                    assert_eq!(components(vm, held, ItemId::IRON_BRANCH, &mut 0)?, None);
+                    Ok(0)
+                }),
+            )
+            .expect("callback");
+        assert!(
+            lua.call(function, &[]).is_ok(),
+            "exhausting optional projection work must not error the Lua turn"
+        );
+    }
 }

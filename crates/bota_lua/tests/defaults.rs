@@ -72,6 +72,9 @@ fn default_denies_are_strictly_below_the_core_health_boundary() {
         (98, 200, 1000, true),
         (19000, 40000, 30000, true),
         (20000, 40000, 30000, false),
+        (10_000_000, 100_000_000, 100_000_000, true),
+        (30_000_000, 100_000_000, 100_000_000, true),
+        (50_000_000, 100_000_000, 100_000_000, false),
     ] {
         let mut session = sessions[0].clone();
         let mut view = original.clone();
@@ -507,3 +510,6 @@ fn conformance_counts_distinguish_script_hooks_from_native_fallback() {
         "per-turn counts exclude earlier mode arbitration"
     );
 }
+
+#[path = "defaults/contracts.rs"]
+mod contracts;

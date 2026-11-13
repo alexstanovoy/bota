@@ -187,3 +187,10 @@ forgotten, and are reused if that identity is observed again. Opaque witnesses i
 protected metatables carry weak host-index entries charged to interpreter memory;
 collection removes those entries and shrinks their capacity. Copying script fields
 or borrowing a method cannot create an engine identity.
+
+The README's “Native reconstruction evidence” table classifies the native
+policy constants and inferred engine player/mode/lane ids. These bindings do not
+claim a live-engine verification of those mappings. Explicit script attack-once
+requests have no native policy lease; only native last-hit requests expire after
+the bounded, windup-aware lease. A rejected or lost native order can therefore
+recover without requiring a launch event or a gap-free stream of snapshots.

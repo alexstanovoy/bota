@@ -1,4 +1,4 @@
-//! Deterministic SF Solo Mid fallback policy. Hook semantics follow the engine API;
+//! Deterministic SF Solo Mid fallback policy. Hook semantics are compatibility inferences;
 //! policy thresholds are explicit reconstruction assumptions, not recovered engine internals.
 
 mod auxiliary;
@@ -109,6 +109,7 @@ fn callback(vm: &mut Vm, shared: &Shared, mode: &str, thinking: bool) -> Result<
         .map_err(|()| vm.error("received attack statistics exceed projection range"))?;
     let source = own.id;
     let tick = snapshot.tick;
+    let expires_at = native_once_deadline(tick, own.attack_point);
     state.order(vm, IssuedOrder::hero(order))?;
     if once
         && let Order::Attack {
@@ -121,9 +122,17 @@ fn callback(vm: &mut Vm, shared: &Shared, mode: &str, thinking: bool) -> Result<
             target,
             tick,
             launched: false,
+            expires_at: Some(expires_at),
         });
     }
     Ok(0)
+}
+
+fn native_once_deadline(tick: u32, windup: u32) -> u32 {
+    let second = u64::from(bota_core::rules::TICKS_PER_SECOND);
+    let windup_ticks = (u64::from(windup) * second).div_ceil(1000);
+    let lease = (windup_ticks + second).clamp(second, 10 * second) as u32;
+    tick.saturating_add(lease)
 }
 
 fn distance(a: Vec2, b: Vec2) -> i128 {

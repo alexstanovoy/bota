@@ -89,6 +89,8 @@ pub(crate) struct PendingOnce {
     pub target: EntityId,
     pub tick: u32,
     pub launched: bool,
+    /// Native policy requests expire; explicit script requests have no host lease.
+    pub expires_at: Option<u32>,
 }
 
 pub(crate) struct Snapshot {

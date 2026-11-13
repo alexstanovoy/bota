@@ -344,7 +344,10 @@ fn pending_once(
         .pending_once
         .filter(|pending| pending.source == source && pending.target == target && !pending.launched)
     {
-        return Ok(pending);
+        return Ok(crate::state::PendingOnce {
+            expires_at: None,
+            ..pending
+        });
     }
     let snapshot = state
         .snapshot
@@ -355,6 +358,7 @@ fn pending_once(
         target,
         tick: snapshot.tick,
         launched: false,
+        expires_at: None,
     })
 }
 

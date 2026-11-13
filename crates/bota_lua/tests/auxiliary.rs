@@ -309,3 +309,202 @@ fn low_health_step(
         support::fold(session, stream);
     }
 }
+
+#[test]
+fn native_casting_requires_zero_cooldown_and_enough_observed_mana() {
+    let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    local.world_mut().cheats = true;
+    local.world_mut().cheat(
+        SlotId(0),
+        None,
+        bota_proto::Cheat::AllVision { on: true },
+        &mut Vec::new(),
+    );
+    for (session, stream) in sessions
+        .iter_mut()
+        .zip(local.step(&[&[], &[]]).expect("public sight"))
+    {
+        support::fold(session, stream);
+    }
+    let original = sessions[0].current().expect("view").clone();
+    for (cooldown, enough, expected) in [(0, true, true), (1, true, false), (0, false, false)] {
+        let mut session = sessions[0].clone();
+        let mut view = original.clone();
+        let own = session.own_hero().expect("hero").id;
+        let hero = view
+            .units
+            .iter_mut()
+            .find(|unit| unit.id == own)
+            .expect("hero");
+        hero.pos = Vec2::from_ints(9216, 9216);
+        hero.facing = bota_proto::Angle { brads: 0 };
+        hero.queue.clear();
+        hero.statuses.bits = 0;
+        for ability in &mut hero.abilities {
+            ability.level = 0;
+            ability.learnable = Some(false);
+        }
+        let ability = &mut hero.abilities[0];
+        assert_eq!(ability.id, bota_proto::AbilityId::RAZE_NEAR);
+        ability.level = 1;
+        ability.passive = false;
+        ability.cooldown_left = cooldown;
+        let cost = ability.mana_cost;
+        assert!(cost > 0);
+        hero.mana = if enough { cost } else { cost - 1 };
+        hero.max_mana = hero.max_mana.max(cost);
+        let book = hero.abilities.clone();
+        if let Some(kit) = view
+            .players
+            .iter_mut()
+            .find(|player| player.slot == SlotId(0))
+            .expect("player")
+            .kit
+            .as_mut()
+        {
+            kit.abilities = book;
+        }
+        let enemy = view
+            .units
+            .iter_mut()
+            .find(|unit| unit.team == Team::Dire && unit.hero.is_some())
+            .expect("enemy");
+        enemy.pos = Vec2::from_ints(9216 + bota_core::rules::RAZE_DISTANCE[0], 9216);
+        enemy.statuses.bits = 0;
+        view.tick = session.current().expect("view").tick + 1;
+        let tick = view.tick;
+        session
+            .ingest(bota_proto::ServerMsg::Snapshot { view }, &mut ())
+            .expect("snapshot");
+        session
+            .ingest(
+                bota_proto::ServerMsg::Events {
+                    tick,
+                    events: Vec::new(),
+                },
+                &mut (),
+            )
+            .expect("events");
+        let turn = team(None).think(&session).expect("turn");
+        assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+        assert_eq!(
+            turn.bots[0].orders.iter().any(|order| matches!(
+                order.order,
+                Order::Cast {
+                    slot: bota_proto::AbilitySlot(0),
+                    target: Target::None
+                }
+            )),
+            expected,
+            "cooldown={cooldown}, enough={enough}"
+        );
+    }
+}
+
+fn recipe_nodes(id: bota_proto::ItemId) -> usize {
+    let mut pending = vec![(id, 0u8)];
+    let mut nodes = 0;
+    while let Some((id, depth)) = pending.pop() {
+        assert!(depth <= 16);
+        nodes += 1;
+        if let Some(recipe) = bota_core::item_def(id)
+            .expect("definition")
+            .recipes()
+            .find(|recipe| !recipe.by_charges)
+        {
+            pending.extend(recipe.parts.iter().map(|part| (*part, depth + 1)));
+        }
+    }
+    nodes
+}
+
+#[test]
+fn an_exhausted_equipment_projection_keeps_the_scripted_body_order() {
+    let (_, sessions) = support::courier_delivery_setup();
+    let mut session = sessions[0].clone();
+    let mut view = session.current().expect("view").clone();
+    let template = *view
+        .players
+        .iter()
+        .find(|player| player.slot == SlotId(0))
+        .expect("player")
+        .stash
+        .as_ref()
+        .expect("stash")
+        .iter()
+        .flatten()
+        .next()
+        .expect("owned item");
+    let heavy = bota_core::Catalogue::FULL
+        .sold_items()
+        .max_by_key(|id| recipe_nodes(*id))
+        .expect("complex item");
+    assert!(
+        recipe_nodes(heavy) >= 9,
+        "fixture must exercise deep recipes"
+    );
+    let item = |id| bota_proto::ItemView { id, ..template };
+    let mut bag: Vec<_> = [
+        "item_magic_wand",
+        "item_wraith_band",
+        "item_bottle",
+        "item_power_treads",
+        "item_dragon_lance",
+    ]
+    .iter()
+    .map(|key| Some(item(bota_core::item_by_key(key).expect("equipment"))))
+    .collect();
+    bag.resize(bota_proto::limits::HERO_ITEM_SLOTS, Some(item(heavy)));
+    let own = session.own_hero().expect("hero").id;
+    view.units
+        .iter_mut()
+        .find(|unit| unit.id == own)
+        .expect("hero")
+        .items = bag.clone();
+    let player = view
+        .players
+        .iter_mut()
+        .find(|player| player.slot == SlotId(0))
+        .expect("player");
+    if let Some(kit) = &mut player.kit {
+        kit.items = bag;
+    }
+    player.stash = Some(vec![Some(item(heavy)); 6]);
+    let courier = view
+        .units
+        .iter_mut()
+        .find(|unit| unit.kind == bota_proto::UnitKind::Courier && unit.owner == Some(SlotId(0)))
+        .expect("courier");
+    courier.items = vec![Some(item(heavy)); bota_proto::limits::COURIER_ITEM_SLOTS];
+    view.tick = session.current().expect("view").tick + 1;
+    let tick = view.tick;
+    session
+        .ingest(bota_proto::ServerMsg::Snapshot { view }, &mut ())
+        .expect("snapshot");
+    session
+        .ingest(
+            bota_proto::ServerMsg::Events {
+                tick,
+                events: Vec::new(),
+            },
+            &mut (),
+        )
+        .expect("events");
+    let mut lua=team(Some(b"function AbilityUsageThink() end function AbilityLevelUpThink() end function ItemUsageThink() end"));
+    lua.add_script(SlotId(0),bota_lua::ScriptKind::Mode(1),"equipment_projection",b"function GetDesire() return 1 end function Think() GetBot():Action_MoveToLocation(Vector(1,2,0)) end").expect("mode");
+    lua.add_script(
+        SlotId(0),
+        bota_lua::ScriptKind::Minion,
+        "explicit_courier",
+        b"function MinionThink(unit) end",
+    )
+    .expect("minion");
+    let turn = lua.think(&session).expect("bounded projection");
+    assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+    assert_eq!(
+        turn.bots[0].orders,
+        vec![IssuedOrder::hero(Order::Move {
+            target: Target::Pos(Vec2::from_ints(9217, 9218))
+        })]
+    );
+}

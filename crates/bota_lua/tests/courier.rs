@@ -40,9 +40,8 @@ fn missing_courier_hooks_fetch_and_deliver_with_bounded_retries() {
     let mut lua = team(false);
     let (mut fetched, mut delivered) = (0, 0);
     let mut received = false;
-    let mut ticks = 0;
+    let mut delivery_ticks = Vec::new();
     for tick in 0..3000 {
-        ticks = tick + 1;
         let turn = lua.think(&sessions[0]).expect("turn");
         assert!(turn.failures.is_empty(), "{:?}", turn.failures);
         fetched += turn.bots[0]
@@ -50,11 +49,16 @@ fn missing_courier_hooks_fetch_and_deliver_with_bounded_retries() {
             .iter()
             .filter(|order| command(&sessions[0], order, AbilityId::TAKE_STASH))
             .count();
-        delivered += turn.bots[0]
+        let deliveries = turn.bots[0]
             .orders
             .iter()
             .filter(|order| command(&sessions[0], order, AbilityId::DELIVER))
             .count();
+        assert!(deliveries <= 1);
+        if deliveries == 1 {
+            delivery_ticks.push(sessions[0].current().expect("view").tick);
+        }
+        delivered += deliveries;
         if tick == 0 {
             assert_eq!(fetched, 1, "stash needs a courier request");
         }
@@ -82,9 +86,12 @@ fn missing_courier_hooks_fetch_and_deliver_with_bounded_retries() {
     }
     assert!(received);
     assert_eq!(fetched, 1);
+    assert!(delivered > 0);
     assert!(
-        delivered > 0 && delivered < ticks / 2 + 2,
-        "courier commands must not repeat each tick"
+        delivery_ticks
+            .windows(2)
+            .all(|ticks| ticks[1] - ticks[0] == 30),
+        "delivery retry ticks: {delivery_ticks:?}"
     );
 }
 
@@ -161,4 +168,46 @@ fn an_explicit_minion_hook_exclusively_controls_the_courier() {
             .count();
         assert_eq!(moves, usize::from(source.contains("Action_MoveToLocation")));
     }
+}
+
+#[test]
+fn an_unchanged_unacknowledged_courier_request_retries_exactly_on_its_30_tick_lease() {
+    let (_, sessions) = support::courier_delivery_setup();
+    let mut session = sessions[0].clone();
+    let mut view = session.current().expect("view").clone();
+    let mut lua = team(false);
+    let mut requested = Vec::new();
+    for elapsed in 0..=90 {
+        if elapsed > 0 {
+            view.tick = session.current().expect("view").tick + 1;
+            let tick = view.tick;
+            session
+                .ingest(
+                    bota_proto::ServerMsg::Snapshot { view: view.clone() },
+                    &mut (),
+                )
+                .expect("snapshot");
+            session
+                .ingest(
+                    bota_proto::ServerMsg::Events {
+                        tick,
+                        events: Vec::new(),
+                    },
+                    &mut (),
+                )
+                .expect("events");
+        }
+        let turn = lua.think(&session).expect("turn");
+        assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+        let count = turn.bots[0]
+            .orders
+            .iter()
+            .filter(|order| command(&session, order, AbilityId::TAKE_STASH))
+            .count();
+        assert!(count <= 1);
+        if count == 1 {
+            requested.push(elapsed);
+        }
+    }
+    assert_eq!(requested, vec![0, 30, 60, 90]);
 }

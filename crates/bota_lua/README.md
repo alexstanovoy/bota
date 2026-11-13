@@ -112,3 +112,38 @@ when required, `BOTA_LUA_RUNTIME_SCRIPTS`. It runs the ignored local-source matc
 without copying source into the repository. `fuzz/fuzz_targets/lua_binding.rs` (here,
 a fuzz workspace of its own run with `fuzz/fuzz.sh`) drives Lua source, hostile arguments,
 collection modes and varied game states.
+
+## Native reconstruction evidence
+
+“Sourced” below identifies a fact read from the current simulation catalogue or
+received observations. It does not independently verify that catalogue against
+Dota. “Inferred” is a compatibility interpretation awaiting an engine check.
+“Own design” is an explicit host policy, not a recovered Valve C++ decision.
+Tests pin these choices; passing a pin does not promote an inference to a source.
+
+| Choice | Classification | Evidence or reason |
+|---|---|---|
+| Two SF heroes, MAP2 only | Own design | Scope of the native fallback; other configurations receive no native policy. |
+| Mode arbitration every 9 ticks | Own design | Bounds repeated arbitration work; overrides still Think each tick. |
+| Laning/attack/farm/retreat desires 0.3/0.6/0.4/0.95 | Own design | Explicit ordering of the reconstructed modes. No engine-policy source. |
+| Retreat below 35% HP, held until 90% | Own design | Hysteresis avoids repeatedly switching modes near a threshold. |
+| Attack/farm radius 900; item/courier threat radius 1000 | Own design | Local decision radii, not claimed engine policy. |
+| Raze distances, radii, damage and mana costs | Sourced: simulation catalogue | `bota_core::rules::RAZE_DISTANCE`, `RAZE_RADIUS`, hero definitions and received ability rows. |
+| Raze creep cluster at least 2; mana reserve at least twice the cost | Own design | Reconstructed resource and target selection. |
+| Requiem requires received souls and an enemy within attack range | Own design using sourced facts | The decision is ours; souls, range and ability metadata are received/catalogue facts. |
+| Learn available ultimate before ordinary active skills, then passives, by slot; available talents first | Own design using sourced legality | Selection priority is ours; `learnable` and `may_learn` come from the view. |
+| Regeneration useful at half its restoration amount; avoid interruptible recovery near threats; Phase during retreat | Own design using sourced effects | Amounts, aim, active effect, mute and cooldown are read from item/effect metadata. |
+| Equipment: 2 branches, Wraith Band, Bottle, Boots, Wand, Treads, Dragon Lance | Own design | Baseline equipment goals, not an engine build. Recipes and purchase legality are catalogue/binding data. |
+| Recipe projection: 1024 visits, depth 16, bounded pending stack | Own design | Work ceiling. Exhaustion skips the entire optional equipment projection; VM fuel exhaustion still errors the turn. |
+| Courier command lease 30 ticks | Own design | Retry lost/rejected requests without resending every tick. Tick rate is sourced from rules. |
+| Courier delivery/stash/return, burst and shield selection | Own design using sourced legality | Ability ids, cooldown, mana, ownership and handoff/stash ranges come from catalogue/views. |
+| Lane target 200 units behind the observed friendly front, quantized to 256-unit cells towards home | Own design | Stable waypoints prevent repeated tiny replacements of standing movement. |
+| Native attack-once lease: observed windup plus 1 second, clamped to 1–10 seconds | Own design using received timing | Bounds silence after an unlaunched order is rejected or lost. Launch facts take precedence at expiry. Explicit script once requests have no native lease. Discarded host turns restore the previous continuation checkpoint. |
+| Missing/nil GetDesire falls back; explicit empty Think overrides; MinionThink-only files retain hero defaults; explicit minion hooks replace courier defaults | Inferred compatibility contract | Implements the host's documented composition of scripts and native policy. Not verified against the closed engine. |
+| Engine player ids: Radiant 0–4, Dire 5–9; rank from the received roster, only a proven contiguous prefix before that roster | Inferred compatibility contract | Distinct from wire seat ids. No live-engine mapping verification is claimed. |
+| BOT_MODE ids 1–22 in `team::BOT_MODES` order: laning, attack, roam, retreat, secret_shop, side_shop, push_top/mid/bot, defend_top/mid/bot, assemble, team_roam, farm, defend_ally, evasive_maneuvers, roshan, item, ward, rune, outpost | Inferred compatibility contract | Host constants pinned to this order; original engine constants remain to be verified. |
+| Engine lane TOP=1/MID=2/BOT=3 mapped to core MID=0/TOP=1/BOT=2 | Inferred engine ids; sourced core ids | Typed conversion pins the distinction; the pin is not engine evidence. |
+| GetAttackPoint base seconds; GetAttackSpeed normalized multiplier | Inferred compatibility contract | Documented in API.md; conflicting script usage requires live-engine verification. |
+
+The inferred contracts and unsourced policy choices require verification or an
+explicit decision to retain an own-design policy before claiming engine parity.
