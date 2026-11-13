@@ -161,3 +161,161 @@ fn a_target_in_the_fog_is_never_named() {
         "a view of everything names it"
     );
 }
+
+#[test]
+fn phase_observations_ignore_hidden_target_properties_for_every_stage() {
+    use crate::game::{Action, ActionPhase, ActionState};
+    use bota_proto::{AbilityId, AbilitySlot, HeroId, ItemSlot, Target};
+    const EYE: bota_core::UnitDef = bota_core::UnitDef {
+        damage: 0,
+        acquisition: 0,
+        move_speed: 0,
+        day_vision: 200,
+        night_vision: 200,
+        ..MELEE_CREEP
+    };
+    let mut world = World::new();
+    let actor = seated_hero(&mut world, Vec2::from_ints(1000, 1000), HeroId::PUDGE);
+    let target = world.spawn_unit(&MELEE_CREEP, Team::Neutral, Vec2::from_ints(1500, 1000));
+    world.spawn_unit(&EYE, Team::Dire, Vec2::from_ints(1000, 1150));
+    world.settle();
+    let slot = AbilitySlot(
+        world
+            .abilities
+            .get(actor)
+            .expect("book")
+            .slots
+            .iter()
+            .position(|slot| slot.id == AbilityId::DISMEMBER)
+            .expect("slot") as u8,
+    );
+    let at = Target::Unit(wire_id(target));
+    for phase in [
+        ActionPhase::Before { progress: 1000 },
+        ActionPhase::During { progress: 1000 },
+        ActionPhase::After { progress: 1000 },
+    ] {
+        for state in [
+            ActionState::Ready,
+            ActionState::Attack { target, phase },
+            ActionState::CastAbility {
+                slot,
+                target: at,
+                phase,
+            },
+        ] {
+            world.action.insert(
+                actor,
+                Action {
+                    state,
+                    attack_cooldown: 0,
+                },
+            );
+            assert!(world.shows(Team::Dire, actor));
+            assert!(!world.shows(Team::Dire, target));
+            let before = encode_frame_to_vec(&ServerMsg::Snapshot {
+                view: world.view(Team::Dire),
+            })
+            .expect("frame");
+            for change in 0..3 {
+                let mut changed = world.clone();
+                match change {
+                    0 => {
+                        changed
+                            .stats
+                            .get_mut(target)
+                            .expect("stats")
+                            .status_resist_bp = 5000
+                    }
+                    1 => {
+                        changed.kind.insert(target, bota_proto::UnitKind::Hero);
+                        changed.hero.insert(target, HeroId::SHADOW_FIEND);
+                    }
+                    _ => {
+                        changed.transform.get_mut(target).expect("position").pos =
+                            Vec2::from_ints(1750, 1000);
+                    }
+                }
+                assert!(!changed.shows(Team::Dire, target));
+                assert_eq!(
+                    before,
+                    encode_frame_to_vec(&ServerMsg::Snapshot {
+                        view: changed.view(Team::Dire)
+                    })
+                    .expect("frame"),
+                    "hidden property {change}, state {state:?}"
+                );
+            }
+        }
+    }
+    {
+        let bag = world.inventory.get_mut(actor).expect("inventory");
+        bag.slots[0] = Some(fresh_stack(bota_proto::ItemId::HEALING_SALVE, 1));
+        bag.slots[1] = Some(fresh_stack(bota_proto::ItemId::TOWN_PORTAL_SCROLL, 1));
+    }
+    // Choosing a different item may not change the newly added observation.
+    for phase in [
+        ActionPhase::Before { progress: 1000 },
+        ActionPhase::During { progress: 1000 },
+        ActionPhase::After { progress: 1000 },
+    ] {
+        let mut observed = None;
+        for slot in [ItemSlot(0), ItemSlot(1)] {
+            world.action.insert(
+                actor,
+                Action {
+                    state: ActionState::UseItem {
+                        slot,
+                        target: at,
+                        phase,
+                    },
+                    attack_cooldown: 0,
+                },
+            );
+            let view = world.view(Team::Dire);
+            let now = view.unit(wire_id(actor)).expect("actor").action_phase;
+            if let Some(previous) = observed {
+                assert_eq!(
+                    previous, now,
+                    "item choice must not enter animation progress"
+                );
+            } else {
+                observed = Some(now);
+            }
+        }
+    }
+}
+
+#[test]
+fn sixty_idle_visible_units_pay_only_the_absent_phase_tag() {
+    let mut world = World::new();
+    for n in 0..60 {
+        world.spawn_unit(
+            &MELEE_CREEP,
+            Team::Radiant,
+            Vec2::from_ints(1000 + n * 40, 1000),
+        );
+    }
+    world.settle();
+    let view = world.view(Team::Radiant);
+    assert_eq!(view.units.len(), 60);
+    let actual: usize = view
+        .units
+        .iter()
+        .map(|unit| encode_frame_to_vec(unit).expect("unit").len())
+        .sum();
+    let legacy: usize = view
+        .units
+        .iter()
+        .map(|unit| {
+            let mut unit = unit.clone();
+            unit.action_phase = None;
+            encode_frame_to_vec(&unit).expect("unit").len() - 1
+        })
+        .sum();
+    assert_eq!(
+        actual - legacy,
+        60,
+        "one byte per real idle unit, not a populated idle record"
+    );
+}

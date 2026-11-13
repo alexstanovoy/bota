@@ -36,13 +36,13 @@ const TICK_RATE: usize = 30;
 /// bytes to this inventory; an active 300-second Aegis countdown adds two more.
 /// Four physical item level bytes raise that budget to 292. The absent forced-movement
 /// and ability-channel option tags add two bytes; the absent creep tier adds one more.
-/// Transport burst limits are unchanged.
+/// The absent action-phase observation adds one byte. Transport burst limits are unchanged.
 #[test]
-fn a_hero_with_an_active_item_lifetime_stays_under_295_bytes() {
+fn a_hero_with_an_active_item_lifetime_stays_under_296_bytes() {
     let mut hero = hero_unit();
     hero.items[0].as_mut().expect("fixture item").expires_in = Some(300 * TICK_RATE as u32);
     let len = encoded_len(&hero);
-    assert!(len <= 295, "hero unit grew to {len} bytes");
+    assert!(len <= 296, "hero unit grew to {len} bytes");
 }
 
 /// Absent cast rates, gathering, lit-side, forced-motion and channel tags bring this budget
@@ -169,9 +169,9 @@ fn an_empty_view_costs_almost_nothing() {
     assert!(len <= 24, "an empty snapshot cost {len} bytes");
 }
 
-/// The prior active-field budget gains the two absent objective-state tags.
+/// The prior active-field budget gains the absent action-phase tag.
 #[test]
-fn a_hero_with_active_motion_channel_and_item_lifetime_stays_under_303_bytes() {
+fn a_hero_with_active_motion_channel_and_item_lifetime_stays_under_304_bytes() {
     let mut hero = hero_unit();
     hero.items[0].as_mut().expect("item").expires_in = Some(300 * TICK_RATE as u32);
     hero.forced = Some(crate::ForcedView {
@@ -184,5 +184,21 @@ fn a_hero_with_active_motion_channel_and_item_lifetime_stays_under_303_bytes() {
         elapsed: 80,
     });
     let len = encoded_len(&hero);
-    assert!(len <= 303, "active hero unit grew to {len} bytes");
+    assert!(len <= 304, "active hero unit grew to {len} bytes");
+}
+
+#[test]
+fn an_active_action_phase_fits_its_seven_byte_wire_budget() {
+    let mut hero = hero_unit();
+    let absent = encoded_len(&hero);
+    // One Some tag, one enum tag and one maximal-width u32 varint.
+    hero.action_phase = Some(crate::ActionPhaseView {
+        phase: crate::UnitActionPhase::Channel,
+        elapsed: 1 << 28,
+    });
+    assert_eq!(
+        encoded_len(&hero) - absent,
+        6,
+        "7 bytes replace the one-byte None tag"
+    );
 }

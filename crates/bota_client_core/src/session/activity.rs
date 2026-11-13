@@ -21,7 +21,7 @@ pub enum Activity {
         slot: Option<AbilitySlot>,
     },
     Channel {
-        ability: AbilityId,
+        ability: Option<AbilityId>,
         slot: Option<AbilitySlot>,
     },
     Flail,
@@ -68,114 +68,48 @@ pub struct CurrentActivity {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct CastClock {
-    ability: Option<AbilityId>,
-    slot: Option<AbilitySlot>,
-    started_at: u32,
-    point: u32,
-}
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct CastRecovery {
-    ability: AbilityId,
-    slot: Option<AbilitySlot>,
-    at: u32,
-    point: u32,
-    backswing: u32,
-}
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct ObservedCast {
-    clock: CastClock,
-    seen_at: u32,
-}
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct ChannelClock {
-    ability: AbilityId,
-    slot: Option<AbilitySlot>,
+struct ObservedPhase {
+    phase: bota_proto::UnitActionPhase,
     elapsed: u32,
 }
 
-/// Bounded action/clock memory for one tracked entity. Only visible observations advance it.
+/// Bounded per-body animation memory. Only visible observations advance it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ActivityClock {
     tick: u32,
     rate: u16,
     id: Option<EntityId>,
+    phase: Option<ObservedPhase>,
     forced: bool,
     stunned: bool,
     forced_since: u32,
     stunned_since: u32,
-    cast: Option<CastClock>,
-    channel: Option<ChannelClock>,
-    swing: Option<(EntityId, u32)>,
-    windup: u32,
-    recovery: u32,
-    ordinal: u32,
-    pending_attack: bool,
-    windup_due: u32,
-    launch: Option<u32>,
-    cast_completed: Option<CastRecovery>,
-    previous_cast: Option<ObservedCast>,
+    ability: Option<AbilityId>,
+    slot: Option<AbilitySlot>,
+    point: u32,
+    backswing: u32,
+    attack_ordinal: u32,
     idle_since: u32,
     run_since: Option<u32>,
     run_distance: u64,
-    initialized: bool,
-    was_busy: bool,
 }
 
 impl ActivityClock {
     pub(super) fn observe(&mut self, track: &EntityTrack, map: &bota_core::MapDef, rate: u16) {
-        let tick = track.last_seen_tick;
+        use bota_proto::UnitActionPhase as Kind;
         let unit = &track.unit;
-        let definition = crate::unit_definition(map, unit);
-        let windup = ms_ticks(unit.attack_point, rate);
-        let recovery = definition.map_or(0, |d| {
-            scaled_ticks(d.attack_backswing, unit.attack_speed, rate)
-        });
-        let swing = track
-            .fight
-            .and_then(|fight| fight.swing)
-            .map(|s| (s.target, s.strike_in));
-        let new_swing = swing.is_some()
-            && (self.swing.is_none() || self.swing.map(|s| s.0) != swing.map(|s| s.0));
-        if new_swing {
-            self.ordinal = self.ordinal.wrapping_add(1);
-            self.pending_attack = true;
-        }
-        if let Some((_, left)) = swing {
-            self.windup_due = tick.saturating_add(left);
-        }
-        if swing.is_none() && tick > self.windup_due {
-            self.pending_attack = false;
-        }
-        let launch = track.last_attack_launched.map(|launch| launch.tick);
-        if launch != self.launch && launch.is_some() {
-            if !self.pending_attack {
-                self.ordinal = self.ordinal.wrapping_add(1);
-            }
-            self.pending_attack = false;
-        }
-        if let Some(cast) = track
-            .last_ability_cast
-            .filter(|cast| self.cast_completed.is_none_or(|old| old.at != cast.tick))
-            && let Some(definition) = bota_core::ability_def(cast.ability)
-            && !definition.passive
-            && !definition.immediate
-            && definition.point > 0
-        {
-            let previous = self.previous_cast.filter(|old| {
-                old.clock.ability == Some(cast.ability)
-                    && old.seen_at.saturating_add(1) >= cast.tick
-            });
-            self.cast_completed = Some(CastRecovery {
-                ability: cast.ability,
-                slot: ability_slot(unit, cast.ability),
-                at: cast.tick,
-                point: previous.map_or(ms_ticks(definition.point, rate), |old| old.clock.point),
-                backswing: ms_ticks(definition.backswing, rate),
-            });
-        }
-        let elapsed = tick.saturating_sub(self.tick);
-        let moving = is_running(track, rate) && !bota_core::kind_def(unit.kind).fixed;
+        let tick = track.last_seen_tick;
+        let phase = Some(
+            unit.action_phase
+                .map(|phase| ObservedPhase {
+                    phase: phase.phase,
+                    elapsed: phase.elapsed / bota_core::BEATS_PER_TICK,
+                })
+                .unwrap_or(ObservedPhase {
+                    phase: Kind::IdleMove,
+                    elapsed: 0,
+                }),
+        );
         let forced = unit.forced.is_some();
         let stunned = unit.statuses.bits & StatusFlags::STUNNED != 0;
         if forced && !self.forced {
@@ -184,36 +118,62 @@ impl ActivityClock {
         if stunned && !self.stunned {
             self.stunned_since = tick;
         }
-        let cast = unit.cast.map(|cast| {
-            let start = track.casting_since.unwrap_or(tick);
-            CastClock {
-                ability: cast.ability,
-                slot: cast.ability.and_then(|id| ability_slot(unit, id)),
-                started_at: start,
-                point: tick
-                    .saturating_sub(start)
-                    .saturating_add(cast.goes_off_in)
-                    .max(1),
-            }
-        });
-        if let Some(clock) = cast.filter(|clock| clock.ability.is_some()) {
-            self.previous_cast = Some(ObservedCast {
-                clock,
-                seen_at: tick,
-            });
+        let current = phase.map(|phase| phase.phase);
+        let previous = self.phase.map(|phase| phase.phase);
+        let attack = matches!(current, Some(Kind::AttackWindup | Kind::AttackBackswing));
+        let was_attack = matches!(previous, Some(Kind::AttackWindup | Kind::AttackBackswing));
+        let restarted = matches!((phase,self.phase),(Some(now),Some(old)) if now.phase==Kind::AttackWindup && old.phase==Kind::AttackWindup && now.elapsed<old.elapsed);
+        if attack
+            && (!was_attack
+                || current == Some(Kind::AttackWindup) && previous == Some(Kind::AttackBackswing)
+                || restarted)
+        {
+            self.attack_ordinal = self.attack_ordinal.wrapping_add(1);
         }
-        let channel = unit.channel.map(|channel| ChannelClock {
-            ability: channel.ability,
-            slot: ability_slot(unit, channel.ability),
-            elapsed: channel.elapsed,
-        });
-        let busy = forced || stunned || cast.is_some() || channel.is_some() || swing.is_some();
-        if !self.initialized || self.run_since.is_some() != moving || busy || self.was_busy {
+        if attack {
+            let definition = crate::unit_definition(map, unit);
+            self.point = definition.map_or_else(
+                || ms_ticks(unit.attack_point, rate),
+                |def| ms_ticks(def.attack_point, rate),
+            );
+            self.backswing = definition.map_or(0, |def| ms_ticks(def.attack_backswing, rate));
+
+            self.ability = None;
+            self.slot = None;
+        } else if matches!(
+            current,
+            Some(Kind::CastPoint | Kind::CastBackswing | Kind::Channel)
+        ) {
+            // Recovery carries no current ability observation. Never reuse an
+            // earlier spell for a new item recovery that arrives without an idle frame.
+            let ability = unit
+                .cast
+                .and_then(|cast| cast.ability)
+                .or_else(|| unit.channel.map(|channel| channel.ability));
+            {
+                self.point = ability
+                    .and_then(bota_core::ability_def)
+                    .map_or(0, |def| ms_ticks(def.point, rate));
+                self.backswing = ability
+                    .and_then(bota_core::ability_def)
+                    .map_or(0, |def| ms_ticks(def.backswing, rate));
+            }
+            self.ability = ability;
+            self.slot = ability.and_then(|ability| ability_slot(unit, ability));
+        } else {
+            self.ability = None;
+            self.slot = None;
+        }
+        let busy = forced || stunned || current.is_some_and(|phase| phase != Kind::IdleMove);
+        let was_busy =
+            self.forced || self.stunned || previous.is_some_and(|phase| phase != Kind::IdleMove);
+        let moving = !busy && is_running(track, rate) && !bota_core::kind_def(unit.kind).fixed;
+        if self.id.is_none() || self.run_since.is_some() != moving || busy || was_busy {
             self.idle_since = tick;
             self.run_since = moving.then_some(tick);
             self.run_distance = 0;
         } else if moving
-            && elapsed > 0
+            && tick > self.tick
             && let Some(velocity) = track.velocity
         {
             self.run_distance = self
@@ -223,23 +183,15 @@ impl ActivityClock {
         self.tick = tick;
         self.rate = rate.max(1);
         self.id = Some(unit.id);
+        self.phase = phase;
         self.forced = forced;
         self.stunned = stunned;
-        self.cast = cast;
-        self.channel = channel;
-        self.swing = swing;
-        self.windup = windup;
-        self.recovery = recovery;
-        self.launch = launch;
-        self.initialized = true;
-        self.was_busy = busy;
     }
 
-    /// Samples the same observation for any consumer; profiles supply only local clip timing.
+    /// Samples received action progress, using a profile only for local loop timing.
     pub fn sample(&self, profile: ActivityProfile) -> Option<CurrentActivity> {
-        if !self.initialized {
-            return None;
-        }
+        use bota_proto::UnitActionPhase as Kind;
+        let phase = self.phase?;
         if self.forced {
             return Some(self.loop_sample(Activity::Flail, profile.flail_ms, self.forced_since));
         }
@@ -250,82 +202,102 @@ impl ActivityClock {
                 self.stunned_since,
             ));
         }
-        if let Some(channel) = self.channel {
-            return Some(self.loop_sample(
-                Activity::Channel {
-                    ability: channel.ability,
-                    slot: channel.slot,
-                },
-                channel.slot.and_then(|slot| {
-                    profile
-                        .channel_ms
-                        .get(usize::from(slot.0))
-                        .copied()
-                        .flatten()
-                }),
-                self.tick.saturating_sub(channel.elapsed),
-            ));
-        }
-        if let Some(cast) = self.cast {
-            let back = cast
-                .ability
-                .and_then(bota_core::ability_def)
-                .map_or(0, |d| ms_ticks(d.backswing, self.rate));
-            return Some(self.timed(
-                Activity::Cast {
-                    ability: cast.ability,
-                    slot: cast.slot,
-                },
-                ActivityPhase::Windup,
-                cast.started_at,
-                cast.point.saturating_add(back).max(1),
-                self.tick.saturating_sub(cast.started_at),
-                false,
-            ));
-        }
-        let alternate = profile.alternate_attacks && self.ordinal.is_multiple_of(2);
-        if let Some((_, left)) = self.swing {
-            let elapsed = self.windup.saturating_sub(left);
-            return Some(self.timed(
-                Activity::Attack { alternate },
-                ActivityPhase::Windup,
-                self.tick.saturating_sub(elapsed),
-                self.windup.saturating_add(self.recovery).max(1),
-                elapsed,
-                false,
-            ));
-        }
-        if self.run_since.is_none() {
-            if let Some(at) = self
-                .launch
-                .filter(|&at| self.tick.saturating_sub(at) < self.recovery)
-            {
-                return Some(self.timed(
+        let start = self.tick.saturating_sub(phase.elapsed);
+        let alternate = profile.alternate_attacks && self.attack_ordinal.is_multiple_of(2);
+        let sample = match phase.phase {
+            Kind::AttackWindup | Kind::AttackBackswing => {
+                let recovery = phase.phase == Kind::AttackBackswing;
+                let elapsed = phase
+                    .elapsed
+                    .saturating_add(if recovery { self.point } else { 0 });
+                self.timed(
                     Activity::Attack { alternate },
-                    ActivityPhase::Recovery,
-                    at.saturating_sub(self.windup),
-                    self.windup.saturating_add(self.recovery).max(1),
-                    self.windup.saturating_add(self.tick.saturating_sub(at)),
-                    false,
-                ));
-            }
-            if let Some(cast) = self
-                .cast_completed
-                .filter(|old| self.tick.saturating_sub(old.at) < old.backswing)
-            {
-                return Some(self.timed(
-                    Activity::Cast {
-                        ability: Some(cast.ability),
-                        slot: cast.slot,
+                    if recovery {
+                        ActivityPhase::Recovery
+                    } else {
+                        ActivityPhase::Windup
                     },
-                    ActivityPhase::Recovery,
-                    cast.at.saturating_sub(cast.point),
-                    cast.point.saturating_add(cast.backswing).max(1),
-                    cast.point.saturating_add(self.tick.saturating_sub(cast.at)),
+                    start.saturating_sub(if recovery { self.point } else { 0 }),
+                    self.point.saturating_add(self.backswing).max(1),
+                    elapsed,
                     false,
-                ));
+                )
             }
-        }
+            Kind::CastPoint | Kind::CastBackswing => {
+                let recovery = phase.phase == Kind::CastBackswing;
+                if self.ability.is_none() {
+                    return Some(CurrentActivity {
+                        activity: Activity::Cast {
+                            ability: None,
+                            slot: None,
+                        },
+                        phase: if recovery {
+                            ActivityPhase::Recovery
+                        } else {
+                            ActivityPhase::Windup
+                        },
+                        cycle: None,
+                        observed_at: self.tick,
+                        started_at: start,
+                        duration_ticks: None,
+                    });
+                }
+                let elapsed = phase
+                    .elapsed
+                    .saturating_add(if recovery { self.point } else { 0 });
+                self.timed(
+                    Activity::Cast {
+                        ability: self.ability,
+                        slot: self.slot,
+                    },
+                    if recovery {
+                        ActivityPhase::Recovery
+                    } else {
+                        ActivityPhase::Windup
+                    },
+                    start.saturating_sub(if recovery { self.point } else { 0 }),
+                    self.point.saturating_add(self.backswing).max(1),
+                    elapsed,
+                    false,
+                )
+            }
+            Kind::Channel => {
+                let activity = Activity::Channel {
+                    ability: self.ability,
+                    slot: self.slot,
+                };
+                let clip = profile
+                    .channel_ms
+                    .get(usize::from(self.slot.map_or(0, |slot| slot.0)))
+                    .copied()
+                    .flatten();
+                if let Some(ms) = clip {
+                    self.timed(
+                        activity,
+                        ActivityPhase::Channel,
+                        start,
+                        ms_ticks(ms, self.rate).max(1),
+                        phase.elapsed,
+                        true,
+                    )
+                } else {
+                    CurrentActivity {
+                        activity,
+                        phase: ActivityPhase::Channel,
+                        cycle: None,
+                        observed_at: self.tick,
+                        started_at: start,
+                        duration_ticks: None,
+                    }
+                }
+            }
+
+            Kind::IdleMove => return Some(self.rest_sample(profile)),
+        };
+        Some(sample)
+    }
+
+    fn rest_sample(&self, profile: ActivityProfile) -> CurrentActivity {
         if let Some(start) = self.run_since {
             let cycle = profile.run_ms.and_then(|duration| {
                 if duration == 0 {
@@ -334,23 +306,16 @@ impl ActivityClock {
                 let loop_raw = u64::from(duration).checked_mul(300)?.checked_mul(65536)? / 1000;
                 (loop_raw > 0).then(|| fixed_cycle(self.run_distance, loop_raw, true))
             });
-            return Some(CurrentActivity {
+            return CurrentActivity {
                 activity: Activity::Run,
                 phase: ActivityPhase::Loop,
                 cycle,
                 observed_at: self.tick,
                 started_at: start,
                 duration_ticks: profile.run_ms.map(|ms| ms_ticks(ms, self.rate)),
-            });
+            };
         }
-        let start = self
-            .idle_since
-            .max(self.launch.map_or(0, |at| at.saturating_add(self.recovery)))
-            .max(
-                self.cast_completed
-                    .map_or(0, |old| old.at.saturating_add(old.backswing)),
-            );
-        let start = start.min(self.tick);
+        let start = self.idle_since.min(self.tick);
         if let (Some(idle), Some(rare), Some(id)) = (profile.idle_ms, profile.rare_idle_ms, self.id)
             && idle > 0
             && rare > 0
@@ -360,30 +325,28 @@ impl ActivityClock {
             let loops = 4 + (id.idx ^ id.generation).wrapping_mul(0x9E37_79B9) % 4;
             let ordinary = idle * u64::from(loops);
             let phase = u64::from(self.tick.saturating_sub(start)) % (ordinary + rare);
-            if phase >= ordinary {
-                let elapsed = u32::try_from(phase - ordinary).unwrap_or(u32::MAX);
-                return Some(self.timed(
-                    Activity::IdleRare,
-                    ActivityPhase::Loop,
-                    self.tick.saturating_sub(elapsed),
-                    u32::try_from(rare).unwrap_or(u32::MAX),
-                    elapsed,
-                    false,
-                ));
-            }
-            let elapsed = u32::try_from(phase % idle).unwrap_or(0);
-            return Some(self.timed(
-                Activity::Idle,
+            let is_rare = phase >= ordinary;
+            let elapsed = u32::try_from(if is_rare {
+                phase - ordinary
+            } else {
+                phase % idle
+            })
+            .unwrap_or(0);
+            return self.timed(
+                if is_rare {
+                    Activity::IdleRare
+                } else {
+                    Activity::Idle
+                },
                 ActivityPhase::Loop,
                 self.tick.saturating_sub(elapsed),
-                idle as u32,
+                u32::try_from(if is_rare { rare } else { idle }).unwrap_or(u32::MAX),
                 elapsed,
                 false,
-            ));
+            );
         }
-        Some(self.loop_sample(Activity::Idle, profile.idle_ms, start))
+        self.loop_sample(Activity::Idle, profile.idle_ms, start)
     }
-
     fn loop_sample(
         &self,
         activity: Activity,
@@ -417,7 +380,6 @@ impl ActivityClock {
             },
         }
     }
-
     fn timed(
         &self,
         activity: Activity,
@@ -441,7 +403,6 @@ impl ActivityClock {
         }
     }
 }
-
 fn ability_slot(unit: &UnitView, ability: AbilityId) -> Option<AbilitySlot> {
     unit.abilities
         .iter()
@@ -451,16 +412,6 @@ fn ability_slot(unit: &UnitView, ability: AbilityId) -> Option<AbilitySlot> {
 }
 fn ms_ticks(ms: u32, rate: u16) -> u32 {
     u32::try_from((u64::from(ms) * u64::from(rate.max(1))).div_ceil(1000)).unwrap_or(u32::MAX)
-}
-fn scaled_ticks(ms: u32, attack_speed: i32, rate: u16) -> u32 {
-    let Ok(speed) = u64::try_from(attack_speed) else {
-        return 0;
-    };
-    if speed == 0 {
-        return 0;
-    }
-    u32::try_from((u64::from(ms) * 100 * u64::from(rate.max(1))).div_ceil(speed * 1000))
-        .unwrap_or(u32::MAX)
 }
 fn fixed_cycle(elapsed: u64, duration: u64, repeat: bool) -> Fixed {
     if duration == 0 {

@@ -352,3 +352,107 @@ fn an_illusion_falling_out_of_sight_is_not_announced_as_a_hero_kill() {
     assert!(fell(Team::Dire), "its own side is told");
     assert!(!fell(Team::Radiant), "the feed announces no illusion");
 }
+
+#[test]
+fn a_visible_illusion_keeps_its_own_action_phase_while_its_hero_is_hidden() {
+    use bota_proto::UnitActionPhase;
+    let mut cfg = mid_config();
+    cfg.cheats = true;
+    let (mut local, hero, at) = face_off(&cfg);
+    let illusion = stand_in_illusion(local.world_mut(), hero, at + Vec2::from_ints(150, 0));
+    let home = bota_core::fountain_pos(local.world().map, Team::Radiant);
+    local.world_mut().cheat(
+        SlotId(0),
+        Some(hero),
+        Cheat::Teleport { at: home },
+        &mut Vec::new(),
+    );
+    local.restate();
+    let dire = local.world().seats[1].unit.expect("dire hero");
+    let unit = local.handle_of(0, illusion).expect("own illusion handle");
+    let target = local.handle_of(0, dire).expect("visible enemy handle");
+    local
+        .step(&[
+            &[OutgoingOrder {
+                seq: 2,
+                unit: Some(unit),
+                order: Order::Attack {
+                    target: Target::Unit(target),
+                },
+                seen: local.tick(),
+                queue: false,
+            }],
+            &[],
+        ])
+        .expect("ordinary illusion attack");
+    let mut winding = false;
+    for _ in 0..30 {
+        if matches!(
+            local
+                .world()
+                .action
+                .get(illusion)
+                .map(|action| action.state),
+            Some(crate::game::ActionState::Attack {
+                phase: crate::game::ActionPhase::Before { .. },
+                ..
+            })
+        ) {
+            winding = true;
+            break;
+        }
+        local.step(&[&[], &[]]).expect("turning");
+    }
+    assert!(winding, "illusion starts an ordinary attack");
+    let world = local.world();
+    assert!(world.shows(Team::Dire, illusion));
+    assert!(!world.shows(Team::Dire, hero));
+    let view = world.view(Team::Dire);
+    let phase = view
+        .unit(crate::game::wire_id(illusion))
+        .expect("visible illusion")
+        .action_phase
+        .expect("its own visible phase");
+    assert_eq!(phase.phase, UnitActionPhase::AttackWindup);
+    assert!(phase.elapsed < u32::MAX);
+}
+
+#[test]
+fn equal_visible_animation_progress_does_not_expose_an_illusions_missing_speed_buff() {
+    use crate::game::{Action, ActionPhase, ActionState};
+    let cfg = mid_config();
+    let (mut local, hero, at) = face_off(&cfg);
+    let illusion = stand_in_illusion(local.world_mut(), hero, at + Vec2::from_ints(150, 0));
+    let world = local.world_mut();
+    let target = world.seats[1].unit.expect("target");
+    world.stats.get_mut(hero).expect("hero stats").attack_speed += 100;
+    assert_ne!(
+        world.stats.get(hero).expect("hero").attack_speed,
+        world.stats.get(illusion).expect("illusion").attack_speed
+    );
+    for entity in [hero, illusion] {
+        world.action.insert(
+            entity,
+            Action {
+                state: ActionState::Attack {
+                    target,
+                    phase: ActionPhase::Before {
+                        progress: bota_core::BEATS_PER_TICK,
+                    },
+                },
+                attack_cooldown: 0,
+            },
+        );
+    }
+    let view = world.view(Team::Dire);
+    let a = view.unit(crate::game::wire_id(hero)).expect("hero");
+    let b = view.unit(crate::game::wire_id(illusion)).expect("illusion");
+    assert_eq!(
+        a.attack_speed, b.attack_speed,
+        "the sheet already conceals the buff difference"
+    );
+    assert_eq!(
+        a.action_phase, b.action_phase,
+        "equal visible pose progress must not recover the concealed buff difference"
+    );
+}

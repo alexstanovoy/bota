@@ -31,10 +31,7 @@ fn trusted_activity_profiles_reject_invalid_keys_durations_and_storage() {
     ] {
         assert!(bank.set_activity_profile("npc_bad", profile).is_err());
     }
-    let mut tiny = ModuleBank::new(Limits {
-        memory: 1024,
-        ..Limits::DEFAULT
-    });
+    let mut tiny = ModuleBank::new(Limits::DEFAULT.with_memory(1024));
     assert!(
         tiny.set_activity_profile("npc_test", profile).is_err(),
         "storage charged before insertion"

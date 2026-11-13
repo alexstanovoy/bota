@@ -235,6 +235,7 @@ dependencies = [
  "bota_proto",
  "bota_server",
  "getrandom 0.4.3",
+ "heatel",
  "luagee",
  "rustix",
 ]
@@ -755,6 +756,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "heatel"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1f5980e1b2900829425c2492ab1adef763725296bb5ed796c8e81148824b6b8"
+dependencies = [
+ "crc32fast",
+ "foldhash",
+ "hashbrown 0.16.1",
+ "lz4_flex",
+ "meshoptimizer-rs",
+ "png",
+ "ruzstd",
+ "serde_json",
+ "texture2ddecoder",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -850,6 +869,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
 
 [[package]]
+name = "libm"
+version = "0.2.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
+
+[[package]]
 name = "libsqlite3-sys"
 version = "0.38.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -879,10 +904,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a541e355862d7a7b4bf5cc534ef3a8a879bbf07b0c21efcb6c786fc0a6d3231c"
 
 [[package]]
+name = "lz4_flex"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ecbdfe44b1bd960b68170b417450a628c43f7cf56bb3c5317e61cb230ee7f226"
+
+[[package]]
 name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
+
+[[package]]
+name = "meshoptimizer-rs"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5129e1eb5c99c73171287687c91461acc5036a1fff02c07090cabf2f09e14573"
+dependencies = [
+ "libm",
+]
 
 [[package]]
 name = "minimal-lexical"
@@ -1011,6 +1051,12 @@ dependencies = [
  "getrandom 0.4.3",
  "phc",
 ]
+
+[[package]]
+name = "paste"
+version = "1.0.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "pem"
@@ -1552,6 +1598,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "texture2ddecoder"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "427ae8ec7f2f0fdd3146b77cfa44bea880caf066f7e55398a8467afe2645c832"
+dependencies = [
+ "paste",
 ]
 
 [[package]]

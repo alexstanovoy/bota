@@ -415,7 +415,7 @@ fn a_client_built_with_another_wire_or_other_rules_is_told_so_and_takes_no_seat(
         &97_u32.to_le_bytes(),
     ]);
     let addr = start_server(realtime(5));
-    for theirs in [!WIRE_FINGERPRINT, other_rules] {
+    for theirs in [!WIRE_FINGERPRINT, other_rules, 0x45cf_2104_c342_88aa] {
         let mut stranger = TestClient::connect(addr);
         stranger.send(&ClientMsg::Hello {
             role: Role::Bot,

@@ -62,22 +62,16 @@ fn read(context: &ApiContext, vm: &mut Vm, args: Args, cycle: bool) -> Result<us
     let Some(known) = known.filter(|known| known.visible) else {
         return vm.results(&[Value::Number(-1.0)]);
     };
-    let key = unit_names::key(&state, id)
-        .ok_or_else(|| vm.error("activity model identity is not known"))?;
-    let profile = state
-        .activity_profiles
-        .get(&key)
-        .copied()
-        .ok_or_else(|| vm.error("activity model timing metadata is not available"))?;
-    let observation = known
-        .activity
-        .sample(profile)
-        .ok_or_else(|| vm.error("activity is not observed"))?;
+    let Some(profile) =
+        unit_names::key(&state, id).and_then(|key| state.activity_profiles.get(&key).copied())
+    else {
+        return vm.results(&[Value::Number(-1.0)]);
+    };
+    let Some(observation) = known.activity.sample(profile) else {
+        return vm.results(&[Value::Number(-1.0)]);
+    };
     let value = if cycle {
-        let cycle = observation
-            .cycle
-            .ok_or_else(|| vm.error("animation cycle duration is not known"))?;
-        fixed_number(cycle)
+        observation.cycle.map_or(-1.0, fixed_number)
     } else {
         f64::from(reference_id(vm, observation.activity)?)
     };

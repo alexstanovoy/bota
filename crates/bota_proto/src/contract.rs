@@ -51,6 +51,16 @@
 //!   The target is dropped: the order does not take it up again when it
 //!   reappears, so the unit's own path gives nothing away.
 //!
+//! # Visible action phases
+//!
+//! A visible body's own action phase is told independently of its target:
+//! idle or moving, attack wind-up or backswing, cast point, channel or cast
+//! backswing. Only the existing raw animation progress is copied, with no
+//! duration, remaining time, target identity, target position, item identity or
+//! queued order. Idle bodies omit the record. Display time belongs to clients.
+//! A unit not seen by the viewer has no action-phase observation.
+//! Which hidden unit a visible attacker swings at does not change this fact.
+//!
 //! # What a side is told of what happens
 //!
 //! As in Dota, a side learns of what befalls a unit when it sees that unit,

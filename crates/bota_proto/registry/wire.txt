@@ -794,3 +794,12 @@ field PlayerView 19 buyback: Option<BuybackView>
 field BuybackView 0 cost: i32
 field BuybackView 1 ready_at: u32
 field BuybackView 2 respawn_penalty: u32
+field UnitView 49 action_phase: Option<ActionPhaseView>
+variant UnitActionPhase 0 IdleMove
+variant UnitActionPhase 1 AttackWindup
+variant UnitActionPhase 2 AttackBackswing
+variant UnitActionPhase 3 CastPoint
+variant UnitActionPhase 4 Channel
+variant UnitActionPhase 5 CastBackswing
+field ActionPhaseView 0 phase: UnitActionPhase
+field ActionPhaseView 1 elapsed: u32

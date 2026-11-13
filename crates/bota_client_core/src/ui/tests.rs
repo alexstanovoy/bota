@@ -131,6 +131,7 @@ fn a_unit() -> UnitView {
         forced: None,
         channel: None,
         creep_tier: None,
+        action_phase: None,
         seen_by: None,
         attack_range: Fixed::from_int(600),
         attack_time: 1700,
@@ -3261,4 +3262,22 @@ fn order_legality_slot_hints_require_proven_resources_and_accept_a_stored_rune()
     assert!(item_look(Some(&bottle), 0, 0).usable);
     bottle.rune = None;
     assert!(!item_look(Some(&bottle), 0, 0).usable);
+}
+
+#[test]
+fn action_phase_snapshots_reject_elapsed_time_for_idle() {
+    for (elapsed, accepted) in [(0, true), (1, false)] {
+        let mut app = a_started_app();
+        let mut body = a_unit();
+        body.action_phase = Some(bota_proto::ActionPhaseView {
+            phase: bota_proto::UnitActionPhase::IdleMove,
+            elapsed,
+        });
+        app.handle(snapshot_of(
+            1,
+            vec![body.clone()],
+            vec![a_seat(SlotId(0), Some(body.id))],
+        ));
+        assert_eq!(!app.lost, accepted);
+    }
 }

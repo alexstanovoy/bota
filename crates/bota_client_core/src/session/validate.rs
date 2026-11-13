@@ -349,6 +349,11 @@ fn units(roster: &[Pick], cheats: bool, view: &WorldView) -> Result<(), SessionE
         check_limit("UnitView.items", unit.items.len(), HERO_ITEM_SLOTS)?;
         check_limit("UnitView.effects", unit.effects.len(), MAX_EFFECTS_PER_UNIT)?;
         check_limit("UnitView.queue", unit.queue.len(), rules::MAX_QUEUED_ORDERS)?;
+        if unit.action_phase.is_some_and(|phase| {
+            phase.phase == bota_proto::UnitActionPhase::IdleMove && phase.elapsed != 0
+        }) {
+            return Err(SessionError::ActionPhaseOutOfRange(unit.id));
+        }
         if let Some(channel) = unit.channel
             && (bota_core::ability_def(channel.ability)
                 .is_none_or(|d| d.duration == 0 || channel.elapsed > d.duration)

@@ -369,3 +369,30 @@ fn mega_creeps_use_claimed_event_tag_twenty_eight() {
         assert_eq!(roundtrip(&event), event);
     }
 }
+
+#[test]
+fn action_phases_keep_their_wire_tags_and_counters_without_entity_handles() {
+    for (tag, phase) in [
+        UnitActionPhase::IdleMove,
+        UnitActionPhase::AttackWindup,
+        UnitActionPhase::AttackBackswing,
+        UnitActionPhase::CastPoint,
+        UnitActionPhase::Channel,
+        UnitActionPhase::CastBackswing,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let value = ActionPhaseView { phase, elapsed: 7 };
+        assert_eq!(
+            postcard::to_allocvec(&value).expect("encode"),
+            vec![tag as u8, 7]
+        );
+        assert_eq!(roundtrip(&value), value);
+    }
+    let maximum = ActionPhaseView {
+        phase: UnitActionPhase::Channel,
+        elapsed: u32::MAX - 1,
+    };
+    assert_eq!(roundtrip(&maximum), maximum);
+}

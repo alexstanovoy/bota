@@ -376,6 +376,31 @@ pub struct UnitView {
     pub channel: Option<ChannelView>,
     /// The tier of a lane creep at spawn; absent on other units. Flagbearers remain normal.
     pub creep_tier: Option<CreepTier>,
+    /// The body's visible action phase, independent of its target. Absent while
+    /// idle; units outside sight carry no observation either.
+    /// Appended on the wire; no target identity or location is included.
+    pub action_phase: Option<ActionPhaseView>,
+}
+
+/// A body's current action stage, with no information about whom it acts on.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum UnitActionPhase {
+    /// No timed action; the body can be idle or moving.
+    IdleMove,
+    AttackWindup,
+    AttackBackswing,
+    CastPoint,
+    Channel,
+    CastBackswing,
+}
+
+/// Raw elapsed animation beats, copied from the action state. Clients convert
+/// beats to display time using the public simulation timebase.
+/// No duration, deadline, target identity or target-derived value is carried.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ActionPhaseView {
+    pub phase: UnitActionPhase,
+    pub elapsed: u32,
 }
 
 /// A countdown a side runs by standing near a map objective.

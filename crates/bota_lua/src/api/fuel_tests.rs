@@ -7,6 +7,13 @@ mod support {
 }
 
 fn run(name: &str, fuel: u64) -> Result<Vec<Value>, luagee::Error> {
+    let unrelated = name == "IncomingUnrelated";
+    let populated = name == "IncomingPopulated";
+    let name = if unrelated || populated {
+        "GetIncomingTrackingProjectiles"
+    } else {
+        name
+    };
     let active = name == "GetCurrentActiveAbilityCasting";
     let name = if active {
         "GetCurrentActiveAbility"
@@ -53,6 +60,24 @@ fn run(name: &str, fuel: u64) -> Result<Vec<Value>, luagee::Error> {
         body.statuses.bits |= bota_proto::StatusFlags::CASTING;
     }
     let position = body.pos;
+    if unrelated || populated {
+        snapshot.projectiles = vec![bota_proto::ProjectileView {
+            id: bota_proto::EntityId {
+                idx: 99999,
+                generation: 1,
+            },
+            pos: position,
+            facing: bota_proto::Angle::default(),
+            team: Team::Dire,
+            ability: None,
+            source: None,
+            target: populated.then_some(own),
+            inflictor: None,
+            seen_by: None,
+            model: Some(bota_proto::ProjectileModel::Hero(HeroId::SHADOW_FIEND)),
+        }];
+    }
+
     let metadata = matches!(name, "IsTrained" | "IsTalent" | "IsUltimate");
     let skill = bota_core::ability_def(body.abilities[0].id)
         .expect("skill")
@@ -290,11 +315,20 @@ fn activity_queries_charge_their_explicit_work_and_received_unit_searches() {
     // Two retained bodies and two public roster rows: 8 work + 1 handle + 8 searches.
     assert_budget("GetAnimActivity", 17);
     assert_budget("GetAnimCycle", 17);
-
 }
 
 #[test]
 fn empty_incoming_projectile_query_charges_scan_and_result_table() {
     // 16 work + 1 handle + 8 body/roster scan + 4 result allocation.
     assert_budget("GetIncomingTrackingProjectiles", 29);
+}
+
+#[test]
+fn nonempty_projectile_scans_pay_for_every_received_record() {
+    assert_budget("IncomingUnrelated", 31);
+}
+#[test]
+fn populated_projectile_results_pay_their_exact_scan_row_and_allocation_budget() {
+    // Frozen luagee 0.1 allocation prices plus the documented host row charge.
+    assert_budget("IncomingPopulated", 111);
 }

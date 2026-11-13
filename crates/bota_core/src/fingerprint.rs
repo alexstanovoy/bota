@@ -55,10 +55,8 @@ impl AdmittedWire {
 /// records, snapshots and world fingerprints (`bota_server`'s `admitted` test). A wire without a
 /// corpus, or whose corpus this build plays otherwise, fails that test: a change that moves it
 /// changes the rules, and takes the entry out. See `DEVELOPMENT.md`, "Admitted wires".
-pub const ADMITTED_WIRES: &[AdmittedWire] = &[
-    // None. Buyback changed what a seat may order and what every snapshot holds (a seat's
-    // buyback in its row), so no build before it plays this one's rules or reads its views.
-];
+// The visible action-phase field changes the view layout. Earlier layouts are refused.
+pub const ADMITTED_WIRES: &[AdmittedWire] = &[];
 
 /// The earlier build of `wire`, when this build admits it.
 pub const fn admitted_wire(wire: u64) -> Option<AdmittedWire> {
@@ -139,5 +137,17 @@ mod tests {
             super::wire_fingerprint(1, 0x0d01),
             super::wire_fingerprint(1, 0x010d)
         );
+    }
+}
+
+#[cfg(test)]
+mod action_phase_wire_tests {
+    #[test]
+    fn the_action_phase_layout_refuses_preceding_wires() {
+        let retired = 0x45cf_2104_c342_88aa;
+        assert!(!super::admits_wire(retired));
+        assert!(super::admitted_wire(retired).is_none());
+        assert!(super::spoken_items(retired).is_none());
+        assert!(super::admits_wire(super::WIRE_FINGERPRINT));
     }
 }

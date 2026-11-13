@@ -17,6 +17,7 @@ fn profile() -> ActivityProfile {
         run_ms: Some(1000),
         flail_ms: Some(1000),
         stunned_ms: Some(1000),
+        channel_ms: [Some(1000); 6],
         alternate_attacks: false,
         ..ActivityProfile::default()
     }
@@ -286,6 +287,33 @@ fn observed_activity_tracks_real_idle_cast_and_attack_without_advancing_in_fog()
             }
         }
         assert!(advanced, "visible enemy windup cycle advances");
+        let mut backswing = false;
+        for _ in 0..60 {
+            step(&mut local, &mut sessions, &[&[], &[]]);
+            let body = sessions[observer]
+                .entity(actor_id)
+                .expect("visible attacker");
+            if body
+                .unit
+                .action_phase
+                .is_some_and(|phase| phase.phase == bota_proto::UnitActionPhase::AttackBackswing)
+            {
+                let sample = body.activity.sample(profile()).expect("backswing model");
+                assert_eq!(sample.phase, ActivityPhase::Recovery);
+                assert!(matches!(sample.activity, Activity::Attack { .. }));
+                assert!(
+                    sample
+                        .cycle
+                        .is_some_and(|cycle| cycle.raw >= 0 && cycle.raw < 65536)
+                );
+                backswing = true;
+                break;
+            }
+        }
+        assert!(
+            backswing,
+            "the authoritative attack backswing reaches the shared model"
+        );
         let mut fog = fog_reader(
             if observer == 0 {
                 Team::Radiant
@@ -363,4 +391,206 @@ fn observed_activity_tracks_real_idle_cast_and_attack_without_advancing_in_fog()
             frozen
         );
     }
+}
+
+#[test]
+fn real_cast_points_backswings_and_item_channels_publish_their_own_progress() {
+    use bota_proto::{ItemId, ItemSlot, UnitActionPhase as Kind};
+    for actor in [0, 1] {
+        let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+        {
+            let world = local.world_mut();
+            world.cheats = true;
+            world.cheat(SlotId(0), None, Cheat::StartGame, &mut Vec::new());
+            let hero = world.seats[actor].unit.expect("actor");
+            world.cheat(
+                SlotId(actor as u8),
+                Some(hero),
+                Cheat::Levels { count: 5 },
+                &mut Vec::new(),
+            );
+            world.cheat(
+                SlotId(actor as u8),
+                Some(hero),
+                Cheat::Refresh,
+                &mut Vec::new(),
+            );
+            world.cheat(
+                SlotId(0),
+                None,
+                Cheat::AllVision { on: true },
+                &mut Vec::new(),
+            );
+            world.cheat(
+                SlotId(actor as u8),
+                Some(hero),
+                Cheat::Teleport {
+                    at: Vec2::from_ints(9000, 9000),
+                },
+                &mut Vec::new(),
+            );
+        }
+        step(&mut local, &mut sessions, &[&[], &[]]);
+        let learn = sessions[actor]
+            .issue(IssuedOrder::hero(Order::Learn {
+                slot: AbilitySlot(5),
+            }))
+            .expect("learn");
+        let mut commands = [Vec::new(), Vec::new()];
+        commands[actor].push(learn);
+        step(&mut local, &mut sessions, &[&commands[0], &commands[1]]);
+        let cast = sessions[actor]
+            .issue(IssuedOrder::hero(Order::Cast {
+                slot: AbilitySlot(5),
+                target: Target::None,
+            }))
+            .expect("cast");
+        let mut commands = [Vec::new(), Vec::new()];
+        commands[actor].push(cast);
+        step(&mut local, &mut sessions, &[&commands[0], &commands[1]]);
+        let unit = sessions[actor].own_hero().expect("caster");
+        let point = unit.action_phase.expect("phase");
+        assert_eq!(point.phase, Kind::CastPoint);
+        assert!(unit.cast.is_some());
+        let mut recovered = false;
+        for _ in 0..90 {
+            step(&mut local, &mut sessions, &[&[], &[]]);
+            let phase = sessions[actor]
+                .own_hero()
+                .expect("caster")
+                .action_phase
+                .expect("phase");
+            if phase.phase == Kind::CastBackswing {
+                assert!(phase.elapsed < u32::MAX);
+                let observed = sessions[actor]
+                    .entity(sessions[actor].own_hero().expect("hero").id)
+                    .expect("track")
+                    .activity
+                    .sample(profile())
+                    .expect("activity");
+                assert!(
+                    matches!(
+                        observed.activity,
+                        Activity::Cast {
+                            ability: None,
+                            slot: None
+                        }
+                    ),
+                    "a recovery without an ability observation must not reuse the previous spell"
+                );
+                recovered = true;
+                break;
+            }
+        }
+        assert!(
+            recovered,
+            "cast recovery is projected separately from its cast point"
+        );
+        {
+            let world = local.world_mut();
+            let body = world.seats[actor].unit.expect("hero");
+
+            world.cheat(
+                SlotId(actor as u8),
+                Some(body),
+                Cheat::Item {
+                    item: ItemId::TOWN_PORTAL_SCROLL,
+                },
+                &mut Vec::new(),
+            );
+            world.cheat(
+                SlotId(actor as u8),
+                Some(body),
+                Cheat::Refresh,
+                &mut Vec::new(),
+            );
+        }
+        step(&mut local, &mut sessions, &[&[], &[]]);
+        assert!(
+            sessions[actor]
+                .own_hero()
+                .expect("hero")
+                .town_portal
+                .is_some(),
+            "scroll in dedicated slot"
+        );
+        let use_scroll = sessions[actor]
+            .issue(IssuedOrder::hero(Order::Use {
+                slot: ItemSlot::TOWN_PORTAL,
+                target: Target::None,
+            }))
+            .expect("use scroll");
+        let mut commands = [Vec::new(), Vec::new()];
+        commands[actor].push(use_scroll);
+        step(&mut local, &mut sessions, &[&commands[0], &commands[1]]);
+        let mut channel = None;
+        for _ in 0..30 {
+            let phase = sessions[actor]
+                .own_hero()
+                .expect("hero")
+                .action_phase
+                .expect("phase");
+            if phase.phase == Kind::Channel {
+                channel = Some(phase);
+                break;
+            }
+            step(&mut local, &mut sessions, &[&[], &[]]);
+        }
+        let channel = channel.expect("real item channel");
+        assert!(channel.elapsed < 1000);
+        let hero = sessions[actor].own_hero().expect("hero");
+        assert!(
+            hero.channel.is_none(),
+            "an item channel has no ability identity"
+        );
+        let activity = sessions[actor]
+            .entity(hero.id)
+            .expect("tracked caster")
+            .activity
+            .sample(profile())
+            .expect("channel activity");
+        assert!(
+            matches!(
+                activity.activity,
+                Activity::Channel {
+                    ability: None,
+                    slot: None
+                }
+            ),
+            "an item channel must discard the previous spell identity: {:?}",
+            activity.activity
+        );
+        query(&sessions[actor], actor, actor, 1520);
+        step(&mut local, &mut sessions, &[&[], &[]]);
+        let next = sessions[actor]
+            .own_hero()
+            .expect("hero")
+            .action_phase
+            .expect("phase");
+        assert_eq!(next.phase, Kind::Channel);
+        assert!(next.elapsed > channel.elapsed);
+    }
+}
+
+#[test]
+fn missing_activity_profiles_return_sentinels_without_discarding_orders() {
+    use bota_lua::{BotSeat, Keys, Limits, LuaTeam, ScriptKind};
+    let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let mut lua = LuaTeam::new(
+        Team::Radiant,
+        &[BotSeat {
+            slot: SlotId(0),
+            hero: bota_proto::HeroId::SHADOW_FIEND,
+        }],
+        Limits::DEFAULT,
+        Keys {
+            hash: [1, 2],
+            random: 3,
+        },
+    )
+    .expect("team");
+    lua.add_script(SlotId(0),ScriptKind::Takeover,"no_profiles",b"function Think() local b=GetBot(); assert(b:GetAnimActivity()==-1); assert(b:GetAnimCycle()==-1); b:Action_MoveToLocation(Vector(0,0,0)) end").expect("script");
+    let turn = lua.think(&sessions[0]).expect("turn");
+    assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+    assert_eq!(turn.bots[0].orders.len(), 1);
 }

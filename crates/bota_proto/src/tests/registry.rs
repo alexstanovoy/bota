@@ -188,6 +188,7 @@ fn trace_wire() -> Registry {
     trace::<Disassembly>(&mut tracer, &mut enums);
     trace::<LotusTier>(&mut tracer, &mut enums);
     trace::<ForcedPhase>(&mut tracer, &mut enums);
+    trace::<UnitActionPhase>(&mut tracer, &mut enums);
     let registry = tracer.registry().expect("every wire type traces whole");
     for (name, container) in &registry {
         if matches!(container, ContainerFormat::Enum(_)) {

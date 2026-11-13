@@ -671,6 +671,7 @@ impl World {
             }),
             forced: self.forced_view(entity),
             channel: self.channel_view(entity),
+            action_phase: self.action_phase_view(viewer, entity),
             creep_tier: self.creep_tier_shown(entity),
             true_sight_radius: stats.true_sight,
             statuses: StatusFlags {
@@ -786,6 +787,7 @@ fn wear_sheet(illusion: &mut UnitView, hero: UnitView) {
         cast: illusion.cast,
         forced: illusion.forced,
         channel: illusion.channel,
+        action_phase: illusion.action_phase,
         queue: core::mem::take(&mut illusion.queue),
         ..hero
     };
@@ -912,6 +914,40 @@ impl World {
         }
         assert!(effects.len() <= bota_core::rules::MAX_EFFECTS_PER_UNIT);
         effects
+    }
+
+    /// Only the visible body's present animation stage and raw progress.
+    fn action_phase_view(
+        &self,
+        viewer: Option<Team>,
+        entity: Entity,
+    ) -> Option<bota_proto::ActionPhaseView> {
+        use bota_proto::{ActionPhaseView, UnitActionPhase as Kind};
+        if !self.viewer_sees(viewer, entity) {
+            return None;
+        }
+        let (phase, progress) = match self.action.get(entity)?.state {
+            ActionState::Ready => return None,
+            ActionState::Attack {
+                phase: ActionPhase::Before { progress },
+                ..
+            } => (Kind::AttackWindup, progress),
+            ActionState::Attack {
+                phase: ActionPhase::During { progress } | ActionPhase::After { progress },
+                ..
+            } => (Kind::AttackBackswing, progress),
+            ActionState::CastAbility { phase, .. } | ActionState::UseItem { phase, .. } => {
+                match phase {
+                    ActionPhase::Before { progress } => (Kind::CastPoint, progress),
+                    ActionPhase::During { progress } => (Kind::Channel, progress),
+                    ActionPhase::After { progress } => (Kind::CastBackswing, progress),
+                }
+            }
+        };
+        Some(ActionPhaseView {
+            phase,
+            elapsed: progress,
+        })
     }
 
     fn channel_view(&self, entity: Entity) -> Option<bota_proto::ChannelView> {

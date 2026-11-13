@@ -179,6 +179,7 @@ pub enum SessionError {
     CastOutOfRange(EntityId),
     ForcedOutOfRange(EntityId),
     ChannelOutOfRange(EntityId),
+    ActionPhaseOutOfRange(EntityId),
     LairOutOfRange(u8),
     LairTimeOutOfRange(u8),
     LairAudience(u8),
@@ -509,6 +510,11 @@ impl SessionError {
             Self::LairAudience(index) => write!(
                 f,
                 "map lair {index} reports another team's private evidence"
+            ),
+            Self::ActionPhaseOutOfRange(id) => write!(
+                f,
+                "the action phase of {} has invalid tick counters",
+                Id(*id)
             ),
             Self::ChannelOutOfRange(id) => write!(
                 f,

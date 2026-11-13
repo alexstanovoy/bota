@@ -354,24 +354,32 @@ An authenticated foreign unit outside current sight returns `-1` / `-1.0`, even
 while its frozen last observation remains in memory. A forgotten non-roster unit
 errors with `unit is no longer known`; forged handles are rejected.
 
-The model observes movement, received attack wind-ups and launch facts, casts,
-channels, forced movement and stun. Attack and cast phases use public catalogue
+The model observes movement, received action-phase counters, casts, channels,
+forced movement and stun. Attack and cast phases use public catalogue
 and received timing; loop durations come from trusted local model metadata
-supplied before execution. Missing timing metadata raises an explicit error,
-rather than inventing a duration. Native loading reads that metadata only during
+supplied before execution. Missing timing metadata returns -1 for the affected getter and preserves the
+bot turn, rather than inventing a duration. Native loading reads that metadata only during
 setup from the user's install; no model data is distributed with the binding.
 The model is a deterministic client observation, not a claim of identical
 reference-engine sequence selection. In particular, rare-idle selection and
-attack alternation follow the client model. Pre-launch swings are currently
-received only when the target is also visible: a stationary attack at a hidden
-target cannot yet be distinguished from idle before launch.
+attack alternation follow the client model. Attack and cast phases read the
+received body's target-independent phase kind and raw elapsed animation beats, including
+a visible attacker winding up at a hidden target. No target identity or location
+is recovered. The clock freezes when the body leaves sight. Idle bodies omit the record. The server copies existing action progress only:
+it does not read target properties, item definitions, durations or deadlines.
+Clients derive display time from the public timebase. This observation does not
+change simulation timing or orders. Channels use local loop metadata; an unknown
+loop duration returns -1 instead of predicting a target-dependent end. Recovery
+has no current ability identity and never inherits an earlier spell.
 
 Each query charges eight fuel units plus handle validation and two units per
 received body and roster row searched, above `bare_native_call_fuel()`.
 The binding alone maps semantic activities to engine constants: idle, rare idle,
 run, attack, alternate attack, flail, disabled, six cast and six channel slots,
 death and spawn. Death/spawn/teleport transitions require observed signals; no
-private controller state is read.
+private controller state is read. Casts and channels without an observed ability
+slot use the model's generic first cast/channel activity; this does not create an
+ability handle or assert a reference-engine sequence selection.
 
 ### Incoming tracking projectiles
 
