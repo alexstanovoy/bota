@@ -137,3 +137,186 @@ fn a_native_launch_observed_at_lease_expiry_still_emits_its_completion_stop() {
         })]
     );
 }
+
+fn receive_promotion_tick(session: &mut ClientSession, view: &mut bota_proto::WorldView) {
+    view.tick = session.current().expect("previous view").tick + 1;
+    let tick = view.tick;
+    session
+        .ingest(
+            bota_proto::ServerMsg::Snapshot { view: view.clone() },
+            &mut (),
+        )
+        .expect("snapshot");
+    session
+        .ingest(
+            bota_proto::ServerMsg::Events {
+                tick,
+                events: Vec::new(),
+            },
+            &mut (),
+        )
+        .expect("events");
+}
+
+fn native_promotion_observation() -> (ClientSession, bota_proto::WorldView, bota_proto::EntityId) {
+    let (_, mut sessions, _) = support::durable_creep_encounter(HeroId::SHADOW_FIEND);
+    let mut session = sessions.remove(0);
+    let mut view = session.current().expect("view").clone();
+    let own = session.own_hero().expect("hero").id;
+    let target = view
+        .units
+        .iter()
+        .find(|unit| unit.team == Team::Radiant && unit.kind == bota_proto::UnitKind::CreepMelee)
+        .expect("friendly creep");
+    let (target, position) = (target.id, target.pos);
+    for unit in &mut view.units {
+        if unit.id != target && bota_core::kind_def(unit.kind).creep {
+            unit.hp = 100000;
+            unit.max_hp = 100000;
+        }
+    }
+    let hero = view
+        .units
+        .iter_mut()
+        .find(|unit| unit.id == own)
+        .expect("hero");
+    hero.pos = position;
+    hero.attack_damage = 1000;
+    hero.attack_damage_min = 1000;
+    hero.attack_damage_max = 1000;
+    hero.attack_point = 400;
+    let creep = view
+        .units
+        .iter_mut()
+        .find(|unit| unit.id == target)
+        .expect("target");
+    creep.hp = 50;
+    creep.max_hp = 200;
+    receive_promotion_tick(&mut session, &mut view);
+    (session, view, target)
+}
+
+#[test]
+fn an_explicit_script_once_promotes_a_native_request_beyond_its_original_lease() {
+    let (mut session, mut view, target) = native_promotion_observation();
+    let mut lua = fixture(Limits::DEFAULT.fuel_per_tick);
+    lua.add_script(
+        SlotId(0),
+        ScriptKind::Mode(1),
+        "once_promotion",
+        br#"
+        local evaluations, promoted = 0, false
+        local function promote()
+            if promoted then return end
+            local bot = GetBot()
+            for _, creep in ipairs(bot:GetNearbyCreeps(1600, false)) do
+                if creep:GetHealth() == 50 then
+                    bot:Action_AttackUnit(creep, true)
+                    promoted = true
+                    return
+                end
+            end
+            error('the native once target must remain available')
+        end
+        function GetDesire()
+            evaluations = evaluations + 1
+            if evaluations >= 2 then Think = promote end
+            return 1
+        end
+    "#,
+    )
+    .expect("partial mode");
+    let attack = IssuedOrder::hero(bota_proto::Order::Attack {
+        target: bota_proto::Target::Unit(target),
+    });
+    let first = lua.think(&session).expect("native turn");
+    assert!(first.failures.is_empty(), "{:?}", first.failures);
+    assert!(first.bots[0].orders.contains(&attack));
+    let native = lua.state.borrow().bots[0]
+        .pending_once
+        .expect("native last-hit request");
+    assert_eq!(native.target, target);
+    assert!(!native.launched);
+    let deadline = native
+        .expires_at
+        .expect("native request must actually have a lease");
+    assert_eq!(
+        deadline,
+        native.tick + 42,
+        "400ms windup plus the native grace period"
+    );
+    assert!(
+        deadline > native.tick + 9,
+        "promotion must happen before expiry"
+    );
+    let mut script_attacks = 0;
+    while session.current().expect("view").tick <= deadline {
+        receive_promotion_tick(&mut session, &mut view);
+        let tick = view.tick;
+        let turn = lua.think(&session).expect("next turn");
+        assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+        if turn.bots[0].orders.contains(&attack) {
+            script_attacks += 1;
+            assert_eq!(
+                tick,
+                native.tick + 9,
+                "the second arbitration installs the scripted Think"
+            );
+        }
+        let state = lua.state.borrow();
+        let pending = state.bots[0]
+            .pending_once
+            .expect("the promoted script request must survive the native deadline");
+        assert_eq!(
+            (pending.source, pending.target, pending.tick),
+            (native.source, target, native.tick)
+        );
+        assert!(!pending.launched, "no launch fact was supplied");
+    }
+    assert_eq!(
+        script_attacks, 1,
+        "one explicit script promotion, without resending"
+    );
+    assert!(view.tick > deadline);
+    assert_eq!(
+        lua.state.borrow().bots[0]
+            .pending_once
+            .expect("script once remains pending")
+            .expires_at,
+        None
+    );
+    view.tick += 1;
+    let tick = view.tick;
+    session
+        .ingest(bota_proto::ServerMsg::Snapshot { view }, &mut ())
+        .expect("launch snapshot");
+    session
+        .ingest(
+            bota_proto::ServerMsg::Events {
+                tick,
+                events: vec![bota_proto::EventKind::AttackLaunched {
+                    attacker: native.source,
+                    target: Some(target),
+                }],
+            },
+            &mut (),
+        )
+        .expect("delayed launch fact");
+    let completed = lua
+        .think(&session)
+        .expect("script once completion after native expiry");
+    assert!(completed.failures.is_empty(), "{:?}", completed.failures);
+    assert_eq!(
+        completed.bots[0]
+            .orders
+            .iter()
+            .filter(|order| order.order
+                == bota_proto::Order::Move {
+                    target: bota_proto::Target::None
+                })
+            .count(),
+        1,
+        "the promoted request still completes through an ordinary Stop"
+    );
+    assert!(lua.state.borrow().bots[0].pending_once.is_none());
+}
