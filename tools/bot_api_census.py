@@ -7,6 +7,7 @@ Unresolved detected imports are explicit; dynamic reachability is not proven. Pr
 does not claim signature, gameplay or native-behavior parity.
 """
 import argparse
+import hashlib
 from collections import defaultdict
 import json
 import os
@@ -25,6 +26,23 @@ MODES = "laning attack roam retreat secret_shop side_shop rune push_tower_top pu
 HOOKS = {"Think", "GetDesire", "OnStart", "OnEnd", "MinionThink", "ItemPurchaseThink", "AbilityUsageThink", "ItemUsageThink", "CourierUsageThink", "BuybackUsageThink", "AbilityLevelUpThink", "TeamThink", "UpdatePushLaneDesires", "UpdateDefendLaneDesires", "UpdateFarmLaneDesires", "UpdateRoamDesire", "UpdateRoshanDesire", "UpdateLaneAssignments", "GetBotNames"}
 LONG = re.compile(r"\[(=*)\[")
 IDENT = re.compile(r"[A-Za-z_][A-Za-z_0-9]*")
+
+
+class Source(str):
+    def __new__(cls, data):
+        value = super().__new__(cls, data.decode("utf-8-sig", errors="replace"))
+        value.digest = hashlib.sha256(data).digest()
+        return value
+
+
+def source_fingerprint(files):
+    digest = hashlib.sha256()
+    for name, source in sorted(files.items()):
+        key = name.encode("utf-8")
+        digest.update(len(key).to_bytes(4, "little"))
+        digest.update(key)
+        digest.update(source.digest)
+    return digest.hexdigest()
 
 
 def spend(budget, kind, amount):
@@ -160,7 +178,7 @@ def sources(root, budget=None):
                         data = read_pinned(pinned, name, min(MAX_SOURCE, budget["bytes"]))
                         budget["bytes"] -= len(data)
                         budget["modules"] -= 1
-                        result[name] = data.decode("utf-8-sig", errors="replace")
+                        result[name] = Source(data)
                 finally:
                     os.close(pinned)
     directory = os.open(Path(root).resolve(), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
@@ -348,6 +366,12 @@ def scan(root, catalogue, hero="nevermore", runtime=None, pack_selection=False, 
     reachable, unresolved = module_closure(files, entries, hero, analysis)
     calls, dialect = call_inventory(reachable)
     used, missing, unclassified = classify_calls(calls, catalogue, reference)
+    unavailable = {category: {} for category in ("global", "member")}
+    for category, names in used.items():
+        markers = catalogue.get("ruleset_unavailable_global", set()) if category == "global" else catalogue.get("ruleset_unavailable_unit", set()) | catalogue.get("ruleset_unavailable_ability", set())
+        for name, sites in names.items():
+            if name in markers and name not in missing[category]:
+                unavailable[category][name] = sites
     total = sum(map(len, used.values()))
     gaps = sum(map(len, missing.values()))
     language = dialect_inventory(dialect, catalogue)
@@ -356,6 +380,8 @@ def scan(root, catalogue, hero="nevermore", runtime=None, pack_selection=False, 
         "scope": "conservative named-import closure; shared branches included; dynamic dispatch is not proven",
         "selection": "pack" if pack_selection else "preselected",
         "files": sorted(reachable),
+        "source_fingerprint": source_fingerprint(files),
+        "fingerprint_scope": "all accepted pack and runtime Lua bytes, including modules outside the named-import closure",
         "entrypoints": sorted(entries),
         "imports_resolved": not unresolved,
         "unresolved_dependencies": unresolved,
@@ -363,6 +389,8 @@ def scan(root, catalogue, hero="nevermore", runtime=None, pack_selection=False, 
         "used_members": used["member"],
         "missing_globals": missing["global"],
         "missing_members": missing["member"],
+        "ruleset_unavailable": unavailable,
+        "ruleset_unavailable_api_names": sum(map(len, unavailable.values())),
         "unclassified_calls": unclassified,
         "api_coverage_percent": round(100 * (total - gaps) / total, 2) if total else None,
         "api_names": total,

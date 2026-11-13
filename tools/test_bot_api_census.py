@@ -12,6 +12,29 @@ spec.loader.exec_module(census)
 
 
 class Census(unittest.TestCase):
+    def test_source_fingerprint_uses_exact_bytes_and_includes_unreached_modules(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'bot_generic.lua').write_text('function Think() end')
+            extra = root / 'extra.lua'
+            extra.write_bytes(b'--\xff')
+            before = census.scan(root, {})['source_fingerprint']
+            extra.write_bytes(b'--\xfe')
+            after = census.scan(root, {})['source_fingerprint']
+            self.assertNotEqual(before, after)
+            self.assertEqual(after, census.scan(root, {})['source_fingerprint'])
+
+    def test_ruleset_unavailable_is_distinct_from_missing_bindings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'bot_generic.lua').write_text('GetBot():HasBuyback(); GetBot():MissingMethod()')
+            report = census.scan(root, {'global': {'GetBot'}, 'unit': {'HasBuyback'}, 'ruleset_unavailable_unit': {'HasBuyback', 'MissingMethod'}})
+            self.assertEqual(report['entrypoints'], ['bots/bot_generic.lua'])
+            self.assertEqual(report['ruleset_unavailable_api_names'], 1)
+            self.assertIn('HasBuyback', report['ruleset_unavailable']['member'])
+            self.assertNotIn('HasBuyback', report['missing_members'])
+            self.assertIn('MissingMethod', report['missing_members'])
+
     def test_block_local_helpers_do_not_hide_calls_after_their_scope(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
