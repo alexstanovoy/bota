@@ -281,3 +281,75 @@ fn a_player_env_issues_several_orders_per_seat_per_turn() {
             .is_err()
     );
 }
+
+/// Buying a Tango then selling the first bag slot leaves no Tango; in the other order the sale
+/// finds the slot empty and is refused, and the Tango stays.
+fn buy_then_sell() -> [Order; 2] {
+    [
+        Order::Buy {
+            item: ItemId::TANGO,
+        },
+        Order::Sell {
+            slot: bota_proto::ItemSlot(0),
+        },
+    ]
+}
+
+fn holds_tango(session: &ClientSession) -> bool {
+    session
+        .own_hero()
+        .expect("a hero")
+        .items
+        .iter()
+        .flatten()
+        .any(|item| item.id == ItemId::TANGO)
+}
+
+#[test]
+fn a_game_applies_a_seats_batch_in_the_order_given() {
+    for (orders, kept) in [
+        (buy_then_sell(), false),
+        (
+            {
+                let [buy, sell] = buy_then_sell();
+                [sell, buy]
+            },
+            true,
+        ),
+    ] {
+        let (mut game, opening) = Game::<Privileged>::new(&duel(13, 60)).expect("a game");
+        let mut client = session(0, &opening[0]);
+        let batch: Vec<OutgoingOrder> = orders
+            .into_iter()
+            .map(|order| client.issue(IssuedOrder::hero(order)).expect("issued"))
+            .collect();
+        let streams = game.step_batches(&[&batch, &[]]).expect("a tick");
+        for message in streams[0].clone() {
+            client.ingest(message, &mut ()).expect("folds");
+        }
+        assert_eq!(holds_tango(&client), kept, "{orders:?}");
+    }
+}
+
+#[test]
+fn a_player_env_gives_a_seats_orders_in_the_order_pushed() {
+    let config = PlayerEnvConfig {
+        decision_ticks: 1,
+        spec: Box::new(|_, _: &()| duel(13, 60)),
+    };
+    let mut env = PlayerEnv::<(), bota_gym::Player, SeatBatches<2>>::start(
+        &config,
+        GameId { slot: 0, game: 0 },
+        (),
+    )
+    .expect("a game");
+    let mut action = SeatBatches::<2>::new();
+    for order in buy_then_sell() {
+        action.push(0, IssuedOrder::hero(order)).expect("room");
+    }
+    assert!(env.step(&config, action).expect("a step").is_none());
+    assert!(
+        !holds_tango(env.seat(0)),
+        "the second order sold what the first bought"
+    );
+}

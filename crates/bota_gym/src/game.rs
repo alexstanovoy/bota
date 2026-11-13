@@ -58,8 +58,17 @@ use crate::spec::{MAX_SETUP_CHEATS, MAX_TICK_LIMIT, MatchSpec};
 pub const MAX_ADVANCE_TICKS: u32 = 1 << 16;
 /// Upper bound on the seats of a match.
 pub const MAX_SEATS: usize = bota_proto::limits::MAX_SEATS;
-/// Upper bound on one seat's orders for one tick: what the server lets take effect for one seat
-/// on one tick.
+/// Upper bound on one seat's batch for one tick in [`Game::step_batches`]: the server's limit
+/// on one seat's orders that take effect on one tick.
+///
+/// The gym applies it to the batch as given, which is deliberately stricter than the server:
+/// the server counts the orders still standing for the tick, after an unqueued order for a body
+/// replaced the earlier ones for that body, so a connection may send, say, 65 moves for its hero
+/// within one tick and see only the last take effect, unrefused, where the gym refuses the whole
+/// batch of 65. A client hits the difference only when one turn holds more than this many
+/// orders, most of them replaced on the same tick (or orders given on different ticks that a
+/// delay makes due together); for orders that all stand, the two agree, and within a batch of
+/// at most this many the server's own refusals (`QueueFull`) still come one by one.
 pub const MAX_ORDERS_PER_TICK: usize = bota_proto::limits::MAX_ORDERS_PER_TICK;
 
 pub(crate) mod sealed {
@@ -271,9 +280,8 @@ impl<A: Access> Game<A> {
     /// issue several orders in one turn (stop, learn, buy, then attack); each seat's batch is
     /// given in its order, exactly as a server takes a connection's orders arriving within one
     /// tick, and each refused order is answered by its own `OrderRejected` in the seat's
-    /// stream. A batch holds at most [`MAX_ORDERS_PER_TICK`] orders, what the server lets take
-    /// effect for one seat on one tick (beyond that it refuses each further order with
-    /// `QueueFull`); a longer batch is refused whole, before anything is given.
+    /// stream. A batch holds at most [`MAX_ORDERS_PER_TICK`] orders (see there how this is
+    /// stricter than the server); a longer batch is refused whole, before anything is given.
     pub fn step_batches(
         &mut self,
         orders: &[&[OutgoingOrder]],
