@@ -22,6 +22,15 @@ fn opening_heroes(
     spawn_modifiers: Vec<bota_server::game::SpawnModifier>,
     map_id: MapId,
 ) -> (LocalMatch, Vec<Vec<ServerMsg>>) {
+    opening_match(heroes, spawn_modifiers, map_id, false)
+}
+
+fn opening_match(
+    heroes: &[(Team, HeroId)],
+    spawn_modifiers: Vec<bota_server::game::SpawnModifier>,
+    map_id: MapId,
+    cheats: bool,
+) -> (LocalMatch, Vec<Vec<ServerMsg>>) {
     let map = map_of(map_id);
     let config = MatchConfig {
         match_id: 7,
@@ -39,7 +48,7 @@ fn opening_heroes(
         map: map_id,
         mode: TickMode::Lockstep,
         ack_timeout_ticks: 150,
-        cheats: false,
+        cheats,
         spawn_modifiers,
         immortal_structures: false,
         immortal_heroes: false,
@@ -295,6 +304,22 @@ pub fn local_on_map(teams: &[Team], map: MapId) -> (LocalMatch, Vec<ClientSessio
         .map(|&team| (team, HeroId::SHADOW_FIEND))
         .collect();
     let (local, opening) = opening_heroes(&heroes, Vec::new(), map);
+    (
+        local,
+        sessions(opening, &vec![HeroId::SHADOW_FIEND; teams.len()]),
+    )
+}
+
+#[allow(
+    dead_code,
+    reason = "shared fixture of scenarios reached by cheat orders"
+)]
+pub fn local_with_cheats(teams: &[Team], map: MapId) -> (LocalMatch, Vec<ClientSession>) {
+    let heroes: Vec<_> = teams
+        .iter()
+        .map(|&team| (team, HeroId::SHADOW_FIEND))
+        .collect();
+    let (local, opening) = opening_match(&heroes, Vec::new(), map, true);
     (
         local,
         sessions(opening, &vec![HeroId::SHADOW_FIEND; teams.len()]),

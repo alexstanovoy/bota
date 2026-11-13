@@ -584,6 +584,27 @@ pub struct PlayerView {
     /// This hero's item-instance backpack history, in bag then stash slot
     /// order. Own side only; absent for opponents. Appended on the wire.
     pub backpack: Option<BackpackView>,
+    /// The tick of the seat's latest buyback; none before its first. Public,
+    /// as Dota tells every player when anyone last bought back. Appended on
+    /// the wire.
+    pub bought_back_at: Option<u32>,
+    /// The seat's buyback. Own side only; absent for opponents, who are told
+    /// neither its cost nor its cooldown. Appended on the wire.
+    pub buyback: Option<BuybackView>,
+}
+
+/// A seat's buyback, as its own side is told it.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct BuybackView {
+    /// What a buyback costs the seat now: `bota_core::buyback_cost` of what
+    /// it is worth, which moves with its gold and its items.
+    pub cost: i32,
+    /// The tick the seat may buy back from: at or before the view's tick
+    /// when no cooldown runs, zero before any buyback.
+    pub ready_at: u32,
+    /// Ticks the hero's next death that is no reincarnation lasts longer for
+    /// a buyback since its last such death; zero when none is owed.
+    pub respawn_penalty: u32,
 }
 
 /// Compact own-side information for predicting first-entry backpack grace.

@@ -85,6 +85,13 @@ impl App {
                     );
                 }
             }
+            EventKind::BoughtBack { slot } => {
+                let own = self.my_slot == Some(slot);
+                self.cue(CueKind::BoughtBack { own }, 1.0, None);
+                if let Some(team) = self.player(slot).map(|player| player.team) {
+                    self.push_feed(FeedKind::BoughtBack { slot, team });
+                }
+            }
             EventKind::ItemPlaced { item, team, .. } => {
                 self.push_feed(FeedKind::ItemPlaced { item, team })
             }

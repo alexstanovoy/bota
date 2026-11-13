@@ -384,6 +384,8 @@ fn a_player() -> PlayerView {
         }),
         seen_at: Some(0),
         backpack: None,
+        bought_back_at: None,
+        buyback: None,
     }
 }
 
@@ -1924,6 +1926,52 @@ fn a_side_view_that_tells_the_other_sides_glyph_cooldown_is_refused() {
         }
         app.handle(msg);
         assert_eq!(app.lost, lost, "{ready_after:?}");
+    }
+}
+
+#[test]
+fn a_side_view_that_tells_the_other_sides_buyback_is_refused_and_when_it_bought_back_is_not() {
+    let told = |bought_back_at, buyback| {
+        let (mut app, _, _) = a_duel_app();
+        let mut msg = a_radiant_view_scoring_dire(None);
+        if let bota_proto::ServerMsg::Snapshot { view } = &mut msg {
+            view.players[1].bought_back_at = bought_back_at;
+            view.players[1].buyback = buyback;
+        }
+        app.handle(msg);
+        app.lost
+    };
+    assert!(!told(Some(7), None), "when a seat bought back is public");
+    assert!(
+        told(None, Some(bota_proto::BuybackView::default())),
+        "its cost and cooldown, even as zeroes, break the contract"
+    );
+}
+
+#[test]
+fn a_buyback_sounds_the_buyers_stinger_for_the_buyer_and_the_other_for_everyone_else() {
+    for (slot, own) in [(SlotId(0), true), (SlotId(1), false)] {
+        let (mut app, _, _) = a_duel_app();
+        assert_eq!(app.my_slot, Some(SlotId(0)));
+        app.handle(a_radiant_view_scoring_dire(None));
+        app.pump(0.0);
+        app.cues.clear();
+        app.feed.clear();
+        app.handle(bota_proto::ServerMsg::Events {
+            tick: 20,
+            events: vec![EventKind::BoughtBack { slot }],
+        });
+        app.pump(0.0);
+        let stingers: Vec<_> = app
+            .cues
+            .iter()
+            .filter(|cue| matches!(cue.kind, CueKind::BoughtBack { .. }))
+            .map(|cue| cue.kind)
+            .collect();
+        assert_eq!(stingers, [CueKind::BoughtBack { own }]);
+        let team = if own { Team::Radiant } else { Team::Dire };
+        let lines: Vec<_> = app.feed.iter().map(|line| line.kind.clone()).collect();
+        assert_eq!(lines, [FeedKind::BoughtBack { slot, team }]);
     }
 }
 

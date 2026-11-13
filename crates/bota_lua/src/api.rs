@@ -13,6 +13,7 @@ use crate::{
 mod fuel_tests;
 
 pub(crate) mod abilities;
+mod buyback;
 pub(crate) mod context;
 mod distances;
 mod estimates;
@@ -160,6 +161,7 @@ pub(crate) fn install(lua: &mut Lua, state: Shared, vectors: Vectors) -> Result<
     shop::install(lua, &context)?;
     item_queries::install(lua, &context)?;
     glyph::install(lua, &context)?;
+    buyback::install(lua, &context)?;
     install_unit_reads(lua, methods, state.clone())?;
     install_bot_state(lua, methods, state.clone())?;
     install_actions(lua, methods, state, vectors)?;

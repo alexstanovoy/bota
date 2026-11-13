@@ -264,3 +264,15 @@ fn idle_active_ability_query_charges_its_explicit_minimum() {
 fn active_ability_query_charges_its_six_slot_scan_and_cached_handle() {
     assert_budget("GetCurrentActiveAbilityCasting", 17);
 }
+
+#[test]
+fn buyback_calls_pay_a_fixed_minimum_for_two_received_seats() {
+    for name in [
+        "GetBuybackCooldown",
+        "GetBuybackCost",
+        "HasBuyback",
+        "ActionImmediate_Buyback",
+    ] {
+        assert_budget(name, 11);
+    }
+}

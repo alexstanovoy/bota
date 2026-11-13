@@ -578,6 +578,17 @@ pub const RESPAWN_SECONDS: [u32; 25] = [
 /// (Dota: "dying to neutral creeps sets respawn time to a minimum of 26s",
 /// Liquipedia "Death").
 pub const NEUTRAL_KILL_RESPAWN_SECONDS: u32 = 26;
+/// What every buyback costs before the seat's net worth counts (Dota 7.41f:
+/// `200 + net worth / 13`, since 7.29).
+pub const BUYBACK_BASE_COST: i32 = 200;
+/// The share of a seat's net worth a buyback costs on top: one in thirteen.
+pub const BUYBACK_NET_WORTH_SHARE: i32 = 13;
+/// Ticks a seat waits after a buyback before it may buy back again: 480
+/// seconds (Dota's `DOTA_BUYBACK_COOLDOWN_MINUTES`, 8).
+pub const BUYBACK_COOLDOWN_TICKS: u32 = 480 * TICKS_PER_SECOND;
+/// Ticks a hero's next death lasts longer after a buyback: 25 seconds, flat
+/// (Dota 7.19b; `DOTA_BUYBACK_RESPAWN_TIME_PENALTY`).
+pub const BUYBACK_RESPAWN_PENALTY_TICKS: u32 = 25 * TICKS_PER_SECOND;
 
 // Creep stats: melee, ranged, siege.
 

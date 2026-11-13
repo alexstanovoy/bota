@@ -272,6 +272,12 @@ pub fn player_view(slot: u8) -> PlayerView {
         }),
         seen_at: Some(1500),
         backpack: None,
+        bought_back_at: Some(900),
+        buyback: Some(BuybackView {
+            cost: 246,
+            ready_at: 15_300,
+            respawn_penalty: 750,
+        }),
     }
 }
 
@@ -511,6 +517,7 @@ pub fn all_orders() -> Vec<Order> {
             toward: Vec2::from_ints(-40, 2500),
         },
         Order::Glyph,
+        Order::Buyback,
     ];
     orders.extend(item_orders());
     orders.extend(cheat_orders());
@@ -562,6 +569,8 @@ fn cheat_orders() -> Vec<Order> {
         Cheat::ClearModifiers {
             target: Target::None,
         },
+        Cheat::Suicide,
+        Cheat::ResetBuyback,
     ]
     .into_iter()
     .map(|cheat| Order::Cheat { cheat })
@@ -855,6 +864,14 @@ pub fn all_server_msgs() -> Vec<ServerMsg> {
         ServerMsg::OrderRejected {
             seq: 55,
             reason: RejectReason::NothingToBuy,
+        },
+        ServerMsg::OrderRejected {
+            seq: 56,
+            reason: RejectReason::HeroAlive,
+        },
+        ServerMsg::OrderRejected {
+            seq: 57,
+            reason: RejectReason::NotAHero,
         },
         ServerMsg::MatchOver {
             winner: Team::Radiant,

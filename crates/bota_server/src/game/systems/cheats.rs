@@ -124,6 +124,13 @@ impl World {
                     self.spawn_wave_at(team, at);
                 }
             }
+            Cheat::Suicide => {
+                // Dota kills the hero with itself as the attacker.
+                if let Some(hero) = self.seats[seat].unit.filter(|_| !self.seats[seat].dead()) {
+                    self.bury(vec![(hero, Some(hero))], events);
+                }
+            }
+            Cheat::ResetBuyback => self.seats[seat].buyback.ready_at = self.tick,
         }
     }
 
@@ -187,7 +194,9 @@ impl World {
             | Cheat::AllVision { .. }
             | Cheat::Invulnerable { .. }
             | Cheat::ResetHero
-            | Cheat::TimeOfDay { .. } => {}
+            | Cheat::TimeOfDay { .. }
+            | Cheat::Suicide
+            | Cheat::ResetBuyback => {}
         }
         Ok(())
     }
@@ -216,7 +225,8 @@ impl World {
 
     /// Dota's `-refresh`: every hero and illusion of both sides with full
     /// pools and nothing on cooldown, every seat's item waits gone, and both
-    /// Glyphs ready. Buyback stays as it is.
+    /// Glyphs ready. Buyback stays as it is: Dota's refresh calls none of
+    /// its setters.
     fn refresh_all(&mut self) {
         let heroes: Vec<Entity> = self
             .entities
@@ -274,8 +284,10 @@ impl World {
     }
 
     /// Dota's `-respawn`: a fallen hero stands up at its fountain now; a
-    /// standing one is moved there with its pools full.
+    /// standing one is moved there with its pools full. What a buyback left
+    /// its next death owing is owed no more: Dota's respawn clears it.
     fn respawn_now(&mut self, seat: usize) {
+        self.seats[seat].buyback.respawn_penalty = 0;
         match self.seats[seat].unit {
             _ if self.seats[seat].dead() => self.respawn(seat),
             None => {}

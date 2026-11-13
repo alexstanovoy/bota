@@ -245,6 +245,21 @@ reservations; subsequent snapshots replace projections with received facts. The
 legacy `Action_PurchaseItem` and `Action_LevelAbility` names share the immediate
 callbacks. Orders remain ordinary scheduler outbox entries.
 
+`GetBuybackCost()`, `GetBuybackCooldown()` and `HasBuyback()` read what the bot's own
+side is told of a teammate hero's buyback, as Dota's getters do. The cost is
+`200 + net worth / 13`. `GetBuybackCooldown()` is the game time (on `GameTime()`'s
+clock) buyback is available from, not the seconds left: 0 before any buyback, a past
+time once the cooldown is over. `HasBuyback()` is the engine's own test, a cooldown
+strictly past and gold strictly above the cost (the gold left after this turn's
+purchases); it asks neither whether the hero lies dead nor whether a buyback given
+exactly the cost would pass, which it would. For any unit that is no teammate hero
+(another side's buyback is never received) the three answer -1, -1 and false; what
+Dota returns besides its logged warning for the last two was not established.
+`ActionImmediate_Buyback()` is for the active bot alone: it orders a buyback when the
+hero lies dead and is not rising by a reincarnation, the cooldown is over and the gold
+left covers the cost, once a turn, and otherwise does nothing, as the engine's buyback
+checks silently.
+
 Once attacks complete from `AttackLaunched` facts whose envelope tick is later
 than the request, retained in the client's bounded entity memory rather than its
 recent-event ring. The completion pass queues Stop before the next script hooks.

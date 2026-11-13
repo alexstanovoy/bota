@@ -66,7 +66,8 @@ impl EventKind {
             | EventKind::Teleported { .. }
             | EventKind::TreeGrew { .. }
             | EventKind::RuneSpawned { .. }
-            | EventKind::MegaCreeps { .. } => {}
+            | EventKind::MegaCreeps { .. }
+            | EventKind::BoughtBack { .. } => {}
         }
     }
 }

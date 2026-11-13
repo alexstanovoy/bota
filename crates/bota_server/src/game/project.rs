@@ -206,6 +206,8 @@ impl World {
             }),
             seen_at: shown.at,
             backpack: own.then(|| self.backpack_view(seat)).flatten(),
+            bought_back_at: seat.buyback.last,
+            buyback: own.then(|| self.buyback_view(seat)),
         }
     }
 

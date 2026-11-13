@@ -379,7 +379,10 @@ impl World {
                     }
                 }
                 self.seats[index].deaths += 1;
-                self.lay_hero_down(index, respawn_wait(level, by_neutrals));
+                // This death pays what a buyback left owed; a reincarnation
+                // is no death and never comes here.
+                let penalty = std::mem::take(&mut self.seats[index].buyback.respawn_penalty);
+                self.lay_hero_down(index, respawn_wait(level, penalty, by_neutrals));
                 fallen_hero_team = Some(self.seats[index].team);
             }
             if self.seats[index].courier == Some(entity) {

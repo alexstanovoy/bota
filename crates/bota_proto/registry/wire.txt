@@ -782,3 +782,15 @@ variant ReplayRecord 5 SeatName {}
 field ReplayRecord::SeatName 0 slot: SlotId
 field ReplayRecord::SeatName 1 name: String
 field ReplayRecord::SeatName 2 bot: bool
+variant Order 18 Buyback
+variant RejectReason 33 HeroAlive
+variant RejectReason 34 NotAHero
+variant EventKind 29 BoughtBack {}
+field EventKind::BoughtBack 0 slot: SlotId
+variant Cheat 22 Suicide
+variant Cheat 23 ResetBuyback
+field PlayerView 18 bought_back_at: Option<u32>
+field PlayerView 19 buyback: Option<BuybackView>
+field BuybackView 0 cost: i32
+field BuybackView 1 ready_at: u32
+field BuybackView 2 respawn_penalty: u32

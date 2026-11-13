@@ -136,6 +136,10 @@ impl World {
             self.use_glyph(cmd.slot);
             return;
         }
+        if cmd.order == Order::Buyback {
+            self.buy_back(cmd.slot, cmd.unit, events);
+            return;
+        }
         if self.for_dead_hero(cmd.slot, cmd.unit) {
             self.take_order_while_down(cmd.slot, cmd.order, events);
             return;
@@ -456,6 +460,7 @@ impl World {
             | Order::LearnTalent { .. }
             | Order::LearnAttributeBonus
             | Order::Glyph
+            | Order::Buyback
             | Order::Swap { .. }
             | Order::Sell { .. }
             | Order::SwitchWard { .. }
@@ -545,6 +550,9 @@ impl World {
     ) -> Result<(), RejectReason> {
         if *order == Order::Glyph {
             return self.check_glyph(slot);
+        }
+        if *order == Order::Buyback {
+            return self.check_buyback(slot, named);
         }
         let Some(seat) = self.seat(slot) else {
             return Err(RejectReason::HeroDead);
@@ -641,7 +649,7 @@ impl World {
         named: Option<bota_proto::EntityId>,
         order: &Order,
     ) -> Option<bota_proto::EntityId> {
-        if *order == Order::Glyph {
+        if matches!(order, Order::Glyph | Order::Buyback) {
             return None;
         }
         self.driven_by(slot, named).map(wire_id)

@@ -248,6 +248,15 @@ fn steps() -> Vec<Step> {
             holds: |v| creeps(v) > 0,
         },
         Step {
+            asked: Typed("-suicide"),
+            holds: |v| me(v).respawn_left > 0 && me(v).deaths == 1,
+        },
+        Step {
+            // The cooldown's end is told as the tick of the reset, where it told none before.
+            asked: Typed("-resetbuyback"),
+            holds: |v| me(v).buyback.is_some_and(|buyback| buyback.ready_at > 0),
+        },
+        Step {
             asked: Button(Cheat::ResetHero),
             holds: |v| me(v).level == 1 && me(v).gold == Some(bota_core::rules::STARTING_GOLD),
         },
@@ -257,7 +266,14 @@ fn steps() -> Vec<Step> {
 /// The cheat a step asks for.
 fn cheat_of(asked: &Asked) -> Cheat {
     match asked {
-        Asked::Typed(line) => parse_command(line, &Pointing(spot())).expect("a command"),
+        Asked::Typed(line) => {
+            // The chat form (a dash first) must be one the chat takes for a command.
+            assert!(
+                !line.starts_with('-') || bota_client_core::is_chat_command(line),
+                "{line} is a command when typed into the chat"
+            );
+            parse_command(line, &Pointing(spot())).expect("a command")
+        }
         Asked::Button(cheat) => *cheat,
     }
 }

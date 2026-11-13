@@ -26,6 +26,8 @@ pub(crate) struct Player {
     pub kit: Option<Kit>,
     pub stash: Option<Vec<Option<ItemView>>>,
     pub respawn_left: u32,
+    /// The seat's buyback, as its own side is told it.
+    pub buyback: Option<bota_proto::BuybackView>,
 }
 
 /// Scalar statistics received for a body; no inventory, effects or new hidden state.
@@ -240,6 +242,7 @@ impl Snapshot {
                         kit: own.then(|| player.kit.clone()).flatten(),
                         stash: own.then(|| player.stash.clone()).flatten(),
                         respawn_left: player.respawn_left,
+                        buyback: own.then_some(player.buyback).flatten(),
                     }
                 })
                 .collect(),

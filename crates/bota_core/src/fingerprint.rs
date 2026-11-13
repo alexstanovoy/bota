@@ -56,15 +56,8 @@ impl AdmittedWire {
 /// corpus, or whose corpus this build plays otherwise, fails that test: a change that moves it
 /// changes the rules, and takes the entry out. See `DEVELOPMENT.md`, "Admitted wires".
 pub const ADMITTED_WIRES: &[AdmittedWire] = &[
-    // Quelling Blades stopped stacking there (no build before plays its rules); item batch 2,
-    // the attack procs, was made on it.
-    AdmittedWire {
-        wire: 0x45cf_2104_c342_88aa,
-        catalogue: CataloguePrefix {
-            items: 116,
-            digest: 6_682_987_802_388_131_638,
-        },
-    },
+    // None. Buyback changed what a seat may order and what every snapshot holds (a seat's
+    // buyback in its row), so no build before it plays this one's rules or reads its views.
 ];
 
 /// The earlier build of `wire`, when this build admits it.

@@ -3,7 +3,7 @@
 use bota_proto::{HeroId, ItemId, SlotId, Team, Vec2};
 
 use crate::engine::state_hash;
-use crate::game::{Entity, Inventory};
+use crate::game::{Buyback, Entity, Inventory};
 
 /// A Town Portal Scroll being read by a seat's hero, and the sight it
 /// leaves where it lands for a moment after.
@@ -127,6 +127,8 @@ pub struct Seat {
     pub invulnerable: bool,
     /// Recent enemy participation, one entry per seat: who assisted this life.
     pub hurt_by: Vec<HeroContribution>,
+    /// Its buyback: the cooldown, and what its hero's next death owes.
+    pub buyback: Buyback,
 }
 
 /// Damage within twenty seconds can credit a creep or tower finish to its sole
@@ -211,6 +213,7 @@ impl Seat {
             created: false,
             invulnerable: false,
             hurt_by: Vec::new(),
+            buyback: Buyback::default(),
         }
     }
 
@@ -259,5 +262,6 @@ state_hash!(Seat {
     sighted,
     created,
     invulnerable,
-    hurt_by
+    hurt_by,
+    buyback
 });

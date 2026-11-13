@@ -1525,3 +1525,90 @@ fn order_legality_take_loot_behind_a_cast_is_unknown_when_another_carrier_can_ta
         "admitted now, rejected on take-up after the loot disappears"
     );
 }
+
+/// The client's verdict on a buyback and the server's answer to the same order, which must be
+/// the same thing: legal and carried out, or refused for the reason the client names.
+fn buyback_verdict(mut local: LocalMatch, unit: Option<EntityId>) -> Verdict {
+    let view = snapshot(&mut local);
+    let player = view.player(SlotId(0)).expect("player");
+    let verdict = OrderContext {
+        view: &view,
+        player,
+        map: local.world().map,
+        catalogue: Catalogue::FULL,
+        cheats: true,
+    }
+    .check(unit, Order::Buyback, false);
+    let given = OutgoingOrder {
+        seq: 1000,
+        unit,
+        order: Order::Buyback,
+        queue: false,
+        seen: local.tick(),
+    };
+    let stream = local.step(&[&[given], &[]]).expect("step").remove(0);
+    let refusal = stream.iter().find_map(|msg| match msg {
+        ServerMsg::OrderRejected { seq: 1000, reason } => Some(*reason),
+        _ => None,
+    });
+    let served = refusal.map_or(Verdict::Legal, Verdict::Illegal);
+    assert_eq!(verdict, served, "the client's verdict against the server's");
+    verdict
+}
+
+#[test]
+fn order_legality_buyback_is_proven_from_the_seats_own_row_in_every_state() {
+    use bota_proto::RejectReason;
+    let (mut local, _) = base_on(HeroId::SHADOW_FIEND, bota_core::DEMO_ID);
+    let mut seq = 5000;
+    let mut cheat = |local: &mut LocalMatch, cheat: Cheat| {
+        seq += 1;
+        let stream = send(local, Order::Cheat { cheat }, seq);
+        assert!(
+            !stream
+                .iter()
+                .any(|msg| matches!(msg, ServerMsg::OrderRejected { .. })),
+            "{cheat:?}"
+        );
+    };
+    cheat(&mut local, Cheat::Gold { amount: 5_000 });
+    assert_eq!(
+        buyback_verdict(local.clone(), None),
+        Verdict::Illegal(RejectReason::HeroAlive)
+    );
+    let mut rising = local.clone();
+    cheat(
+        &mut rising,
+        Cheat::Item {
+            item: ItemId::AEGIS,
+        },
+    );
+    cheat(&mut rising, Cheat::Suicide);
+    assert_eq!(
+        buyback_verdict(rising, None),
+        Verdict::Illegal(RejectReason::HeroAlive),
+        "rising by the Aegis"
+    );
+    let courier = {
+        let entity = local.world().seats[0].courier.expect("a courier");
+        local.handle_of(0, entity).expect("told of it")
+    };
+    cheat(&mut local, Cheat::Suicide);
+    assert_eq!(buyback_verdict(local.clone(), None), Verdict::Legal);
+    assert_eq!(
+        buyback_verdict(local.clone(), Some(courier)),
+        Verdict::Illegal(RejectReason::NotAHero)
+    );
+    let mut poor = local.clone();
+    cheat(&mut poor, Cheat::Gold { amount: -1_000_000 });
+    assert_eq!(
+        buyback_verdict(poor, None),
+        Verdict::Illegal(RejectReason::NotEnoughGold)
+    );
+    send(&mut local, Order::Buyback, 9000);
+    cheat(&mut local, Cheat::Suicide);
+    assert_eq!(
+        buyback_verdict(local, None),
+        Verdict::Illegal(RejectReason::OnCooldown)
+    );
+}

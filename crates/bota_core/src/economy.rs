@@ -15,18 +15,19 @@ pub fn deniable(kind: UnitKind, hp: Fixed, max_hp: Fixed) -> bool {
     i64::from(hp.raw) * 100 < i64::from(max_hp.raw) * i64::from(share)
 }
 
-/// How long a seat waits before its hero comes back, by its level and by
-/// whether neutral creeps brought it down: never less than
-/// [`rules::NEUTRAL_KILL_RESPAWN_SECONDS`] then, as in Dota.
+/// How long a seat waits before its hero comes back: its level's wait, then
+/// the `penalty` ticks a buyback left owed on this death, and never less
+/// than [`rules::NEUTRAL_KILL_RESPAWN_SECONDS`] when neutral creeps brought
+/// it down, in that order, as in Dota.
 #[inline]
-pub fn respawn_wait(level: u8, by_neutrals: bool) -> u32 {
+pub fn respawn_wait(level: u8, penalty: u32, by_neutrals: bool) -> u32 {
     let at = usize::from(level.max(1) - 1).min(rules::RESPAWN_SECONDS.len() - 1);
-    let seconds = if by_neutrals {
-        rules::RESPAWN_SECONDS[at].max(rules::NEUTRAL_KILL_RESPAWN_SECONDS)
+    let wait = rules::RESPAWN_SECONDS[at] * rules::TICKS_PER_SECOND + penalty;
+    if by_neutrals {
+        wait.max(rules::NEUTRAL_KILL_RESPAWN_SECONDS * rules::TICKS_PER_SECOND)
     } else {
-        rules::RESPAWN_SECONDS[at]
-    };
-    seconds * rules::TICKS_PER_SECOND
+        wait
+    }
 }
 
 /// Passive gold paid in all by `ticks` past the horn: each stretch of

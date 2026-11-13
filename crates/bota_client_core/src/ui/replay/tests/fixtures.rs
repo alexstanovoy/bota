@@ -65,6 +65,8 @@ pub fn snapshot(tick: u32) -> ReplayRecord {
                 }),
                 seen_at: Some(tick),
                 backpack: None,
+                bought_back_at: None,
+                buyback: None,
             }],
             projectiles: Vec::new(),
             loot: Vec::new(),

@@ -24,13 +24,14 @@ lockstep, no reproducible matches, no fair view of the map. bota gives you that:
 - **The map's life:** lane creeps and waves, every neutral camp with its abilities, towers and buildings, day and
   night, couriers, the Glyph, town portal scrolls, wards, runes and the Bottle, Watchers, Outposts, Shrines of Wisdom,
   Lotus Pools and the Twin Gates.
+- **Buyback**, at Dota's cost, cooldown and respawn penalty.
 - **The shop:** consumables, basic components, boots, the early builds and a few later items, with Dota's stock
   limits.
 - **Replays, spectators and chat**, with keyed seats and safe network defaults (loopback only unless you ask, TLS for
   anything else).
 
 What is missing: every other hero; Roshan and the Tormentors; Aghanim's Scepter and Shard, neutral items and most of
-the late-game shop; buyback; Illusion Runes (illusions are not drawn yet, so the rune is out of the rotation). Some
+the late-game shop; Illusion Runes (illusions are not drawn yet, so the rune is out of the rotation). Some
 neutral abilities that only a player-controlled neutral would use are shown but never cast.
 
 To see and play a match you need a client: **dbota**, a separate project, draws bota with the art of your own Dota 2

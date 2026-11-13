@@ -344,6 +344,12 @@ pub enum EventKind {
     },
     /// All of the opposing side's barracks fell; this side now spawns mega creeps.
     MegaCreeps { team: Team },
+    /// A seat bought its dead hero back (Dota's `dota_buyback`). Told to
+    /// everyone, as Dota's line and stinger are; what it cost is not told.
+    BoughtBack {
+        /// The seat that bought back.
+        slot: SlotId,
+    },
 }
 
 /// The seats a [`EventKind::Died`] names as assisting, in seat order.

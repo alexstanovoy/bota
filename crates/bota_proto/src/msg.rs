@@ -272,6 +272,13 @@ pub enum RejectReason {
     ItemRestricted,
     /// Every component of the requested recipe is already owned.
     NothingToBuy,
+    /// A [`Buyback`](crate::Order::Buyback) while the seat's hero stands, or
+    /// while it is rising by a reincarnation: Dota's
+    /// `CANT_BUYBACK_UNIT_NOT_DEAD`.
+    HeroAlive,
+    /// A [`Buyback`](crate::Order::Buyback) naming a unit of the seat that is
+    /// not its hero: Dota's `CANT_BUYBACK_UNIT_NOT_A_HERO`.
+    NotAHero,
 }
 
 /// Final numbers for one seat.

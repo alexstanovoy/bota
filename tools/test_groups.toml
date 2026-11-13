@@ -586,6 +586,9 @@ about = "a match as a whole: its flow, the maps, gold and bounties, economic eve
 paths = [
     "crates/bota_server/src/game/systems/cheats.rs",
     "crates/bota_server/src/game/config/economy_event.rs",
+    "crates/bota_server/src/game/systems/buyback.rs",
+    "crates/bota_server/src/game/components/buyback.rs",
+    "crates/bota_server/src/game/tests/buyback.rs",
     "crates/bota_server/examples/**",
     "crates/bota_server/src/game/tests/match_flow.rs",
     "crates/bota_server/src/game/tests/client.rs",
@@ -599,6 +602,7 @@ paths = [
 ]
 tests = [{ crate = "bota_server", target = "lib", filters = [
     "game::tests::match_flow::",
+    "game::tests::buyback::",
     "game::tests::client::",
     "game::tests::local::",
     "local::tests::",

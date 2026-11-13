@@ -36,8 +36,9 @@ A hero file that only supplies MinionThink keeps hero modes and auxiliary defaul
 an explicit minion hook replaces native courier management, including an empty hook.
 Mode sources are loaded only when needed and retain the active turn's fuel budget.
 Policy thresholds and the equipment build are documented reconstruction assumptions;
-this does not claim the closed engine's exact policy. Buyback and queued-action
-completion are separate capabilities. Native work enters through hidden pinned
+this does not claim the closed engine's exact policy. The native fallback never buys
+back (scripts may, through the buyback calls); queued-action completion is a separate
+capability. Native work enters through hidden pinned
 callbacks under the same tick fuel.
 
 Defaults are 500,000 fuel per call, 2,000,000 per team tick and 256 MiB memory.

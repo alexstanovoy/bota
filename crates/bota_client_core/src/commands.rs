@@ -107,7 +107,7 @@ pub fn is_chat_command(line: &str) -> bool {
 }
 
 /// The chat commands, as Dota names them.
-pub const CHAT_COMMANDS: [&str; 22] = [
+pub const CHAT_COMMANDS: [&str; 24] = [
     "gold",
     "lvlup",
     "levelbots",
@@ -115,6 +115,8 @@ pub const CHAT_COMMANDS: [&str; 22] = [
     "unwtf",
     "refresh",
     "respawn",
+    "suicide",
+    "resetbuyback",
     "item",
     "createhero",
     "spawncreeps",
@@ -174,6 +176,8 @@ pub fn parse_command(line: &str, cx: &dyn CommandContext) -> Result<Cheat, Comma
         "dota_ability_debug" => Cheat::Wtf { on: on(arg)? },
         "refresh" | "hero_refresh" => Cheat::Refresh,
         "respawn" | "hero_respawn" => Cheat::Respawn,
+        "suicide" | "dota_hero_suicide" => Cheat::Suicide,
+        "resetbuyback" | "dota_hero_reset_buyback_cooldown" => Cheat::ResetBuyback,
         "item" | "dota_create_item" => {
             let name = arg.ok_or(CommandError::NoItemNamed)?;
             Cheat::Item {

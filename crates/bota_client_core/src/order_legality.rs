@@ -22,7 +22,7 @@
 //! #     slot: SlotId(0), team: Team::Radiant, hero: HeroId::PUDGE, unit: None,
 //! #     level: 1, xp: 0, gold: Some(0), stash: Some(vec![None; 6]), kit: None,
 //! #     kills: 0, deaths: 0, assists: 0, last_hits: 0, denies: 0, respawn_left: 0,
-//! #     creep_score: None, seen_at: Some(1), backpack: None,
+//! #     creep_score: None, seen_at: Some(1), backpack: None, bought_back_at: None, buyback: None,
 //! # };
 //! # let mut view = WorldView {
 //! #     tick: 1, viewer: Some(Team::Radiant), units: vec![], projectiles: vec![],
@@ -130,7 +130,7 @@ impl OrderContext<'_> {
     /// Checks an order against the current snapshot, independently of pseudo-queue
     /// reservations. Known cast-point deferral yields Unknown(QueueState), even with a
     /// complete ledger: admission now cannot prove acceptance at take-up. A named unit
-    /// must belong to this seat. Glyph needs no body.
+    /// must belong to this seat. Glyph and a buyback need no body.
     pub fn check(&self, unit: Option<EntityId>, order: Order, queue: bool) -> Verdict {
         if !self.bounded() {
             return Verdict::Unknown(UnknownReason::MalformedView);
@@ -144,6 +144,9 @@ impl OrderContext<'_> {
         }
         if order == Order::Glyph {
             return self.glyph();
+        }
+        if order == Order::Buyback {
+            return self.buyback(unit);
         }
         let id = unit.or(self.player.unit);
         let body = id.and_then(|id| self.unit(id));
@@ -294,6 +297,7 @@ impl OrderContext<'_> {
             Order::LearnAttributeBonus => self.attribute_bonus(body),
             Order::Cheat { cheat } => self.cheat(cheat, true),
             Order::Glyph => self.glyph(),
+            Order::Buyback => self.buyback(Some(body.id)),
         }
     }
 
@@ -457,6 +461,41 @@ impl OrderContext<'_> {
             .map_or(Verdict::Unknown(UnknownReason::HiddenState), |left| {
                 bota_core::glyph_refusal(self.player.team, left).into()
             })
+    }
+
+    /// A buyback by what the seat's own row tells: whether the hero lies
+    /// dead, its gold, the cost, the cooldown, and from what the dead hero
+    /// left whether it is rising by a reincarnation.
+    fn buyback(&self, named: Option<EntityId>) -> Verdict {
+        if let Some(named) = named.filter(|named| self.player.unit != Some(*named)) {
+            return match self.unit(named).map(|unit| unit.owner) {
+                Some(owner) if owner == Some(self.player.slot) => {
+                    Verdict::Illegal(RejectReason::NotAHero)
+                }
+                Some(_) => Verdict::Illegal(RejectReason::NotYourUnit),
+                None => Verdict::Unknown(UnknownReason::HiddenState),
+            };
+        }
+        let (Some(gold), Some(buyback)) = (self.player.gold, self.player.buyback) else {
+            return Verdict::Unknown(UnknownReason::HiddenState);
+        };
+        let dead = self.player.respawn_left > 0;
+        let reincarnating = self.player.kit.as_ref().map(|kit| kit.reincarnating);
+        let told = |reincarnating| {
+            bota_core::buyback_refusal(
+                dead,
+                gold,
+                buyback.cost,
+                self.view.tick,
+                buyback.ready_at,
+                reincarnating,
+            )
+        };
+        match (reincarnating, told(reincarnating.unwrap_or(false))) {
+            (_, Err(reason)) => Verdict::Illegal(reason),
+            (Some(_), Ok(())) => Verdict::Legal,
+            (None, Ok(())) => Verdict::Unknown(UnknownReason::HiddenState),
+        }
     }
 
     fn talent(&self, body: &UnitView, slot: TalentSlot) -> Verdict {

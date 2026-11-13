@@ -310,6 +310,11 @@ pub enum CueKind {
     MegaCreeps(Team),
     /// The horn's chosen public Ancient anchor; Dota placement remains unverified.
     MegaCreepsHorn(Team),
+    /// A seat bought back: Dota's buyback stinger, one for the player who
+    /// bought back (`own`) and another for everyone else.
+    BoughtBack {
+        own: bool,
+    },
 }
 
 /// A cue's kind, gain and optional world position. A positional event retains `told`
@@ -375,6 +380,33 @@ pub struct FeedLine {
     pub told: Option<EventKind>,
 }
 
+/// A seat's buyback as an interface shows it: what it costs, how long it still waits, and
+/// whether the seat could buy back now.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BuybackStatus {
+    /// What a buyback costs now.
+    pub cost: i32,
+    /// The seat's gold less the cost: what is left over, or below zero what is missing.
+    pub surplus: i32,
+    /// Ticks until the cooldown is over; zero when none runs.
+    pub cooldown_left: u32,
+    /// Whether the hero lies dead and is not rising by a reincarnation: only then is there
+    /// anything to buy back.
+    pub fallen: bool,
+}
+
+impl BuybackStatus {
+    /// Whether the seat holds the cost and waits out no cooldown: Dota's "has buyback".
+    pub const fn ready(&self) -> bool {
+        self.surplus >= 0 && self.cooldown_left == 0
+    }
+
+    /// Whether a buyback given now would be carried out.
+    pub const fn available(&self) -> bool {
+        self.fallen && self.ready()
+    }
+}
+
 /// What a kill feed line tells of.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FeedKind {
@@ -435,6 +467,8 @@ pub enum FeedKind {
         team: Team,
         xp: i32,
     },
+    /// A seat bought its hero back (Dota's `DOTA_Chat_BuyBack` line).
+    BoughtBack { slot: SlotId, team: Team },
     /// A hero took a rune, bottled one or destroyed one, as Dota's feed
     /// tells it: the seat of the hero if it is known, and its side.
     Rune {
@@ -745,6 +779,27 @@ impl App {
     /// Activates the Glyph of Fortification of one's side.
     pub fn activate_glyph(&mut self) {
         self.send_order(Order::Glyph);
+    }
+
+    /// Buys one's dead hero back.
+    pub fn buy_back(&mut self) {
+        self.send_order(Order::Buyback);
+    }
+
+    /// The buyback of one's own seat, or of the seat the panel shows when one has none and
+    /// the stream tells it (a replay, a watcher of everything). None for a seat whose buyback
+    /// this client is not told.
+    pub fn buyback(&self) -> Option<BuybackStatus> {
+        let view = self.view()?;
+        let player = view.player(self.my_slot.or_else(|| self.panel_slot())?)?;
+        let (told, gold) = (player.buyback?, player.gold?);
+        let rising = player.kit.as_ref().is_some_and(|kit| kit.reincarnating);
+        Some(BuybackStatus {
+            cost: told.cost,
+            surplus: gold.saturating_sub(told.cost),
+            cooldown_left: told.ready_at.saturating_sub(view.tick),
+            fallen: player.respawn_left > 0 && !rising,
+        })
     }
 
     /// The Glyph of Fortification of one's side, or of the side the panel

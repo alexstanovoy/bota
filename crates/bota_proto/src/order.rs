@@ -258,6 +258,12 @@ pub enum Cheat {
         /// The spot the nearest rune spot is found from.
         at: Vec2,
     },
+    /// The seat's hero dies by its own hand, as any death by one's own side
+    /// (Dota's `-suicide`). Nothing while it lies dead already.
+    Suicide,
+    /// The seat's buyback cooldown ends now (Dota's `-resetbuyback`). The
+    /// respawn time a buyback owes on the next death stays owed.
+    ResetBuyback,
 }
 
 /// Whose creeps a [`Cheat::KillCreeps`] takes away.
@@ -453,6 +459,21 @@ pub enum Order {
         /// Whether it is to be locked.
         locked: bool,
     },
+    /// Buy the seat's dead hero back: Dota's `DOTA_UNIT_ORDER_BUYBACK`. The
+    /// seat pays `bota_core::buyback_cost` of what it is worth at that moment
+    /// and its hero stands up at its fountain at once, as at a respawn; the
+    /// seat may not buy back again for
+    /// `bota_core::rules::BUYBACK_COOLDOWN_TICKS`, and the hero's next death
+    /// that is no reincarnation lasts
+    /// `bota_core::rules::BUYBACK_RESPAWN_PENALTY_TICKS` longer. The death
+    /// bought out of stays counted. Needs no body, is never queued, and
+    /// names nobody or the seat's own hero. Refused with
+    /// [`RejectReason::HeroAlive`](crate::RejectReason::HeroAlive) while the
+    /// hero stands, [`RejectReason::NotEnoughGold`](crate::RejectReason::NotEnoughGold),
+    /// [`RejectReason::OnCooldown`](crate::RejectReason::OnCooldown), and
+    /// `HeroAlive` again while the hero is rising by a reincarnation, checked
+    /// in that order, as Dota's.
+    Buyback,
 }
 
 impl Order {
@@ -499,7 +520,9 @@ impl Order {
                     | Cheat::AllVision { .. }
                     | Cheat::Invulnerable { .. }
                     | Cheat::ResetHero
-                    | Cheat::TimeOfDay { .. },
+                    | Cheat::TimeOfDay { .. }
+                    | Cheat::Suicide
+                    | Cheat::ResetBuyback,
             }
             | Order::Buy { .. }
             | Order::Sell { .. }
@@ -510,7 +533,8 @@ impl Order {
             | Order::SwitchWard { .. }
             | Order::Disassemble { .. }
             | Order::SetCombineLock { .. }
-            | Order::Glyph => return,
+            | Order::Glyph
+            | Order::Buyback => return,
         };
         if let Target::Pos(spot) = target {
             visit(spot);
@@ -552,7 +576,9 @@ impl Order {
                     | Cheat::ResetHero
                     | Cheat::TimeOfDay { .. }
                     | Cheat::CreateCreeps { .. }
-                    | Cheat::SpawnRune { .. },
+                    | Cheat::SpawnRune { .. }
+                    | Cheat::Suicide
+                    | Cheat::ResetBuyback,
             }
             | Order::Buy { .. }
             | Order::Sell { .. }
@@ -564,7 +590,8 @@ impl Order {
             | Order::MoveDirection { .. }
             | Order::Disassemble { .. }
             | Order::SetCombineLock { .. }
-            | Order::Glyph => return,
+            | Order::Glyph
+            | Order::Buyback => return,
         };
         if let Target::Unit(id) = target {
             visit(id);

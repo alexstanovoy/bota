@@ -426,6 +426,7 @@ impl Tracks {
             | EventKind::BossRoared { .. }
             | EventKind::BossFell { .. }
             | EventKind::MegaCreeps { .. }
+            | EventKind::BoughtBack { .. }
             | EventKind::ItemDestroyed { .. }
             | EventKind::ItemPlaced { .. }
             | EventKind::ItemTaken { .. }

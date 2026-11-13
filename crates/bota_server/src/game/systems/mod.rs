@@ -3,6 +3,7 @@ mod applied;
 mod aura;
 mod backdoor;
 mod bubble;
+mod buyback;
 pub(crate) mod cast;
 mod cast_rule;
 mod cheats;

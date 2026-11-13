@@ -396,10 +396,10 @@ fn a_heros_head_and_its_wait_are_priced_as_the_game_prices_them() {
     assert_eq!(hero_kill_xp(0, 10, 2), rules::HERO_KILL_XP_BASE + 220);
     assert_eq!(hero_kill_xp(0, 14, 2), rules::HERO_KILL_XP_BASE + 220);
     assert_eq!(hero_kill_xp(1000, 0, 5), rules::HERO_KILL_XP_BASE + 130);
-    assert_eq!(respawn_wait(1, false), 12 * rules::TICKS_PER_SECOND);
-    assert_eq!(respawn_wait(12, false), 44 * rules::TICKS_PER_SECOND);
-    assert_eq!(respawn_wait(25, false), 100 * rules::TICKS_PER_SECOND);
-    assert_eq!(respawn_wait(30, false), 100 * rules::TICKS_PER_SECOND);
+    assert_eq!(respawn_wait(1, 0, false), 12 * rules::TICKS_PER_SECOND);
+    assert_eq!(respawn_wait(12, 0, false), 44 * rules::TICKS_PER_SECOND);
+    assert_eq!(respawn_wait(25, 0, false), 100 * rules::TICKS_PER_SECOND);
+    assert_eq!(respawn_wait(30, 0, false), 100 * rules::TICKS_PER_SECOND);
 }
 
 #[test]

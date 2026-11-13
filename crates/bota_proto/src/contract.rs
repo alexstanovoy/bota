@@ -238,7 +238,9 @@
 //! one tick, at most [`MAX_ORDERS_PER_TICK`](crate::limits::MAX_ORDERS_PER_TICK), are applied
 //! seat by seat in slot order, and each seat's in the order it gave them; the
 //! Glyph, which needs no body, is one more order of the seat, a later Glyph
-//! replacing an earlier one.
+//! replacing an earlier one. A [`Buyback`](crate::Order::Buyback) needs no
+//! body either and replaces nothing: of several given for one tick the first
+//! that holds buys back, and the rest are refused as the hero stands.
 //!
 //! An order is checked when it arrives and again on the tick it takes
 //! effect, and a queued one again when its unit takes it up. Failing any is
@@ -287,6 +289,20 @@
 //! never wears it, as in Dota. The other side's entry has no
 //! [`ready_after`](crate::GlyphView::ready_after): that its Glyph is active
 //! is public, when it may be used again is not.
+//!
+//! # What a side is told of a buyback
+//!
+//! Dota tells every player that and when anyone bought back (a line, a
+//! stinger, and the time of each player's last buyback), and shows what a
+//! buyback costs and when it is ready to the player's own team alone. So
+//! [`EventKind::BoughtBack`](crate::EventKind::BoughtBack) goes to everyone
+//! and [`PlayerView::bought_back_at`](crate::PlayerView::bought_back_at) is
+//! in every view, while [`PlayerView::buyback`](crate::PlayerView::buyback)
+//! (the cost now, the tick it is ready from, the respawn time the next death
+//! owes) is absent for a seat of the other side. The other side can work the
+//! cooldown out from the public tick, as Dota's players do; the cost it
+//! cannot, for it does not know the seat's gold. A hero's respawn wait is
+//! public, the part a buyback added to it included.
 //!
 //! # Illusions
 //!
