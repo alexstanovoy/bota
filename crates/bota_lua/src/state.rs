@@ -325,6 +325,7 @@ pub(crate) struct BotState {
     pub desire: f64,
     pub pending_once: Option<PendingOnce>,
     pub native_courier: Option<NativeCourierCommand>,
+    pub native_laning: Option<crate::default_bot::LaningMovement>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -339,17 +340,20 @@ pub(crate) struct NativeCourierCommand {
 pub(crate) struct HostCheckpoint {
     pending_once: Option<PendingOnce>,
     native_courier: Option<NativeCourierCommand>,
+    native_laning: Option<crate::default_bot::LaningMovement>,
 }
 impl BotState {
     pub fn checkpoint(&self) -> HostCheckpoint {
         HostCheckpoint {
             pending_once: self.pending_once,
             native_courier: self.native_courier,
+            native_laning: self.native_laning,
         }
     }
     pub fn restore(&mut self, checkpoint: HostCheckpoint) {
         self.pending_once = checkpoint.pending_once;
         self.native_courier = checkpoint.native_courier;
+        self.native_laning = checkpoint.native_laning;
     }
 }
 
@@ -608,6 +612,7 @@ impl State {
         if order.unit.is_none() && !order.queue && self.breaks_once(order.order) {
             let index = self.bot_index();
             self.bots[index].pending_once = None;
+            self.bots[index].native_laning = None;
         }
         let index = self.bot_index();
         if order.unit.is_some_and(|unit| {

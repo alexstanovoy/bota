@@ -92,6 +92,62 @@ pub fn local_with_modifiers(
     )
 }
 
+#[allow(dead_code, reason = "expected pregame goal in native body contracts")]
+pub fn pregame_laning_goal(map: &bota_core::MapDef, side: Team) -> bota_proto::Vec2 {
+    let towers = if side == Team::Radiant {
+        map.radiant_towers
+    } else {
+        map.dire_towers
+    };
+    let tower = |tier| {
+        towers
+            .iter()
+            .find(|&&(lane, t, _)| lane == bota_core::rules::LANE_MID && t == tier)
+            .expect("mid tower")
+            .2
+    };
+    let front = tower(1);
+    let mut line = bota_core::lane_polyline(map, bota_core::rules::LANE_MID);
+    if side == Team::Dire {
+        line.reverse();
+    }
+    pregame_laning_goal_on_line(&line, front)
+}
+
+#[allow(
+    dead_code,
+    reason = "independent prefix-distance oracle for lane geometry"
+)]
+pub fn pregame_laning_goal_on_line(
+    line: &[bota_proto::Vec2],
+    front: bota_proto::Vec2,
+) -> bota_proto::Vec2 {
+    let index = line
+        .iter()
+        .position(|&point| point == front)
+        .expect("front on lane");
+    let lengths: Vec<_> = line
+        .windows(2)
+        .map(|pair| bota_core::isqrt64(pair[0].distance_squared(pair[1])))
+        .collect();
+    let mut along = (lengths[..index].iter().sum::<i64>()
+        - i64::from(bota_proto::Fixed::from_int(300).raw))
+    .max(0);
+    for (pair, &length) in line.windows(2).zip(&lengths) {
+        if along <= length {
+            return bota_core::point_along(
+                pair[1],
+                pair[0],
+                bota_proto::Fixed {
+                    raw: (length - along) as i32,
+                },
+            );
+        }
+        along -= length;
+    }
+    *line.last().expect("lane endpoint")
+}
+
 fn sessions(opening: Vec<Vec<ServerMsg>>, heroes: &[HeroId]) -> Vec<ClientSession> {
     opening
         .into_iter()

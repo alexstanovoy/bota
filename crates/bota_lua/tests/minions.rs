@@ -51,8 +51,11 @@ fn minion_think_moves_its_courier_through_the_real_order_path() {
     assert_eq!(
         hero,
         vec![
-            bota_client_core::IssuedOrder::hero(bota_proto::Order::Attack {
-                target: bota_proto::Target::Pos(bota_proto::Vec2::from_ints(9216, 9216))
+            bota_client_core::IssuedOrder::hero(bota_proto::Order::Move {
+                target: bota_proto::Target::Pos(support::pregame_laning_goal(
+                    sessions[0].map(),
+                    Team::Radiant
+                ))
             }),
             bota_client_core::IssuedOrder::hero(bota_proto::Order::Learn {
                 slot: bota_proto::AbilitySlot(0)
@@ -61,7 +64,7 @@ fn minion_think_moves_its_courier_through_the_real_order_path() {
                 item: bota_proto::ItemId::IRON_BRANCH
             }),
         ],
-        "missing hero hooks use the designed native body, learning and purchase defaults"
+        "missing hero hooks use native pregame movement and retain learning and purchase defaults"
     );
     assert_eq!(
         courier_orders,

@@ -1,10 +1,8 @@
-use super::{distance, supported};
+use super::{COMMAND_RETRY_TICKS, distance, supported};
 use crate::{api::Shared, state::NativeCourierCommand};
 use bota_client_core::IssuedOrder;
 use bota_proto::{AbilityId, AbilitySlot, Order, StatusFlags, Target, UnitKind};
 use luagee::{LuaError, Vm};
-
-const COMMAND_RETRY_TICKS: u32 = bota_core::rules::TICKS_PER_SECOND;
 
 pub(super) fn run(vm: &mut Vm, shared: &Shared) -> Result<usize, LuaError> {
     let mut state = shared.borrow_mut();

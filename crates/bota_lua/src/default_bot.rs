@@ -1,11 +1,16 @@
-//! Deterministic SF Solo Mid fallback policy. Hook semantics are compatibility inferences;
-//! policy thresholds are explicit reconstruction assumptions, not recovered engine internals.
+//! SF Solo Mid defaults. native_laning.md describes pregame movement and its coverage;
+//! the other policy thresholds remain explicit reconstruction assumptions.
 
 mod auxiliary;
 mod courier;
 mod economy;
 mod items;
+mod laning;
+const COMMAND_RETRY_TICKS: u32 = bota_core::rules::TICKS_PER_SECOND;
 pub(crate) use auxiliary::{AuxiliaryHook, install as install_auxiliary};
+pub(crate) use laning::Movement as LaningMovement;
+#[cfg(test)]
+pub(crate) use laning::goal_on_line;
 
 use crate::{
     BindingError,
@@ -19,6 +24,7 @@ use luagee::{Lua, LuaError, Value, Vm};
 use std::rc::Rc;
 
 pub(crate) fn install(lua: &mut Lua, state: Shared) -> Result<Value, BindingError> {
+    laning::prepare();
     Ok(lua.function(
         "default_mode",
         Rc::new(move |vm, args| {
@@ -78,6 +84,7 @@ fn callback(vm: &mut Vm, shared: &Shared, mode: &str, thinking: bool) -> Result<
     let Some((snapshot, own)) = context(&state) else {
         return vm.results(&[Value::Number(0.0)]);
     };
+    let pregame = thinking && mode == "laning" && snapshot.game_tick < snapshot.horn;
     vm.charge_fuel(4 + snapshot.units.len() as u64 * if thinking { 3 } else { 2 })?;
     if !thinking {
         return vm.results(&[Value::Number(desire(&state, snapshot, own, mode))]);
@@ -92,6 +99,14 @@ fn callback(vm: &mut Vm, shared: &Shared, mode: &str, thinking: bool) -> Result<
             != 0
     {
         return Ok(0);
+    }
+    if pregame && let Some(target) = laning::pregame_target(vm, snapshot, own)? {
+        let source = own.id;
+        let previous = state.bots[state.bot_index()]
+            .native_laning
+            .filter(|action| action.source == source);
+        let action = laning::movement(previous, source, own.pos, target, snapshot.tick);
+        return laning::publish(vm, &mut state, action);
     }
     let pending = state.bots[state.bot_index()].pending_once;
     if mode != "retreat"

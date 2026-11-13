@@ -270,16 +270,27 @@ fn lane_waypoints_stay_behind_the_friendly_front_for_both_sides() {
 }
 
 #[test]
-fn default_laning_waits_mid_before_a_friendly_frontline_advances() {
+fn default_laning_moves_behind_its_mid_tower_before_creeps_spawn() {
     let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
     let turn = team(&[]).think(&sessions[0]).expect("turn");
     assert!(turn.failures.is_empty(), "{:?}", turn.failures);
-    let mid = bota_core::rules::MAP_SIZE / 2;
-    assert!(turn.bots[0].orders.iter().any(|order| order.unit.is_none()
-        && order.order
-            == Order::Attack {
-                target: Target::Pos(Vec2::from_ints(mid, mid))
-            }));
+    assert_eq!(
+        turn.bots[0].orders,
+        vec![
+            IssuedOrder::hero(Order::Move {
+                target: Target::Pos(support::pregame_laning_goal(
+                    sessions[0].map(),
+                    Team::Radiant
+                )),
+            }),
+            IssuedOrder::hero(Order::Learn {
+                slot: bota_proto::AbilitySlot(0)
+            }),
+            IssuedOrder::hero(Order::Buy {
+                item: bota_proto::ItemId::IRON_BRANCH
+            }),
+        ]
+    );
 }
 
 #[test]

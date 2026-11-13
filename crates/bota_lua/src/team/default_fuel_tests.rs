@@ -29,15 +29,39 @@ fn native_mode_callbacks_charge_the_documented_work_above_the_bare_call() {
     let bare = support::bare_native_call_fuel();
     for thinking in [false, true] {
         let probe = fixture(10000);
-        let units = probe
-            .state
-            .borrow()
-            .snapshot
-            .as_ref()
-            .expect("snapshot")
+        let state = probe.state.borrow();
+        let snapshot = state.snapshot.as_ref().expect("snapshot");
+        let units = snapshot.units.len() as u64;
+        let front = snapshot
+            .map
+            .radiant_towers
+            .iter()
+            .find(|&&(lane, tier, _)| lane == bota_core::rules::LANE_MID && tier == 1)
+            .expect("front")
+            .2;
+        let tower_reads = 1 + snapshot
             .units
-            .len() as u64;
-        let required = bare + 4 + units * if thinking { 3 } else { 2 };
+            .iter()
+            .position(|known| {
+                known.visible
+                    && known.unit.kind == bota_proto::UnitKind::Tower
+                    && known.unit.team == Team::Radiant
+                    && known.unit.hp > 0
+                    && known.unit.pos == front
+            })
+            .expect("observed front") as u64;
+        // No-creep inspection visits every unit; tower inspection stops at the match.
+        let required = bare
+            + 4
+            + if thinking {
+                units * 3 + units + tower_reads
+            } else {
+                units * 2
+            };
+        eprintln!(
+            "native work thinking={thinking} bare={bare} units={units} tower_reads={tower_reads} required={required}"
+        );
+        drop(state);
         for budget in [bare, required - 1, required] {
             let mut lua = fixture(budget);
             let result = lua.lua.call(
@@ -55,6 +79,27 @@ fn native_mode_callbacks_charge_the_documented_work_above_the_bare_call() {
             }
         }
     }
+}
+
+#[test]
+fn pregame_geometry_and_its_oracle_follow_a_bent_polyline() {
+    let line = [
+        bota_proto::Vec2::from_ints(0, 0),
+        bota_proto::Vec2::from_ints(500, 0),
+        bota_proto::Vec2::from_ints(500, 100),
+        bota_proto::Vec2::from_ints(600, 100),
+    ];
+    let front = line[3];
+    let expected = bota_proto::Vec2::from_ints(400, 0);
+    assert_eq!(
+        crate::default_bot::goal_on_line(&line, front),
+        Some(expected)
+    );
+    assert_eq!(support::pregame_laning_goal_on_line(&line, front), expected);
+    assert_ne!(
+        bota_core::point_along(front, line[2], bota_proto::Fixed::from_int(300)),
+        expected
+    );
 }
 
 #[test]
@@ -102,6 +147,110 @@ fn native_auxiliary_and_courier_callbacks_charge_their_exact_work() {
             }
         }
     }
+}
+
+#[test]
+fn native_laning_cancellation_rewinds_with_a_discarded_outbox() {
+    use bota_client_core::IssuedOrder;
+    use bota_proto::{Cheat, Order, ServerMsg, Target};
+    let (mut local, mut sessions) =
+        support::local_with_cheats(&[Team::Radiant, Team::Dire], bota_core::MAP2_ID);
+    let mut lua = fixture(10000);
+    lua.state.borrow_mut().snapshot = Some(Snapshot::capture(&sessions[0]).expect("initial view"));
+    lua.lua
+        .call(
+            lua.default_mode,
+            &[Value::Number(1.0), Value::Boolean(true)],
+        )
+        .expect("move");
+    let checkpoint = lua.host_checkpoint();
+    let target = {
+        let state = lua.state.borrow();
+        let action = state.bots[0].native_laning.expect("controller MoveTo");
+        let Order::Move {
+            target: Target::Pos(target),
+        } = action.order()
+        else {
+            panic!("move")
+        };
+        target
+    };
+    let sent: Vec<_> = [
+        Order::Cheat {
+            cheat: Cheat::Teleport { at: target },
+        },
+        Order::Attack {
+            target: Target::None,
+        },
+    ]
+    .into_iter()
+    .map(|order| {
+        sessions[0]
+            .issue(IssuedOrder::hero(order))
+            .expect("setup order")
+    })
+    .collect();
+    for (session, stream) in sessions
+        .iter_mut()
+        .zip(local.step(&[&sent, &[]]).expect("server step"))
+    {
+        assert!(
+            !stream
+                .iter()
+                .any(|message| matches!(message, ServerMsg::OrderRejected { .. })),
+            "{stream:?}"
+        );
+        support::fold(session, stream);
+    }
+    assert_eq!(sessions[0].own_hero().expect("hero").pos, target);
+    lua.state.borrow_mut().snapshot =
+        Some(Snapshot::capture(&sessions[0]).expect("real arrival view"));
+    lua.state.borrow_mut().orders.clear();
+    lua.lua
+        .call(
+            lua.default_mode,
+            &[Value::Number(1.0), Value::Boolean(true)],
+        )
+        .expect("cancel");
+    let stopped = vec![IssuedOrder::hero(Order::Move {
+        target: Target::None,
+    })];
+    assert_eq!(lua.state.borrow().orders, stopped);
+    lua.restore_host(checkpoint);
+    lua.state.borrow_mut().orders.clear();
+    lua.lua
+        .call(
+            lua.default_mode,
+            &[Value::Number(1.0), Value::Boolean(true)],
+        )
+        .expect("retry discarded cancel");
+    assert_eq!(lua.state.borrow().orders, stopped);
+}
+
+#[test]
+fn an_explicit_script_body_order_replaces_native_laning_controller_state() {
+    let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let mut lua = fixture(10000);
+    lua.lua
+        .call(
+            lua.default_mode,
+            &[Value::Number(1.0), Value::Boolean(true)],
+        )
+        .expect("native move");
+    assert!(lua.state.borrow().bots[0].native_laning.is_some());
+    lua.add_script(
+        SlotId(0),
+        ScriptKind::Takeover,
+        "replace_move",
+        b"function Think() GetBot():Action_MoveToLocation(GetBot():GetLocation()) end",
+    )
+    .expect("script");
+    let turn = lua.think(&sessions[0]).expect("script turn");
+    assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+    assert!(
+        lua.state.borrow().bots[0].native_laning.is_none(),
+        "the controller owns this state; a script replacement clears it"
+    );
 }
 
 #[test]

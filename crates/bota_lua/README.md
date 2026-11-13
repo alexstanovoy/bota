@@ -41,6 +41,11 @@ back (scripts may, through the buyback calls); queued-action completion is a sep
 capability. Native work enters through hidden pinned
 callbacks under the same tick fuel.
 
+The first source-backed Laning slice replaces pregame attack-movement with a
+controller-owned move 300 units behind the observed own mid T1, for the no-creep
+single-bot case. Its 100-unit arrival rule, reference build,
+transport adaptation and unimplemented branches are documented in [native_laning.md](native_laning.md).
+
 Defaults are 500,000 fuel per call, 2,000,000 per team tick and 256 MiB memory.
 Host storage reserves 16 MiB against that cap, including bounded snapshot replacement
 and handle maps. Snapshots hold at most 4 MiB of copied facts; unit and ability caches
@@ -139,8 +144,10 @@ Tests pin these choices; passing a pin does not promote an inference to a source
 | Equipment: 2 branches, Wraith Band, Bottle, Boots, Wand, Treads, Dragon Lance | Own design | Baseline equipment goals, not an engine build. Recipes and purchase legality are catalogue/binding data. |
 | Recipe projection: 1024 visits, depth 16, bounded pending stack | Own design | Work ceiling. Exhaustion skips the entire optional equipment projection; VM fuel exhaustion still errors the turn. |
 | Courier command lease 30 ticks | Own design | Retry lost/rejected requests without resending every tick. Tick rate is sourced from rules. |
+| Pregame movement command lease 30 ticks | Host execution contract | Initial command, bounded retry, immediate retarget and one cancellation on arrival. Shares the courier retry interval. |
 | Courier delivery/stash/return, burst and shield selection | Own design using sourced legality | Ability ids, cooldown, mana, ownership and handoff/stash ranges come from catalogue/views. |
-| Lane target 200 units behind the observed friendly front, quantized to 256-unit cells towards home | Own design | Stable waypoints prevent repeated tiny replacements of standing movement. |
+| Pregame no-creep Laning: move 300 behind own mid T1, 100-unit arrival tolerance | Established from the installed game, build 6975; host map/transport adaptation | See native_laning.md for behaviour, supported conditions and tests. |
+| Other lane targets: 200 behind the observed friendly front, 256-unit cells towards home | Own design | Existing fallback outside the recovered pregame slice. |
 | Native attack-once lease: observed windup plus 1 second, clamped to 1–10 seconds | Own design using received timing | Bounds silence after an unlaunched order is rejected or lost. Launch facts take precedence at expiry. Explicit script once requests have no native lease. Discarded host turns restore the previous continuation checkpoint. |
 | Missing/nil GetDesire falls back; explicit empty Think overrides; MinionThink-only files retain hero defaults; explicit minion hooks replace courier defaults | Inferred compatibility contract | Implements the host's documented composition of scripts and native policy. Not verified against the closed engine. |
 | Engine player ids: Radiant 0–4, Dire 5–9; rank from the received roster, only a proven contiguous prefix before that roster | Inferred compatibility contract | Distinct from wire seat ids. No live-engine mapping verification is claimed. |
