@@ -521,6 +521,7 @@ impl World {
                 self.map.rune_spots[usize::from(spot)].kind,
                 self.clock(),
                 self.schedule(),
+                self.map.opening_runes,
             ),
         })
     }

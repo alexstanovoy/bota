@@ -154,12 +154,21 @@ pub const WATER_RUNE_SPAWNS: u32 = 2;
 
 /// The next scheduled expiry of a rune from this spawner, as an absolute
 /// game-clock tick. River spawners replace their opening bounty, water and
-/// power runes; jungle spawners retain untaken runes.
-pub const fn rune_expires_at(spot: RuneSpotKind, clock: u32, schedule: Schedule) -> Option<u32> {
+/// power runes; jungle spawners retain untaken runes. `opening` is whether the
+/// mode plays its first events ([`MapDef::opening_runes`](crate::MapDef)).
+pub const fn rune_expires_at(
+    spot: RuneSpotKind,
+    clock: u32,
+    schedule: Schedule,
+    opening: bool,
+) -> Option<u32> {
     if !matches!(spot, RuneSpotKind::River) {
         return None;
     }
     let water = match WATER_RUNES.next_after(clock, schedule) {
+        // The mode that skips the first event never plays the second's predecessor: the
+        // next water event is the one after it.
+        Some((0, tick)) if !opening => tick.checked_add(WATER_RUNES.period),
         Some((index, tick)) if index < WATER_RUNE_SPAWNS => Some(tick),
         _ => None,
     };
@@ -209,13 +218,17 @@ impl RunesDue {
     }
 }
 
-/// What the schedule puts out on `clock` of a match with schedule `schedule`.
-pub const fn runes_due(clock: u32, schedule: Schedule) -> RunesDue {
+/// What the schedule puts out on `clock` of a match with schedule `schedule`. A mode that does
+/// not play its opening (`opening` false: Dota's 1v1 Solo Mid, whose first event of each cycle
+/// is skipped) has no horn set of Bounty Runes and no first Water event, the one at 2:00, so
+/// its water comes at 4:00 alone [SRV: the 1v1 mode skips the first bounty event and the first
+/// water event; the install's text says "First rune does not spawn"].
+pub const fn runes_due(clock: u32, schedule: Schedule, opening: bool) -> RunesDue {
     RunesDue {
-        opening_bounty: clock == schedule.horn + OPENING_BOUNTY_AFTER_HORN,
+        opening_bounty: opening && clock == schedule.horn + OPENING_BOUNTY_AFTER_HORN,
         jungle_bounty: BOUNTY_RUNES.firing_at(clock, schedule).is_some(),
         water: match WATER_RUNES.firing_at(clock, schedule) {
-            Some(n) => n < WATER_RUNE_SPAWNS,
+            Some(n) => n < WATER_RUNE_SPAWNS && (opening || n > 0),
             None => false,
         },
         power: POWER_RUNES_CADENCE.firing_at(clock, schedule).is_some(),

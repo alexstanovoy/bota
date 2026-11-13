@@ -25,7 +25,7 @@ impl World {
     /// Puts out the runes the game clock owes this tick, after taking away
     /// the river's untaken ones when the river turns over.
     pub(crate) fn tick_runes(&mut self) {
-        let due = runes_due(self.clock(), self.schedule());
+        let due = runes_due(self.clock(), self.schedule(), self.map.opening_runes);
         if !due.any() || self.runes.is_empty() {
             return;
         }
@@ -33,7 +33,7 @@ impl World {
             self.clear_river_runes();
         }
         let spots = self.map.rune_spots;
-        if due.opening_bounty && self.map.opening_runes {
+        if due.opening_bounty {
             for at in 0..spots.len() {
                 self.put_rune(RuneKind::Bounty, at);
             }

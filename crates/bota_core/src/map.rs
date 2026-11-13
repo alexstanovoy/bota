@@ -164,7 +164,8 @@ pub struct MapDef {
     pub default_runes: RuneSet,
     /// Where runes appear.
     pub rune_spots: &'static [RuneSpot],
-    /// Whether the first set of runes, the one the horn brings, appears.
+    /// Whether the first events of the rune schedule play: the first set of Bounty Runes, the one
+    /// the horn brings, and the first Water event, the one at 2:00.
     /// Dota's 1v1 Solo Mid skips it: its rules say "First rune does not
     /// spawn" [LOC `dota_play_1v1_rules_html`], and Liquipedia's *Game Modes*
     /// "First set of runes does not spawn"; which set that is, the game does

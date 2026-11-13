@@ -621,21 +621,69 @@ fn an_illusion_rune_never_spawns_from_the_river_while_every_other_power_kind_doe
     }
 }
 
+/// Dota's 1v1 Solo Mid skips the first event of each cycle [SRV, see `bota_core::runes_due`]: the
+/// horn's set of Bounty Runes and the 2:00 Water event. What follows is the game's own schedule:
+/// bounty at 4:00 and every four minutes, water at 4:00 alone, power runes from 6:00 every two.
 #[test]
-fn solo_mid_asked_for_runes_skips_the_first_set_and_plays_the_rest() {
+fn solo_mid_asked_for_runes_skips_the_first_events_and_plays_the_rest_of_the_schedule() {
     let mut cfg = config();
     cfg.map = MapId(2);
     cfg.runes = RuneSet::ALL;
     cfg.objectives = ObjectiveSet::NONE;
     let mut world = World::for_match(&cfg, cfg.rng());
-    let horn = spawned(&step_at_minute(&mut world, 0, 0));
-    assert!(horn.is_empty(), "\"First rune does not spawn\"");
-    let water = spawned(&step_at_minute(&mut world, 2, 0));
-    assert_eq!(water.len(), 2, "the water of 2:00 comes");
+    let at = |world: &mut World, minute| spawned(&step_at_minute(world, minute, 0));
+    assert!(
+        at(&mut world, 0).is_empty(),
+        "\"First rune does not spawn\""
+    );
+    assert!(
+        at(&mut world, 2).is_empty(),
+        "nor does the first Water event, the one of 2:00"
+    );
+    let four = at(&mut world, 4);
+    let kinds =
+        |spawns: &[(RuneKind, Vec2)], kind| spawns.iter().filter(|(k, _)| *k == kind).count();
+    assert_eq!(
+        kinds(&four, RuneKind::Water),
+        2,
+        "water at 4:00, at both river spots"
+    );
+    assert_eq!(
+        kinds(&four, RuneKind::Bounty),
+        2,
+        "and the jungles' first bounties"
+    );
+    let six = at(&mut world, 6);
+    assert_eq!(six.len(), 1, "a power rune at 6:00");
+    assert!(
+        lying(&world)
+            .iter()
+            .all(|rune| rune.kind != RuneKind::Water),
+        "the water of 4:00 went with the river's turn at 6:00"
+    );
+    assert_eq!(
+        at(&mut world, 8).len(),
+        3,
+        "a power rune and the two next bounties at 8:00"
+    );
     assert_eq!(map_of(MapId(2)).default_runes, RuneSet::NONE);
     assert!(
         crate::game::check_match_rules(MapId(2), ObjectiveSet::NONE, RuneSet::NONE).is_ok(),
         "solo mid spawns none unless its host asks"
+    );
+}
+
+/// The full map plays every event: water at 2:00 and 4:00 as well.
+#[test]
+fn the_full_map_plays_its_first_events_the_horns_bounties_and_the_water_of_two_minutes() {
+    let mut world = rune_match(&radiant_and_dire());
+    assert_eq!(spawned(&step_at_minute(&mut world, 0, 0)).len(), 4);
+    assert_eq!(
+        spawned(&step_at_minute(&mut world, 2, 0))
+            .iter()
+            .filter(|(kind, _)| *kind == RuneKind::Water)
+            .count(),
+        2
     );
 }
 
