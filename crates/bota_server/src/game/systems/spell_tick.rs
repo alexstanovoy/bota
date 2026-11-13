@@ -19,8 +19,11 @@ impl World {
             let Some(mut chain) = self.chain.get(marker).cloned() else {
                 continue;
             };
+            if chain.life == crate::game::ChainLife::EndsWithSource && !self.alive(chain.source) {
+                chain.leaps_left = 0;
+            }
             chain.wait = chain.wait.saturating_sub(1);
-            if chain.wait == 0 {
+            if chain.leaps_left > 0 && chain.wait == 0 {
                 chain.wait = chain.delay;
                 if !self.leap(marker, &mut chain) {
                     chain.leaps_left = 0;

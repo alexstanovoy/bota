@@ -1330,11 +1330,13 @@ const BFURY: Carried = Carried {
     ..NOTHING
 };
 
+// Dota's script names the cleave's radii (7.00, Cleave Mechanics: starting and ending radius)
+// `cleave_starting_width` and `cleave_ending_width`.
 const BFURY_CLEAVE: Strike = Strike::Cleave {
     hero_pct: int(&ITEM_BFURY, "cleave_damage_percent"),
     creep_pct: int(&ITEM_BFURY, "cleave_damage_percent_creep"),
-    start_width: int(&ITEM_BFURY, "cleave_starting_width"),
-    end_width: int(&ITEM_BFURY, "cleave_ending_width"),
+    start_radius: int(&ITEM_BFURY, "cleave_starting_width"),
+    end_radius: int(&ITEM_BFURY, "cleave_ending_width"),
     distance: int(&ITEM_BFURY, "cleave_distance"),
 };
 

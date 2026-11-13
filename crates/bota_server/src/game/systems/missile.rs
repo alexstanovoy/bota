@@ -30,6 +30,9 @@ pub struct MissileCx<'a> {
     pub ground: &'a Ground,
     /// Where an arriving missile leaves its blow.
     pub hits: &'a mut VecDeque<Hit>,
+    /// Where an attack's missile whose target fell before it arrived leaves the procs it
+    /// carried.
+    pub orphans: &'a mut Vec<crate::game::Orphan>,
 }
 
 /// Moves every missile along and turns the ones that arrive into blows.
@@ -49,6 +52,7 @@ pub fn missile_system(cx: MissileCx<'_>) {
         kind,
         ground,
         hits,
+        orphans,
     } = cx;
     for missile in entities.iter().collect::<Vec<_>>() {
         let Some(shot) = projectile.get(missile).cloned() else {
@@ -64,6 +68,21 @@ pub fn missile_system(cx: MissileCx<'_>) {
             && !attack_blocked;
         let to = transform.get(shot.target).map(|t| t.pos);
         let (true, Some(to)) = (standing, to) else {
+            let fallen = !attack_blocked
+                && health
+                    .get(shot.target)
+                    .is_none_or(|health| health.hp <= Fixed::ZERO);
+            if fallen
+                && shot.riders != crate::game::Riders::NONE
+                && let Some(source) = shot.source
+            {
+                orphans.push(crate::game::Orphan {
+                    source,
+                    target: shot.target,
+                    at: to.unwrap_or(transform.get(missile).map_or(Vec2::ZERO, |at| at.pos)),
+                    riders: shot.riders,
+                });
+            }
             give_up(missile, entities, projectile, transform, team, visibility);
             continue;
         };
@@ -105,6 +124,7 @@ fn land(shot: &Projectile, uphill: bool, side: Option<Team>, hits: &mut VecDeque
         removal: false,
         spares: false,
         riders: shot.riders,
+        category: crate::game::Category::Plain,
     });
     for &(damage, item) in &shot.pierced {
         hits.push_back(Hit {
@@ -126,6 +146,7 @@ fn land(shot: &Projectile, uphill: bool, side: Option<Team>, hits: &mut VecDeque
             removal: false,
             spares: false,
             riders: crate::game::Riders::NONE,
+            category: crate::game::Category::Plain,
         });
     }
 }

@@ -238,7 +238,7 @@ fn an_ethereal_hero_takes_no_physical_damage_and_thirty_percent_more_magic() {
         },
     );
     world.push_hit(Some(enemy), hero, 200, DamageKind::Physical, None);
-    world.push_splash_hit(Some(enemy), hero, 200, None);
+    world.push_splash_hit(Some(enemy), hero, 200, None, crate::game::Category::Plain);
     assert_eq!(hurt_by(&mut world, enemy, hero, 1), 0, "no physical damage");
     let let_through = (rules::NOMINAL_BP - resist) * 130 / 100;
     assert_eq!(

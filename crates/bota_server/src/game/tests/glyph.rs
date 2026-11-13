@@ -45,6 +45,7 @@ fn pure_blow(world: &mut World, from: Entity, on: Entity) -> i32 {
         removal: false,
         spares: false,
         riders: crate::game::Riders::NONE,
+        category: crate::game::Category::Plain,
     });
     let before = world.health.get(on).expect("standing").hp;
     world.step();

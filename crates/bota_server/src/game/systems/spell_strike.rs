@@ -20,6 +20,8 @@ pub(super) struct Bolt {
     pub radius: i32,
     pub delay_ms: i32,
     pub keep_pct: i32,
+    /// Whether it leaps on once its source is dead.
+    pub life: crate::game::ChainLife,
 }
 
 impl World {
@@ -108,6 +110,7 @@ impl World {
             radius,
             delay_ms,
             keep_pct: at_level(&keep_pct, cast.level),
+            life: crate::game::ChainLife::Outlives,
         };
         self.chain_from(
             cast.caster,
@@ -155,6 +158,7 @@ impl World {
                     radius: rules::units(bolt.radius),
                     delay,
                     wait: delay,
+                    life: bolt.life,
                 },
             );
         }

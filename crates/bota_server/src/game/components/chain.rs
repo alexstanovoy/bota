@@ -1,7 +1,7 @@
 use bota_proto::{Fixed, Inflictor, Vec2};
 
 use crate::engine::Entity;
-use crate::engine::state_hash;
+use crate::engine::{Fnv, StateHash, state_hash};
 
 /// A chain of damage leaping from one enemy to the next, a beat apart.
 ///
@@ -31,6 +31,40 @@ pub struct Chain {
     pub delay: u32,
     /// Ticks before the next leap.
     pub wait: u32,
+    /// Whether it leaps on once its source is dead.
+    pub life: ChainLife,
+}
+
+/// How long a chain leaps with regard to its source.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ChainLife {
+    /// It leaps on whatever becomes of its source: a neutral's Chain Lightning.
+    #[default]
+    Outlives,
+    /// It stops as its source dies: an item's ("If the wielder dies, all their currently ongoing
+    /// Chain Lightning instances stop immediately", Liquipedia, Maelstrom).
+    EndsWithSource,
+}
+
+#[cfg(test)]
+impl crate::engine::Specimen for ChainLife {
+    fn low() -> Self {
+        ChainLife::Outlives
+    }
+
+    fn high() -> Self {
+        ChainLife::EndsWithSource
+    }
+}
+
+/// A chain that outlives its source hashes as one before the field was.
+impl StateHash for ChainLife {
+    fn state_hash(&self, fnv: &mut Fnv) {
+        match self {
+            ChainLife::Outlives => {}
+            ChainLife::EndsWithSource => fnv.u8(1),
+        }
+    }
 }
 
 state_hash!(Chain {
@@ -43,5 +77,6 @@ state_hash!(Chain {
     keep_pct,
     radius,
     delay,
-    wait
+    wait,
+    life
 });

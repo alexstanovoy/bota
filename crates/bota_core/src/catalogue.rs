@@ -387,15 +387,15 @@ impl Fnv {
                 Strike::Cleave {
                     hero_pct,
                     creep_pct,
-                    start_width,
-                    end_width,
+                    start_radius,
+                    end_radius,
                     distance,
                 } => fnv
                     .u64(3)
                     .int(hero_pct as i64)
                     .int(creep_pct as i64)
-                    .int(start_width as i64)
-                    .int(end_width as i64)
+                    .int(start_radius as i64)
+                    .int(end_radius as i64)
                     .int(distance as i64),
                 Strike::Chain {
                     chance_pct,

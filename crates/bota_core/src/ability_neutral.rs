@@ -328,23 +328,25 @@ pub enum Strike {
         stun_ms: Lv,
         effect: EffectId,
     },
-    /// Every enemy unit but the struck in a cone from the attacker through the struck takes
-    /// `hero_pct` percent of the blow (`creep_pct` for a unit that is no hero) as physical
-    /// damage: `start_width` wide at the struck, `end_width` at `distance` from it. Each
-    /// cleave of a unit lands apart ("each Cleave's damage is applied separately"); an AoE
-    /// bonus widens both widths (Dota 7.36: "AoE Bonuses now affect all auras and Cleave
-    /// sources").
+    /// Every enemy unit but the struck (no building, ward or courier) in a trapezoid that opens
+    /// at the attacker towards the struck takes `hero_pct` percent of the blow (`creep_pct` for a
+    /// unit that is no hero) as physical damage: `start_radius` to either side of its axis at
+    /// the attacker, `end_radius` at `distance` along it (Dota's cleave radii, 7.00 "Cleave
+    /// Mechanics"; 7.20 widened the end to 360 and the distance to 650). Each cleave of a unit
+    /// lands apart ("each Cleave's damage is applied separately"); an AoE bonus widens both radii
+    /// (Dota 7.36: "AoE Bonuses now affect all auras and Cleave sources").
     Cleave {
         hero_pct: i32,
         creep_pct: i32,
-        start_width: i32,
-        end_width: i32,
+        start_radius: i32,
+        end_radius: i32,
         distance: i32,
     },
     /// A `chance_pct` chance, rolled at the attack point, that the swing goes through evasion
     /// and, once it lands, lets loose a bolt of `damage` magical damage that strikes the struck
     /// and leaps on to `strikes` targets in all, each within `radius` of the last, `delay_ms`
-    /// apart. The source then waits `wait_ms` (Maelstrom's Chain Lightning).
+    /// apart. The source then waits `wait_ms` on a timer of its own, which no cooldown cut or
+    /// refresh touches and no item shows (Maelstrom's Chain Lightning).
     Chain {
         chance_pct: i32,
         damage: i32,
@@ -357,7 +359,8 @@ pub enum Strike {
     /// to `count` more enemies besides its target, within the attack's range and `range_bonus`
     /// and `angle` degrees in front of the attacker, each dealing `base_damage` and `pct`
     /// percent of a plain swing; the swing itself deals `base_damage` more. The extra missiles
-    /// carry nothing else of the swing (Specialist's Array's Splitshot).
+    /// carry nothing else of the swing (Specialist's Array's Splitshot). Only a swing at an enemy
+    /// unit (no building, ward or courier) splits, and heroes are chosen before the rest.
     Split {
         chance_pct: i32,
         count: u8,
@@ -366,6 +369,27 @@ pub enum Strike {
         base_damage: i32,
         pct: i32,
     },
+}
+
+impl Strike {
+    /// Whether an illusion's attacks go through it. An illusion strikes critically (its
+    /// weakened attack, and a Phantom Critical's magic as weakened), but it bashes, cleaves,
+    /// lets loose chain lightning and splits its shots never: these procs of a unit's items are
+    /// its own body's alone.
+    pub const fn by_illusions(self) -> bool {
+        match self {
+            Strike::Crit { .. } => true,
+            Strike::Bash { .. }
+            | Strike::Cleave { .. }
+            | Strike::Chain { .. }
+            | Strike::Split { .. } => false,
+            Strike::Disarm { .. }
+            | Strike::Break { .. }
+            | Strike::Lay { .. }
+            | Strike::Splash { .. }
+            | Strike::Petrify { .. } => true,
+        }
+    }
 }
 
 /// A passive that goes off as its bearer dies.

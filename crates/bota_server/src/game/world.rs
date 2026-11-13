@@ -398,6 +398,7 @@ impl World {
             removal: false,
             spares: false,
             riders: crate::game::Riders::NONE,
+            category: crate::game::Category::Plain,
         });
     }
 
@@ -440,6 +441,7 @@ impl World {
             removal: removes,
             spares: true,
             riders: crate::game::Riders::NONE,
+            category: crate::game::Category::Plain,
         });
     }
 
@@ -450,6 +452,7 @@ impl World {
         target: Entity,
         amount: i32,
         inflictor: Option<Inflictor>,
+        category: crate::game::Category,
     ) {
         let kind = bota_proto::DamageKind::Physical;
         let damage_amp_bp = self.outgoing_damage_amp_bp(source, kind);
@@ -472,6 +475,7 @@ impl World {
             removal: false,
             spares: false,
             riders: crate::game::Riders::NONE,
+            category,
         });
     }
 
@@ -506,6 +510,7 @@ impl World {
             removal: false,
             spares: false,
             riders: crate::game::Riders::NONE,
+            category: crate::game::Category::Plain,
         });
     }
 
@@ -966,6 +971,7 @@ impl World {
             &mut self.mana,
         );
         self.run_actions();
+        let mut orphans = Vec::new();
         missile_system(MissileCx {
             entities: &mut self.entities,
             projectile: &mut self.projectile,
@@ -977,7 +983,9 @@ impl World {
             kind: &self.kind,
             ground: &self.ground,
             hits: &mut self.hits,
+            orphans: &mut orphans,
         });
+        self.let_loose_orphans(orphans);
         events.append(&mut self.events);
     }
 
@@ -1039,6 +1047,7 @@ impl World {
             .iter()
             .any(|hit| hit.damage_amp_bp != bota_core::rules::NOMINAL_BP || hit.riders.amplified());
         let mut blocks = Vec::new();
+        let mut orphans = Vec::new();
         let cx = HitCx {
             abilities: &mut self.abilities,
             blocks: &mut blocks,
@@ -1056,6 +1065,7 @@ impl World {
             rng: &self.rng,
             evasion: &mut self.evasion,
             procs: &mut self.crit,
+            orphans: &mut orphans,
             missed: &mut self.missed,
             tick: self.tick,
             inventory: &mut self.inventory,
@@ -1070,6 +1080,7 @@ impl World {
         for activation in blocks {
             self.tell_ability_triggered(activation.unit, activation.ability);
         }
+        self.let_loose_orphans(orphans);
         self.landed.drain(..).collect()
     }
 }

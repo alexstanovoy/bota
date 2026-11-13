@@ -261,6 +261,7 @@ impl World {
             removal: false,
             spares: false,
             riders: crate::game::Riders::NONE,
+            category: crate::game::Category::Plain,
         });
     }
 }

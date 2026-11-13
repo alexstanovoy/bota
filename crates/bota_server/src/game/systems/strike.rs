@@ -8,7 +8,8 @@ use bota_core::{
 use bota_proto::{DamageKind, Fixed, Inflictor, ItemId, UnitKind, Vec2};
 
 use crate::game::{
-    Entity, Landed, Modifier, PseudoRandom, Purpose, RiderKind, Rolls, Stats, World, wire_id,
+    Entity, Landed, Modifier, Orphan, PseudoRandom, Purpose, RiderKind, Rolls, Stats, World,
+    wire_id,
 };
 
 use super::hitting::{BLOCK_PLACE, entity_slot};
@@ -127,13 +128,13 @@ impl Proc {
     }
 }
 
-/// A cleave's cone: it opens from the attacker towards the struck, `start_width` wide where it
-/// opens and `end_width` at `distance` from there.
+/// A cleave's trapezoid: it opens at the attacker towards the struck, `start_radius` to either
+/// side of its axis there and `end_radius` at `distance` along it.
 struct Cone {
     from: Vec2,
     towards: Vec2,
-    start_width: Fixed,
-    end_width: Fixed,
+    start_radius: Fixed,
+    end_radius: Fixed,
     distance: Fixed,
 }
 
@@ -156,11 +157,10 @@ impl Cone {
             return false;
         }
         let (start, end) = (
-            i128::from(self.start_width.raw),
-            i128::from(self.end_width.raw),
+            i128::from(self.start_radius.raw),
+            i128::from(self.end_radius.raw),
         );
-        let width = start + (end - start) * along / distance;
-        aside * 2 <= width
+        aside <= start + (end - start) * along / distance
     }
 }
 
@@ -205,7 +205,7 @@ impl World {
 
     /// The strikes a unit holds, by place: its own passives (a neutral's, unless broken), then
     /// those of the items it carries ([`carried_strikes`]), a ranged attacker's as an item gives
-    /// them to one.
+    /// them to one, and an illusion's only those it goes through ([`Strike::by_illusions`]).
     fn sources(&self, entity: Entity) -> Vec<Source> {
         let mut sources: Vec<Source> = self
             .passives(entity)
@@ -226,6 +226,7 @@ impl World {
             .stats
             .get(entity)
             .is_some_and(|stats| stats.projectile_speed.is_some());
+        let illusion = self.wears_illusion(entity);
         let mut index = (usize::MAX, 0);
         for (slot, item, strike) in carried_strikes(self.carried_slots(entity), ranged) {
             index = if index.0 == slot {
@@ -233,6 +234,10 @@ impl World {
             } else {
                 (slot, 0)
             };
+            // The strike keeps its item's index whether or not an illusion goes through it.
+            if illusion && !strike.by_illusions() {
+                continue;
+            }
             sources.push(Source {
                 origin: Origin::Item {
                     slot,
@@ -262,21 +267,32 @@ impl World {
         source.roll(odds)
     }
 
-    /// Whether a source is off its wait: an ability's slot, or the item's stack.
-    fn strike_ready(&self, by: Entity, on: Entity, origin: Origin) -> bool {
-        match origin {
-            Origin::Ability {
-                slot,
-                ability,
-                level,
-            } => self.cooled_down(Proc {
+    /// Whether a source is off its wait: an ability's slot, a strike's own timer (a chain's,
+    /// which no item shows and nothing cuts or refreshes), or else the item's stack.
+    fn strike_ready(&self, by: Entity, on: Entity, source: Source) -> bool {
+        match (source.origin, source.strike) {
+            (
+                Origin::Ability {
+                    slot,
+                    ability,
+                    level,
+                },
+                _,
+            ) => self.cooled_down(Proc {
                 by,
                 on,
                 slot,
                 ability,
                 level,
             }),
-            Origin::Item { slot, .. } => self
+            (origin @ Origin::Item { .. }, Strike::Chain { .. }) => self
+                .crit
+                .get(by.index().0 as usize)
+                .and_then(Option::as_ref)
+                .and_then(|rolls| rolls.sources().get(origin.place()))
+                .and_then(Option::as_ref)
+                .is_none_or(|roll| roll.ready(self.tick)),
+            (Origin::Item { slot, .. }, _) => self
                 .inventory
                 .get(by)
                 .and_then(|bag| bag.slots.get(slot).copied().flatten())
@@ -284,26 +300,38 @@ impl World {
         }
     }
 
-    /// Starts a source's wait: an ability's cooldown, or the item's (its own cooldown, or the
-    /// strike's own wait for one that names it), shortened as every cooldown of the unit is.
+    /// Starts a source's wait: an ability's cooldown; a chain's own timer of `wait_ms`, as it is
+    /// (Maelstrom's internal wait: neither shown on the item nor touched by cooldown cuts); or
+    /// the item's cooldown, shortened as every cooldown of the unit is.
     fn start_wait(&mut self, by: Entity, on: Entity, source: Source) {
-        match source.origin {
-            Origin::Ability {
-                slot,
-                ability,
-                level,
-            } => self.start_cooldown(Proc {
+        match (source.origin, source.strike) {
+            (
+                Origin::Ability {
+                    slot,
+                    ability,
+                    level,
+                },
+                _,
+            ) => self.start_cooldown(Proc {
                 by,
                 on,
                 slot,
                 ability,
                 level,
             }),
-            Origin::Item { slot, item, .. } => {
-                let base = match source.strike {
-                    Strike::Chain { wait_ms, .. } => ticks_of_ms(wait_ms),
-                    _ => bota_core::item_def(item).map_or(0, |def| def.cooldown),
-                };
+            (origin @ Origin::Item { .. }, Strike::Chain { wait_ms, .. }) => {
+                let until = self.tick + ticks_of_ms(wait_ms);
+                if let Some(roll) = self
+                    .crit
+                    .get_mut(by.index().0 as usize)
+                    .and_then(Option::as_mut)
+                    .and_then(|rolls| rolls.at_opened(origin.place()))
+                {
+                    roll.wait_until(until);
+                }
+            }
+            (Origin::Item { slot, item, .. }, _) => {
+                let base = bota_core::item_def(item).map_or(0, |def| def.cooldown);
                 let ticks = self.cooldown_after_rate(by, base);
                 if let Some(Some(stack)) = self
                     .inventory
@@ -379,7 +407,7 @@ impl World {
         }
         boost.proc = self.conditional_proc(attacker, on, &sources);
         boost.chain = self.roll_chain(attacker, on, &sources);
-        boost.split = self.roll_split(attacker, &sources);
+        boost.split = self.roll_split(attacker, on, &sources);
         boost
     }
 
@@ -414,7 +442,7 @@ impl World {
         else {
             return None;
         };
-        if !self.strike_ready(attacker, on, source.origin)
+        if !self.strike_ready(attacker, on, source)
             || !self.rolls(attacker, source.origin, chance_pct)
         {
             return None;
@@ -458,7 +486,7 @@ impl World {
         else {
             return None;
         };
-        if !self.strike_ready(attacker, on, source.origin)
+        if !self.strike_ready(attacker, on, source)
             || !self.rolls(attacker, source.origin, chance_pct)
         {
             return None;
@@ -467,10 +495,16 @@ impl World {
         Some(item)
     }
 
-    /// The split shot a swing throws besides itself: of the split shots a unit carries, the one
-    /// that throws most. No illusion splits its shots.
-    fn roll_split(&mut self, attacker: Entity, sources: &[Source]) -> Option<SplitShot> {
-        if self.wears_illusion(attacker) {
+    /// The split shot a swing at `on` throws besides itself: of the split shots a unit carries,
+    /// the one that throws most, rolled only on a swing at an enemy unit (no building, ward or
+    /// courier: Splitshot never goes off on one).
+    fn roll_split(
+        &mut self,
+        attacker: Entity,
+        on: Entity,
+        sources: &[Source],
+    ) -> Option<SplitShot> {
+        if !self.proc_target(attacker, on) {
             return None;
         }
         let (source, _) = strongest(sources, |strike, _| match strike {
@@ -499,8 +533,9 @@ impl World {
     }
 
     /// The enemies a split shot of `attacker` throws its extra missiles at, besides `on`: up to
-    /// its count of the nearest enemy units it may attack, no building and no ward, within its
-    /// attack range and the shot's `range_bonus` and within `angle` degrees in front of it.
+    /// its count of the enemy units it may attack (no building, ward or courier), heroes before
+    /// the rest and the nearest first, within its attack range and the shot's `range_bonus` and
+    /// within `angle` degrees in front of it.
     pub(super) fn split_targets(
         &self,
         attacker: Entity,
@@ -513,24 +548,32 @@ impl World {
         };
         let reach = stats.attack_range + rules::units(shot.range_bonus);
         let half_angle = (i64::from(shot.angle.clamp(0, 360)) * 65_536 / 720) as u16;
-        let mut found: Vec<(i64, Entity)> = self
+        // Heroes first, the nearest first among each.
+        let mut found: Vec<(bool, i64, Entity)> = self
             .entities
             .iter()
-            .filter(|&other| other != on && self.foes(attacker, other))
+            .filter(|&other| other != on && self.proc_target(attacker, other))
             .filter(|&other| self.reachable(attacker, reach, other))
             .filter_map(|other| {
                 let at = self.pos(other)?;
                 let gap =
                     bota_core::facing_gap(from.facing, bota_core::facing_towards(from.pos, at));
-                (gap <= half_angle).then_some((at.distance_squared(from.pos), other))
+                let hero = self.kind.get(other) == Some(&UnitKind::Hero);
+                (gap <= half_angle).then_some((!hero, at.distance_squared(from.pos), other))
             })
             .collect();
         found.sort();
         found
             .into_iter()
             .take(usize::from(shot.count))
-            .map(|(_, other)| other)
+            .map(|(_, _, other)| other)
             .collect()
+    }
+
+    /// Whether an item's attack proc reaches `on`: a unit `by` fights, no building, ward or
+    /// courier.
+    fn proc_target(&self, by: Entity, on: Entity) -> bool {
+        self.foes(by, on) && self.kind.get(on) != Some(&UnitKind::Courier)
     }
 
     /// Answers to the blows that landed this tick: what their attackers'
@@ -556,7 +599,7 @@ impl World {
             }
             for rider in blow.riders.iter() {
                 if rider.kind == RiderKind::Chain {
-                    self.let_loose_chain(by, rider.item, blow);
+                    self.let_loose_chain(by, rider.item, blow.target, blow.at);
                 }
             }
             for source in self.sources(by) {
@@ -592,9 +635,13 @@ impl World {
         }
     }
 
-    /// Lets loose the chain lightning of `item` a swing carried where it landed: it strikes the
-    /// struck and leaps on from it (its numbers are the item's [`Strike::Chain`]).
-    fn let_loose_chain(&mut self, by: Entity, item: ItemId, blow: &Landed) {
+    /// Lets loose the chain lightning of `item` a swing of `by` carried, where it reached `on`
+    /// standing at `at`: it strikes the struck and leaps on from it (its numbers are the item's
+    /// [`Strike::Chain`]), and stops as its wielder dies. A dead wielder lets loose none.
+    pub(super) fn let_loose_chain(&mut self, by: Entity, item: ItemId, on: Entity, at: Vec2) {
+        if !self.alive(by) {
+            return;
+        }
         let chain = bota_core::item_def(item).and_then(|def| {
             def.carried.strikes.iter().find_map(|strike| match *strike {
                 Strike::Chain {
@@ -609,44 +656,58 @@ impl World {
                     radius,
                     delay_ms,
                     keep_pct: 100,
+                    life: crate::game::ChainLife::EndsWithSource,
                 }),
                 _ => None,
             })
         });
         if let Some(bolt) = chain {
-            self.chain_from(by, Inflictor::Item(item), blow.target, blow.at, bolt);
+            self.chain_from(by, Inflictor::Item(item), on, at, bolt);
         }
     }
 
-    /// Cleaves a swing of `by` that landed: every enemy unit but the struck, no building and no
-    /// ward, in the cone of `strike` takes its share of the blow as dealt as physical damage,
-    /// laid to `item`. The cone opens from the attacker towards where the blow landed,
-    /// `start_width` wide there and `end_width` at `distance`, both widened by its AoE bonus. No
-    /// illusion cleaves.
+    /// Lets loose the chain lightning of attacks whose target was dead before they reached it:
+    /// Chain Lightning procs "On already dead enemies (i.e. target died before projectile
+    /// impact)" (Liquipedia, Maelstrom), from where the target fell.
+    pub(crate) fn let_loose_orphans(&mut self, orphans: Vec<Orphan>) {
+        for orphan in orphans {
+            for rider in orphan.riders.iter() {
+                if rider.kind == RiderKind::Chain {
+                    self.let_loose_chain(orphan.source, rider.item, orphan.target, orphan.at);
+                }
+            }
+        }
+    }
+
+    /// Cleaves a swing of `by` that landed: every enemy unit but the struck, no building, ward or
+    /// courier, in the trapezoid of `strike` takes its share of the blow as dealt as physical
+    /// damage, laid to `item`, a cleave a damage block answers to. The trapezoid opens at the
+    /// attacker towards where the blow landed, `start_radius` to either side there and
+    /// `end_radius` at `distance`, both widened by its AoE bonus.
     fn cleave(&mut self, by: Entity, item: ItemId, blow: &Landed, strike: Strike) {
         let Strike::Cleave {
             hero_pct,
             creep_pct,
-            start_width,
-            end_width,
+            start_radius,
+            end_radius,
             distance,
         } = strike
         else {
             return;
         };
-        let Some(from) = self.pos(by).filter(|_| !self.wears_illusion(by)) else {
+        let Some(from) = self.pos(by) else {
             return;
         };
         let cone = Cone {
             from,
             towards: blow.at,
-            start_width: self.widened_of(by, start_width),
-            end_width: self.widened_of(by, end_width),
+            start_radius: self.widened_of(by, start_radius),
+            end_radius: self.widened_of(by, end_radius),
             distance: rules::units(distance),
         };
         for other in self.entities.iter().collect::<Vec<_>>() {
             if other == blow.target
-                || !self.foes(by, other)
+                || !self.proc_target(by, other)
                 || !self.alive(other)
                 || !self.pos(other).is_some_and(|at| cone.holds(at))
             {
@@ -662,6 +723,7 @@ impl World {
                 other,
                 blow.dealt * pct / 100,
                 Some(Inflictor::Item(item)),
+                crate::game::Category::Cleave,
             );
         }
     }
@@ -918,7 +980,13 @@ impl World {
                 && self.alive(other)
                 && self.pos(other).is_some_and(|at| at.within(blow.at, reach))
             {
-                self.push_splash_hit(Some(by), other, blow.dealt * pct / 100, inflictor);
+                self.push_splash_hit(
+                    Some(by),
+                    other,
+                    blow.dealt * pct / 100,
+                    inflictor,
+                    crate::game::Category::Plain,
+                );
             }
         }
     }

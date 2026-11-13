@@ -16,6 +16,16 @@ use super::modifiers::{resisted_by, resisted_ticks};
 
 use std::collections::VecDeque;
 
+/// An attack whose target was dead before it reached it, with the item procs it carried: what
+/// still goes off on a dead target (chain lightning) goes off where the target fell.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Orphan {
+    pub source: Entity,
+    pub target: Entity,
+    pub at: Vec2,
+    pub riders: Riders,
+}
+
 /// One attack that did not land.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Missed {
@@ -89,6 +99,8 @@ pub struct HitCx<'a> {
     pub evasion: &'a mut Vec<Option<PseudoRandom>>,
     /// The sequences of every unit's chance procs, by entity slot: a damage block's among them.
     pub procs: &'a mut Vec<Option<Rolls>>,
+    /// Where an attack whose target was dead already leaves the procs it carried.
+    pub orphans: &'a mut Vec<Orphan>,
     /// Where an attack that was evaded is left for whatever answers to it.
     pub missed: &'a mut VecDeque<Missed>,
     /// The tick the blows are felt on.
@@ -126,6 +138,7 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         rng,
         evasion,
         procs,
+        orphans,
         missed,
         tick,
         abilities,
@@ -151,6 +164,17 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         // Physical damage passes an ethereal unit by (Dota's Ghost Form: "immune to physical
         // damage").
         let passes_by = stat.ethereal && blow.kind == DamageKind::Physical;
+        if !standing
+            && blow.riders != Riders::NONE
+            && let Some(source) = blow.source
+        {
+            orphans.push(Orphan {
+                source,
+                target: blow.target,
+                at: transform.get(blow.target).map_or(Vec2::ZERO, |t| t.pos),
+                riders: blow.riders,
+            });
+        }
         if !standing || stat.invulnerable || shielded || passes_by {
             continue;
         }
@@ -464,6 +488,7 @@ fn riding_magic(attack: &Hit, damage: i32, item: bota_proto::ItemId, amp_bp: i32
         removal: false,
         spares: false,
         riders: Riders::NONE,
+        category: crate::game::Category::Plain,
     }
 }
 
@@ -474,8 +499,8 @@ pub(crate) const BLOCK_PLACE: usize = 128;
 /// The damage a target's damage block takes off an attack's physical blow, before its armor
 /// (Vanguard: "a 60% chance to block 50 damage from incoming attacks"; Dota 7.41, Tidehunter: a
 /// damage block applies "to an incoming physical attack"), rolled on a pseudo-random sequence of
-/// the target's own. Nothing off anything but an attack's own blow, and nothing rolled where the
-/// target carries no block.
+/// the target's own. It answers to an attack's own blow and a cleave of one (Damage Block applies
+/// to cleave), to nothing else, and nothing is rolled where the target carries no block.
 fn blocked_attack(
     blow: Hit,
     target: &Stats,
@@ -485,7 +510,8 @@ fn blocked_attack(
     let Some(block) = target.damage_block else {
         return 0;
     };
-    if !blow.attack || blow.kind != DamageKind::Physical {
+    let answers = blow.attack || blow.category == crate::game::Category::Cleave;
+    if !answers || blow.kind != DamageKind::Physical {
         return 0;
     }
     let rolls = entity_slot(procs, blow.target, Rolls::default);

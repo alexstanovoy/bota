@@ -1148,6 +1148,7 @@ fn morbid_swing_heal(amount: i32, on: impl FnOnce(&mut World, Vec2) -> Entity) -
         removal: false,
         spares: false,
         riders: crate::game::Riders::NONE,
+        category: crate::game::Category::Plain,
     });
     let events = world.step();
     let taken = events

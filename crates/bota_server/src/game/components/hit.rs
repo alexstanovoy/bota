@@ -45,6 +45,8 @@ pub struct Hit {
     pub proc: Option<AttackProc>,
     /// What the attack's item procs let loose once it lands: its own blow only.
     pub riders: Riders,
+    /// What the blow is besides an attack's own, where a rule answers to it.
+    pub category: Category,
     /// Allegiance captured by a blockable spell projectile.
     pub blockable_source_team: Option<bota_proto::Team>,
     /// Whether it removes health rather than dealing damage (Dota's HP
@@ -88,6 +90,38 @@ impl StateHash for Laid {
         for item in self.items() {
             item.0.state_hash(fnv);
         }
+    }
+}
+
+/// What a blow is, where a rule answers to it: a damage block takes its share off an attack's own
+/// blow and off a cleave of one (Damage Block applies to cleave), off no other blow.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Category {
+    /// Anything but a cleave: a spell's, what rides with an attack, a splash.
+    #[default]
+    Plain,
+    /// What a cleave deals off an attack that landed.
+    Cleave,
+}
+
+/// A plain blow hashes as one before the field was.
+impl StateHash for Category {
+    fn state_hash(&self, fnv: &mut Fnv) {
+        match self {
+            Category::Plain => {}
+            Category::Cleave => fnv.u8(1),
+        }
+    }
+}
+
+#[cfg(test)]
+impl crate::engine::Specimen for Category {
+    fn low() -> Self {
+        Category::Plain
+    }
+
+    fn high() -> Self {
+        Category::Cleave
     }
 }
 
@@ -226,7 +260,8 @@ state_hash!(Hit {
     spares,
     blockable_source_team,
     proc,
-    riders
+    riders,
+    category
 });
 state_hash!(Fear { line, most });
 

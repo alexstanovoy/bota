@@ -1110,6 +1110,7 @@ impl World {
             removal: false,
             spares: false,
             riders: swing.riders,
+            category: crate::game::Category::Plain,
         });
         for (bonus, item) in swing.pierced {
             self.hits.push_back(Hit {
@@ -1131,6 +1132,7 @@ impl World {
                 removal: false,
                 spares: false,
                 riders: crate::game::Riders::NONE,
+                category: crate::game::Category::Plain,
             });
         }
     }

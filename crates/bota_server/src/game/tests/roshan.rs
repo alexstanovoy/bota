@@ -848,6 +848,7 @@ fn a_spell_bolt_arrives_as_a_spell_instead_of_an_attack() {
             kind: &world.kind,
             ground: &world.ground,
             hits: &mut world.hits,
+            orphans: &mut Vec::new(),
         });
         if let Some(hit) = world.hits.front() {
             assert!(!hit.attack);

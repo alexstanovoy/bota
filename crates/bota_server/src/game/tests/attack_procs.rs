@@ -193,7 +193,8 @@ fn attack_unrefreshed(world: &mut World, by: Entity, on: Entity, swings: usize) 
 }
 
 fn attack_for(world: &mut World, by: Entity, on: Entity, swings: usize, refresh: bool) -> Attacks {
-    let attacker = seat_of(world, by).expect("a seat's hero attacks");
+    let attacker = world.owner.get(by).expect("a seat's unit attacks").0;
+    let unit = (seat_of(world, by).is_none()).then(|| wire_id(by));
     let rolled = world
         .crit
         .iter()
@@ -209,7 +210,7 @@ fn attack_for(world: &mut World, by: Entity, on: Entity, swings: usize, refresh:
     };
     let mut landed = 0;
     let mut after = None;
-    let mut commands = vec![seat_command(world, attacker, order)];
+    let mut commands = vec![unit_command(world, attacker, unit, order)];
     for step in 0..swings * 90 + 120 {
         let defender = seat_of(world, on).filter(|_| refresh && step % 60 == 59);
         if let Some(seat) = defender {
@@ -259,7 +260,7 @@ fn attack_for(world: &mut World, by: Entity, on: Entity, swings: usize, refresh:
             let stand = Order::Move {
                 target: bota_proto::Target::None,
             };
-            commands.push(seat_command(world, attacker, stand));
+            commands.push(unit_command(world, attacker, unit, stand));
         }
         if after.is_some_and(|until| world.tick >= until) {
             return attacks;
@@ -268,12 +269,23 @@ fn attack_for(world: &mut World, by: Entity, on: Entity, swings: usize, refresh:
     panic!("{landed} of {swings} swings landed");
 }
 
-/// A seat's order, validated as the server validates any.
+/// A seat's order for its hero, validated as the server validates any.
 fn seat_command(world: &World, slot: u8, order: Order) -> Command {
-    assert_eq!(world.validate_order(SlotId(slot), None, &order), Ok(()));
+    unit_command(world, slot, None, order)
+}
+
+/// A seat's order for one of its units (its hero when `unit` is none), validated as the server
+/// validates any.
+fn unit_command(
+    world: &World,
+    slot: u8,
+    unit: Option<bota_proto::EntityId>,
+    order: Order,
+) -> Command {
+    assert_eq!(world.validate_order(SlotId(slot), unit, &order), Ok(()));
     Command {
         slot: SlotId(slot),
-        unit: None,
+        unit,
         order,
         queue: false,
         seq: 0,
@@ -766,7 +778,7 @@ fn a_battle_fury_cleaves_sixty_percent_of_each_swing_onto_a_hero_in_its_cone() {
     let towards = world.pos(enemy).expect("standing");
     let (along, aside) = along_and_aside(from, towards, world.pos(behind).expect("standing"));
     assert!(
-        along < 650 && aside * 2 < 150 + 210 * along / 650,
+        along < 650 && aside < 150 + 210 * along / 650,
         "{along} {aside}"
     );
     let share = taken_at(&world, hero, behind, 60);
@@ -797,10 +809,10 @@ fn a_battle_fury_cleaves_sixty_percent_of_each_swing_onto_a_hero_in_its_cone() {
     );
 }
 
-/// Battle Fury's Cleave deals 40% (`cleave_damage_percent_creep`) to a creep in the cone. The
-/// creep is stood up directly: no Dota cheat stands a lane creep at a spot.
+/// Battle Fury's Cleave deals 40% (`cleave_damage_percent_creep`) to each creep in its trapezoid:
+/// a camp of enemy lane creeps placed behind the struck by `-createcreeps`.
 #[test]
-fn a_battle_fury_cleaves_forty_percent_onto_a_creep_in_its_cone() {
+fn a_battle_fury_cleaves_forty_percent_onto_creeps_in_its_cone() {
     let (mut world, hero, enemy) = duel(
         HeroId::PUDGE,
         &[ItemId::BATTLE_FURY],
@@ -808,24 +820,23 @@ fn a_battle_fury_cleaves_forty_percent_onto_a_creep_in_its_cone() {
         Vec2::from_ints(150, 0),
     );
     let at = world.pos(hero).expect("standing") + Vec2::from_ints(350, 0);
-    let creep = thinking_creep_of(&mut world, Team::Dire, at);
-    world.step();
-    let share = taken_at(&world, hero, creep, 40);
+    seat_cheat(&mut world, 0, Cheat::CreateCreeps { enemy: true, at });
     let attacks = attack_until(&mut world, hero, enemy, 1);
-    let swing = attack_blows(&attacks.blows, enemy)[0];
     let bfury = Some(Inflictor::Item(ItemId::BATTLE_FURY));
     let cleaved: Vec<&Blow> = attacks
         .blows
         .iter()
-        .filter(|blow| blow.tick == swing.tick && blow.inflictor == bfury)
+        .filter(|blow| blow.inflictor == bfury)
         .collect();
-    assert_eq!(cleaved.len(), 1, "{cleaved:?}");
-    assert_eq!(cleaved[0].target, creep);
     assert!(
-        share.contains(&cleaved[0].amount),
-        "{:?}: {share:?}",
-        cleaved[0]
+        !cleaved.is_empty(),
+        "the creeps behind the struck are cleaved"
     );
+    for blow in cleaved {
+        assert_ne!(world.kind.get(blow.target), Some(&UnitKind::Hero));
+        let share = taken_at(&world, hero, blow.target, 40);
+        assert!(share.contains(&blow.amount), "{blow:?}: {share:?}");
+    }
 }
 
 /// Cleave is a melee carrier's ("(Melee Only)"): a ranged Battle Fury carrier cleaves nothing.
@@ -843,9 +854,44 @@ fn a_ranged_battle_fury_carrier_cleaves_nothing() {
     assert!(attacks.blows.iter().all(|blow| blow.inflictor != bfury));
 }
 
+/// Cleave's starting and ending values are radii to either side of its axis (Dota 7.00, Cleave
+/// Mechanics: "starting radius", "ending radius"; 7.20 widened the end to 360 and the reach to
+/// 650): a hero 200 aside of the axis 400 along it (the radius there is 279) is cleaved, one 100
+/// along and 200 aside (radius 182) is not.
+#[test]
+fn a_battle_furys_cleave_reaches_its_radius_to_either_side() {
+    for (offset, inside) in [((400, 200), true), ((100, 200), false), ((100, 160), true)] {
+        let (mut world, hero, enemy) = duel(
+            HeroId::PUDGE,
+            &[ItemId::BATTLE_FURY],
+            HeroId::PUDGE,
+            Vec2::from_ints(150, 0),
+        );
+        let beside = foe(
+            &mut world,
+            hero,
+            HeroId::PUDGE,
+            Vec2::from_ints(offset.0, offset.1),
+        );
+        let from = world.pos(hero).expect("standing");
+        let towards = world.pos(enemy).expect("standing");
+        let (along, aside) = along_and_aside(from, towards, world.pos(beside).expect("standing"));
+        let radius = 150 + 210 * along / 650;
+        assert_eq!(
+            aside < radius,
+            inside,
+            "{offset:?}: {along} along, {aside} aside, radius {radius}"
+        );
+        let attacks = attack_until(&mut world, hero, enemy, 2);
+        let cleaved = attacks.blows.iter().any(|blow| blow.target == beside);
+        assert_eq!(cleaved, inside, "{offset:?}");
+    }
+}
+
 /// An AoE bonus widens a cleave (Dota 7.36: "AoE Bonuses now affect all auras and Cleave
-/// sources"; Battle Fury's widths are `affected_by_aoe_increase`): a hero beside the cone's edge
-/// is cleaved with a Chasm Stone's 40 (`aoe_bonus`) carried, and not without.
+/// sources"; Battle Fury's radii are `affected_by_aoe_increase`): a hero 100 along and 200 aside
+/// of the axis, outside the plain radius there (182), is cleaved with a Chasm Stone's 40
+/// (`aoe_bonus`: 222) carried, and not without.
 #[test]
 fn a_chasm_stone_widens_a_battle_furys_cleave() {
     for chasm in [false, true] {
@@ -856,13 +902,12 @@ fn a_chasm_stone_widens_a_battle_furys_cleave() {
         };
         let (mut world, hero, enemy) =
             duel(HeroId::PUDGE, items, HeroId::PUDGE, Vec2::from_ints(150, 0));
-        let beside = foe(&mut world, hero, HeroId::PUDGE, Vec2::from_ints(400, 150));
+        let beside = foe(&mut world, hero, HeroId::PUDGE, Vec2::from_ints(100, 200));
         let from = world.pos(hero).expect("standing");
         let towards = world.pos(enemy).expect("standing");
         let (along, aside) = along_and_aside(from, towards, world.pos(beside).expect("standing"));
-        // Outside the plain cone's half width there, inside the widened one's.
-        assert!(aside * 2 > 150 + 210 * along / 650, "{along} {aside}");
-        assert!(aside * 2 <= 190 + 210 * along / 650, "{along} {aside}");
+        assert!(aside > 150 + 210 * along / 650, "{along} {aside}");
+        assert!(aside <= 190 + 210 * along / 650, "{along} {aside}");
         let attacks = attack_until(&mut world, hero, enemy, 3);
         let cleaved = attacks.blows.iter().any(|blow| blow.target == beside);
         assert_eq!(cleaved, chasm, "with a Chasm Stone: {chasm}");
@@ -1103,4 +1148,834 @@ fn a_battle_fury_chops_a_tree_and_waits_three_seconds() {
         stack.cooldown,
         ticks_of(3000)
     );
+}
+
+/// Whether a unit's proc source at `place` has rolled at all.
+fn rolled(world: &World, unit: Entity, place: u8) -> bool {
+    world
+        .crit
+        .get(unit.index().0 as usize)
+        .and_then(Option::as_ref)
+        .and_then(|rolls| rolls.sources().get(usize::from(place)))
+        .is_some_and(Option::is_some)
+}
+
+/// A two-seat match on the full map with every rune and cheats on. Seat 0's `hero`, raised to
+/// level 25 and handed `items` (`-lvlup`, `-item`), takes an Illusion Rune spawned at the top river
+/// spot (`-spawnrune`, a validated take order); then the hero is moved away (`-teleport`) and
+/// seat 1's `foe` (`-lvlup`) is moved `offset` from the first illusion, which seat 0 commands.
+/// Answers the world, the hero, that illusion and the foe.
+fn illusion_duel(
+    hero: HeroId,
+    items: &[ItemId],
+    foe: HeroId,
+    offset: Vec2,
+) -> (World, Entity, Entity, Entity) {
+    let mut cfg = config();
+    cfg.cheats = true;
+    cfg.map = bota_proto::MapId(0);
+    cfg.runes = bota_proto::RuneSet::ALL;
+    cfg.objectives = bota_proto::ObjectiveSet::NONE;
+    cfg.picks = vec![
+        Pick {
+            slot: SlotId(0),
+            team: Team::Radiant,
+            hero,
+        },
+        Pick {
+            slot: SlotId(1),
+            team: Team::Dire,
+            hero: foe,
+        },
+    ];
+    let mut world = World::for_match(&cfg, cfg.rng());
+    world.settle();
+    let unit = world.seats[0].unit.expect("stood up");
+    let enemy = world.seats[1].unit.expect("stood up");
+    let spot = bota_core::map_of(bota_proto::MapId(0)).rune_spots[0].at;
+    seat_cheat(
+        &mut world,
+        0,
+        Cheat::Teleport {
+            at: spot - Vec2::from_ints(300, 0),
+        },
+    );
+    seat_cheat(&mut world, 0, Cheat::Levels { count: 24 });
+    for &item in items {
+        seat_cheat(&mut world, 0, Cheat::Item { item });
+    }
+    seat_cheat(&mut world, 0, Cheat::Refresh);
+    seat_cheat(
+        &mut world,
+        0,
+        Cheat::SpawnRune {
+            kind: bota_proto::RuneKind::Illusion,
+            at: spot,
+        },
+    );
+    let rune = world
+        .view_full()
+        .runes
+        .iter()
+        .find(|rune| rune.kind == bota_proto::RuneKind::Illusion)
+        .expect("the rune lies")
+        .id;
+    let take = seat_command(
+        &world,
+        0,
+        Order::Take {
+            target: bota_proto::Target::Unit(rune),
+        },
+    );
+    world.advance_trusted(&[take]);
+    let illusion = (0..300)
+        .find_map(|_| {
+            world.step();
+            world
+                .entities
+                .iter()
+                .find(|&other| world.illusion.get(other).is_some_and(|it| it.of == unit))
+        })
+        .expect("the rune makes illusions");
+    seat_cheat(
+        &mut world,
+        0,
+        Cheat::Teleport {
+            at: spot - Vec2::from_ints(1500, 0),
+        },
+    );
+    let at = world.pos(illusion).expect("standing") + offset;
+    seat_cheat(&mut world, 1, Cheat::Teleport { at });
+    seat_cheat(&mut world, 1, Cheat::Levels { count: 24 });
+    let stand = Order::Move {
+        target: bota_proto::Target::None,
+    };
+    let still: Vec<Command> = world
+        .entities
+        .iter()
+        .filter(|&other| world.illusion.get(other).is_some_and(|it| it.of == unit))
+        .map(|other| unit_command(&world, 0, Some(wire_id(other)), stand))
+        .chain([seat_command(&world, 1, stand)])
+        .collect();
+    world.advance_trusted(&still);
+    (world, unit, illusion, enemy)
+}
+
+/// What an illusion's swing of `pct` percent of its damage roll, amplified as the illusion's
+/// attacks are, takes off `on`.
+fn illusion_taken(
+    world: &World,
+    by: Entity,
+    on: Entity,
+    pct: i32,
+) -> std::ops::RangeInclusive<i32> {
+    let stats = world.stats.get(by).expect("derived");
+    let amp = stats.damage_amp_bp(DamageKind::Physical);
+    let through = |raw: i32| {
+        let dealt = bota_core::amplify(raw * pct / 100, amp);
+        let taken = physical_on(world, on, dealt);
+        let share = world
+            .stats
+            .get(on)
+            .expect("derived")
+            .illusion_attack_taken_bp;
+        (i64::from(taken) * i64::from(share) / i64::from(rules::NOMINAL_BP)) as i32
+    };
+    let (low, high) = (stats.damage, stats.damage + stats.damage_spread);
+    through(low)..=through(high)
+}
+
+/// An illusion strikes critically with what its hero carries, on a run of its own: a Crystalys's
+/// 160% of its weakened swing on Dota's 30% run.
+#[test]
+fn an_illusion_strikes_critically_with_a_crystalys_on_its_own_run() {
+    let (mut world, _, illusion, enemy) = illusion_duel(
+        HeroId::PUDGE,
+        &[ItemId::CRYSTALYS],
+        HeroId::PUDGE,
+        Vec2::from_ints(150, 0),
+    );
+    let place = item_place(slot_holding(&world, illusion, ItemId::CRYSTALYS));
+    let mut run = Prd::new(&world, illusion, place, C30);
+    let (plain, crit) = (
+        illusion_taken(&world, illusion, enemy, 100),
+        illusion_taken(&world, illusion, enemy, 160),
+    );
+    assert!(plain.end() < crit.start(), "{plain:?} {crit:?}");
+    let blows = attack_blows(&attack_until(&mut world, illusion, enemy, 20).blows, enemy);
+    let mut crits = 0;
+    for blow in blows {
+        let critical = run.next();
+        crits += usize::from(critical);
+        let span = if critical { &crit } else { &plain };
+        assert!(
+            span.contains(&blow.amount),
+            "{blow:?}: {span:?}, critical {critical}"
+        );
+    }
+    assert!(crits > 0);
+}
+
+/// An illusion's Phantom Critical lands its magic weakened as the illusion's damage is (Dota 7.38b
+/// fixed Revenant's Brooch dealing too much off illusions): 80% of its damage roll, amplified by
+/// the illusion's magical share, on Dota's 30% run.
+#[test]
+fn an_illusions_phantom_critical_lands_its_weakened_magic() {
+    let (mut world, _, illusion, enemy) = illusion_duel(
+        HeroId::PUDGE,
+        &[ItemId::REVENANTS_BROOCH],
+        HeroId::PUDGE,
+        Vec2::from_ints(150, 0),
+    );
+    let place = item_place(slot_holding(&world, illusion, ItemId::REVENANTS_BROOCH));
+    let mut run = Prd::new(&world, illusion, place, C30);
+    let stats = *world.stats.get(illusion).expect("derived");
+    let amp = stats.spell_damage_amp_bp(DamageKind::Magical);
+    assert!(amp < rules::NOMINAL_BP, "an illusion's magic is weakened");
+    let magic = |raw: i32| magical_on(&world, enemy, bota_core::amplify(raw * 80 / 100, amp));
+    let span = magic(stats.damage)..=magic(stats.damage + stats.damage_spread);
+    let all = attack_until(&mut world, illusion, enemy, 20).blows;
+    let brooch = Some(Inflictor::Item(ItemId::REVENANTS_BROOCH));
+    let mut procs = 0;
+    for blow in attack_blows(&all, enemy) {
+        let riding: Vec<&Blow> = all
+            .iter()
+            .filter(|other| other.tick == blow.tick && other.inflictor == brooch)
+            .collect();
+        if run.next() {
+            procs += 1;
+            assert_eq!(riding.len(), 1, "{blow:?}");
+            assert!(
+                span.contains(&riding[0].amount),
+                "{:?}: {span:?}",
+                riding[0]
+            );
+        } else {
+            assert!(riding.is_empty(), "{blow:?}");
+        }
+    }
+    assert!(procs > 0);
+}
+
+/// An illusion bashes, cleaves and lets loose chain lightning never, carrying a Skull Basher, a
+/// Battle Fury and a Maelstrom as its hero does: none of their numbers is rolled for it, it deals
+/// nothing laid to them, and the struck wears no bash, a hero in its cleave takes nothing.
+#[test]
+fn an_illusion_bashes_cleaves_and_lets_loose_lightning_never() {
+    let items = [ItemId::SKULL_BASHER, ItemId::BATTLE_FURY, ItemId::MAELSTROM];
+    let (mut world, _, illusion, enemy) = illusion_duel(
+        HeroId::PUDGE,
+        &items,
+        HeroId::PUDGE,
+        Vec2::from_ints(150, 0),
+    );
+    let behind = foe(&mut world, illusion, HeroId::PUDGE, Vec2::from_ints(350, 0));
+    let mut bashed = false;
+    let attacks = attack_until(&mut world, illusion, enemy, 20);
+    for _ in 0..rules::TICKS_PER_SECOND {
+        world.step();
+        bashed |= world.modifiers.get(enemy).is_some_and(|on_it| {
+            on_it
+                .active()
+                .any(|held| held.inflictor == Some(Inflictor::Item(ItemId::SKULL_BASHER)))
+        });
+    }
+    assert!(!bashed, "no bash of the illusion's");
+    assert!(
+        attacks
+            .blows
+            .iter()
+            .all(|blow| blow.inflictor.is_none() && blow.target != behind),
+        "{:?}",
+        attacks
+            .blows
+            .iter()
+            .filter(|blow| blow.inflictor.is_some())
+            .collect::<Vec<_>>()
+    );
+    for item in items {
+        let place = item_place(slot_holding(&world, illusion, item));
+        assert!(
+            !rolled(&world, illusion, place),
+            "{item:?} rolled for the illusion"
+        );
+    }
+}
+
+/// An illusion splits no shot: a Shadow Fiend's illusion carrying a Specialist's Array throws at
+/// its target alone, enemies beside it in reach untouched, and nothing rolled.
+#[test]
+fn an_illusion_splits_no_shot() {
+    let (mut world, _, illusion, enemy) = illusion_duel(
+        HeroId::SHADOW_FIEND,
+        &[ItemId::SPECIALISTS_ARRAY],
+        HeroId::PUDGE,
+        Vec2::from_ints(350, 0),
+    );
+    let beside = foe(
+        &mut world,
+        illusion,
+        HeroId::PUDGE,
+        Vec2::from_ints(400, 150),
+    );
+    let attacks = attack_until(&mut world, illusion, enemy, 20);
+    assert!(attacks.blows.iter().all(|blow| blow.target != beside));
+    let place = item_place(slot_holding(&world, illusion, ItemId::SPECIALISTS_ARRAY));
+    assert!(!rolled(&world, illusion, place));
+}
+
+/// An illusion's Vanguard blocks the attacks on it as its hero's would, on its own 60% run: a
+/// damage block is no attack modifier of the illusion's.
+#[test]
+fn an_illusions_vanguard_blocks_attacks_on_its_own_run() {
+    let (mut world, _, illusion, enemy) = illusion_duel(
+        HeroId::PUDGE,
+        &[ItemId::VANGUARD],
+        HeroId::PUDGE,
+        Vec2::from_ints(150, 0),
+    );
+    let mut run = Prd::new(&world, illusion, 128, C60);
+    let stats = world.stats.get(enemy).expect("derived");
+    let (low, high) = (stats.damage, stats.damage + stats.damage_spread);
+    let taken = |raw: i32| {
+        let share = world.stats.get(illusion).expect("derived").damage_taken_bp;
+        let through = physical_on(&world, illusion, raw);
+        (i64::from(through) * i64::from(share) / i64::from(rules::NOMINAL_BP)) as i32
+    };
+    let (plain, blocked) = (taken(low)..=taken(high), taken(low - 50)..=taken(high - 50));
+    assert!(blocked.end() < plain.start(), "{blocked:?} {plain:?}");
+    let mut blocks = 0;
+    for blow in attack_blows(
+        &attack_unrefreshed(&mut world, enemy, illusion, 8).blows,
+        illusion,
+    ) {
+        let block = run.next();
+        blocks += usize::from(block);
+        let span = if block { &blocked } else { &plain };
+        assert!(span.contains(&blow.amount), "{blow:?}: {span:?}");
+    }
+    assert!(blocks > 0);
+}
+
+/// Damage Block answers to a cleave as to an attack (Damage Block: cleave is blocked): a Vanguard
+/// carrier in a Battle Fury's cleave takes its 60% share with 50 blocked before its armor on its
+/// own 60% run.
+#[test]
+fn a_vanguard_blocks_a_cleave_before_armor() {
+    let (mut world, hero, carrier) = duel(
+        HeroId::PUDGE,
+        &[ItemId::BATTLE_FURY],
+        HeroId::PUDGE,
+        Vec2::from_ints(400, 0),
+    );
+    let struck = foe(&mut world, hero, HeroId::PUDGE, Vec2::from_ints(150, 0));
+    seat_cheat(
+        &mut world,
+        1,
+        Cheat::Item {
+            item: ItemId::VANGUARD,
+        },
+    );
+    let mut run = Prd::new(&world, carrier, 128, C60);
+    let (low, high) = damage_range(&world, hero);
+    let span = |less: i32| {
+        physical_on(&world, carrier, low * 60 / 100 - less)
+            ..=physical_on(&world, carrier, high * 60 / 100 - less)
+    };
+    let (plain, blocked) = (span(0), span(50));
+    let attacks = attack_unrefreshed(&mut world, hero, struck, 8);
+    let bfury = Some(Inflictor::Item(ItemId::BATTLE_FURY));
+    let mut blocks = 0;
+    for blow in attacks
+        .blows
+        .iter()
+        .filter(|blow| blow.target == carrier && blow.inflictor == bfury)
+    {
+        let block = run.next();
+        blocks += usize::from(block);
+        let span = if block { &blocked } else { &plain };
+        assert!(
+            span.contains(&blow.amount),
+            "{blow:?}: {span:?}, block {block}"
+        );
+    }
+    assert!(blocks > 0);
+}
+
+/// Chain Lightning's 0.2 s wait (`chain_cooldown`) is a timer of its own: "neither displayed on
+/// the item icon when procced nor is affected by cooldown manipulation" (Liquipedia, Maelstrom).
+/// With an Octarine Core's 25% cooldown cut carried, a proc leaves the Maelstrom showing no
+/// cooldown and its wait 6 ticks long, while a Skull Basher's bash waits its item cooldown cut by
+/// the Octarine (2.3 s: 69 ticks, cut to 51 or 52).
+#[test]
+fn maelstroms_wait_is_its_own_and_a_skull_bashers_is_its_items() {
+    let items = [
+        ItemId::MAELSTROM,
+        ItemId::SKULL_BASHER,
+        ItemId::OCTARINE_CORE,
+    ];
+    let (mut world, hero, enemy) = duel(
+        HeroId::PUDGE,
+        &items,
+        HeroId::PUDGE,
+        Vec2::from_ints(150, 0),
+    );
+    seat_cheat(
+        &mut world,
+        1,
+        Cheat::Item {
+            item: ItemId::HEART,
+        },
+    );
+    let maelstrom = slot_holding(&world, hero, ItemId::MAELSTROM);
+    let basher = slot_holding(&world, hero, ItemId::SKULL_BASHER);
+    let attacks = attack_unrefreshed(&mut world, hero, enemy, 1);
+    assert_eq!(attacks.launched.len(), 1);
+    let (mut chained, mut bashed) = (false, false);
+    attack_click(&mut world, enemy);
+    for _ in 0..rules::TICKS_PER_SECOND * 30 {
+        let tick = world.tick;
+        let events = world.step();
+        let launched = events.iter().any(|event| {
+            matches!(event.kind(), EventKind::AttackLaunched { attacker, .. } if attacker == wire_id(hero))
+        });
+        if !launched {
+            continue;
+        }
+        let bag = world.inventory.get(hero).expect("a bag");
+        let shows = |slot: usize| bag.slots[slot].expect("carried").cooldown;
+        assert_eq!(shows(maelstrom), 0, "the Maelstrom shows no cooldown");
+        let roll = world
+            .crit
+            .get(hero.index().0 as usize)
+            .and_then(Option::as_ref)
+            .and_then(|rolls| rolls.sources().get(usize::from(item_place(maelstrom))))
+            .and_then(Option::as_ref);
+        if let Some(roll) = roll
+            && !roll.ready(tick + 1)
+        {
+            chained = true;
+            // The step ran the swing on this tick or the next: the wait ends 6 ticks on.
+            let until = (tick..tick + 30)
+                .find(|&at| roll.ready(at))
+                .expect("it ends");
+            let wait = ticks_of(200);
+            assert!(
+                until == tick + wait || until == tick + wait + 1,
+                "{} ticks",
+                until - tick
+            );
+        }
+        if shows(basher) > 0 && !bashed {
+            bashed = true;
+            assert!((51..=52).contains(&shows(basher)), "{}", shows(basher));
+        }
+        if chained && bashed {
+            return;
+        }
+    }
+    panic!("chained {chained}, bashed {bashed} in thirty seconds");
+}
+
+/// "If the wielder dies, all their currently ongoing Chain Lightning instances stop immediately"
+/// (Liquipedia, Maelstrom): once the first bolt struck, its wielder falls (ours: a lethal blow
+/// laid on the queue, no Dota cheat kills a hero at a tick) and the bolt leaps no more.
+#[test]
+fn maelstroms_lightning_stops_when_its_wielder_dies() {
+    let (mut world, hero, enemy) = duel(
+        HeroId::PUDGE,
+        &[ItemId::MAELSTROM],
+        HeroId::PUDGE,
+        Vec2::from_ints(150, 0),
+    );
+    foe(&mut world, hero, HeroId::PUDGE, Vec2::from_ints(350, 0));
+    // Both sides see everything (`-allvision`): the wielder's death takes no sight off the leap.
+    seat_cheat(&mut world, 0, Cheat::AllVision { on: true });
+    attack_click(&mut world, enemy);
+    let bolt = |events: &[crate::game::Event]| {
+        events.iter().any(|event| {
+            matches!(
+                event.kind(),
+                EventKind::Damaged {
+                    inflictor: Some(Inflictor::Item(ItemId::MAELSTROM)),
+                    ..
+                }
+            )
+        })
+    };
+    for _ in 0..rules::TICKS_PER_SECOND * 60 {
+        if !bolt(&world.step()) {
+            continue;
+        }
+        world.push_hit(None, hero, 1_000_000, DamageKind::Pure, None);
+        for _ in 0..rules::TICKS_PER_SECOND {
+            assert!(!bolt(&world.step()), "a bolt leapt after its wielder fell");
+        }
+        assert!(!world.alive(hero));
+        return;
+    }
+    panic!("no bolt in a minute");
+}
+
+/// A ranged swing's bolt goes off where its missile lands, not as it is thrown: a Shadow Fiend
+/// with a Maelstrom 500 off its target; every bolt strikes the target the tick its missile does.
+#[test]
+fn a_ranged_maelstrom_lets_loose_its_bolt_where_the_missile_lands() {
+    let (mut world, hero, enemy) = duel(
+        HeroId::SHADOW_FIEND,
+        &[ItemId::MAELSTROM],
+        HeroId::PUDGE,
+        Vec2::from_ints(500, 0),
+    );
+    let attacks = attack_until(&mut world, hero, enemy, 24);
+    let maelstrom = Some(Inflictor::Item(ItemId::MAELSTROM));
+    let swings = attack_blows(&attacks.blows, enemy);
+    let first_bolts: Vec<&Blow> = attacks
+        .blows
+        .iter()
+        .filter(|blow| blow.target == enemy && blow.inflictor == maelstrom)
+        .collect();
+    assert!(!first_bolts.is_empty());
+    // The k-th missile that landed is the k-th thrown.
+    for bolt in first_bolts {
+        let swing = swings
+            .iter()
+            .position(|swing| bolt.tick == swing.tick || bolt.tick == swing.tick + 1)
+            .unwrap_or_else(|| panic!("the bolt at {} with no missile landing then", bolt.tick));
+        let thrown = attacks.launched[swing];
+        assert!(
+            bolt.tick >= thrown + 3,
+            "the bolt at {} of the missile thrown at {thrown}",
+            bolt.tick
+        );
+    }
+}
+
+/// Chain Lightning "can proc ... On already dead enemies (i.e. target died before projectile
+/// impact)" (Liquipedia, Maelstrom): a Shadow Fiend's missile that went off with a bolt is in
+/// flight when its target falls (ours: a lethal blow laid on the queue), and the bolt still leaps
+/// from where the target fell onto the enemy beside it.
+#[test]
+fn a_bolt_goes_off_where_the_target_fell_before_the_missile_landed() {
+    let (mut world, hero, enemy) = duel(
+        HeroId::SHADOW_FIEND,
+        &[ItemId::MAELSTROM],
+        HeroId::PUDGE,
+        Vec2::from_ints(500, 0),
+    );
+    let beside = foe(&mut world, hero, HeroId::PUDGE, Vec2::from_ints(650, 0));
+    let place = item_place(slot_holding(&world, hero, ItemId::MAELSTROM));
+    let mut run = Prd::new(&world, hero, place, C25);
+    attack_click(&mut world, enemy);
+    let maelstrom = Some(Inflictor::Item(ItemId::MAELSTROM));
+    for _ in 0..rules::TICKS_PER_SECOND * 60 {
+        let events = world.step();
+        let launched = events.iter().any(|event| {
+            matches!(event.kind(), EventKind::AttackLaunched { attacker, .. } if attacker == wire_id(hero))
+        });
+        if !launched || !run.next() {
+            continue;
+        }
+        world.push_hit(None, enemy, 1_000_000, DamageKind::Pure, None);
+        // The thrower stands: no swing of its own strikes anybody else.
+        let stand = seat_command(
+            &world,
+            0,
+            Order::Move {
+                target: bota_proto::Target::None,
+            },
+        );
+        let mut events = world.advance_trusted(&[stand]);
+        let mut struck = Vec::new();
+        for _ in 0..rules::TICKS_PER_SECOND * 2 {
+            for event in std::mem::take(&mut events) {
+                if let EventKind::Damaged {
+                    target,
+                    inflictor,
+                    source,
+                    ..
+                } = event.kind()
+                {
+                    let swing = source == Some(wire_id(hero)) && inflictor.is_none();
+                    assert!(!swing, "a swing landed: {:?}", event.kind());
+                    if inflictor == maelstrom {
+                        struck.push(target);
+                    }
+                }
+            }
+            events = world.step();
+        }
+        assert!(!world.alive(enemy));
+        assert!(struck.contains(&wire_id(beside)), "{struck:?}");
+        return;
+    }
+    panic!("no proc in a minute");
+}
+
+/// A target turned invulnerable while a missile flies takes neither the swing nor what rides with
+/// it: a Shadow Fiend with a Maelstrom and a Revenant's Brooch; its player turns the target
+/// invulnerable (Dota's Demo Hero's Invulnerable) after a throw, and no blow of the swing lands.
+#[test]
+fn an_invulnerable_target_takes_no_bolt_and_no_phantom_magic() {
+    let (mut world, hero, enemy) = duel(
+        HeroId::SHADOW_FIEND,
+        &[ItemId::MAELSTROM, ItemId::REVENANTS_BROOCH],
+        HeroId::PUDGE,
+        Vec2::from_ints(500, 0),
+    );
+    let beside = foe(&mut world, hero, HeroId::PUDGE, Vec2::from_ints(650, 0));
+    attack_click(&mut world, enemy);
+    for _ in 0..rules::TICKS_PER_SECOND * 10 {
+        let events = world.step();
+        let launched = events.iter().any(|event| {
+            matches!(event.kind(), EventKind::AttackLaunched { attacker, .. } if attacker == wire_id(hero))
+        });
+        if launched {
+            break;
+        }
+    }
+    seat_cheat(&mut world, 1, Cheat::Invulnerable { on: true });
+    let stand = seat_command(
+        &world,
+        0,
+        Order::Move {
+            target: bota_proto::Target::None,
+        },
+    );
+    world.advance_trusted(&[stand]);
+    for _ in 0..rules::TICKS_PER_SECOND * 2 {
+        for event in world.step() {
+            if let EventKind::Damaged {
+                source: Some(source),
+                target,
+                ..
+            } = event.kind()
+            {
+                assert!(
+                    source != wire_id(hero)
+                        || (target != wire_id(enemy) && target != wire_id(beside)),
+                    "{:?}",
+                    event.kind()
+                );
+            }
+        }
+    }
+}
+
+/// A swing broken off before its attack point rolls nothing: Dota decides an attack's procs at the
+/// attack point. A Pudge with a Maelstrom and a Crystalys ordered to stand the tick after its
+/// attack order leaves both runs unrolled.
+#[test]
+fn a_swing_broken_off_before_its_attack_point_rolls_nothing() {
+    let (mut world, hero, enemy) = duel(
+        HeroId::PUDGE,
+        &[ItemId::MAELSTROM, ItemId::CRYSTALYS],
+        HeroId::PUDGE,
+        Vec2::from_ints(150, 0),
+    );
+    attack_click(&mut world, enemy);
+    let stand = seat_command(
+        &world,
+        0,
+        Order::Move {
+            target: bota_proto::Target::None,
+        },
+    );
+    let events = world.advance_trusted(&[stand]);
+    assert!(
+        events
+            .iter()
+            .all(|event| !matches!(event.kind(), EventKind::AttackLaunched { .. }))
+    );
+    for _ in 0..rules::TICKS_PER_SECOND * 2 {
+        world.step();
+    }
+    for item in [ItemId::MAELSTROM, ItemId::CRYSTALYS] {
+        let place = item_place(slot_holding(&world, hero, item));
+        assert!(!rolled(&world, hero, place), "{item:?} rolled");
+    }
+}
+
+/// Chain Lightning "Cannot bounce on ... Enemies inside the Fog of War" (Liquipedia, Maelstrom): a
+/// fourth enemy 600 past the third, 1150 off the wielder, is struck by day (in its 1800 sight) and
+/// not at night (800, Dota's Demo Hero's night toggle).
+#[test]
+fn chain_lightning_leaps_to_no_enemy_in_the_fog() {
+    for night in [false, true] {
+        let (mut world, hero, enemy) = duel(
+            HeroId::PUDGE,
+            &[ItemId::MAELSTROM],
+            HeroId::PUDGE,
+            Vec2::from_ints(150, 0),
+        );
+        let near = foe(&mut world, hero, HeroId::PUDGE, Vec2::from_ints(350, 0));
+        let far = foe(&mut world, hero, HeroId::PUDGE, Vec2::from_ints(950, 0));
+        seat_cheat(&mut world, 0, Cheat::TimeOfDay { night });
+        let attacks = attack_until(&mut world, hero, enemy, 12);
+        let maelstrom = Some(Inflictor::Item(ItemId::MAELSTROM));
+        let struck = |unit| {
+            attacks
+                .blows
+                .iter()
+                .any(|blow| blow.target == unit && blow.inflictor == maelstrom)
+        };
+        assert!(struck(near), "night {night}: a bolt went off");
+        assert_eq!(struck(far), !night, "night {night}");
+    }
+}
+
+/// Of two Maelstroms one rolls (one chain a swing): the first's run decides every swing's bolt,
+/// and the second's is never rolled.
+#[test]
+fn two_maelstroms_roll_as_one() {
+    let (mut world, hero, enemy) = duel(
+        HeroId::PUDGE,
+        &[ItemId::MAELSTROM, ItemId::MAELSTROM],
+        HeroId::PUDGE,
+        Vec2::from_ints(150, 0),
+    );
+    let mut run = Prd::new(&world, hero, item_place(0), C25);
+    let attacks = attack_until(&mut world, hero, enemy, 24);
+    let maelstrom = Some(Inflictor::Item(ItemId::MAELSTROM));
+    for swing in attack_blows(&attacks.blows, enemy) {
+        let bolts = attacks
+            .blows
+            .iter()
+            .filter(|blow| {
+                blow.target == enemy
+                    && blow.inflictor == maelstrom
+                    && (blow.tick == swing.tick || blow.tick == swing.tick + 1)
+            })
+            .count();
+        assert_eq!(
+            bolts,
+            usize::from(run.next()),
+            "the swing at {}",
+            swing.tick
+        );
+    }
+    assert!(!rolled(&world, hero, item_place(1)), "the second rolled");
+}
+
+/// A Phantom Critical's magic rides with its attack and lands only if the attack does: against a
+/// Talisman of Evasion carrier, every swing rolls the Brooch's run, and a proc swing that is evaded
+/// lands no magic.
+#[test]
+fn a_revenants_brooch_lands_no_magic_with_an_evaded_swing() {
+    let (mut world, hero, enemy) = duel(
+        HeroId::PUDGE,
+        &[ItemId::REVENANTS_BROOCH],
+        HeroId::PUDGE,
+        Vec2::from_ints(150, 0),
+    );
+    seat_cheat(
+        &mut world,
+        1,
+        Cheat::Item {
+            item: ItemId::TALISMAN_OF_EVASION,
+        },
+    );
+    let place = item_place(slot_holding(&world, hero, ItemId::REVENANTS_BROOCH));
+    let mut run = Prd::new(&world, hero, place, C30);
+    let attacks = attack_until(&mut world, hero, enemy, 40);
+    let brooch = Some(Inflictor::Item(ItemId::REVENANTS_BROOCH));
+    let mut evaded_procs = 0;
+    for &launch in &attacks.launched {
+        let landed = attacks
+            .blows
+            .iter()
+            .any(|blow| blow.tick == launch && blow.target == enemy && blow.inflictor.is_none());
+        let magic = attacks
+            .blows
+            .iter()
+            .any(|blow| blow.tick == launch && blow.inflictor == brooch);
+        let procs = run.next();
+        assert_eq!(magic, procs && landed, "the swing at {launch}");
+        evaded_procs += usize::from(procs && !landed);
+    }
+    assert!(evaded_procs > 0, "some proc swing was evaded");
+}
+
+/// Splitshot never goes off against a building: a Shadow Fiend with a Specialist's Array, kept
+/// standing by our Invulnerable cheat (Dota's Demo Hero's), shoots a tower and rolls nothing.
+#[test]
+fn specialists_array_never_rolls_against_a_building() {
+    let (mut world, hero, _) = duel(
+        HeroId::SHADOW_FIEND,
+        &[ItemId::SPECIALISTS_ARRAY],
+        HeroId::PUDGE,
+        Vec2::from_ints(1200, 0),
+    );
+    let tower = world
+        .entities
+        .iter()
+        .filter(|&unit| {
+            world.kind.get(unit) == Some(&UnitKind::Tower)
+                && world.team.get(unit) == Some(&Team::Dire)
+        })
+        .min_by_key(|&unit| world.tier.get(unit).map_or(u8::MAX, |tier| tier.0))
+        .expect("a Dire tower");
+    let near = world.pos(tower).expect("standing");
+    let at = [(-400, 0), (0, -400), (400, 0), (0, 400)]
+        .map(|(x, y)| near + Vec2::from_ints(x, y))
+        .into_iter()
+        .find(|&at| {
+            let order = Order::Cheat {
+                cheat: Cheat::Teleport { at },
+            };
+            world.validate_order(SlotId(0), None, &order).is_ok()
+        })
+        .expect("open ground beside the tower");
+    seat_cheat(&mut world, 0, Cheat::Teleport { at });
+    seat_cheat(&mut world, 0, Cheat::Invulnerable { on: true });
+    attack_until(&mut world, hero, tower, 10);
+    let place = item_place(slot_holding(&world, hero, ItemId::SPECIALISTS_ARRAY));
+    assert!(
+        !rolled(&world, hero, place),
+        "Splitshot rolled against a tower"
+    );
+}
+
+/// Splitshot picks heroes before other units: with a camp of enemy lane creeps nearer
+/// (`-createcreeps`) and an enemy hero farther but in reach, every split throws at the hero.
+#[test]
+fn specialists_array_splits_onto_a_hero_before_nearer_creeps() {
+    let (mut world, hero, enemy) = duel(
+        HeroId::SHADOW_FIEND,
+        &[ItemId::SPECIALISTS_ARRAY],
+        HeroId::PUDGE,
+        Vec2::from_ints(400, 0),
+    );
+    let other = foe(&mut world, hero, HeroId::PUDGE, Vec2::from_ints(600, 0));
+    let at = world.pos(hero).expect("standing") + Vec2::from_ints(250, 0);
+    seat_cheat(&mut world, 0, Cheat::CreateCreeps { enemy: true, at });
+    let place = item_place(slot_holding(&world, hero, ItemId::SPECIALISTS_ARRAY));
+    let mut run = Prd::new(&world, hero, place, C30);
+    let attacks = attack_until(&mut world, hero, enemy, 10);
+    let procs = attack_blows(&attacks.blows, enemy)
+        .iter()
+        .filter(|_| run.next())
+        .count();
+    let on_hero = attacks
+        .blows
+        .iter()
+        .filter(|blow| blow.target == other)
+        .count();
+    assert!(procs > 0);
+    assert_eq!(on_hero, procs, "one missile at the hero every split");
+}
+
+/// Battle Fury's Quell stacks with a Quelling Blade's but not another Battle Fury's: each kind of
+/// quell counts once (the install's Quelling Blade: "Effects of multiple quelling blades do not
+/// stack"). Two Battle Furies quell 10 (`quelling_bonus`), a Battle Fury and a Quelling Blade 18.
+#[test]
+fn two_battle_furies_quell_as_one_and_a_quelling_blade_adds() {
+    for (items, quell) in [
+        (&[ItemId::BATTLE_FURY, ItemId::BATTLE_FURY][..], 10),
+        (&[ItemId::BATTLE_FURY, ItemId::QUELLING_BLADE][..], 18),
+    ] {
+        let (world, hero, _) = duel(HeroId::PUDGE, items, HeroId::PUDGE, Vec2::from_ints(150, 0));
+        let got = world.stats.get(hero).expect("derived").damage_to_creeps;
+        assert_eq!(got, quell, "{items:?}");
+    }
 }

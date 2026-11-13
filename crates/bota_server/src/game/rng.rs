@@ -181,6 +181,9 @@ pub struct PseudoRandom {
     misses: u32,
     /// The chance last rolled, and its step.
     step: (Odds, u64),
+    /// The tick before which the source rolls nothing, for a source that keeps a wait of its own
+    /// (Maelstrom's Chain Lightning: no item cooldown, no cooldown cut, no refresh); zero for none.
+    ready_at: u32,
 }
 
 impl PseudoRandom {
@@ -190,7 +193,18 @@ impl PseudoRandom {
             stream,
             misses: 0,
             step: (Odds::NEVER, 0),
+            ready_at: 0,
         }
+    }
+
+    /// Whether its own wait is over at `tick`.
+    pub fn ready(&self, tick: u32) -> bool {
+        tick >= self.ready_at
+    }
+
+    /// Starts its own wait: it rolls nothing before `tick`.
+    pub fn wait_until(&mut self, tick: u32) {
+        self.ready_at = tick;
     }
 
     /// Whether this attempt hits at `odds`. A chance that never hits rolls
@@ -229,6 +243,11 @@ impl Rolls {
         self.0[place].get_or_insert_with(open)
     }
 
+    /// The source at a place, if it has rolled.
+    pub fn at_opened(&mut self, place: usize) -> Option<&mut PseudoRandom> {
+        self.0.get_mut(place).and_then(Option::as_mut)
+    }
+
     /// Every source opened, by place.
     pub fn sources(&self) -> &[Option<PseudoRandom>] {
         &self.0
@@ -259,9 +278,15 @@ impl StateHash for PseudoRandom {
             stream,
             misses,
             step: _,
+            ready_at,
         } = self;
         stream.state_hash(fnv);
         misses.state_hash(fnv);
+        // A source that keeps no wait hashes as one before the field was.
+        if *ready_at != 0 {
+            fnv.u8(0xA7);
+            ready_at.state_hash(fnv);
+        }
     }
 }
 
@@ -295,6 +320,7 @@ mod specimens {
                 stream: Stream::high(),
                 misses: 3,
                 step: (Odds::NEVER, 0),
+                ready_at: 7,
             }
         }
     }

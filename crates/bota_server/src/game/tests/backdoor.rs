@@ -41,6 +41,7 @@ fn blow(world: &mut World, hero: crate::game::Entity, rax: crate::game::Entity) 
         removal: false,
         spares: false,
         riders: crate::game::Riders::NONE,
+        category: crate::game::Category::Plain,
     });
     let before = world.health.get(rax).expect("standing").hp;
     world.step();
