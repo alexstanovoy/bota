@@ -35,7 +35,9 @@
 //! terminal (at most `threads`), plus the jobs that were queued or blocked in submission then
 //! (at most the queue's capacity plus the submitters waiting on it, each one accepted job of a
 //! live driver), each leaked whole and none executed. Every accepted job is answered exactly
-//! once and no driver hangs.
+//! once and no driver hangs. Leaked jobs may hold handles to the pool itself, so a terminal pool
+//! does not wait for every handle to go: once nothing is queued and no submission that saw it
+//! healthy is still sending, its workers leave, and the scope they run in can end.
 //!
 //! Not guaranteed: anything about payload sizes (they are the caller's); anything about the
 //! caller's destructors that run on the caller's own threads (a refused submission, the episodes
@@ -45,9 +47,10 @@
 
 use std::any::Any;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, sync_channel};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use crate::{GameId, GymError};
 
@@ -145,18 +148,32 @@ struct Envelope<'scope, E: Episode> {
     reply: SyncSender<Reply<E>>,
 }
 
-/// A handle to shared simulation workers; they leave once every handle is dropped.
+/// A handle to shared simulation workers; they leave once every handle is dropped, or once the
+/// pool turned terminal and what was submitted to it is answered.
 pub struct Workers<'scope, E: Episode> {
     jobs: SyncSender<Envelope<'scope, E>>,
-    /// Set once the workers kept a panic payload they could not drop: see the module docs.
-    terminal: Arc<AtomicBool>,
+    state: Arc<State>,
 }
+
+/// What the handles and the workers of one pool share.
+#[derive(Default)]
+struct State {
+    /// Set once the workers kept a panic payload they could not drop: see the module docs.
+    terminal: AtomicBool,
+    /// Submissions between their check of `terminal` and the end of their send.
+    sending: AtomicUsize,
+}
+
+/// How long an idle worker waits for a job before it looks whether the pool turned terminal.
+/// Leaked jobs may hold handles that keep the queue open, so a terminal pool cannot wait for
+/// every handle to go.
+const POLL: Duration = Duration::from_millis(20);
 
 impl<E: Episode> Clone for Workers<'_, E> {
     fn clone(&self) -> Self {
         Self {
             jobs: self.jobs.clone(),
-            terminal: Arc::clone(&self.terminal),
+            state: Arc::clone(&self.state),
         }
     }
 }
@@ -176,10 +193,10 @@ impl<'scope, E: Episode + 'scope> Workers<'scope, E> {
         }
         let (jobs, receiver) = sync_channel::<Envelope<'scope, E>>(config.queue);
         let receiver = Arc::new(Mutex::new(receiver));
-        let terminal = Arc::new(AtomicBool::new(false));
+        let state = Arc::new(State::default());
         for index in 0..config.threads {
             let receiver = Arc::clone(&receiver);
-            let terminal = Arc::clone(&terminal);
+            let state = Arc::clone(&state);
             let cpus = config.cpus.clone();
             std::thread::Builder::new()
                 .name(format!("{}-{index}", config.name))
@@ -190,11 +207,11 @@ impl<'scope, E: Episode + 'scope> Workers<'scope, E> {
                     {
                         eprintln!("level=WARN event=pin_failed worker={index} {error}");
                     }
-                    work(&receiver, shared, &terminal);
+                    work(&receiver, shared, &state);
                 })
                 .map_err(|_| GymError::Config("a worker thread could not be spawned"))?;
         }
-        Ok(Self { jobs, terminal })
+        Ok(Self { jobs, state })
     }
 
     pub(crate) fn submit(
@@ -203,56 +220,102 @@ impl<'scope, E: Episode + 'scope> Workers<'scope, E> {
         job: Job<'scope, E>,
         reply: &SyncSender<Reply<E>>,
     ) -> Result<(), GymError> {
-        if self.terminal.load(Ordering::Relaxed) {
+        // Counted before the check: a terminal pool's workers stay until no submission that
+        // passed the check is still sending, so every job sent is answered.
+        self.state.sending.fetch_add(1, Ordering::SeqCst);
+        let sent = if self.state.terminal.load(Ordering::SeqCst) {
             // Refused on the submitting thread, which keeps (and drops) what it submitted.
-            return Err(GymError::Undisposed);
-        }
-        let envelope = Envelope {
-            position,
-            job,
-            reply: reply.clone(),
+            Err(GymError::Undisposed)
+        } else {
+            let envelope = Envelope {
+                position,
+                job,
+                reply: reply.clone(),
+            };
+            // Waits while the queue is full: the backpressure every driver shares.
+            self.jobs.send(envelope).map_err(|_| GymError::Stopped)
         };
-        // Waits while the queue is full: the backpressure every driver shares.
-        self.jobs.send(envelope).map_err(|_| GymError::Stopped)
+        self.state.sending.fetch_sub(1, Ordering::SeqCst);
+        sent
     }
 }
 
 fn work<E: Episode>(
     receiver: &Mutex<Receiver<Envelope<'_, E>>>,
     shared: &E::Shared,
-    terminal: &AtomicBool,
+    state: &State,
 ) {
     loop {
         let envelope = match receiver.lock() {
-            Ok(receiver) => receiver.recv(),
+            Ok(receiver) => receiver.recv_timeout(POLL),
             Err(_) => return,
         };
-        let Ok(Envelope {
-            position,
-            job,
-            reply,
-        }) = envelope
-        else {
-            return;
-        };
-        let mut answer = Answer {
-            position,
-            reply: Some(reply),
-        };
-        if terminal.load(Ordering::Relaxed) {
-            // The caller's destructors proved unsafe to run: answered, never run, never dropped.
-            answer.send(Err(Failure::Undisposed));
-            std::mem::forget(job);
-            continue;
+        match envelope {
+            Ok(envelope) => serve(envelope, shared, &state.terminal),
+            Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) => return,
         }
-        // Nothing the caller's code raises escapes the worker: not a panic of the job, not a
-        // panic of dropping what a job left, not one of dropping the panic's payload.
-        if let Err(payload) = catch_unwind(AssertUnwindSafe(|| answer.send(run(job, shared)))) {
-            dispose(payload, terminal);
+        if state.terminal.load(Ordering::SeqCst) {
+            return close(receiver, state);
         }
-        // An answer the job never sent goes now, as a panic.
-        drop(answer);
     }
+}
+
+/// Runs one job, or answers it unrun once the pool is terminal.
+fn serve<E: Episode>(envelope: Envelope<'_, E>, shared: &E::Shared, terminal: &AtomicBool) {
+    let Envelope {
+        position,
+        job,
+        reply,
+    } = envelope;
+    let mut answer = Answer {
+        position,
+        reply: Some(reply),
+    };
+    if terminal.load(Ordering::SeqCst) {
+        // The caller's destructors proved unsafe to run: answered, never run, never dropped.
+        answer.send(Err(Failure::Undisposed));
+        std::mem::forget(job);
+        return;
+    }
+    // Nothing the caller's code raises escapes the worker: not a panic of the job, not a panic
+    // of dropping what a job left, not one of dropping the panic's payload.
+    if let Err(payload) = catch_unwind(AssertUnwindSafe(|| answer.send(run(job, shared)))) {
+        dispose(payload, terminal);
+    }
+    // An answer the job never sent goes now, as a panic.
+    drop(answer);
+}
+
+/// A terminal pool's last duty: answer every job still queued or still being sent, then leave
+/// without waiting for the handles that leaked jobs may hold. A submission that starts after
+/// this sees the pool terminal and is refused on its own thread.
+fn close<E: Episode>(receiver: &Mutex<Receiver<Envelope<'_, E>>>, state: &State) {
+    let Ok(receiver) = receiver.lock() else {
+        return;
+    };
+    loop {
+        match receiver.recv_timeout(POLL) {
+            Ok(envelope) => serve_terminal(envelope),
+            Err(RecvTimeoutError::Disconnected) => return,
+            Err(RecvTimeoutError::Timeout) => {
+                if state.sending.load(Ordering::SeqCst) == 0 {
+                    // Whatever the last sender sent before it finished is queued by now.
+                    while let Ok(envelope) = receiver.try_recv() {
+                        serve_terminal(envelope);
+                    }
+                    return;
+                }
+            }
+        }
+    }
+}
+
+fn serve_terminal<E: Episode>(envelope: Envelope<'_, E>) {
+    let _ = envelope
+        .reply
+        .send((envelope.position, Err(Failure::Undisposed)));
+    std::mem::forget(envelope.job);
 }
 
 /// Drops a caught panic's payload, before its driver hears of the panic. Should its destructor
@@ -263,7 +326,7 @@ fn dispose(payload: Box<dyn Any + Send>, terminal: &AtomicBool) {
         && let Err(third) = catch_unwind(AssertUnwindSafe(|| drop(second)))
     {
         std::mem::forget(third);
-        terminal.store(true, Ordering::Relaxed);
+        terminal.store(true, Ordering::SeqCst);
     }
 }
 

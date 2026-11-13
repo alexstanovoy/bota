@@ -607,3 +607,97 @@ fn a_driver_whose_callers_code_unwinds_mid_step_is_spent() {
         );
     });
 }
+
+/// A plan that holds a handle to the pool its games run on.
+struct Owning<'scope> {
+    pool: Workers<'scope, Captive<'scope>>,
+    gate: &'scope Gate,
+}
+
+impl Clone for Owning<'_> {
+    fn clone(&self) -> Self {
+        if self.gate.armed.load(Ordering::SeqCst) {
+            self.gate.cloned.fetch_add(1, Ordering::SeqCst);
+        }
+        Self {
+            pool: self.pool.clone(),
+            gate: self.gate,
+        }
+    }
+}
+
+/// A game that holds a handle to its own pool; with `true` its step waits for the whole round to
+/// be submitted, then panics three levels deep.
+struct Captive<'scope> {
+    id: GameId,
+    _pool: Workers<'scope, Captive<'scope>>,
+}
+
+impl<'scope> Episode for Captive<'scope> {
+    type Shared = Gate;
+    type Plan = Owning<'scope>;
+    type Action = bool;
+    type Finished = ();
+    type Error = Error;
+
+    fn start(_: &Gate, id: GameId, plan: Owning<'scope>) -> Result<Self, Error> {
+        Ok(Self {
+            id,
+            _pool: plan.pool,
+        })
+    }
+
+    fn step(&mut self, gate: &Gate, fail: bool) -> Result<Option<()>, Error> {
+        if fail {
+            while gate.cloned.load(Ordering::SeqCst) < gate.round.load(Ordering::SeqCst) {
+                std::thread::yield_now();
+            }
+            std::panic::panic_any(Thrice(None));
+        }
+        Ok(None)
+    }
+
+    fn game(&self) -> GameId {
+        self.id
+    }
+}
+
+/// Plays one round of three games that hold handles to their own pool, the first failing when
+/// `fail`, then drops every handle the caller owns: the pool must shut down all the same.
+fn shut_down_with_captive_handles(fail: bool) {
+    within_a_minute(move || {
+        let gate = Gate::default();
+        std::thread::scope(|scope| {
+            let config = WorkerConfig {
+                queue: 3,
+                ..one_worker()
+            };
+            let workers = Workers::spawn(scope, config, &gate).expect("workers");
+            let plan = Owning {
+                pool: workers.clone(),
+                gate: &gate,
+            };
+            let mut env: VecEnv<Captive> =
+                VecEnv::start(workers, vec![0, 1, 2], &plan).expect("started");
+            gate.round.store(3, Ordering::SeqCst);
+            gate.armed.store(true, Ordering::SeqCst);
+            let stepped = env.step([fail, false, false], &plan, |_, _| {});
+            match fail {
+                true => assert_eq!(stepped, Err(Error(GymError::Panicked { position: 0 }))),
+                false => assert_eq!(stepped, Ok(())),
+            }
+            drop(env);
+            drop(plan);
+        });
+    });
+}
+
+#[test]
+fn a_terminal_pool_shuts_down_although_leaked_jobs_hold_handles_to_it() {
+    shut_down_with_captive_handles(true);
+}
+
+#[test]
+fn a_healthy_pool_shuts_down_once_its_games_and_handles_are_dropped() {
+    shut_down_with_captive_handles(false);
+}
