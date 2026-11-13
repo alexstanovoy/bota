@@ -43,6 +43,7 @@ bota_core = { path = "crates/bota_core" }
 bota_proto = { path = "crates/bota_proto" }
 bota_radovid = { path = "crates/bota_radovid" }
 bota_replay = { path = "crates/bota_replay" }
+radovid_proto = { path = "../radovid/crates/radovid_proto", default-features = false }
 bota_server = { path = "crates/bota_server", default-features = false }
 criterion = { version = "=0.8.2", default-features = false }
 

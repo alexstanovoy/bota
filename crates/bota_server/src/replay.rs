@@ -363,6 +363,29 @@ mod tests {
 #[cfg(test)]
 mod provenance_policy_tests {
     #[test]
+    fn a_capped_prefix_keeps_the_trailer_gate_closed() {
+        let path=std::env::temp_dir().join(format!("capped-trailer-policy-{}.brp",std::process::id()));
+        let mut writer=super::ReplayWriter::open_with_profiles(Some(&path),Some(16_384),None,false,Some(bota_replay::meta::Profiles::default())).expect("writer");
+        // Seed a real bounded metadata file, then force the stream's size-boundary decision.
+        let metadata=&mut writer.meta.as_mut().expect("metadata recorder").recorder;
+        metadata.start(&bota_proto::MatchInfo {
+            match_id:1,map:bota_proto::MapId(2),tick_rate:30,pregame_ticks:900,
+            trees:Vec::new(),terrain_cells:0,terrain_rle:Vec::new(),opaque_cells:Vec::new(),
+            mode:bota_proto::TickMode::Realtime,picks:Vec::new(),shop:Vec::new(),
+            fountains:[bota_proto::Vec2::ZERO;2],shop_range:0,cheats:false,
+            objectives:bota_proto::ObjectiveSet::NONE,runes:bota_proto::RuneSet::NONE,
+            catalogue:bota_core::Catalogue::FULL.prefix(),secret_shops:Vec::new(),universal_shop:false,
+        });
+        writer.max_bytes=Some(0);
+        writer.after_write(Ok(()));
+        assert!(writer.truncated);
+        assert!(writer.out.is_none(),"the capped-prefix close path ran");
+        writer.finish();
+        assert!(bota_replay::trailer::find(&mut std::fs::File::open(&path).expect("file")).expect("trailer scan").is_none(),
+            "an unrequested trailer must not appear on a capped prefix");
+        std::fs::remove_file(path).expect("remove fixture");
+    }
+    #[test]
     fn public_provenance_does_not_enable_an_unrequested_replay_trailer() {
         let path = std::env::temp_dir().join(format!("trailer-policy-{}.brp", std::process::id()));
         let writer = super::ReplayWriter::open_with_profiles(

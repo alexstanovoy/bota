@@ -6,7 +6,7 @@ use serde::{
 };
 use std::fmt;
 
-pub const MAX_MATCHMAKER_BYTES: usize = 512;
+pub use radovid_proto::{MAX_MATCHMAKER_BYTES, public_matchmaker, shareable_matchmaker};
 pub const MAX_PROFILE_SEATS: usize = 10;
 
 /// A validated snapshot. Absence of this record means unknown; a missing maker means local.
@@ -17,6 +17,10 @@ pub struct Profiles {
 }
 impl Profiles {
     pub fn new(matchmaker: Option<String>, seats: Vec<(u8, Option<u64>)>) -> Option<Self> {
+        let matchmaker=match matchmaker {
+            Some(value)=>Some(radovid_proto::shareable_matchmaker_identity(&value)?),
+            None=>None,
+        };
         valid(matchmaker.as_deref(), &seats).then_some(Self { matchmaker, seats })
     }
     pub fn matchmaker(&self) -> Option<&str> {
@@ -57,107 +61,6 @@ impl Meta {
     }
 }
 
-/// ASCII public URI, kept as text. No resolution, normalization, redirects or credentials.
-pub fn public_matchmaker(value: &str) -> bool {
-    if value.len() > MAX_MATCHMAKER_BYTES
-        || !value.bytes().all(|byte| byte.is_ascii_graphic())
-        || value.contains(['@', '?', '#', '\\'])
-    {
-        return false;
-    }
-    let Some((scheme, rest)) = value.split_once("://") else {
-        return false;
-    };
-    if !matches!(scheme, "ws" | "wss" | "http" | "https") {
-        return false;
-    }
-    let authority = rest.split('/').next().unwrap_or_default();
-    !authority.is_empty()
-        && authority
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || b".-:[]".contains(&byte))
-}
-/// Whether a syntactically valid address can identify a service in a shared file.
-/// This never resolves DNS; local literals and local-only names carry no shareable identity.
-pub fn shareable_matchmaker(value: &str) -> bool {
-    use std::net::IpAddr;
-    if !public_matchmaker(value) {
-        return false;
-    }
-    let rest = value
-        .split_once("://")
-        .map(|(_, rest)| rest)
-        .unwrap_or_default();
-    let authority = rest.split('/').next().unwrap_or_default();
-    let host = if let Some(rest) = authority.strip_prefix('[') {
-        rest.split_once(']')
-            .map(|(host, _)| host)
-            .unwrap_or_default()
-    } else {
-        authority.split(':').next().unwrap_or_default()
-    };
-    match host.parse::<IpAddr>() {
-        Ok(IpAddr::V4(ip)) => public_ipv4(ip),
-        Ok(IpAddr::V6(ip)) => ip.to_ipv4_mapped().map_or_else(
-            || {
-                !ip.is_loopback()
-                    && !ip.is_unspecified()
-                    && !ip.is_unique_local()
-                    && !ip.is_unicast_link_local()
-                    && !ip.is_multicast()
-            },
-            public_ipv4,
-        ),
-        Err(_) => public_hostname(host),
-    }
-}
-
-fn public_hostname(host: &str) -> bool {
-    let host = host.to_ascii_lowercase();
-    if host.len() > 253
-        || !host.contains('.')
-        || [".localhost", ".local", ".lan", ".internal"]
-            .iter()
-            .any(|suffix| host.ends_with(suffix))
-    {
-        return false;
-    }
-    let numeric = host.split('.').all(|label| {
-        label.bytes().all(|byte| byte.is_ascii_digit())
-            || label
-                .strip_prefix("0x")
-                .is_some_and(|digits| digits.bytes().all(|byte| byte.is_ascii_hexdigit()))
-    });
-    !numeric
-        && host.split('.').all(|label| {
-            label.len() <= 63
-                && label
-                    .as_bytes()
-                    .first()
-                    .is_some_and(u8::is_ascii_alphanumeric)
-                && label
-                    .as_bytes()
-                    .last()
-                    .is_some_and(u8::is_ascii_alphanumeric)
-                && label
-                    .bytes()
-                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
-        })
-}
-
-fn public_ipv4(ip: std::net::Ipv4Addr) -> bool {
-    let [a, b, _, _] = ip.octets();
-    !ip.is_private()
-        && !ip.is_loopback()
-        && !ip.is_link_local()
-        && !ip.is_unspecified()
-        && !ip.is_multicast()
-        && !ip.is_broadcast()
-        && a != 0
-        && a < 240
-        && !(a == 100 && (64..=127).contains(&b))
-        && !(a == 198 && (18..=19).contains(&b))
-}
 pub(super) fn valid(maker: Option<&str>, seats: &[(u8, Option<u64>)]) -> bool {
     if maker.is_some_and(|maker| !shareable_matchmaker(maker)) || seats.len() > MAX_PROFILE_SEATS {
         return false;
@@ -198,10 +101,8 @@ pub(super) fn read_matchmaker<'de, D: Deserializer<'de>>(
                     f.write_str("a bounded public URI")
                 }
                 fn visit_str<E: de::Error>(self, value: &str) -> Result<String, E> {
-                    if !shareable_matchmaker(value) {
-                        return Err(E::custom("invalid public matchmaker URI"));
-                    }
-                    Ok(value.to_owned())
+                    radovid_proto::shareable_matchmaker_identity(value)
+                        .ok_or_else(||E::custom("invalid public matchmaker URI"))
                 }
             }
             deserializer.deserialize_str(Uri).map(Some)

@@ -102,7 +102,7 @@ otherwise `RADOVID_PUBLIC_IDENTITY` from the launcher) and
 `BOTA_PROFILE_ACCOUNTS` (public account ids in slot order, comma separated; `-` for a seat
 without a profile). Accounts without a matchmaker leave the identity unknown and do not prevent launching.
 Private/local IP literals and single-label hostnames are never recorded as a matchmaker.
-A local launch without either records explicit no-matchmaker provenance. Embedded servers can use `game_loop::run_with_profiles`; the legacy `run` API
+A launch without either writes no Profiles record. Embedded servers can use `game_loop::run_with_profiles`; the legacy `run` API
 keeps its existing recording policy. Provenance goes in the metadata sidecar and replay
 trailer when explicitly enabled, including capped prefixes, without changing replay records or the wire identity.
 Readers treat it as untrusted text and account claims, never as permission to connect.

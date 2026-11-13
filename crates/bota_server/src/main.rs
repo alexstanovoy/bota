@@ -380,7 +380,7 @@ fn launch_profiles(
         }
         None => (0..players).map(|slot| (slot, None)).collect(),
     };
-    if args.matchmaker.is_none() && args.profile_accounts.is_some() {
+    if args.matchmaker.is_none() {
         return Ok(None);
     }
     let public = args
