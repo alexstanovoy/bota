@@ -10,6 +10,12 @@ arbitrate every nine ticks with transition hooks. Team, ability/item, purchase a
 courier hooks use the same scheduler. A failed bot turn discards that bot's orders.
 Repeated fuel diagnostics are eligible once per thirty ticks.
 
+Team push/defend hooks return three lane desires in engine TOP, MID, BOT order.
+The host caches finite values in [0, 1] only after the team hooks succeed;
+missing or nil returns select native policy. Malformed returns discard the turn's
+orders and retain the previous team cache. These are script decisions, so a late
+output does not rewind them along with command continuations.
+
 For a preselected two-player Shadow Fiend Solo Mid match, missing mode desires (or a nil desire)
 use the native fallback; missing mode Think hooks use its actions. Explicit empty Think functions
 remain overrides. The current native slice covers laning, visible attacks, retreat, nearby farming,

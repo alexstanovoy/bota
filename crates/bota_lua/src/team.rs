@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use bota_client_core::{ClientSession, IssuedOrder};
 use bota_proto::{HeroId, SlotId, Team};
-use luagee::{Error, Keys, Limit, Limits, Lua, TableId, Value};
+use luagee::{Args, Error, Keys, Limit, Limits, Lua, LuaError, TableId, Value, Vm};
 
 use crate::{
     BindingError, api,
@@ -132,6 +132,7 @@ pub struct LuaTeam {
     module_root: Option<Value>,
     default_mode: Value,
     default_auxiliary: Value,
+    lane_desire_reader: Value,
     hook_activity: HookActivity,
 }
 
@@ -209,6 +210,8 @@ impl LuaTeam {
         lua.pin(default_mode)?;
         let default_auxiliary = crate::default_bot::install_auxiliary(&mut lua, state.clone())?;
         lua.pin(default_auxiliary)?;
+        let lane_desire_reader = lua.function("team_lane_desires", Rc::new(lane_desire_values))?;
+        lua.pin(lane_desire_reader)?;
         let set_environment = lua.global("setfenv")?;
         let get_environment = lua.global("getfenv")?;
         lua.pin(set_environment)?;
@@ -229,6 +232,7 @@ impl LuaTeam {
             module_root: None,
             default_mode,
             default_auxiliary,
+            lane_desire_reader,
             hook_activity: HookActivity::default(),
         })
     }
@@ -677,11 +681,12 @@ impl LuaTeam {
             .scripts
             .iter()
             .position(|script| script.kind == ScriptKind::TeamDesires);
+        let mut desires = crate::state::TeamDesires::default();
         if let Some(index) = index {
+            self.call_hook(index, "TeamThink", &[])?;
+            desires.push = self.lane_desires(index, "UpdatePushLaneDesires")?;
+            desires.defend = self.lane_desires(index, "UpdateDefendLaneDesires")?;
             for hook in [
-                "TeamThink",
-                "UpdatePushLaneDesires",
-                "UpdateDefendLaneDesires",
                 "UpdateFarmLaneDesires",
                 "UpdateRoamDesire",
                 "UpdateRoshanDesire",
@@ -689,7 +694,26 @@ impl LuaTeam {
                 self.call_hook(index, hook, &[])?;
             }
         }
+        self.state.borrow_mut().team_desires = desires;
         Ok(())
+    }
+
+    fn lane_desires(
+        &mut self,
+        index: usize,
+        hook: &'static str,
+    ) -> Result<Option<[f64; 3]>, Error> {
+        let values = self.call_hook(index, hook, &[])?;
+        let Some(&value) = values.first().filter(|&&value| value != Value::Nil) else {
+            return Ok(None);
+        };
+        let decoded = self.lua.call(self.lane_desire_reader, &[value])?;
+        match decoded.as_slice() {
+            [Value::Number(top), Value::Number(mid), Value::Number(bot)] => {
+                Ok(Some([*top, *mid, *bot]))
+            }
+            _ => Err(runtime_error("invalid host lane-desire decoder result")),
+        }
     }
 
     fn run_seat(&mut self, seat: usize, slot: SlotId, tick: u32) -> Result<(), Error> {
@@ -1013,6 +1037,26 @@ fn runtime_error(message: &str) -> Error {
     }
 }
 
+fn lane_desire_values(vm: &mut Vm, args: Args) -> Result<usize, LuaError> {
+    let Value::Table(table) = vm.arg(args, 0) else {
+        return Err(vm.error(
+            "team lane desires must be a table of three finite numbers between zero and one",
+        ));
+    };
+    let mut values = [Value::Nil; 3];
+    for (index, output) in values.iter_mut().enumerate() {
+        let value = vm.raw_get(table, Value::Number((index + 1) as f64))?;
+        if !matches!(value, Value::Number(number) if number.is_finite() && (0.0..=1.0).contains(&number))
+        {
+            return Err(vm.error(
+                "team lane desires must be a table of three finite numbers between zero and one",
+            ));
+        }
+        *output = value;
+    }
+    vm.results(&values)
+}
+
 fn binding_error(error: BindingError) -> Error {
     match error {
         BindingError::Lua(error) => error,
@@ -1052,3 +1096,117 @@ pub(crate) const BOT_MODES: &[&str] = &[
     "rune",
     "outpost",
 ];
+
+#[cfg(test)]
+mod desire_tests {
+    use super::*;
+    mod support {
+        include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/support/mod.rs"));
+    }
+
+    fn team(source: &str) -> LuaTeam {
+        let mut lua = LuaTeam::new(
+            Team::Radiant,
+            &[BotSeat {
+                slot: SlotId(0),
+                hero: HeroId::SHADOW_FIEND,
+            }],
+            Limits::DEFAULT,
+            Keys {
+                hash: [17, 19],
+                random: 23,
+            },
+        )
+        .expect("team");
+        lua.add_script(
+            SlotId(0),
+            ScriptKind::TeamDesires,
+            "=team_desires",
+            source.as_bytes(),
+        )
+        .expect("script");
+        lua.set_gc_stress(luagee::GcStress::Full);
+        lua
+    }
+    fn advance(local: &mut bota_server::local::LocalMatch, sessions: &mut [ClientSession]) {
+        for (session, stream) in sessions
+            .iter_mut()
+            .zip(local.step(&[&[], &[]]).expect("next tick"))
+        {
+            support::fold(session, stream);
+        }
+    }
+
+    #[test]
+    fn team_lane_desires_preserve_engine_lane_order_and_reset_to_defaults() {
+        let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+        let mut lua = team(
+            "local frame=0 function TeamThink() frame=frame+1 GetBot():Action_MoveToLocation(Vector(0,0,0)) end function UpdatePushLaneDesires() if frame==1 then return {0.125,0.375,0.625} end end function UpdateDefendLaneDesires() return {0.75,0.5,0.25} end",
+        );
+        let first = lua.think(&sessions[0]).expect("first turn");
+        assert!(first.failures.is_empty(), "{:?}", first.failures);
+        assert!(first.bots[0].orders.iter().any(|order| order.order
+            == bota_proto::Order::Move {
+                target: bota_proto::Target::Pos(bota_proto::Vec2::from_ints(9216, 9216))
+            }));
+        assert_eq!(
+            lua.state.borrow().team_desires.push,
+            Some([0.125, 0.375, 0.625])
+        );
+        assert_eq!(
+            lua.state.borrow().team_desires.defend,
+            Some([0.75, 0.5, 0.25])
+        );
+        advance(&mut local, &mut sessions);
+        let next = lua.think(&sessions[0]).expect("next turn");
+        assert!(next.failures.is_empty(), "{:?}", next.failures);
+        assert_eq!(lua.state.borrow().team_desires.push, None);
+        assert_eq!(
+            lua.state.borrow().team_desires.defend,
+            Some([0.75, 0.5, 0.25])
+        );
+    }
+
+    #[test]
+    fn malformed_team_desires_reject_the_turn_without_publishing_partial_updates() {
+        for bad in [
+            "false",
+            "{0.1,0.2}",
+            "{0.1,0/0,0.3}",
+            "{0.1,math.huge,0.3}",
+            "{0.1,-0.1,0.3}",
+            "{0.1,1.1,0.3}",
+            "setmetatable({}, {__index=function() error('must not run') end})",
+        ] {
+            let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+            let source = format!(
+                "local frame=0 function TeamThink() frame=frame+1 GetBot():Action_MoveToLocation(Vector(0,0,0)) end function UpdatePushLaneDesires() if frame==1 then return {{0.125,0.375,0.625}} end return {{0.5,0.25,0.125}} end function UpdateDefendLaneDesires() if frame==2 then return {bad} end return {{0.75,0.5,0.25}} end"
+            );
+            let mut lua = team(&source);
+            assert!(
+                lua.think(&sessions[0])
+                    .expect("valid turn")
+                    .failures
+                    .is_empty()
+            );
+            let before = lua.state.borrow().team_desires;
+            advance(&mut local, &mut sessions);
+            let rejected = lua.think(&sessions[0]).expect("invalid return");
+            assert_eq!(rejected.failures.len(), 1, "{bad}");
+            assert!(
+                matches!(&rejected.failures[0].error, Error::Runtime { message, .. } if message.contains("team lane desires")),
+                "{:?}",
+                rejected.failures
+            );
+            assert!(rejected.bots[0].orders.is_empty());
+            assert_eq!(lua.state.borrow().team_desires, before, "{bad}");
+            advance(&mut local, &mut sessions);
+            assert!(
+                lua.think(&sessions[0])
+                    .expect("recovered turn")
+                    .failures
+                    .is_empty()
+            );
+        }
+    }
+}

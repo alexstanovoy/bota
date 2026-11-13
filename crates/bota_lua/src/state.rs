@@ -287,10 +287,18 @@ impl BotState {
     }
 }
 
+/// Script overrides in engine TOP, MID, BOT order; absent values use native policy.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct TeamDesires {
+    pub push: Option<[f64; 3]>,
+    pub defend: Option<[f64; 3]>,
+}
+
 pub(crate) struct State {
     pub team: Team,
     pub seats: Vec<BotSeat>,
     pub declared_bots: [bool; 10],
+    pub team_desires: TeamDesires,
     pub current_slot: SlotId,
     pub snapshot: Option<Snapshot>,
     pub orders: Vec<IssuedOrder>,
@@ -312,6 +320,7 @@ impl State {
             team,
             seats: seats.to_vec(),
             declared_bots: [false; 10],
+            team_desires: TeamDesires::default(),
             current_slot: seats[0].slot,
             snapshot: None,
             orders: Vec::with_capacity(MAX_ORDERS),
