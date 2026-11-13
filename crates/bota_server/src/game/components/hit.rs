@@ -43,6 +43,8 @@ pub struct Hit {
     /// lands: an attack's, its own blow only.
     pub laid: Laid,
     pub proc: Option<AttackProc>,
+    /// What the attack's item procs let loose once it lands: its own blow only.
+    pub riders: Riders,
     /// Allegiance captured by a blockable spell projectile.
     pub blockable_source_team: Option<bota_proto::Team>,
     /// Whether it removes health rather than dealing damage (Dota's HP
@@ -85,6 +87,73 @@ impl StateHash for Laid {
     fn state_hash(&self, fnv: &mut Fnv) {
         for item in self.items() {
             item.0.state_hash(fnv);
+        }
+    }
+}
+
+/// Most item procs one attack carries to where it lands: a critical strike landed as magic and a
+/// chain of lightning.
+pub const MAX_RIDERS: usize = 2;
+
+/// What the item procs of an attack that went off at its attack point let loose once it lands
+/// (one that misses lets loose none), each by its item.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Riders(pub [Option<Rider>; MAX_RIDERS]);
+
+/// One item proc an attack carries to where it lands.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Rider {
+    /// The item whose proc it is, what the damage it deals is laid to.
+    pub item: ItemId,
+    pub kind: RiderKind,
+}
+
+/// What an item proc lets loose where its attack lands.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RiderKind {
+    /// `damage` magical damage on the struck, amplified by `amp_bp` as captured at the swing: a
+    /// critical strike landed as magic (Revenant's Brooch's Phantom Critical).
+    Magic { damage: i32, amp_bp: i32 },
+    /// A bolt of lightning that strikes the struck and leaps on (Maelstrom's Chain Lightning).
+    Chain,
+}
+
+impl Riders {
+    /// Nothing let loose.
+    pub const NONE: Riders = Riders([None; MAX_RIDERS]);
+
+    /// The procs, in the order they went off.
+    pub fn iter(&self) -> impl Iterator<Item = Rider> + '_ {
+        self.0.iter().flatten().copied()
+    }
+
+    /// Whether a blow it lets loose is amplified.
+    pub fn amplified(&self) -> bool {
+        self.iter().any(|rider| {
+            matches!(rider.kind, RiderKind::Magic { amp_bp, .. } if amp_bp != rules::NOMINAL_BP)
+        })
+    }
+
+    /// Adds a proc; an attack holds at most one of each kind, so there is always room.
+    pub fn add(&mut self, rider: Rider) {
+        let free = self.0.iter_mut().find(|slot| slot.is_none());
+        *free.expect("an attack carries one proc of each kind at most") = Some(rider);
+    }
+}
+
+/// Only the procs carried: an attack that carries none hashes as one before the field was.
+impl StateHash for Riders {
+    fn state_hash(&self, fnv: &mut Fnv) {
+        for rider in self.iter() {
+            rider.item.state_hash(fnv);
+            match rider.kind {
+                RiderKind::Magic { damage, amp_bp } => {
+                    fnv.u8(0);
+                    damage.state_hash(fnv);
+                    amp_bp.state_hash(fnv);
+                }
+                RiderKind::Chain => fnv.u8(1),
+            }
         }
     }
 }
@@ -156,7 +225,8 @@ state_hash!(Hit {
     removal,
     spares,
     blockable_source_team,
-    proc
+    proc,
+    riders
 });
 state_hash!(Fear { line, most });
 
@@ -200,6 +270,22 @@ impl crate::engine::Specimen for Laid {
         let mut laid = Laid::NONE;
         laid.add(ItemId(1));
         laid
+    }
+}
+
+#[cfg(test)]
+impl crate::engine::Specimen for Riders {
+    fn low() -> Self {
+        Riders::NONE
+    }
+
+    fn high() -> Self {
+        let mut riders = Riders::NONE;
+        riders.add(Rider {
+            item: ItemId(1),
+            kind: RiderKind::Chain,
+        });
+        riders
     }
 }
 

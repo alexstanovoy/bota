@@ -64,6 +64,7 @@ impl World {
                 laid: crate::game::Laid::NONE,
                 removal: false,
                 spares: false,
+                riders: crate::game::Riders::NONE,
             });
             if swings {
                 self.raze_strikes((caster, which), mark);
@@ -105,6 +106,7 @@ impl World {
             laid: crate::game::Laid::NONE,
             removal: false,
             spares: false,
+            riders: crate::game::Riders::NONE,
         });
     }
 
@@ -253,6 +255,7 @@ impl World {
             laid: crate::game::Laid::NONE,
             removal: false,
             spares: false,
+            riders: crate::game::Riders::NONE,
         });
     }
 

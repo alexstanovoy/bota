@@ -398,6 +398,14 @@ fn every_stat_upgrade_bought_whole_adds_what_its_script_says_and_nothing_else() 
         ItemId::OCTARINE_CORE,
         ItemId::DRAGON_LANCE,
         ItemId::HEART,
+        ItemId::CRYSTALYS,
+        ItemId::DAEDALUS,
+        ItemId::REVENANTS_BROOCH,
+        ItemId::SKULL_BASHER,
+        ItemId::BATTLE_FURY,
+        ItemId::MAELSTROM,
+        ItemId::SPECIALISTS_ARRAY,
+        ItemId::VANGUARD,
     ] {
         assert_carries_its_values(item, bare);
     }
@@ -705,6 +713,7 @@ fn assert_carries_its_values(item: ItemId, bare: Stats) {
     let mut restoration_amp_bp = 0;
     let mut mana_regen_amp_pct = 0;
     let mut max_hp_regen_bp = 0;
+    let mut block = (None, None);
     for (key, levels) in def.values {
         if key.starts_with("tooltip_") {
             // A number only the tooltip shows: another of the item's, as Dota words it.
@@ -767,10 +776,51 @@ fn assert_carries_its_values(item: ItemId, bare: Stats) {
                 let through = (10_000 - expected.magic_resist_bp) * (100 - value.int()) / 100;
                 expected.magic_resist_bp = 10_000 - through;
             }
+            // Specialist's Array names its stats without the `bonus_`.
+            "agility" => attributes.agility += points(*value),
+            "damage" => expected.damage += value.int(),
+            "all_stats" => attributes += Attributes::all(value.int()),
+            // The buyer is ranged: it creeps by the ranged quell and blocks the ranged share.
+            "quelling_bonus_ranged" => expected.damage_to_creeps += value.int(),
+            "quelling_bonus" | "block_damage_melee" => {}
+            "block_chance" => block.0 = Some(bota_core::Odds::percent(value.int() as u8)),
+            "block_damage_ranged" => block.1 = Some(value.int()),
+            // What an item does on its carrier's attacks: the attack procs' tests read them.
+            "crit_chance"
+            | "crit_multiplier"
+            | "bash_chance_melee"
+            | "bash_chance_ranged"
+            | "bash_duration"
+            | "bash_cooldown"
+            | "bonus_chance_damage"
+            | "cleave_damage_percent"
+            | "cleave_damage_percent_creep"
+            | "cleave_starting_width"
+            | "cleave_ending_width"
+            | "cleave_distance"
+            | "upgraded_cleave_bonus"
+            | "upgraded_damage_bonus"
+            | "chain_chance"
+            | "chain_damage"
+            | "chain_strikes"
+            | "chain_radius"
+            | "chain_delay"
+            | "chain_cooldown"
+            | "illusion_multiplier_pct"
+            | "count"
+            | "secondary_target_range_bonus"
+            | "secondary_target_angle"
+            | "proc_chance"
+            | "base_proc_dmg"
+            | "proc_dmg_pct"
+            | "proc_dmg_pct_primary_tooltip" => {}
             other => panic!("{}: a value this test does not know: {other}", def.key),
         }
     }
     add_worth_of_attributes(&mut expected, attributes);
+    if let (Some(chance), Some(amount)) = block {
+        expected.damage_block = Some(bota_core::DamageBlock { chance, amount });
+    }
     // A share of the maximum health, strength's included, a second.
     expected.hp_regen += Fixed::from_ratio(
         expected.max_hp.to_int() * max_hp_regen_bp,
@@ -1097,6 +1147,7 @@ fn morbid_swing_heal(amount: i32, on: impl FnOnce(&mut World, Vec2) -> Entity) -
         laid: crate::game::Laid::NONE,
         removal: false,
         spares: false,
+        riders: crate::game::Riders::NONE,
     });
     let events = world.step();
     let taken = events

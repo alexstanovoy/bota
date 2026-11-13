@@ -890,6 +890,7 @@ fn a_courier_in_its_fountains_rejuvenation_takes_nothing_and_is_hit_again_once_i
             laid: crate::game::Laid::NONE,
             removal: false,
             spares: false,
+            riders: crate::game::Riders::NONE,
         });
         world.step();
     };

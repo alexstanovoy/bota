@@ -44,6 +44,9 @@ pub enum Purpose {
     Lotus = 16,
     /// Independent lair respawn draws, keyed by row and fall count.
     Lair = 17,
+    /// The chance procs of the items a unit carries (critical strikes, bashes, chain lightning,
+    /// split shots, damage blocks), each source on a stream of its own, keyed by its place.
+    ItemProc = 18,
 }
 
 /// The purposes with a stream of the match as a whole, whose draws the

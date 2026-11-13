@@ -397,6 +397,7 @@ impl World {
             laid: crate::game::Laid::NONE,
             removal: false,
             spares: false,
+            riders: crate::game::Riders::NONE,
         });
     }
 
@@ -438,6 +439,7 @@ impl World {
             laid: crate::game::Laid::NONE,
             removal: removes,
             spares: true,
+            riders: crate::game::Riders::NONE,
         });
     }
 
@@ -469,6 +471,7 @@ impl World {
             laid: crate::game::Laid::NONE,
             removal: false,
             spares: false,
+            riders: crate::game::Riders::NONE,
         });
     }
 
@@ -502,6 +505,7 @@ impl World {
             laid: crate::game::Laid::NONE,
             removal: false,
             spares: false,
+            riders: crate::game::Riders::NONE,
         });
     }
 
@@ -1033,7 +1037,7 @@ impl World {
         let amplified = self
             .hits
             .iter()
-            .any(|hit| hit.damage_amp_bp != bota_core::rules::NOMINAL_BP);
+            .any(|hit| hit.damage_amp_bp != bota_core::rules::NOMINAL_BP || hit.riders.amplified());
         let mut blocks = Vec::new();
         let cx = HitCx {
             abilities: &mut self.abilities,
@@ -1051,6 +1055,7 @@ impl World {
             immortal_heroes: self.immortal_heroes,
             rng: &self.rng,
             evasion: &mut self.evasion,
+            procs: &mut self.crit,
             missed: &mut self.missed,
             tick: self.tick,
             inventory: &mut self.inventory,

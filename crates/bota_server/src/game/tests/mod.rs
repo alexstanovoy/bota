@@ -3,6 +3,7 @@ mod ally_use;
 mod aoe;
 mod attack_classes;
 mod attack_launched;
+mod attack_procs;
 mod attacks;
 mod auras;
 mod backdoor;

@@ -66,6 +66,7 @@ pub(crate) fn stats() -> Stats {
         spell_lifesteal_pct: 0,
         spell_amp_pct: 0,
         cast_speed_pct: 0,
+        damage_block: None,
         magic_taken_pct: 0,
         damage_taken_bp: rules::NOMINAL_BP,
         restoration_bp: rules::NOMINAL_BP,
@@ -212,6 +213,7 @@ pub(crate) fn world_with_projectile_uphill_state(launch_tier: u8, can_miss_uphil
             effect: HitEffect::None,
             striker: None,
             laid: crate::game::Laid::NONE,
+            riders: crate::game::Riders::NONE,
         },
     );
     world
@@ -1216,6 +1218,7 @@ pub(crate) fn manual_projectile_damage(
                 effect: HitEffect::None,
                 striker: Some(bota_core::Striker::Other),
                 laid: crate::game::Laid::NONE,
+                riders: crate::game::Riders::NONE,
             },
         );
     }

@@ -213,6 +213,20 @@ item 112 live item_dragon_lance
 item 113 live item_recipe_dragon_lance
 item 114 live item_heart
 item 115 live item_recipe_heart
+item 116 live item_recipe_lesser_crit
+item 117 live item_lesser_crit
+item 118 live item_recipe_greater_crit
+item 119 live item_greater_crit
+item 120 live item_recipe_revenants_brooch
+item 121 live item_revenants_brooch
+item 122 live item_recipe_basher
+item 123 live item_basher
+item 124 live item_recipe_bfury
+item 125 live item_bfury
+item 126 live item_maelstrom
+item 127 live item_recipe_specialists_array
+item 128 live item_specialists_array
+item 129 live item_vanguard
 
 effect 0 retired bota_haste
 effect 1 live modifier_flask_healing

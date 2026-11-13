@@ -6,7 +6,7 @@ use bota_proto::ItemId;
 
 use crate::data::ITEM_ROWS;
 use crate::table::placed_by_id;
-use crate::{AllyUse, ItemDef, MAX_COMPONENTS, UseSpec};
+use crate::{AllyUse, ItemDef, MAX_COMPONENTS, MAX_ITEM_STRIKES, UseSpec};
 
 /// How many item ids the protocol has ever handed out, retired ones
 /// included: every table indexed by [`ItemId`] is this long.
@@ -146,6 +146,11 @@ const _: () = {
         // no parts of its own; a cost is a price.
         assert!(def.components.len() <= MAX_COMPONENTS);
         assert!(def.cost >= 0);
+        // An item's strikes keep their rolls in places of their own, so many to an item.
+        assert!(def.carried.strikes.len() <= MAX_ITEM_STRIKES);
+        if let Some(ranged) = def.ranged {
+            assert!(ranged.strikes.len() <= MAX_ITEM_STRIKES);
+        }
         if def.stack_limit > 0 {
             assert!(def.charges >= 1 && def.charges <= def.stack_limit);
             assert!(def.components.is_empty() && def.alternatives.is_empty());

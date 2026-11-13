@@ -107,6 +107,8 @@ const READ: &[&str] = &[
 /// Keys known and left out: presentation, the shop's suggestions, and rules bota models
 /// elsewhere or not yet (targets, sharing, dispels, Turbo's stock).
 const LEFT_OUT: &[&str] = &[
+    // The kind of a passive's damage: Skull Basher's bash damage rides with the attack, physical.
+    "AbilityUnitDamageType",
     "AbilityUnitTargetFlags",
     "AbilityUnitTargetTeam",
     "AbilityUnitTargetType",

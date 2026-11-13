@@ -93,6 +93,9 @@ pub struct Stats {
     /// Percent added to how fast it casts: a cast point and a backswing take
     /// `100 / (100 + this)` of their length.
     pub cast_speed_pct: i32,
+    /// The damage block its items give it: a chance to take a fixed amount off an attack on it,
+    /// before armor.
+    pub damage_block: Option<bota_core::DamageBlock>,
     /// Percent more magical damage it takes.
     pub magic_taken_pct: i32,
     /// Share of the damage that reaches it, after armor and resistance, that

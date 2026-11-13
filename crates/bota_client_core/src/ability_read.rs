@@ -162,6 +162,7 @@ fn neutral_damage(
         Spell::Strike(Strike::Crit {
             chance_pct,
             mult_pct,
+            ..
         }) => Some(AbilityDamage {
             amount: f64::from(actor.attack_damage.max(0))
                 * f64::from((at_level(&mult_pct, level) - 100).max(0))
@@ -624,6 +625,7 @@ fn strike_value(strike: Strike, key: &str, level: u8) -> Option<Dec> {
         Strike::Crit {
             chance_pct,
             mult_pct,
+            ..
         } => match key {
             "crit_chance" => Some(integer(chance_pct)),
             "crit_multiplier" => Some(integer(at_level(&mult_pct, level))),
@@ -653,6 +655,8 @@ fn strike_value(strike: Strike, key: &str, level: u8) -> Option<Dec> {
             "stun_duration" => Some(Dec(at_level(&stun_ms, level))),
             _ => None,
         },
+        // Strikes only items carry: no neutral's ability holds one.
+        Strike::Cleave { .. } | Strike::Chain { .. } | Strike::Split { .. } => None,
     }
 }
 

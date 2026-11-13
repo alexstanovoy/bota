@@ -494,6 +494,7 @@ fn add_carried(now: &mut Stats, sums: &mut Sums, carried: &Carried, illusion: bo
     now.spell_lifesteal_pct += carried.spell_lifesteal_pct;
     now.spell_amp_pct += carried.spell_amp_pct;
     now.cast_speed_pct += carried.cast_speed_pct;
+    now.damage_block = carried.damage_block;
     let range = if now.projectile_speed.is_none() {
         carried.melee_range
     } else {
@@ -874,6 +875,7 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32, night: bool) -> Stats {
         spell_immune: kind.spell_immune,
         aoe_bonus: 0,
         cast_range_bonus: 0,
+        damage_block: None,
         ethereal: false,
         hit_count: kind.hit_count,
         glyph: false,

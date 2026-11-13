@@ -277,6 +277,23 @@ impl ItemId {
     /// Dota's `item_heart` (public name Heart of Tarrasque): strength and a share of the maximum
     /// and of the missing health regenerated.
     pub const HEART: ItemId = ItemId(114);
+    /// Dota's `item_lesser_crit`: damage and a critical strike.
+    pub const CRYSTALYS: ItemId = ItemId(117);
+    /// Dota's `item_greater_crit`: damage and a critical strike.
+    pub const DAEDALUS: ItemId = ItemId(119);
+    /// Dota's `item_revenants_brooch`: damage, spell lifesteal and a critical strike landed as
+    /// magic.
+    pub const REVENANTS_BROOCH: ItemId = ItemId(121);
+    /// Dota's `item_basher`: strength, damage and a bash.
+    pub const SKULL_BASHER: ItemId = ItemId(123);
+    /// Dota's `item_bfury`: damage, regeneration, a quell, a cleave and a tree felled.
+    pub const BATTLE_FURY: ItemId = ItemId(125);
+    /// Dota's `item_maelstrom`: damage, attack speed and chain lightning.
+    pub const MAELSTROM: ItemId = ItemId(126);
+    /// Dota's `item_specialists_array`: agility, damage and a split shot.
+    pub const SPECIALISTS_ARRAY: ItemId = ItemId(128);
+    /// Dota's `item_vanguard`: health, regeneration and a damage block.
+    pub const VANGUARD: ItemId = ItemId(129);
 }
 
 /// What did something: the ability or the item a unit used, as Dota's combat
@@ -462,6 +479,8 @@ impl EffectId {
     pub const FROST: EffectId = EffectId(80);
     /// Recovery when an Aegis expires or is reclaimed.
     pub const AEGIS_REGENERATION: EffectId = EffectId(81);
+    /// A bash's stun (`modifier_bashed`): Roshan's Bash and a Skull Basher's.
+    pub const BASHED: EffectId = EffectId(87);
     /// A Ghost Scepter's Ghost Form (`modifier_ghost_state`): ethereal, no
     /// attack in or out and no physical damage, more magic taken.
     pub const GHOST_FORM: EffectId = EffectId(98);

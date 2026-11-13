@@ -8,7 +8,7 @@ use bota_proto::{Aim, Attribute, Attributes, CataloguePrefix, Fixed, ItemId};
 
 use crate::{
     AllyUse, Carried, DisassembleRule, ITEM_COUNT, ITEMS, ItemDef, Mend, Odds, Pool, Recipe,
-    Spends, Stock, UseSpec, item_def, sold, sold_items,
+    Spends, Stock, Strike, UseSpec, item_def, sold, sold_items,
 };
 
 include!(concat!(env!("OUT_DIR"), "/item_identity.rs"));
@@ -249,6 +249,8 @@ impl Fnv {
             ranged_range,
             max_hp_regen_bp,
             missing_hp_regen_bp,
+            strikes,
+            damage_block,
         } = value;
         let fnv = self
             .attributes(attributes)
@@ -338,11 +340,113 @@ impl Fnv {
         } else {
             fnv.u64(0xCB).int(max_hp_regen_bp as i64)
         };
-        if missing_hp_regen_bp == 0 {
+        let fnv = if missing_hp_regen_bp == 0 {
             fnv
         } else {
             fnv.u64(0xCC).int(missing_hp_regen_bp as i64)
+        };
+        let fnv = if strikes.is_empty() {
+            fnv
+        } else {
+            fnv.u64(0xCD).strikes(strikes)
+        };
+        match damage_block {
+            None => fnv,
+            Some(block) => fnv.u64(0xCE).odds(block.chance).int(block.amount as i64),
         }
+    }
+
+    /// An item's strikes, each by a tag of its kind and its numbers.
+    const fn strikes(self, strikes: &[Strike]) -> Fnv {
+        let mut fnv = self.u64(strikes.len() as u64);
+        let mut at = 0;
+        while at < strikes.len() {
+            fnv = match strikes[at] {
+                Strike::Crit {
+                    chance_pct,
+                    mult_pct,
+                    magic,
+                    buildings,
+                } => fnv
+                    .u64(1)
+                    .int(chance_pct as i64)
+                    .levels(&mult_pct)
+                    .flag(magic)
+                    .flag(buildings),
+                Strike::Bash {
+                    chance_pct,
+                    damage,
+                    stun_ms,
+                    effect,
+                } => fnv
+                    .u64(2)
+                    .int(chance_pct as i64)
+                    .levels(&damage)
+                    .levels(&stun_ms)
+                    .u64(effect.0 as u64),
+                Strike::Cleave {
+                    hero_pct,
+                    creep_pct,
+                    start_width,
+                    end_width,
+                    distance,
+                } => fnv
+                    .u64(3)
+                    .int(hero_pct as i64)
+                    .int(creep_pct as i64)
+                    .int(start_width as i64)
+                    .int(end_width as i64)
+                    .int(distance as i64),
+                Strike::Chain {
+                    chance_pct,
+                    damage,
+                    strikes,
+                    radius,
+                    delay_ms,
+                    wait_ms,
+                } => fnv
+                    .u64(4)
+                    .int(chance_pct as i64)
+                    .int(damage as i64)
+                    .u64(strikes as u64)
+                    .int(radius as i64)
+                    .int(delay_ms as i64)
+                    .int(wait_ms as i64),
+                Strike::Split {
+                    chance_pct,
+                    count,
+                    range_bonus,
+                    angle,
+                    base_damage,
+                    pct,
+                } => fnv
+                    .u64(5)
+                    .int(chance_pct as i64)
+                    .u64(count as u64)
+                    .int(range_bonus as i64)
+                    .int(angle as i64)
+                    .int(base_damage as i64)
+                    .int(pct as i64),
+                // A neutral's own strikes: no item carries one.
+                Strike::Disarm { .. }
+                | Strike::Break { .. }
+                | Strike::Lay { .. }
+                | Strike::Splash { .. }
+                | Strike::Petrify { .. } => panic!("an item carries a strike of a neutral's own"),
+            };
+            at += 1;
+        }
+        fnv
+    }
+
+    const fn levels(self, values: &[i32]) -> Fnv {
+        let mut fnv = self;
+        let mut at = 0;
+        while at < values.len() {
+            fnv = fnv.int(values[at] as i64);
+            at += 1;
+        }
+        fnv
     }
 
     const fn mend(self, value: Mend) -> Fnv {

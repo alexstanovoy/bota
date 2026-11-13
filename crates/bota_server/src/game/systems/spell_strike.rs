@@ -10,6 +10,18 @@ use crate::game::{Chain, Entity, HitEffect, Projectile, World};
 
 use super::spell::Cast;
 
+/// A bolt of chain lightning: it strikes for `damage` and leaps on until it has struck `targets`,
+/// each leap to the nearest foe within `radius` of the last struck, `delay_ms` after the last,
+/// for `keep_pct` percent of the last leap's damage.
+#[derive(Clone, Copy)]
+pub(super) struct Bolt {
+    pub damage: i32,
+    pub targets: u8,
+    pub radius: i32,
+    pub delay_ms: i32,
+    pub keep_pct: i32,
+}
+
 impl World {
     /// Throws a missile that tracks its target and, on arriving, deals the
     /// damage and stuns or roots. It never misses.
@@ -63,6 +75,7 @@ impl World {
                 },
                 striker: None,
                 laid: crate::game::Laid::NONE,
+                riders: crate::game::Riders::NONE,
             },
         );
         true
@@ -80,7 +93,7 @@ impl World {
         else {
             return false;
         };
-        let (Some(on), Some(side)) = (
+        let (Some(on), Some(_)) = (
             self.foe_aimed_at(cast, target),
             self.team.get(cast.caster).copied(),
         ) else {
@@ -89,35 +102,62 @@ impl World {
         let Some(at) = self.pos(on) else {
             return false;
         };
-        let damage = at_level(&damage, cast.level);
-        self.push_hit(
-            Some(cast.caster),
+        let bolt = Bolt {
+            damage: at_level(&damage, cast.level),
+            targets,
+            radius,
+            delay_ms,
+            keep_pct: at_level(&keep_pct, cast.level),
+        };
+        self.chain_from(
+            cast.caster,
+            Inflictor::Ability(cast.ability.id()),
             on,
-            damage,
-            DamageKind::Magical,
-            cast.inflictor(),
+            at,
+            bolt,
         );
-        if targets > 1 {
-            let delay = ticks_of_ms(delay_ms).max(1);
-            let keep_pct = at_level(&keep_pct, cast.level);
+        true
+    }
+
+    /// Strikes `on`, standing at `at`, with a bolt of `source`'s laid to `inflictor`, and sets
+    /// the chain leaping on from there: a neutral's Chain Lightning, an item's.
+    pub(super) fn chain_from(
+        &mut self,
+        source: Entity,
+        inflictor: Inflictor,
+        on: Entity,
+        at: Vec2,
+        bolt: Bolt,
+    ) {
+        let Some(side) = self.team.get(source).copied() else {
+            return;
+        };
+        self.push_hit(
+            Some(source),
+            on,
+            bolt.damage,
+            DamageKind::Magical,
+            Some(inflictor),
+        );
+        if bolt.targets > 1 {
+            let delay = ticks_of_ms(bolt.delay_ms).max(1);
             let marker = self.spawn_placed(at, Angle::default(), side);
             self.chain.insert(
                 marker,
                 Chain {
-                    source: cast.caster,
-                    inflictor: Inflictor::Ability(cast.ability.id()),
+                    source,
+                    inflictor,
                     at,
                     struck: vec![on],
-                    leaps_left: targets - 1,
-                    damage: damage * keep_pct / 100,
-                    keep_pct,
-                    radius: rules::units(radius),
+                    leaps_left: bolt.targets - 1,
+                    damage: bolt.damage * bolt.keep_pct / 100,
+                    keep_pct: bolt.keep_pct,
+                    radius: rules::units(bolt.radius),
                     delay,
                     wait: delay,
                 },
             );
         }
-        true
     }
 
     /// The spot `reach` from the caster towards an aim, or straight ahead of

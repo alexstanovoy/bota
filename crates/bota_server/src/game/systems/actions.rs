@@ -20,7 +20,8 @@ use super::hitting::entity_slot;
 
 use crate::game::{
     Action, ActionPhase, ActionState, Entity, Event, Hit, HitEffect, Laid, PendingCast, Projectile,
-    PseudoRandom, Purpose, RefusedOrder, Rolls, Stats, Target, World, ability_hooks, wire_id,
+    PseudoRandom, Purpose, RefusedOrder, Rider, RiderKind, Riders, Rolls, Stats, Target, World,
+    ability_hooks, wire_id,
 };
 
 /// What one swing deals, rolled when it lands.
@@ -44,6 +45,8 @@ struct Swing {
     /// The items whose passive its blow lays on the struck.
     laid: Laid,
     proc: Option<crate::game::AttackProc>,
+    /// What its item procs let loose once it lands.
+    riders: Riders,
 }
 
 /// How long an ability or an item holds the body: `point` and `backswing` in
@@ -909,6 +912,26 @@ impl World {
             };
         let class_pct = self.class_pct_of(attacker, on);
         let boost = self.boost_of(attacker, on, stats);
+        let mut riders = Riders::NONE;
+        // A critical strike landed as magic deals its share of the swing on top, amplified as
+        // the magic riding with a swing is.
+        if let Some((pct, item)) = boost.phantom {
+            riders.add(Rider {
+                item,
+                kind: RiderKind::Magic {
+                    damage: damage * pct / 100 * class_pct / 100,
+                    amp_bp: stats.spell_damage_amp_bp(DamageKind::Magical),
+                },
+            });
+        }
+        if let Some(item) = boost.chain {
+            riders.add(Rider {
+                item,
+                kind: RiderKind::Chain,
+            });
+        }
+        // A split shot's swing deals its base damage on top of a plain swing's.
+        let split_base = boost.split.map_or(0, |shot| shot.base_damage);
         let striker = match self.kind.get(attacker) {
             // An illusion's attack counts as a creep's.
             Some(kind) if !self.wears_illusion(attacker) => {
@@ -941,14 +964,17 @@ impl World {
                 ..proc
             }),
             striker,
-            damage: damage * boost.crit_pct / 100 * class_pct / 100,
-            accurate: boost.accurate,
+            damage: (damage + split_base) * boost.crit_pct / 100 * class_pct / 100,
+            // A swing that lets loose chain lightning goes through evasion ("Lightning proc
+            // pierces evasion").
+            accurate: boost.accurate || boost.chain.is_some(),
             pierced: self.roll_pierces(attacker, on, stats, class_pct),
             physical_amp_bp: stats.damage_amp_bp(DamageKind::Physical),
             // The magic riding with a swing (a pierce's) takes spell amplification as a spell's.
             magical_amp_bp: stats.spell_damage_amp_bp(DamageKind::Magical),
             effect: self.attack_effect(attacker),
             laid: self.laid_by(attacker),
+            riders,
         };
         match stats.projectile_speed {
             None => self.strike_home(attacker, on, swing),
@@ -959,9 +985,30 @@ impl World {
                     let shot = Swing {
                         proc: None,
                         damage: damage * share / 100,
+                        riders: Riders::NONE,
                         ..swing.clone()
                     };
                     self.throw_at(attacker, extra, shot, speed);
+                }
+                // A split shot's extra missiles deal their share of a plain swing and carry
+                // nothing else of it ("do not trigger on hit effects").
+                if let Some(split) = boost.split {
+                    for extra in self.split_targets(attacker, on, stats, split) {
+                        let share = self.class_pct_of(attacker, extra);
+                        let shot = Swing {
+                            striker: swing.striker,
+                            damage: (split.base_damage + damage * split.pct / 100) * share / 100,
+                            accurate: boost.accurate,
+                            pierced: Vec::new(),
+                            physical_amp_bp: swing.physical_amp_bp,
+                            magical_amp_bp: swing.magical_amp_bp,
+                            effect: HitEffect::None,
+                            laid: Laid::NONE,
+                            proc: None,
+                            riders: Riders::NONE,
+                        };
+                        self.throw_at(attacker, extra, shot, speed);
+                    }
                 }
             }
         }
@@ -1062,6 +1109,7 @@ impl World {
             laid: swing.laid,
             removal: false,
             spares: false,
+            riders: swing.riders,
         });
         for (bonus, item) in swing.pierced {
             self.hits.push_back(Hit {
@@ -1082,6 +1130,7 @@ impl World {
                 laid: crate::game::Laid::NONE,
                 removal: false,
                 spares: false,
+                riders: crate::game::Riders::NONE,
             });
         }
     }
@@ -1117,6 +1166,7 @@ impl World {
                 effect: swing.effect,
                 striker: Some(swing.striker),
                 laid: swing.laid,
+                riders: swing.riders,
             },
         );
     }
@@ -1161,19 +1211,10 @@ impl World {
             .get(on)
             .copied()
             .is_some_and(|kind| kind_def(kind).structure);
-        let Some(bag) = self.inventory.get(attacker).filter(|_| !structure) else {
+        if structure {
             return Vec::new();
-        };
-        let carried: Vec<(usize, ItemId)> = bag
-            .slots
-            .iter()
-            .take(rules::INVENTORY_SLOTS)
-            .enumerate()
-            .filter_map(|(at, held)| {
-                held.filter(|stack| stack.mute == 0)
-                    .map(|stack| (at, stack.id))
-            })
-            .collect();
+        }
+        let carried = self.carried_slots(attacker);
         let ranged = stats.projectile_speed.is_some();
         let mut landed = Vec::new();
         for (at, pierce) in carried_pierces(carried, ranged) {
@@ -1187,6 +1228,22 @@ impl World {
             }
         }
         landed
+    }
+
+    /// The items an entity's passives work from, by inventory slot: the inventory proper, none
+    /// muted.
+    pub(super) fn carried_slots(&self, entity: Entity) -> Vec<(usize, ItemId)> {
+        self.inventory.get(entity).map_or_else(Vec::new, |bag| {
+            bag.slots
+                .iter()
+                .take(rules::INVENTORY_SLOTS)
+                .enumerate()
+                .filter_map(|(at, held)| {
+                    held.filter(|stack| stack.mute == 0)
+                        .map(|stack| (at, stack.id))
+                })
+                .collect()
+        })
     }
 
     /// Whether a swing may begin: the target is standing, seen, in reach, and

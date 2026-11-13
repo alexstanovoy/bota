@@ -61,6 +61,7 @@ fn swing_laying(by: Entity, on: Entity, item: ItemId) -> Hit {
         laid,
         removal: false,
         spares: false,
+        riders: crate::game::Riders::NONE,
     }
 }
 

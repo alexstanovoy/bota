@@ -275,7 +275,9 @@ pub struct AuraSpell {
     pub breakable: bool,
 }
 
-/// A passive on the bearer's own attacks.
+/// A passive on the bearer's own attacks: a neutral's passive ability, or an item's
+/// ([`Carried::strikes`](crate::Carried::strikes)). Every chance rolls with Dota's
+/// pseudo-random distribution, on a sequence of the source's own.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Strike {
     /// Counts the blows landed on each enemy; the `hits`th, off cooldown,
@@ -293,8 +295,19 @@ pub enum Strike {
         dps: Lv,
     },
     /// A `chance_pct` chance, held over every run of swings, to deal
-    /// `mult_pct` percent damage.
-    Crit { chance_pct: i32, mult_pct: Lv },
+    /// `mult_pct` percent damage. Of several critical strikes the strongest rolls first and the
+    /// first that lands counts alone (Dota 7.30: "Multiple Critical Strike procs are now rolled
+    /// from strongest to weakest and will stop rolling once a proc occurs").
+    Crit {
+        chance_pct: i32,
+        mult_pct: Lv,
+        /// Whether it leaves the swing as it is and lands `mult_pct` percent of its damage on
+        /// top as magical damage (Revenant's Brooch's Phantom Critical, "considered a Critical
+        /// Strike for other sources of Critical Strikes").
+        magic: bool,
+        /// Whether it works on buildings ("Critical Strike does not work against buildings").
+        buildings: bool,
+    },
     /// Every other enemy within `radius` of the struck takes `pct` percent of
     /// the blow, as physical damage.
     Splash { radius: i32, pct: i32 },
@@ -306,12 +319,52 @@ pub enum Strike {
         dps: i32,
         effect: EffectId,
     },
-    /// Rolled at the attack point and carried to impact as conditional attack damage.
+    /// Rolled at the attack point and carried to impact as conditional attack damage. Of a
+    /// unit's bashes one rolls (Skull Basher: "Does not stack with other sources of Bash"):
+    /// the one that deals most, then the first.
     Bash {
         chance_pct: i32,
         damage: Lv,
         stun_ms: Lv,
         effect: EffectId,
+    },
+    /// Every enemy unit but the struck in a cone from the attacker through the struck takes
+    /// `hero_pct` percent of the blow (`creep_pct` for a unit that is no hero) as physical
+    /// damage: `start_width` wide at the struck, `end_width` at `distance` from it. Each
+    /// cleave of a unit lands apart ("each Cleave's damage is applied separately"); an AoE
+    /// bonus widens both widths (Dota 7.36: "AoE Bonuses now affect all auras and Cleave
+    /// sources").
+    Cleave {
+        hero_pct: i32,
+        creep_pct: i32,
+        start_width: i32,
+        end_width: i32,
+        distance: i32,
+    },
+    /// A `chance_pct` chance, rolled at the attack point, that the swing goes through evasion
+    /// and, once it lands, lets loose a bolt of `damage` magical damage that strikes the struck
+    /// and leaps on to `strikes` targets in all, each within `radius` of the last, `delay_ms`
+    /// apart. The source then waits `wait_ms` (Maelstrom's Chain Lightning).
+    Chain {
+        chance_pct: i32,
+        damage: i32,
+        strikes: u8,
+        radius: i32,
+        delay_ms: i32,
+        wait_ms: i32,
+    },
+    /// A `chance_pct` chance, rolled at the attack point, that the swing throws missiles at up
+    /// to `count` more enemies besides its target, within the attack's range and `range_bonus`
+    /// and `angle` degrees in front of the attacker, each dealing `base_damage` and `pct`
+    /// percent of a plain swing; the swing itself deals `base_damage` more. The extra missiles
+    /// carry nothing else of the swing (Specialist's Array's Splitshot).
+    Split {
+        chance_pct: i32,
+        count: u8,
+        range_bonus: i32,
+        angle: i32,
+        base_damage: i32,
+        pct: i32,
     },
 }
 
@@ -990,6 +1043,8 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
         Spell::Strike(Strike::Crit {
             chance_pct: 20,
             mult_pct: lv(200, 225, 250, 300),
+            magic: false,
+            buildings: true,
         }),
     ),
     entry(
@@ -1900,7 +1955,7 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
             chance_pct: crate::roshan_data::ROSHAN_BASH.first("bash_chance").int(),
             damage: all(crate::roshan_data::ROSHAN_BASH.first("bonus_damage").int()),
             stun_ms: all(crate::roshan_data::ROSHAN_BASH.first("stun_duration").0),
-            effect: EffectId(87),
+            effect: EffectId::BASHED,
         }),
     ),
     entry(

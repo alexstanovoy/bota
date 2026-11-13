@@ -7,9 +7,10 @@ use bota_proto::{Aim, Attribute, Attributes, EffectId, Fixed, ItemId};
 
 use super::items::*;
 use crate::{
-    Affects, AllyUse, Carried, Dec, DisassembleRule, Dispel, Drink, Grenade, Immunity, ItemData,
-    ItemDef, LOTUS_TAKE_RANGE, MagicBlock, Mend, NOTHING, Odds, OnAttack, PLAIN, Pool, Recipe,
-    Scroll, Spends, Stock, UseSpec, hundredths_per_second, points, points_with, rules,
+    Affects, AllyUse, Carried, DamageBlock, Dec, DisassembleRule, Dispel, Drink, Grenade, Immunity,
+    ItemData, ItemDef, LOTUS_TAKE_RANGE, MagicBlock, Mend, NOTHING, Odds, OnAttack, PLAIN, Pool,
+    Recipe, Scroll, Spends, Stock, Strike, UseSpec, hundredths_per_second, points, points_with,
+    rules,
 };
 
 /// The row of an item as its script gives it; a row of the catalog adds what bota does with it.
@@ -1183,7 +1184,217 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         },
         ..from(&ITEM_HEART)
     },
+    // The attack procs: each item's strikes roll and land by the pipeline a neutral's passives go
+    // through (`Strike`, `carried_strikes`).
+    ItemDef {
+        ..from(&ITEM_RECIPE_LESSER_CRIT)
+    },
+    ItemDef {
+        carried: Carried {
+            damage: int(&ITEM_LESSER_CRIT, "bonus_damage"),
+            strikes: &[CRYSTALYS_CRIT],
+            ..NOTHING
+        },
+        ..from(&ITEM_LESSER_CRIT)
+    },
+    ItemDef {
+        ..from(&ITEM_RECIPE_GREATER_CRIT)
+    },
+    ItemDef {
+        carried: Carried {
+            damage: int(&ITEM_GREATER_CRIT, "bonus_damage"),
+            strikes: &[DAEDALUS_CRIT],
+            ..NOTHING
+        },
+        ..from(&ITEM_GREATER_CRIT)
+    },
+    ItemDef {
+        ..from(&ITEM_RECIPE_REVENANTS_BROOCH)
+    },
+    ItemDef {
+        carried: Carried {
+            damage: int(&ITEM_REVENANTS_BROOCH, "bonus_damage"),
+            spell_lifesteal_pct: int(&ITEM_REVENANTS_BROOCH, "spell_lifesteal"),
+            strikes: &[PHANTOM_CRIT],
+            ..NOTHING
+        },
+        ..from(&ITEM_REVENANTS_BROOCH)
+    },
+    ItemDef {
+        ..from(&ITEM_RECIPE_BASHER)
+    },
+    // Skull Basher: its bash waits out the item's own cooldown (`bash_cooldown`, the item's
+    // `AbilityCooldown`).
+    ItemDef {
+        carried: Carried {
+            strikes: &[bash(&ITEM_BASHER, "bash_chance_melee")],
+            ..BASHER
+        },
+        ranged: Some(Carried {
+            strikes: &[bash(&ITEM_BASHER, "bash_chance_ranged")],
+            ..BASHER
+        }),
+        ..from(&ITEM_BASHER)
+    },
+    ItemDef {
+        ..from(&ITEM_RECIPE_BFURY)
+    },
+    // Battle Fury: Quell against creeps, Cleave on a melee carrier's attacks, Chop Tree as a
+    // Quelling Blade's.
+    ItemDef {
+        carried: Carried {
+            damage_to_creeps: int(&ITEM_BFURY, "quelling_bonus"),
+            strikes: &[BFURY_CLEAVE],
+            ..BFURY
+        },
+        ranged: Some(Carried {
+            damage_to_creeps: int(&ITEM_BFURY, "quelling_bonus_ranged"),
+            ..BFURY
+        }),
+        aim: Some(Aim::Tree),
+        effect: UseSpec::FellTree,
+        ..from(&ITEM_BFURY)
+    },
+    ItemDef {
+        carried: Carried {
+            damage: int(&ITEM_MAELSTROM, "bonus_damage"),
+            attack_speed: int(&ITEM_MAELSTROM, "bonus_attack_speed"),
+            strikes: &[MAELSTROM_CHAIN],
+            ..NOTHING
+        },
+        ..from(&ITEM_MAELSTROM)
+    },
+    ItemDef {
+        ..from(&ITEM_RECIPE_SPECIALISTS_ARRAY)
+    },
+    // Specialist's Array: Splitshot on a ranged carrier's attacks alone ("Ranged Only").
+    ItemDef {
+        carried: SPECIALISTS_ARRAY,
+        ranged: Some(Carried {
+            strikes: &[SPLITSHOT],
+            ..SPECIALISTS_ARRAY
+        }),
+        ..from(&ITEM_SPECIALISTS_ARRAY)
+    },
+    ItemDef {
+        carried: Carried {
+            damage_block: Some(block(&ITEM_VANGUARD, "block_damage_melee")),
+            ..VANGUARD
+        },
+        ranged: Some(Carried {
+            damage_block: Some(block(&ITEM_VANGUARD, "block_damage_ranged")),
+            ..VANGUARD
+        }),
+        ..from(&ITEM_VANGUARD)
+    },
 ];
+
+/// A critical strike of an item: `crit_chance` percent to deal `crit_multiplier` percent, or that
+/// percent on top as magic, never on a building.
+const fn crit(d: &ItemData, magic: bool) -> Strike {
+    Strike::Crit {
+        chance_pct: int(d, "crit_chance"),
+        mult_pct: [int(d, "crit_multiplier"); 4],
+        magic,
+        buildings: false,
+    }
+}
+
+const CRYSTALYS_CRIT: Strike = crit(&ITEM_LESSER_CRIT, false);
+const DAEDALUS_CRIT: Strike = crit(&ITEM_GREATER_CRIT, false);
+const PHANTOM_CRIT: Strike = crit(&ITEM_REVENANTS_BROOCH, true);
+
+/// A bash of an item, at the chance of `chance_key`: `bonus_chance_damage` physical damage
+/// riding with the attack and a stun of `bash_duration`, Dota's `modifier_bashed`.
+const fn bash(d: &ItemData, chance_key: &str) -> Strike {
+    Strike::Bash {
+        chance_pct: int(d, chance_key),
+        damage: [int(d, "bonus_chance_damage"); 4],
+        stun_ms: [d.first("bash_duration").0; 4],
+        effect: EffectId::BASHED,
+    }
+}
+
+/// What a Skull Basher carries besides its bash.
+const BASHER: Carried = Carried {
+    attributes: points(Attribute::Strength, int(&ITEM_BASHER, "bonus_strength")),
+    damage: int(&ITEM_BASHER, "bonus_damage"),
+    ..NOTHING
+};
+
+/// What a Battle Fury carries besides its Quell and Cleave.
+const BFURY: Carried = Carried {
+    damage: int(&ITEM_BFURY, "bonus_damage"),
+    hp_regen: regen(&ITEM_BFURY, "bonus_health_regen"),
+    mana_regen: regen(&ITEM_BFURY, "bonus_mana_regen"),
+    ..NOTHING
+};
+
+const BFURY_CLEAVE: Strike = Strike::Cleave {
+    hero_pct: int(&ITEM_BFURY, "cleave_damage_percent"),
+    creep_pct: int(&ITEM_BFURY, "cleave_damage_percent_creep"),
+    start_width: int(&ITEM_BFURY, "cleave_starting_width"),
+    end_width: int(&ITEM_BFURY, "cleave_ending_width"),
+    distance: int(&ITEM_BFURY, "cleave_distance"),
+};
+
+const MAELSTROM_CHAIN: Strike = Strike::Chain {
+    chance_pct: int(&ITEM_MAELSTROM, "chain_chance"),
+    damage: int(&ITEM_MAELSTROM, "chain_damage"),
+    strikes: byte(&ITEM_MAELSTROM, "chain_strikes"),
+    radius: int(&ITEM_MAELSTROM, "chain_radius"),
+    delay_ms: ITEM_MAELSTROM.first("chain_delay").0,
+    wait_ms: ITEM_MAELSTROM.first("chain_cooldown").0,
+};
+
+/// What a Specialist's Array carries besides its Splitshot.
+const SPECIALISTS_ARRAY: Carried = Carried {
+    attributes: points(Attribute::Agility, int(&ITEM_SPECIALISTS_ARRAY, "agility")),
+    damage: int(&ITEM_SPECIALISTS_ARRAY, "damage"),
+    ..NOTHING
+};
+
+const SPLITSHOT: Strike = Strike::Split {
+    chance_pct: int(&ITEM_SPECIALISTS_ARRAY, "proc_chance"),
+    count: byte(&ITEM_SPECIALISTS_ARRAY, "count"),
+    range_bonus: int(&ITEM_SPECIALISTS_ARRAY, "secondary_target_range_bonus"),
+    angle: int(&ITEM_SPECIALISTS_ARRAY, "secondary_target_angle"),
+    base_damage: int(&ITEM_SPECIALISTS_ARRAY, "base_proc_dmg"),
+    pct: int(&ITEM_SPECIALISTS_ARRAY, "proc_dmg_pct"),
+};
+
+/// A damage block of an item: `block_chance` percent to block `amount_key`.
+const fn block(d: &ItemData, amount_key: &str) -> DamageBlock {
+    DamageBlock {
+        chance: odds(d, "block_chance"),
+        amount: int(d, amount_key),
+    }
+}
+
+/// What a Vanguard carries besides its damage block.
+const VANGUARD: Carried = Carried {
+    hp: int(&ITEM_VANGUARD, "bonus_health"),
+    hp_regen: regen(&ITEM_VANGUARD, "bonus_health_regen"),
+    ..NOTHING
+};
+
+// The numbers the attack procs read that the script says twice or leaves to their rows.
+const _: () = {
+    // Skull Basher's bash waits the item's cooldown, which is its `bash_cooldown`.
+    assert!(ITEM_BASHER.cooldown.0 as i32 == ITEM_BASHER.first("bash_cooldown").0);
+    // Specialist's Array's primary attack deals all of a plain swing ("The primary attack deals
+    // 20 + 100% damage of a normal attack"), its `base_proc_dmg` on top.
+    assert!(int(&ITEM_SPECIALISTS_ARRAY, "proc_dmg_pct_primary_tooltip") == 100);
+    // It carries no attribute but agility: its `all_stats` is nothing.
+    assert!(int(&ITEM_SPECIALISTS_ARRAY, "all_stats") == 0);
+    // Chain Lightning deals as much to an illusion as to anything else (Dota 7.39d: "Chain
+    // Lightning no longer deals bonus damage to illusions").
+    assert!(int(&ITEM_MAELSTROM, "illusion_multiplier_pct") == 100);
+    // Battle Fury's cleave widths widen with an AoE bonus and its reach does not.
+    assert!(ITEM_BFURY.widened("cleave_starting_width"));
+    assert!(ITEM_BFURY.widened("cleave_ending_width"));
+    assert!(!ITEM_BFURY.widened("cleave_distance"));
+};
 
 /// What Sange and Yasha carries, its movement speed of the key a melee or a ranged carrier
 /// reads.

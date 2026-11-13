@@ -260,6 +260,7 @@ impl World {
             laid: crate::game::Laid::NONE,
             removal: false,
             spares: false,
+            riders: crate::game::Riders::NONE,
         });
     }
 }

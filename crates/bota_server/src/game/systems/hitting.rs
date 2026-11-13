@@ -8,7 +8,7 @@ use bota_proto::{DamageKind, Fixed, Inflictor, Team, UnitKind, Vec2};
 
 use crate::game::{
     Entity, Fear, Health, Hit, HitEffect, Illusion, Inventory, MatchRng, Modifier, Modifiers,
-    PseudoRandom, Purpose, Stats, Table, Transform, wire_id,
+    PseudoRandom, Purpose, RiderKind, Riders, Rolls, Stats, Table, Transform, wire_id,
 };
 
 use super::bubble::soak;
@@ -50,6 +50,8 @@ pub struct Landed {
     /// Whether it removed health rather than dealt damage, see
     /// [`Hit::removal`].
     pub removal: bool,
+    /// What the attack's item procs let loose where it landed: its own blow only.
+    pub riders: Riders,
     /// What lifesteal heals a share of: the blow after armor and resistance,
     /// before what the target alone takes off or adds (a block, a barrier,
     /// the more an illusion takes) and not cut to the health it had left
@@ -85,6 +87,8 @@ pub struct HitCx<'a> {
     pub rng: &'a MatchRng,
     /// Evasion sequence per target slot.
     pub evasion: &'a mut Vec<Option<PseudoRandom>>,
+    /// The sequences of every unit's chance procs, by entity slot: a damage block's among them.
+    pub procs: &'a mut Vec<Option<Rolls>>,
     /// Where an attack that was evaded is left for whatever answers to it.
     pub missed: &'a mut VecDeque<Missed>,
     /// The tick the blows are felt on.
@@ -121,6 +125,7 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         immortal_heroes,
         rng,
         evasion,
+        procs,
         missed,
         tick,
         abilities,
@@ -201,6 +206,13 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         if let Some(proc) = blow.proc {
             apply_attack_proc(blow, proc, &stat, kind, stats, modifiers);
         }
+        // What the attack's procs land rides with it, felt after it.
+        for rider in blow.riders.iter() {
+            if let RiderKind::Magic { damage, amp_bp } = rider.kind {
+                hits.push_back(riding_magic(&blow, damage, rider.item, amp_bp));
+            }
+        }
+        let blocked_off = blocked_attack(blow, &stat, rng, procs);
         if let HitEffect::FountainDamage { .. } = blow.effect
             && let Some(on_it) = modifiers.get_mut(blow.target)
         {
@@ -237,8 +249,13 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
                         .filter(|_| enemy && illusion.get(blow.target).is_none()),
                     wtf,
                 };
-                let (taken, stolen) =
-                    damage_taken::<AMPLIFIED>(blow, &stat, modifiers.get_mut(blow.target), guard);
+                let (taken, stolen) = damage_taken::<AMPLIFIED>(
+                    blow,
+                    &stat,
+                    modifiers.get_mut(blow.target),
+                    guard,
+                    blocked_off,
+                );
                 let applied = bite(hp, taken, spared);
                 (Fixed::from_int(applied), applied, stolen)
             }
@@ -268,6 +285,7 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
             attack: blow.attack,
             spell: blow.spell,
             removal: blow.removal,
+            riders: blow.riders,
             stolen,
             dealt,
         });
@@ -285,8 +303,9 @@ fn damage_taken<const AMPLIFIED: bool>(
     stat: &Stats,
     mut on_it: Option<&mut Modifiers>,
     guard: MagicGuard<'_>,
+    blocked_off: i32,
 ) -> (i32, i32) {
-    let amount = dealt::<AMPLIFIED>(blow, on_it.as_deref());
+    let amount = (dealt::<AMPLIFIED>(blow, on_it.as_deref()) - blocked_off).max(0);
     let protected = on_it.as_deref().is_some_and(|on_it| {
         on_it
             .active()
@@ -421,6 +440,63 @@ fn barrier(on_it: &mut Modifiers, mut taken: i32) -> i32 {
         .0
         .retain(|held| !matches!(held.kind, ModifierKind::RuneShield { left } if left <= 0));
     taken
+}
+
+/// The magic an attack's critical strike lands on top once the attack landed (Revenant's Brooch's
+/// Phantom Critical): riding with the attack, no spell's and no attack of its own.
+fn riding_magic(attack: &Hit, damage: i32, item: bota_proto::ItemId, amp_bp: i32) -> Hit {
+    Hit {
+        proc: None,
+        blockable_source_team: None,
+        source: attack.source,
+        inflictor: Some(Inflictor::Item(item)),
+        target: attack.target,
+        amount: damage,
+        kind: DamageKind::Magical,
+        damage_amp_bp: amp_bp,
+        attack: false,
+        spell: false,
+        striker: None,
+        pierces: false,
+        uphill: false,
+        effect: HitEffect::None,
+        laid: crate::game::Laid::NONE,
+        removal: false,
+        spares: false,
+        riders: Riders::NONE,
+    }
+}
+
+/// Where a unit's damage block keeps its rolls among its chance procs: past every ability's and
+/// item's place.
+pub(crate) const BLOCK_PLACE: usize = 128;
+
+/// The damage a target's damage block takes off an attack's physical blow, before its armor
+/// (Vanguard: "a 60% chance to block 50 damage from incoming attacks"; Dota 7.41, Tidehunter: a
+/// damage block applies "to an incoming physical attack"), rolled on a pseudo-random sequence of
+/// the target's own. Nothing off anything but an attack's own blow, and nothing rolled where the
+/// target carries no block.
+fn blocked_attack(
+    blow: Hit,
+    target: &Stats,
+    rng: &MatchRng,
+    procs: &mut Vec<Option<Rolls>>,
+) -> i32 {
+    let Some(block) = target.damage_block else {
+        return 0;
+    };
+    if !blow.attack || blow.kind != DamageKind::Physical {
+        return 0;
+    }
+    let rolls = entity_slot(procs, blow.target, Rolls::default);
+    let source = rolls.at(BLOCK_PLACE, || {
+        PseudoRandom::new(rng.for_unit(Purpose::ItemProc, wire_id(blow.target), BLOCK_PLACE as u8))
+    });
+    if source.roll(block.chance) {
+        block.amount.max(0)
+    } else {
+        0
+    }
 }
 
 /// The disable of a conditional attack occurs before its combined damage instance.

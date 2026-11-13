@@ -7,7 +7,7 @@
 
 use bota_proto::{Aim, Attribute, Attributes, Fixed, ItemId};
 
-use crate::{Behavior, Dec, ITEMS, Odds, rules};
+use crate::{Behavior, Dec, ITEMS, Odds, Strike, rules};
 
 /// Which pool an item mends.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -133,6 +133,27 @@ pub struct Carried {
     /// of one lineage count once: Dota's Heart of Tarrasque's Behemoth's Blood ("Multiple
     /// instances of Behemoth's Blood don't stack", 7.40).
     pub missing_hp_regen_bp: i32,
+    /// What the item does on its carrier's attacks: Dota's critical strikes, bashes, cleaves,
+    /// chain lightning and split shots, each rolled and laid by the one pipeline a neutral's
+    /// passives go through ([`carried_strikes`]). A carrier's total holds none.
+    pub strikes: &'static [Strike],
+    /// A chance to block a share of each attack that lands on the carrier. Of several carried
+    /// the one that blocks most counts ("Multiple sources of damage block do not stack").
+    pub damage_block: Option<DamageBlock>,
+}
+
+/// Most strikes one item carries ([`Carried::strikes`]).
+pub const MAX_ITEM_STRIKES: usize = 4;
+
+/// A chance to take a fixed amount off each attack on the carrier, before its armor: Dota's
+/// Damage Block (Vanguard: "Grants a 60% chance to block 50 damage from incoming attacks on melee
+/// heroes, and 25 damage on ranged").
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DamageBlock {
+    /// Its chance, rolled on a pseudo-random sequence of the carrier's own.
+    pub chance: Odds,
+    /// The damage it takes off an attack.
+    pub amount: i32,
 }
 
 /// What a carrier with `max` health, of which `missing` is missing, regenerates a tick by the
@@ -191,6 +212,8 @@ pub(crate) const NOTHING: Carried = Carried {
     ranged_range: 0,
     max_hp_regen_bp: 0,
     missing_hp_regen_bp: 0,
+    strikes: &[],
+    damage_block: None,
 };
 
 /// Whole points of one attribute and none of the others.
@@ -413,8 +436,9 @@ pub struct Recipe<'a> {
 
 /// Most parts one recipe of the catalog asks for: the server assembles a build
 /// from parts held in a fixed set of slots this wide, and the catalog's
-/// build-time checks refuse a row whose recipe asks for more.
-pub const MAX_COMPONENTS: usize = 4;
+/// build-time checks refuse a row whose recipe asks for more. Dota's Battle Fury asks for five:
+/// Perseverance, two Broadswords, a Quelling Blade and its recipe.
+pub const MAX_COMPONENTS: usize = 5;
 
 /// Who may receive the physical item; copied illusion inventory is never a carrier.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -930,6 +954,22 @@ pub fn carried_pierces(
     })
 }
 
+/// The strikes the items carried roll and lay on their carrier's attacks, each with the slot of
+/// the item and the item: every item carried its own, however many of one kind (what does not
+/// stack among them, the strike's own rule sorts out). Pass only the stacks that count: the
+/// inventory proper, none muted.
+pub fn carried_strikes(
+    items: impl IntoIterator<Item = (usize, ItemId)>,
+    ranged: bool,
+) -> impl Iterator<Item = (usize, ItemId, Strike)> {
+    items.into_iter().flat_map(move |(at, id)| {
+        item_def(id)
+            .map_or(&[][..], |def| def.carried_by(ranged).strikes)
+            .iter()
+            .map(move |strike| (at, id, *strike))
+    })
+}
+
 /// Two magic resistances in basis points as one: what the first lets
 /// through, the second lets its share of through.
 pub const fn resist_both(first_bp: i32, second_bp: i32) -> i32 {
@@ -982,6 +1022,13 @@ pub fn carried_bonus(items: impl Iterator<Item = CarriedItem>, ranged: bool) -> 
         total.magic_resist_bp = resist_both(total.magic_resist_bp, carried.magic_resist_bp);
         total.max_hp_regen_bp += carried.max_hp_regen_bp;
         total.lifesteal_pct += carried.lifesteal_pct;
+        if let Some(block) = carried.damage_block
+            && total
+                .damage_block
+                .is_none_or(|best| block.amount > best.amount)
+        {
+            total.damage_block = Some(block);
+        }
         if carried.spell_lifesteal_pct > 0
             && !spell_lifesteal_of.contains(&Some(stack.id))
             && let Some(free) = spell_lifesteal_of.iter_mut().find(|seen| seen.is_none())

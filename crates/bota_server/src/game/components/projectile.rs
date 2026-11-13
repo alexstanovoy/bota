@@ -44,6 +44,8 @@ pub struct Projectile {
     /// The items whose passive its blow lays on the struck: an attack's.
     pub laid: crate::game::Laid,
     pub proc: Option<crate::game::AttackProc>,
+    /// What the attack's item procs let loose once it lands: an attack's.
+    pub riders: crate::game::Riders,
 }
 
 state_hash!(Projectile {
@@ -63,5 +65,6 @@ state_hash!(Projectile {
     effect,
     striker,
     laid,
-    proc
+    proc,
+    riders
 });
