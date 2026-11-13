@@ -50,3 +50,22 @@ fn a_later_hook_error_does_not_consume_a_native_courier_request() {
     assert!(retried.failures.is_empty(), "{:?}", retried.failures);
     assert!(retried.bots[0].orders.iter().any(|order| command(&sessions[0], order, AbilityId::TAKE_STASH)));
 }
+
+#[test]
+fn an_explicit_minion_hook_exclusively_controls_the_courier() {
+    let (_, sessions) = support::courier_delivery_setup();
+    for source in ["function MinionThink(unit) end", "function MinionThink(unit) unit:Action_MoveToLocation(Vector(0,0,0)) end"] {
+        let mut lua = LuaTeam::new(Team::Radiant, &[BotSeat { slot: SlotId(0), hero: HeroId::SHADOW_FIEND }], Limits::DEFAULT, Keys { hash: [17,19], random: 23 }).expect("team");
+        let modules = support::courier_modules(false);
+        
+        lua.set_modules(modules).expect("modules");
+        lua.load_pack().expect("pack");
+        lua.add_script(SlotId(0), bota_lua::ScriptKind::Minion, "=minion_override", source.as_bytes()).expect("minion source");
+        let turn = lua.think(&sessions[0]).expect("turn");
+        assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+        assert!(!turn.bots[0].orders.iter().any(|order| command(&sessions[0], order, AbilityId::TAKE_STASH)), "explicit minion behavior replaces native courier management");
+        let courier = sessions[0].own_courier().expect("courier").id;
+        let moves = turn.bots[0].orders.iter().filter(|order| order.unit == Some(courier) && matches!(order.order, Order::Move { .. })).count();
+        assert_eq!(moves, usize::from(source.contains("Action_MoveToLocation")));
+    }
+}

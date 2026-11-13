@@ -200,3 +200,41 @@ fn an_unoverridden_sf_bot_plays_to_match_end_through_ordinary_orders() {
     assert!(ended);
     assert!(sent > 0);
 }
+
+#[test]
+fn a_minion_only_hero_file_preserves_modes_and_auxiliary_defaults() {
+    let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let mut lua = team(&[("bot_nevermore", "function MinionThink(unit) end"),
+        ("mode_laning_generic", "function GetDesire() return 1 end function Think() GetBot():Action_MoveToLocation(Vector(100,200,0)) end")]);
+    let turn = lua.think(&sessions[0]).expect("turn");
+    assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+    assert!(turn.bots[0].orders.iter().any(|order| order.order == Order::Move { target: Target::Pos(Vec2::from_ints(9316,9416)) }));
+    assert!(turn.bots[0].orders.iter().any(|order| matches!(order.order, Order::Learn { .. })), "a minion hook does not replace hero skill learning");
+}
+
+#[test]
+fn a_full_takeover_does_not_load_unused_mode_sources() {
+    let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let mut lua = team(&[("bot_nevermore", "function Think() end"), ("mode_laning_generic", "this is not valid Lua")]);
+    let turn = lua.think(&sessions[0]).expect("turn");
+    assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+    assert!(turn.bots[0].orders.is_empty());
+}
+
+#[test]
+fn lazy_mode_setup_preserves_the_active_turn_fuel_budget() {
+    let limits = Limits { fuel_per_call: 4000, fuel_per_tick: 1500, ..Limits::DEFAULT };
+    let mut modules = ModuleBank::new(limits);
+    modules.insert("bot_nevermore", b"local n=0 for i=1,250 do n=n+i end function MinionThink(unit) end").expect("hero source");
+    modules.insert("mode_laning_generic", b"function GetDesire() local n=0 for i=1,250 do n=n+i end return 1 end function Think() end").expect("mode source");
+    modules.insert("ability_item_usage_nevermore", b"function AbilityUsageThink() end function ItemUsageThink() end function CourierUsageThink() end function BuybackUsageThink() end function AbilityLevelUpThink() end").expect("usage source");
+    modules.insert("item_purchase_nevermore", b"function ItemPurchaseThink() end").expect("purchase source");
+    let mut lua = LuaTeam::new(Team::Radiant, &[BotSeat { slot: SlotId(0), hero: HeroId::SHADOW_FIEND }], limits, Keys { hash: [17,19], random: 23 }).expect("team");
+    lua.set_modules(modules).expect("modules");
+    lua.load_pack().expect("pack");
+    let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let turn = lua.think(&sessions[0]).expect("turn");
+    assert!(turn.bots[0].orders.is_empty());
+    assert_eq!(turn.failures.len(), 1, "lazy setup must not renew the hero's turn fuel");
+    assert!(matches!(turn.failures[0].error, luagee::Error::Limit(luagee::Limit::FuelPerTick)));
+}

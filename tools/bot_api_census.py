@@ -252,13 +252,14 @@ def declarations(stream):
     return names
 
 
-def entrypoints(files, hero, pack_selection):
+def entrypoints(files, hero, pack_selection, analysis):
     def override(stem):
         return next((name for name in (f"bots/{stem}_{hero}.lua", f"bots/{stem}_generic.lua") if name in files), None)
     takeover = override("bot")
     entries = [name for name in (("bots/hero_selection.lua", "bots/team_desires.lua") if pack_selection else ("bots/team_desires.lua",)) if name in files]
     entries += [name for name in (takeover, override("ability_item_usage"), override("item_purchase")) if name]
-    mode_files = {} if takeover else {mode: override("mode_" + mode) for mode in MODES}
+    declared_think = takeover and "Think" in declarations(tokens(files[takeover], analysis))
+    mode_files = {} if declared_think else {mode: override("mode_" + mode) for mode in MODES}
     entries += [name for name in mode_files.values() if name]
     return entries, mode_files
 
@@ -362,7 +363,7 @@ def scan(root, catalogue, hero="nevermore", runtime=None, pack_selection=False, 
     files = {"bots/" + name: source for name, source in sources(root, storage).items()}
     if runtime:
         files.update({"game/" + name: source for name, source in sources(runtime, storage).items()})
-    entries, mode_files = entrypoints(files, hero, pack_selection)
+    entries, mode_files = entrypoints(files, hero, pack_selection, analysis)
     reachable, unresolved = module_closure(files, entries, hero, analysis)
     calls, dialect = call_inventory(reachable)
     used, missing, unclassified = classify_calls(calls, catalogue, reference)
@@ -395,6 +396,7 @@ def scan(root, catalogue, hero="nevermore", runtime=None, pack_selection=False, 
         "api_coverage_percent": round(100 * (total - gaps) / total, 2) if total else None,
         "api_names": total,
         "default_hooks": native_mode_dependencies(mode_files, reachable),
+        "hook_note": "named declarations only; dynamic installation or replacement of Think needs runtime conformance",
         "dialect": language,
         "missing_dialect": sorted(name for name, data in language.items() if not data["supported"]),
         "coverage_note": "named API presence only; unclassified calls, dynamic dispatch, unresolved imports and native fallback behavior need separate conformance",

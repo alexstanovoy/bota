@@ -13,10 +13,15 @@ Repeated fuel diagnostics are eligible once per thirty ticks.
 For a preselected two-player Shadow Fiend Solo Mid match, missing mode desires (or a nil desire)
 use the native fallback; missing mode Think hooks use its actions. Explicit empty Think functions
 remain overrides. The current native slice covers laning, visible attacks, retreat, nearby farming,
-legal skill/talent learning and raze/Requiem use. A full takeover receives no competing native
-fallback actions. Policy thresholds are documented reconstruction assumptions; this does not claim
-the closed engine's exact policy. Item/economy, courier/buyback and queued-action completion are
-separate capabilities. Native work enters through hidden pinned callbacks under the same tick fuel.
+legal skill/talent learning, raze/Requiem use, carried regeneration items, a baseline equipment
+build and courier delivery. A full takeover receives no competing native fallback actions.
+A hero file that only supplies MinionThink keeps hero modes and auxiliary defaults;
+an explicit minion hook replaces native courier management, including an empty hook.
+Mode sources are loaded only when needed and retain the active turn's fuel budget.
+Policy thresholds and the equipment build are documented reconstruction assumptions;
+this does not claim the closed engine's exact policy. Buyback and queued-action
+completion are separate capabilities. Native work enters through hidden pinned
+callbacks under the same tick fuel.
 
 Defaults are 500,000 fuel per call, 2,000,000 per team tick and 256 MiB memory.
 Host storage reserves 16 MiB against that cap, including bounded snapshot replacement

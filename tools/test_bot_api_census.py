@@ -12,6 +12,16 @@ spec.loader.exec_module(census)
 
 
 class Census(unittest.TestCase):
+    def test_minion_only_hero_file_keeps_mode_dependencies_in_scope(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'bot_nevermore.lua').write_text('function MinionThink(unit) end')
+            (root / 'mode_laning_generic.lua').write_text('function Think() MissingLaneApi() end')
+            report = census.scan(root, {})
+            self.assertIn('MissingLaneApi', report['missing_globals'])
+            self.assertIn('bots/mode_laning_generic.lua', report['entrypoints'])
+            self.assertIn('GetDesire', report['default_hooks']['laning'])
+
     def test_source_fingerprint_uses_exact_bytes_and_includes_unreached_modules(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

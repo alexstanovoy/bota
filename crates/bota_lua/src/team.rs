@@ -74,6 +74,7 @@ pub struct SelectionTurn {
 
 #[derive(Default)]
 struct Schedule {
+    modes_loaded: bool,
     active: Option<ActiveMode>,
     evaluated: Option<u32>,
     fuel_exhaustions: u64,
@@ -283,7 +284,7 @@ impl LuaTeam {
             let name = self.lua.string(name.as_bytes())?;
             self.lua.pin(name)?;
             roots.push(name);
-            self.lua.begin_tick();
+            if self.last_tick.is_none() { self.lua.begin_tick(); }
             self.lua
                 .call(self.set_environment, &[function, Value::Table(environment)])?;
             Ok(Script {
@@ -517,19 +518,25 @@ impl LuaTeam {
                     self.add_pack_file(seat.slot, kind, &format!("{prefix}_generic"))?;
                 }
             }
-            if !self
-                .scripts
-                .iter()
-                .any(|script| script.slot == seat.slot && script.kind == ScriptKind::Takeover)
-            {
-                for (index, mode) in BOT_MODES.iter().enumerate() {
-                    let kind = ScriptKind::Mode((index + 1) as u8);
-                    if !self.add_pack_file(seat.slot, kind, &format!("mode_{mode}_{hero}"))? {
-                        self.add_pack_file(seat.slot, kind, &format!("mode_{mode}_generic"))?;
-                    }
-                }
+            if !self.scripts.iter().any(|script| script.slot == seat.slot && script.kind == ScriptKind::Takeover) {
+                self.load_modes(seat.slot)?;
             }
         }
+        Ok(())
+    }
+
+    fn load_modes(&mut self, slot: SlotId) -> Result<(), BindingError> {
+        let seat = self.state.borrow().seats.iter().position(|seat| seat.slot == slot).expect("configured seat");
+        let hero = bota_core::hero_def(self.state.borrow().seats[seat].hero).expect("registered hero")
+            .key.strip_prefix("npc_dota_hero_").expect("hero prefix");
+        for (index, mode) in BOT_MODES.iter().enumerate() {
+            let kind = ScriptKind::Mode((index + 1) as u8);
+            if self.scripts.iter().any(|script| script.slot == slot && script.kind == kind) { continue; }
+            if !self.add_pack_file(slot, kind, &format!("mode_{mode}_{hero}"))? {
+                self.add_pack_file(slot, kind, &format!("mode_{mode}_generic"))?;
+            }
+        }
+        self.schedules[seat].modes_loaded = true;
         Ok(())
     }
 
@@ -621,9 +628,17 @@ impl LuaTeam {
             .scripts
             .iter()
             .position(|script| script.slot == slot && script.kind == ScriptKind::Takeover);
-        if let Some(index) = takeover {
-            self.call_hook(index, "Think", &[])?;
+        let full_takeover = match takeover {
+            Some(index) => self.has_hook(index, "Think")?,
+            None => false,
+        };
+        let minion = self.minion_script(slot, takeover)?;
+        if full_takeover {
+            self.call_hook(takeover.expect("takeover hook"), "Think", &[])?;
         } else {
+            if !self.schedules[seat].modes_loaded && self.modules.is_some() {
+                self.load_modes(slot).map_err(binding_error)?;
+            }
             self.run_mode(seat, slot, tick)?;
         }
         let usage = self
@@ -640,9 +655,9 @@ impl LuaTeam {
             ("AbilityLevelUpThink", Some(crate::default_bot::AuxiliaryHook::Level)),
         ] {
             if let Some(index) = usage && self.has_hook(index, hook)? { self.call_hook(index, hook, &[])?; }
-            else if takeover.is_none() && let Some(default) = default {
+            else if !full_takeover && !(hook == "CourierUsageThink" && minion.is_some()) && let Some(default) = default {
                 self.lua.call(self.default_auxiliary, &[Value::Number(f64::from(default as u8))])?;
-            } else if takeover.is_none() && hook == "ItemUsageThink" {
+            } else if !full_takeover && hook == "ItemUsageThink" {
                 default_item = true;
             }
         }
@@ -656,10 +671,10 @@ impl LuaTeam {
         ;
         if let Some(index) = purchase && self.has_hook(index, "ItemPurchaseThink")? {
             self.call_hook(index, "ItemPurchaseThink", &[])?;
-        } else if takeover.is_none() {
+        } else if !full_takeover {
             self.lua.call(self.default_auxiliary, &[Value::Number(f64::from(crate::default_bot::AuxiliaryHook::Purchase as u8))])?;
         }
-        self.run_minions(slot, takeover)
+        self.run_minions(slot, minion)
     }
 
     fn run_mode(&mut self, seat: usize, slot: SlotId, tick: u32) -> Result<(), Error> {
@@ -731,15 +746,16 @@ impl LuaTeam {
         Ok(())
     }
 
-    fn run_minions(&mut self, slot: SlotId, takeover: Option<usize>) -> Result<(), Error> {
-        let index = self
-            .scripts
-            .iter()
-            .position(|script| script.slot == slot && script.kind == ScriptKind::Minion)
-            .or(takeover);
-        let Some(index) = index else {
-            return Ok(());
-        };
+    fn minion_script(&mut self, slot: SlotId, takeover: Option<usize>) -> Result<Option<usize>, Error> {
+        let dedicated = self.scripts.iter().position(|script| script.slot == slot && script.kind == ScriptKind::Minion);
+        for index in [dedicated, takeover].into_iter().flatten() {
+            if self.has_hook(index, "MinionThink")? { return Ok(Some(index)); }
+        }
+        Ok(None)
+    }
+
+    fn run_minions(&mut self, slot: SlotId, index: Option<usize>) -> Result<(), Error> {
+        let Some(index) = index else { return Ok(()); };
         let units: Vec<_> = self
             .state
             .borrow()
@@ -852,6 +868,14 @@ fn runtime_error(message: &str) -> Error {
     Error::Runtime {
         message: message.to_owned(),
         traceback: Vec::new(),
+    }
+}
+
+fn binding_error(error: BindingError) -> Error {
+    match error {
+        BindingError::Lua(error) => error,
+        BindingError::Callback(error) => callback_error(error),
+        other => runtime_error(&other.to_string()),
     }
 }
 
