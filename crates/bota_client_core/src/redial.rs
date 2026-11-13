@@ -90,6 +90,18 @@ pub(crate) struct Rejoin {
     pub spent: u32,
     /// Why the server's last word asked for a fresh connection.
     again: Again,
+    /// Where the link stands in choosing a wire: one fallback at most, ever.
+    wire: Negotiation,
+}
+
+/// The wire a link speaks, as the servers it met had it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Negotiation {
+    /// The wire the caller's hello named, which no server refused.
+    Asked,
+    /// A server refused the asked wire naming this one, which the client admits and speaks
+    /// from then on: no further switch.
+    FellBack { from: u64, to: u64 },
 }
 
 /// Why a fresh connection is dialed though the server answered.
@@ -100,6 +112,9 @@ enum Again {
     /// The server speaks this wire, an earlier one this build admits: the fresh
     /// connection speaks it.
     Wire(u64),
+    /// After the one fallback from `from` to `to`, a server named yet another wire:
+    /// nothing to dial again for.
+    Contradicted { from: u64, to: u64, named: u64 },
 }
 
 impl Rejoin {
@@ -118,6 +133,7 @@ impl Rejoin {
             rejoining: false,
             spent: 0,
             again: Again::SeatHeld,
+            wire: Negotiation::Asked,
         }
     }
 
@@ -168,6 +184,11 @@ impl Rejoin {
     /// the seat, or it speaks an earlier wire this build admits
     /// ([`bota_core::ADMITTED_WIRES`]), which the hello did not speak: from
     /// then on it does, and the catalogue says that build's items at most.
+    /// That fallback happens once in the life of the link: a server naming a
+    /// wire after it is a hard failure ([`Rejoin::again`] names the three
+    /// wires), so no server makes the client go round its wires. A server can
+    /// only move the client to a wire its build explicitly admits, each backed
+    /// by a verified corpus; the server was the authority on the match anyway.
     /// After the end of the match, any other refused wire or any other refusal
     /// there is nothing to dial again for. [`Rejoin::again`] tells why.
     pub fn heard(&mut self, msg: &ServerMsg) -> bool {
@@ -182,16 +203,47 @@ impl Rejoin {
                 self.again = Again::SeatHeld;
                 return true;
             }
-            ServerMsg::WireMismatch { server_fingerprint } if self.speak(*server_fingerprint) => {
-                self.again = Again::Wire(*server_fingerprint);
-                return true;
+            ServerMsg::WireMismatch { server_fingerprint } => {
+                return self.mismatched(*server_fingerprint);
             }
-            ServerMsg::MatchOver { .. }
-            | ServerMsg::WireMismatch { .. }
-            | ServerMsg::Refused { .. } => self.finished = true,
+            ServerMsg::MatchOver { .. } | ServerMsg::Refused { .. } => self.finished = true,
             _ => {}
         }
         false
+    }
+
+    /// A server refused the hello's wire naming `named`: the one fallback to
+    /// it when the link has made none and admits it (dial again), a hard
+    /// failure after a fallback (the caller is told, nothing dialed), a
+    /// refusal otherwise.
+    fn mismatched(&mut self, named: u64) -> bool {
+        self.finished = true;
+        match self.wire {
+            Negotiation::Asked => {
+                let from = self.spoken_wire();
+                if self.speak(named) {
+                    self.wire = Negotiation::FellBack { from, to: named };
+                    self.again = Again::Wire(named);
+                    self.finished = false;
+                    return true;
+                }
+                false
+            }
+            Negotiation::FellBack { from, to } => {
+                self.again = Again::Contradicted { from, to, named };
+                true
+            }
+        }
+    }
+
+    /// The wire the kept hello speaks; this build's own before any hello.
+    fn spoken_wire(&self) -> u64 {
+        match &self.hello {
+            Some(ClientMsg::Hello {
+                wire_fingerprint, ..
+            }) => *wire_fingerprint,
+            _ => bota_core::WIRE_FINGERPRINT,
+        }
     }
 
     /// Speaks `wire` on the next connection, when this build admits it and the
@@ -227,6 +279,13 @@ impl Rejoin {
                 format!(
                     "the server speaks the earlier wire {wire:016x}, which this client admits; \
 dialing again speaking it"
+                ),
+            ),
+            Again::Contradicted { from, to, named } => std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "the server named wire {named:016x} after this client had fallen back from \
+{from:016x} to {to:016x}, the one fallback a link makes; not dialing again"
                 ),
             ),
         }
