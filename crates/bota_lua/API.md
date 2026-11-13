@@ -71,6 +71,12 @@ than a canonical bot-dump method. The lower-level engine
 authenticated `GetLocation` callback, coordinate conversion, remembered position
 and zero-vector result for a forgotten unit. It introduces no additional facts.
 
+`GetGameMode` maps the configured Solo Mid map to engine mode 21; a map without
+an explicit engine-mode mapping raises an ordinary Lua error. `GetAssignedLane`
+returns engine MID (2) for roster heroes in Solo Mid. Other units, and maps with
+no host lane assignment, return NONE (0). Assignment does not depend on a unit's
+current position or on hidden facts. These queries require a received view.
+
 Player ids are engine ids: Radiant 0–4 and Dire 5–9. Active-view queries derive
 each side's rank from its public roster's wire seat order; wire seat 1 can therefore
 be engine player 5. The host continues to use wire seats internally. Team arrays
