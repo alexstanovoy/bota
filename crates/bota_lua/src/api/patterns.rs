@@ -14,12 +14,18 @@ pub(super) fn install(lua: &mut Lua, context: &ApiContext) -> Result<(), Binding
 fn get_location(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaError> {
     vm.charge_fuel(super::CALL_FUEL)?;
     let id = context.receiver(vm, args)?;
-    let position = context
-        .state
-        .borrow()
+    let state = context.state.borrow();
+    let position = state
         .unit(id)
         .map(|unit| unit.pos)
+        .or_else(|| {
+            state
+                .player(id)
+                .filter(|player| player.team == state.team)
+                .and_then(|player| player.last_seen.map(|(_, position)| position))
+        })
         .ok_or_else(|| vm.error("unit is no longer known"))?;
+    drop(state);
     let value = context.vectors.location(vm, position)?;
     vm.results(&[value])
 }

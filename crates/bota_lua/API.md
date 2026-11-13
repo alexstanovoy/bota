@@ -69,7 +69,9 @@ than a canonical bot-dump method. The lower-level engine
 [CBaseEntity declaration](https://docs.moddota.com/lua_server/#CBaseEntity) lists
 `GetOrigin(): vector`. Map units have no parent transform here, so it shares the
 authenticated `GetLocation` callback, coordinate conversion and remembered position.
-Both methods raise `unit is no longer known` after the received track expires.
+Owned heroes retain their last received body position after death and track
+expiry, using the session's body memory. Forgotten foreign units raise
+`unit is no longer known`; their remembered body memory is not a position fallback.
 This changes the pre-existing `GetLocation` zero-vector fallback as well as
 `GetOrigin`, preventing forgotten targets from being mapped to the world origin.
 It introduces no additional facts.
