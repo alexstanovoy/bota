@@ -315,10 +315,14 @@ request. Game-rule validation remains with the simulation; the getter does not
 predict or reserve future activations.
 
 `GetCurrentActiveAbility` returns the authenticated ability named by the received
-cast or channel record; no active record returns nil. An owned dead hero returns
-nil even while its remembered body still carries a pre-death cast. Forgotten
-foreign units raise `unit is no longer known`. Remembered foreign units report
-their last received record, not changes made in fog. The cast record withholds
+cast or channel record; no active record returns nil. Public roster death returns
+nil for any hero, even while its retained body still carries a pre-death cast.
+A known foreign unit that is not currently observed returns nil; a remembered
+cast is not evidence of current activity. This includes foreign heroes whose
+public roster identity remains known after their body track expires. Unknown
+unit identities still raise `unit is no longer known`. Own-unit observation
+behavior is unchanged.
+The cast record withholds
 the identity of an item use; that case, or an ability missing from the received
 book and public innate definition, raises `active ability is not observed` rather
 than fabricating a handle or claiming that no cast exists. The signature follows

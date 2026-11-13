@@ -378,15 +378,24 @@ fn install_lookup(lua: &mut Lua, units: TableId, state: Shared) -> Result<(), Bi
 
 fn current_active(vm: &mut Vm, state: &mut State, id: EntityId) -> Result<Value, LuaError> {
     vm.charge_fuel(super::CALL_FUEL)?;
-    if state
-        .player(id)
-        .is_some_and(|player| player.team == state.team && player.respawn_left > 0)
-    {
+    let player = state.player(id);
+    if player.is_some_and(|player| player.respawn_left > 0) {
         return Ok(Value::Nil);
     }
-    let unit = state
-        .unit(id)
-        .ok_or_else(|| vm.error("unit is no longer known"))?;
+    let known = state
+        .snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.units.iter().find(|known| known.unit.id == id));
+    let foreign = known
+        .map(|known| known.unit.team)
+        .or_else(|| player.map(|player| player.team))
+        .is_some_and(|team| team != state.team);
+    if foreign && known.is_none_or(|known| !known.visible) {
+        return Ok(Value::Nil);
+    }
+    let unit = &known
+        .ok_or_else(|| vm.error("unit is no longer known"))?
+        .unit;
     let ability = if let Some(cast) = unit.cast {
         cast.ability
             .ok_or_else(|| vm.error("active ability is not observed"))?

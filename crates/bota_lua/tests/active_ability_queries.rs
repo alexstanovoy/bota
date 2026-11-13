@@ -39,7 +39,7 @@ fn reader(side: Team, slot: SlotId, caster: usize) -> LuaTeam {
     let key = bota_core::ability_def(AbilityId::RAZE_NEAR)
         .expect("raze")
         .key;
-    let source=r#"
+    let source = r#"
         local phase,caster,active=0,nil,nil
         function Think()
             phase=phase+1
@@ -57,12 +57,12 @@ fn reader(side: Team, slot: SlotId, caster: usize) -> LuaTeam {
                 assert(not pcall(bot.GetCurrentActiveAbility,active))
             elseif phase==3 then
                 if caster==bot then assert(caster:GetCurrentActiveAbility()==nil)
-                else assert(caster:GetCurrentActiveAbility()==active) end
+                else assert(caster:GetCurrentActiveAbility()==nil) end
             else
                 if caster==bot then assert(caster:GetCurrentActiveAbility()==nil)
                 else
-                    local ok,reason=pcall(caster.GetCurrentActiveAbility,caster)
-                    assert(not ok and string.find(tostring(reason),'unit is no longer known',1,true))
+                    assert(not caster:IsNull(), 'public roster identity survives body-track expiry')
+                    assert(caster:GetCurrentActiveAbility()==nil)
                 end
             end
             if phase>=3 then
@@ -70,7 +70,9 @@ fn reader(side: Team, slot: SlotId, caster: usize) -> LuaTeam {
                 bot:Action_MoveToLocation(Vector(p.x+phase,p.y,0))
             end
         end
-    "#.replace("__CASTER__",if caster==0 {"0"} else {"5"}).replace("__KEY__",key);
+    "#
+    .replace("__CASTER__", if caster == 0 { "0" } else { "5" })
+    .replace("__KEY__", key);
     lua.add_script(
         slot,
         ScriptKind::Takeover,
@@ -98,7 +100,7 @@ fn think(
 }
 
 #[test]
-fn current_active_ability_follows_real_casts_and_keeps_only_received_enemy_facts() {
+fn current_active_ability_follows_real_casts_and_returns_nil_when_the_enemy_leaves_sight() {
     for caster in [0, 1] {
         let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
         {
@@ -379,5 +381,277 @@ fn channel_identity_unobserved_items_and_owned_death_have_distinct_results() {
                 })]
             );
         }
+    }
+}
+
+#[test]
+fn public_foreign_death_overrides_a_cast_even_when_a_body_row_remains_visible() {
+    use bota_proto::ModifierSpec;
+    for caster in [0, 1] {
+        let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+        {
+            let world = local.world_mut();
+            world.cheats = true;
+            world
+                .check_cheat(SlotId(0), None, &Cheat::StartGame)
+                .expect("start cheat");
+            world.cheat(SlotId(0), None, Cheat::StartGame, &mut Vec::new());
+            world.cheat(
+                SlotId(0),
+                None,
+                Cheat::AllVision { on: true },
+                &mut Vec::new(),
+            );
+            for (index, at) in [
+                (caster, Vec2::from_ints(9000, 9000)),
+                (1 - caster, Vec2::from_ints(9100, 9000)),
+            ] {
+                let slot = SlotId(index as u8);
+                let unit = world.seats[index].unit.expect("hero");
+                let scale = if index == caster {
+                    ModifierSpec {
+                        max_hp: ModifierSpec::MIN_SCALE,
+                        ..ModifierSpec::NOMINAL
+                    }
+                } else {
+                    ModifierSpec {
+                        physical_damage: ModifierSpec::MAX_SCALE,
+                        ..ModifierSpec::NOMINAL
+                    }
+                };
+                for cheat in [
+                    Cheat::Levels {
+                        count: if index == caster { 5 } else { 24 },
+                    },
+                    Cheat::Teleport { at },
+                    Cheat::ApplyModifier {
+                        target: Target::None,
+                        spec: scale,
+                        ticks: 4000,
+                    },
+                ] {
+                    world
+                        .check_cheat(slot, Some(unit), &cheat)
+                        .expect("valid setup cheat");
+                    world.cheat(slot, Some(unit), cheat, &mut Vec::new());
+                }
+            }
+        }
+        step(&mut local, &mut sessions, &[&[], &[]]);
+        let stops: Vec<_> = sessions
+            .iter_mut()
+            .map(|session| {
+                session
+                    .issue(IssuedOrder::hero(Order::Move {
+                        target: Target::None,
+                    }))
+                    .expect("stand still")
+            })
+            .collect();
+        step(&mut local, &mut sessions, &[&[stops[0]], &[stops[1]]]);
+        // Start the fight outside fountain protection; there is no aura-clearing cheat.
+        for _ in 0..120 {
+            if sessions.iter().all(|session| {
+                session.own_hero().expect("hero").statuses.bits
+                    & bota_proto::StatusFlags::INVULNERABLE
+                    == 0
+            }) {
+                break;
+            }
+            step(&mut local, &mut sessions, &[&[], &[]]);
+        }
+        assert!(
+            sessions
+                .iter()
+                .all(|session| session.own_hero().expect("hero").statuses.bits
+                    & bota_proto::StatusFlags::INVULNERABLE
+                    == 0)
+        );
+        let victim = sessions[caster].own_hero().expect("caster").id;
+        let ultimate = bota_core::hero_def(HeroId::SHADOW_FIEND)
+            .expect("hero")
+            .abilities
+            .last()
+            .copied()
+            .expect("ultimate slot");
+        let ability_slot = AbilitySlot(5);
+        assert_eq!(
+            sessions[caster].own_hero().expect("caster").abilities[5].id,
+            ultimate
+        );
+        let learn = sessions[caster]
+            .issue(IssuedOrder::hero(Order::Learn { slot: ability_slot }))
+            .expect("learn");
+        let mut commands = [Vec::new(), Vec::new()];
+        commands[caster].push(learn);
+        step(&mut local, &mut sessions, &[&commands[0], &commands[1]]);
+        let observer = 1 - caster;
+        let before_hp = sessions[caster].own_hero().expect("caster").hp;
+        let attack = sessions[observer]
+            .issue(IssuedOrder::hero(Order::Attack {
+                target: Target::Unit(victim),
+            }))
+            .expect("attack");
+        let mut commands = [Vec::new(), Vec::new()];
+        commands[observer].push(attack);
+        step(&mut local, &mut sessions, &[&commands[0], &commands[1]]);
+        for _ in 0..90 {
+            if sessions[caster]
+                .own_hero()
+                .expect("survives first attack")
+                .hp
+                < before_hp
+            {
+                break;
+            }
+            step(&mut local, &mut sessions, &[&[], &[]]);
+        }
+        assert!(sessions[caster].own_hero().expect("wounded caster").hp < before_hp);
+        let cast = sessions[caster]
+            .issue(IssuedOrder::hero(Order::Cast {
+                slot: ability_slot,
+                target: Target::None,
+            }))
+            .expect("cast");
+        let mut commands = [Vec::new(), Vec::new()];
+        commands[caster].push(cast);
+        step(&mut local, &mut sessions, &[&commands[0], &commands[1]]);
+        assert_eq!(
+            sessions[caster]
+                .own_hero()
+                .expect("caster")
+                .cast
+                .expect("cast underway")
+                .ability,
+            Some(ultimate)
+        );
+        let observer = 1 - caster;
+        let side = if observer == 0 {
+            Team::Radiant
+        } else {
+            Team::Dire
+        };
+        let slot = SlotId(observer as u8);
+        let mut lua = LuaTeam::new(
+            side,
+            &[BotSeat {
+                slot,
+                hero: HeroId::SHADOW_FIEND,
+            }],
+            Limits::DEFAULT,
+            Keys {
+                hash: [17, 19],
+                random: 23,
+            },
+        )
+        .expect("team");
+        lua.set_gc_stress(GcStress::Full);
+        let source=r#"
+            local phase,enemy=0,nil
+            function Think()
+                phase=phase+1
+                if phase==1 then
+                    enemy=GetUnitList(UNIT_LIST_ENEMY_HEROES)[1]
+                    assert(enemy and enemy:GetCurrentActiveAbility():GetName()=='__KEY__')
+                else
+                    assert(enemy:GetCurrentActiveAbility()==nil,'public death must override a retained cast')
+                    GetBot():Action_MoveToLocation(Vector(phase,100,0))
+                end
+            end
+        "#.replace("__KEY__",bota_core::ability_def(ultimate).expect("ability").key);
+        lua.add_script(
+            slot,
+            ScriptKind::Takeover,
+            "foreign_death_during_cast",
+            source.as_bytes(),
+        )
+        .expect("script");
+        let turn = lua.think(&sessions[observer]).expect("observed cast");
+        assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+        for _ in 0..90 {
+            if sessions[caster].own_player().expect("player").respawn_left > 0 {
+                break;
+            }
+            assert!(
+                sessions[caster]
+                    .own_hero()
+                    .expect("alive caster")
+                    .cast
+                    .is_some(),
+                "death must occur before the cast finishes: tick={} hp={} attacker={:?} aggro={:?}",
+                sessions[caster].current().expect("view").tick,
+                sessions[caster].own_hero().expect("caster").hp,
+                sessions[observer].own_hero().expect("attacker").statuses,
+                sessions[observer].current().expect("view").aggro
+            );
+            step(&mut local, &mut sessions, &[&[], &[]]);
+        }
+        assert!(
+            sessions[caster]
+                .own_player()
+                .expect("dead player")
+                .respawn_left
+                > 0
+        );
+        let remembered = sessions[observer]
+            .known(victim)
+            .expect("last visible body")
+            .0
+            .clone();
+        assert_eq!(
+            remembered.cast.expect("retained interrupted cast").ability,
+            Some(ultimate)
+        );
+        assert!(
+            sessions[observer]
+                .current()
+                .expect("view")
+                .players
+                .iter()
+                .any(|player| player.slot == SlotId(caster as u8) && player.respawn_left > 0)
+        );
+        let turn = lua.think(&sessions[observer]).expect("public death");
+        assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+        assert_eq!(
+            turn.bots[0].orders,
+            vec![IssuedOrder::hero(Order::Move {
+                target: Target::Pos(Vec2::from_ints(9218, 9316))
+            })]
+        );
+        let movement = sessions[observer]
+            .issue(turn.bots[0].orders[0])
+            .expect("query move");
+        let mut commands = [Vec::new(), Vec::new()];
+        commands[observer].push(movement);
+        step(&mut local, &mut sessions, &[&commands[0], &commands[1]]);
+        // Public death wins even if an accepted snapshot also carries a stale body row.
+        let mut view = sessions[observer].current().expect("view").clone();
+        view.tick += 1;
+        view.units.retain(|unit| unit.id != victim);
+        view.units.push(remembered);
+        view.units.sort_by_key(|unit| unit.id);
+        let tick = view.tick;
+        sessions[observer]
+            .ingest(ServerMsg::Snapshot { view }, &mut ())
+            .expect("accepted stale body with public death");
+        sessions[observer]
+            .ingest(
+                ServerMsg::Events {
+                    tick,
+                    events: Vec::new(),
+                },
+                &mut (),
+            )
+            .expect("complete frame");
+        let turn = lua
+            .think(&sessions[observer])
+            .expect("public death with visible row");
+        assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+        assert_eq!(
+            turn.bots[0].orders,
+            vec![IssuedOrder::hero(Order::Move {
+                target: Target::Pos(Vec2::from_ints(9219, 9316))
+            })]
+        );
     }
 }
