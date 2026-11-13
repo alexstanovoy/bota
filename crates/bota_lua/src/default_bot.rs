@@ -9,7 +9,7 @@ pub(crate) use auxiliary::{AuxiliaryHook, install as install_auxiliary};
 
 use std::rc::Rc;
 use bota_client_core::IssuedOrder;
-use bota_proto::{HeroId, Order, StatusFlags, Target, Team, UnitKind, UnitView, Vec2};
+use bota_proto::{Fixed, HeroId, Order, StatusFlags, Target, Team, UnitKind, UnitView, Vec2};
 use luagee::{Lua, LuaError, Value, Vm};
 use crate::{BindingError, api::Shared, state::{PendingOnce, Snapshot, State}, team::BOT_MODES};
 
@@ -130,8 +130,22 @@ fn decision(snapshot: &Snapshot, own: &UnitView, mode: &str) -> Result<(Order, b
         _ => last_hit(snapshot, own)?.map(|target| (target, true)),
     };
     if let Some((target, once)) = target { return Ok((Order::Attack { target: Target::Unit(target.id) }, once)); }
+    Ok((Order::Attack { target: Target::Pos(lane_goal(snapshot, own)) }, false))
+}
+
+fn lane_goal(snapshot: &Snapshot, own: &UnitView) -> Vec2 {
+    let mid = bota_core::rules::MAP_SIZE / 2;
+    let middle = Vec2::from_ints(mid,mid);
     let other = if own.team == Team::Radiant { Team::Dire } else { Team::Radiant };
-    Ok((Order::Attack { target: Target::Pos(bota_core::fountain_pos(snapshot.map, other)) }, false))
+    let enemy_base = bota_core::fountain_pos(snapshot.map, other);
+    let front = snapshot.units.iter().filter(|known| known.visible && known.unit.team == own.team && known.unit.hp > 0
+        && matches!(known.unit.kind, UnitKind::CreepMelee | UnitKind::CreepFlagbearer | UnitKind::CreepRanged | UnitKind::CreepSiege))
+        .map(|known| bota_core::clamp_to_map(known.unit.pos)).min_by_key(|point| distance(*point, enemy_base));
+    let Some(front) = front.filter(|front| distance(*front, enemy_base) < distance(middle, enemy_base)) else { return middle; };
+    let behind = bota_core::point_along(front, bota_core::fountain_pos(snapshot.map, own.team), Fixed::from_int(200));
+    // Stable waypoints avoid replacing a standing attack for every small movement of the wave.
+    let cell = 256 * Fixed::ONE.raw;
+    bota_core::clamp_to_map(Vec2 { x: Fixed { raw: behind.x.raw / cell * cell }, y: Fixed { raw: behind.y.raw / cell * cell } })
 }
 
 fn mode_is(state: &State, name: &str) -> bool {

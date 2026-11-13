@@ -106,6 +106,15 @@ fn default_retreat_supersedes_an_unlaunched_once_request() {
 }
 
 #[test]
+fn default_laning_waits_mid_before_a_friendly_frontline_advances() {
+    let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let turn = team(&[]).think(&sessions[0]).expect("turn");
+    assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+    let mid = bota_core::rules::MAP_SIZE / 2;
+    assert!(turn.bots[0].orders.iter().any(|order| order.unit.is_none() && order.order == Order::Attack { target: Target::Pos(Vec2::from_ints(mid,mid)) }));
+}
+
+#[test]
 fn missing_or_nil_mode_hooks_use_defaults_and_partial_think_still_overrides() {
     let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
     for source in ["", "function GetDesire() return nil end", "function GetDesire() return .9 end"] {
