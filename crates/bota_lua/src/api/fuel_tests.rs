@@ -154,7 +154,7 @@ fn run(name: &str, fuel: u64) -> Result<Vec<Value>, luagee::Error> {
         // without reading a callback's charges or changing interpreter limits in flight.
         let spend = lua
             .tick_fuel_left()
-            .checked_sub(fuel + 1)
+            .checked_sub(fuel + support::bare_native_call_fuel())
             .expect("setup budget");
         let drain = lua.function(
             "test_budget",
@@ -232,38 +232,38 @@ fn clock_and_script_directory_queries_charge_their_explicit_minimum() {
 #[test]
 fn ability_metadata_queries_charge_their_explicit_minimum() {
     for name in ["IsTrained", "IsTalent", "IsUltimate"] {
-        assert_budget(name, 10);
+        assert_budget(name, 9);
     }
 }
 
 #[test]
 fn named_item_slot_search_pays_for_its_bounded_storage_scan() {
-    assert_budget("FindItemSlot", 211);
+    assert_budget("FindItemSlot", 210);
 }
 
 #[test]
 fn distance_queries_pay_for_each_observed_position_lookup() {
-    for (name, minimum) in [
-        ("GetUnitToLocationDistance", 26),
-        ("GetUnitToLocationDistanceSqr", 26),
-        ("GetUnitToUnitDistanceSqr", 27),
+    for (name, host_work) in [
+        ("GetUnitToLocationDistance", 25),
+        ("GetUnitToLocationDistanceSqr", 25),
+        ("GetUnitToUnitDistanceSqr", 26),
     ] {
-        assert_budget(name, minimum);
+        assert_budget(name, host_work);
     }
 }
 
 #[test]
 fn glyph_cooldown_and_request_pay_their_explicit_minimum() {
-    assert_budget("GetGlyphCooldown", 9);
-    assert_budget("ActionImmediate_Glyph", 12);
+    assert_budget("GetGlyphCooldown", 8);
+    assert_budget("ActionImmediate_Glyph", 11);
 }
 
 #[test]
 fn idle_active_ability_query_charges_its_explicit_minimum() {
-    assert_budget("GetCurrentActiveAbility", 10);
+    assert_budget("GetCurrentActiveAbility", 9);
 }
 
 #[test]
 fn active_ability_query_charges_its_six_slot_scan_and_cached_handle() {
-    assert_budget("GetCurrentActiveAbilityCasting", 18);
+    assert_budget("GetCurrentActiveAbilityCasting", 17);
 }
