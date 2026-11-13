@@ -20,7 +20,7 @@ use bota_proto::{ClientMsg, ServerMsg};
 
 use crate::ping::PingMeter;
 use crate::receipts::{OrderReceipts, Receipt};
-use crate::redial::{Redial, Rejoin, redial, seat_held};
+use crate::redial::{Redial, Rejoin, redial};
 use crate::transport::{DEFAULT_IO_TIMEOUT, Transport};
 pub(crate) use frames::FrameSink;
 use frames::{FrameSource, FrameStream, send_message};
@@ -137,7 +137,7 @@ impl Transport for Link {
                         self.broken = send_message(&mut *self.stream, &ClientMsg::Pong).err();
                         continue;
                     }
-                    Ok(Some(message)) if self.rejoin.heard(&message) => seat_held(),
+                    Ok(Some(message)) if self.rejoin.heard(&message) => self.rejoin.again(),
                     Ok(Some(message)) => return Ok(Some(message)),
                     Ok(None) => return Ok(None),
                     Err(cause) => cause,
@@ -505,7 +505,7 @@ fn read_on(
         let broken = std::mem::take(&mut shared.lock().broken);
         let cause = match read {
             _ if gone || caller_gone(&shared) => break,
-            _ if held => seat_held(),
+            _ if held => shared.lock().rejoin.again(),
             Err(cause) => cause,
             Ok(()) if broken => {
                 std::io::Error::new(ErrorKind::BrokenPipe, "failed to send client message")

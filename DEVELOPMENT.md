@@ -185,7 +185,9 @@ Packaging individual crates for crates.io is not supported by this build arrange
 
 A change that only adds items (their rows and the mechanics only they reach) leaves every older build's games as they
 were, and may let the older build's clients, servers and replays in: `bota_core::ADMITTED_WIRES` lists such wires, each
-with the catalogue prefix its build holds. An entry is a claim that the older build's rules are unchanged, and its evidence is the wire's
+with the catalogue prefix its build holds. A client speaking to a server of an admitted wire says that wire and that
+catalogue in its hello (the handoff names it; a server's `WireMismatch` names it to a direct connection, which dials
+again speaking it). An entry is a claim that the older build's rules are unchanged, and its evidence is the wire's
 corpus, `crates/bota_server/tests/admitted/WIRE/`: replays of the scripted matches of
 `crates/bota_server/tests/admitted/scenarios.rs`, which buy and use every item of the catalogue and exercise spell
 damage, cooldowns, cast ranges, regeneration, slows and damage over time, recorded by a build of that wire, and
@@ -203,7 +205,8 @@ To admit the wire of commit `C` (the commit the change was branched from):
    catalogue this build does not hold alike.
 3. Run the `admitted` test. A departure is a rules change: fix it, or drop the entry and its corpus and say so.
 
-A change to the scripted
+`tools/admitted.sh build` builds the server and a small client (`examples/admitted_peer.rs`) of every corpus' commit;
+`crates/bota_server/tests/admitted_builds.rs` plays each against this build both ways. A change to the scripted
 matches changes every corpus: write them again from their commits. A finite corpus is evidence, not proof: what it
 does not play, it does not check.
 

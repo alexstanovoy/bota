@@ -20,8 +20,9 @@ pub fn is_demo(ruleset: &RulesetInfo) -> bool {
         .is_some_and(|flags| flags & INFO_DEMO != 0)
 }
 
-/// The wire this build speaks, its rules folded in: what its Hello names,
-/// and what a ruleset must name to be played with it.
+/// The wire this build speaks, its rules folded in. A ruleset of it, or of
+/// an earlier wire this build admits ([`bota_core::ADMITTED_WIRES`]), is
+/// played with it; the Hello names the handoff's ([`seat_hello`]).
 pub fn fingerprint() -> u64 {
     bota_core::WIRE_FINGERPRINT
 }
@@ -62,14 +63,16 @@ pub fn seat_name(handoff: &Handoff) -> std::io::Result<String> {
 
 /// The first message to the game server, for a client that sends its own
 /// (the browser's): the handoff's ticket as the key, `role` Player or Bot to
-/// sit and Spectator to watch. The client's catalogue follows it
-/// (`bota_client_core::catalogue`).
+/// sit and Spectator to watch, speaking the server's wire as the handoff names
+/// it (this build's, or an earlier one it admits). The client's catalogue
+/// follows it, the items it holds on that wire
+/// (`bota_client_core::catalogue_after`).
 pub fn seat_hello(handoff: &Handoff, role: Role) -> std::io::Result<ClientMsg> {
     check_handoff(handoff)?;
     Ok(ClientMsg::hello(
         role,
         seat_name(handoff)?,
         Some(seat_key(handoff)),
-        fingerprint(),
+        handoff.game_fingerprint,
     ))
 }

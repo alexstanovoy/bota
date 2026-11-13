@@ -2,7 +2,9 @@
 
 use std::io::Result;
 
-use bota_client_core::{DEFAULT_IO_TIMEOUT, Endpoint, Link, Net, Redial, Seated, greet};
+use bota_client_core::{
+    DEFAULT_IO_TIMEOUT, Endpoint, Link, Net, Redial, Seated, greet_on, join_on,
+};
 use bota_proto::{HeroId, Role};
 use radovid_client::proto::Handoff;
 
@@ -34,18 +36,19 @@ pub fn connect_net(handoff: &Handoff, tls: &Tls) -> Result<Net> {
 }
 
 /// Takes the seat of `handoff` as a bot, with the ticket as the seat key,
-/// picks `hero` and says ready. Taking it again later (after the link or the
-/// client went away) is a reconnect: the server gives the seat back to the
-/// ticket's holder.
+/// speaking the server's wire as the handoff names it, picks `hero` and says
+/// ready. Taking it again later (after the link or the client went away) is a
+/// reconnect: the server gives the seat back to the ticket's holder.
 pub fn take_seat(handoff: &Handoff, hero: HeroId, tls: &Tls) -> Result<(Link, Seated)> {
-    Link::join_at(
-        endpoint(handoff, tls)?,
+    let mut link = connect(handoff, tls)?;
+    let seated = join_on(
+        &mut link,
+        handoff.game_fingerprint,
         &seat_name(handoff)?,
         hero,
         Some(seat_key(handoff)),
-        DEFAULT_IO_TIMEOUT,
-        Redial::DEFAULT,
-    )
+    )?;
+    Ok((link, seated))
 }
 
 /// Watches the seat of `handoff` with its ticket: live, with the seat's own
@@ -53,8 +56,9 @@ pub fn take_seat(handoff: &Handoff, hero: HeroId, tls: &Tls) -> Result<(Link, Se
 /// spectator does.
 pub fn spectate(handoff: &Handoff, tls: &Tls) -> Result<Link> {
     let mut link = connect(handoff, tls)?;
-    greet(
+    greet_on(
         &mut link,
+        handoff.game_fingerprint,
         Role::Spectator,
         &seat_name(handoff)?,
         Some(seat_key(handoff)),

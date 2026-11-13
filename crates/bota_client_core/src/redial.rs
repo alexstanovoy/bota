@@ -88,6 +88,18 @@ pub(crate) struct Rejoin {
     rejoining: bool,
     /// Attempts spent since the connection broke, until a welcome.
     pub spent: u32,
+    /// Why the server's last word asked for a fresh connection.
+    again: Again,
+}
+
+/// Why a fresh connection is dialed though the server answered.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Again {
+    /// The old connection still holds the seat.
+    SeatHeld,
+    /// The server speaks this wire, an earlier one this build admits: the fresh
+    /// connection speaks it.
+    Wire(u64),
 }
 
 impl Rejoin {
@@ -105,6 +117,7 @@ impl Rejoin {
             finished: false,
             rejoining: false,
             spent: 0,
+            again: Again::SeatHeld,
         }
     }
 
@@ -150,10 +163,13 @@ impl Rejoin {
         }
     }
 
-    /// Notes what the server said, and whether it refused a fresh connection
-    /// only because the old one still holds the seat: then the caller dials
-    /// again. After the end of the match, a refused wire or any other
-    /// refusal there is nothing to dial again for.
+    /// Notes what the server said, and whether the caller dials again: the
+    /// server refused a fresh connection only because the old one still holds
+    /// the seat, or it speaks an earlier wire this build admits
+    /// ([`bota_core::ADMITTED_WIRES`]), which the hello did not speak: from
+    /// then on it does, and the catalogue says that build's items at most.
+    /// After the end of the match, any other refused wire or any other refusal
+    /// there is nothing to dial again for. [`Rejoin::again`] tells why.
     pub fn heard(&mut self, msg: &ServerMsg) -> bool {
         match msg {
             ServerMsg::Welcome { .. } => {
@@ -162,13 +178,58 @@ impl Rejoin {
             }
             ServerMsg::Refused {
                 reason: RejectReason::SeatHeld,
-            } if self.rejoining => return true,
+            } if self.rejoining => {
+                self.again = Again::SeatHeld;
+                return true;
+            }
+            ServerMsg::WireMismatch { server_fingerprint } if self.speak(*server_fingerprint) => {
+                self.again = Again::Wire(*server_fingerprint);
+                return true;
+            }
             ServerMsg::MatchOver { .. }
             | ServerMsg::WireMismatch { .. }
             | ServerMsg::Refused { .. } => self.finished = true,
             _ => {}
         }
         false
+    }
+
+    /// Speaks `wire` on the next connection, when this build admits it and the
+    /// hello spoke another; whether it does.
+    fn speak(&mut self, wire: u64) -> bool {
+        let Some(items) = bota_core::spoken_items(wire) else {
+            return false;
+        };
+        let Some(ClientMsg::Hello {
+            wire_fingerprint, ..
+        }) = self.hello.as_mut()
+        else {
+            return false;
+        };
+        if *wire_fingerprint == wire {
+            return false;
+        }
+        *wire_fingerprint = wire;
+        if let Some(ClientMsg::Catalogue(told)) = self.catalogue.as_mut()
+            && told.items > items.items()
+        {
+            *told = items.prefix();
+        }
+        true
+    }
+
+    /// Why the caller dials again after [`Rejoin::heard`] said so.
+    pub fn again(&self) -> std::io::Error {
+        match self.again {
+            Again::SeatHeld => seat_held(),
+            Again::Wire(wire) => std::io::Error::new(
+                std::io::ErrorKind::ConnectionRefused,
+                format!(
+                    "the server speaks the earlier wire {wire:016x}, which this client admits; \
+dialing again speaking it"
+                ),
+            ),
+        }
     }
 
     /// Whether a broken connection is worth dialing again: a `Hello` went

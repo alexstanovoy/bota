@@ -544,7 +544,9 @@
 //! earlier builds whose rules it plays unchanged for the items they hold
 //! (`bota_core::ADMITTED_WIRES`, `bota_core::admits_wire`; each backed by a corpus of that
 //! build's replays this build plays alike): their clients, servers and replays meet it on the
-//! shared catalogue. A server built with a fingerprint it does not admit
+//! shared catalogue. A client speaks such a server's wire, and says that build's items: the
+//! wire a matchmaker's handoff names, or the one a server's [`ServerMsg::WireMismatch`] names,
+//! on a fresh connection. A server built with a fingerprint it does not admit
 //! answers [`ServerMsg::WireMismatch`] with its own and closes the
 //! connection, before anything else could be misread: a server whose
 //! balance moved (a new patch's numbers, a changed table) and a client

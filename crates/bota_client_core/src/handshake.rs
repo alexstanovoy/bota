@@ -140,7 +140,18 @@ pub fn join(
     hero: HeroId,
     key: Option<SeatKey>,
 ) -> std::io::Result<Seated> {
-    let lobby = greet(transport, Role::Bot, name, key)?;
+    join_on(transport, bota_core::WIRE_FINGERPRINT, name, hero, key)
+}
+
+/// As [`join`], speaking `wire` (see [`greet_on`]).
+pub fn join_on(
+    transport: &mut impl Transport,
+    wire: u64,
+    name: &str,
+    hero: HeroId,
+    key: Option<SeatKey>,
+) -> std::io::Result<Seated> {
+    let lobby = greet_on(transport, wire, Role::Bot, name, key)?;
     let seated = lobby.seated().ok_or_else(|| {
         std::io::Error::other("server accepted the client without assigning a seat")
     })?;
@@ -161,14 +172,23 @@ pub fn greet(
     name: &str,
     key: Option<SeatKey>,
 ) -> std::io::Result<Lobby> {
+    greet_on(transport, bota_core::WIRE_FINGERPRINT, role, name, key)
+}
+
+/// As [`greet`], speaking `wire`: this build's own, or one it admits
+/// ([`bota_core::ADMITTED_WIRES`], a matchmaker's handoff names the server's),
+/// whose build's items it then says it holds ([`catalogue_after`]).
+pub fn greet_on(
+    transport: &mut impl Transport,
+    wire: u64,
+    role: Role,
+    name: &str,
+    key: Option<SeatKey>,
+) -> std::io::Result<Lobby> {
     validate_name(name)?;
-    transport.send(&ClientMsg::hello(
-        role,
-        name,
-        key,
-        bota_core::WIRE_FINGERPRINT,
-    ))?;
-    transport.send(&catalogue())?;
+    let hello = ClientMsg::hello(role, name, key, wire);
+    transport.send(&hello)?;
+    transport.send(&catalogue_after(&hello))?;
     let mut lobby = Lobby::default();
     for _ in 0..MAX_MESSAGES_BEFORE_WELCOME {
         let message = transport
@@ -201,6 +221,20 @@ pub fn greet(
 /// differ refuses it. A client that says its own hello sends this after it.
 pub fn catalogue() -> ClientMsg {
     ClientMsg::Catalogue(bota_core::Catalogue::FULL.prefix())
+}
+
+/// What a client says right after `hello`: the items it holds on the wire the
+/// hello speaks ([`bota_core::spoken_items`]): all of them on this build's
+/// own, an admitted build's on that one's, which is all that build's server
+/// takes. [`catalogue`] for anything but a hello of an admitted wire.
+pub fn catalogue_after(hello: &ClientMsg) -> ClientMsg {
+    let items = match hello {
+        ClientMsg::Hello {
+            wire_fingerprint, ..
+        } => bota_core::spoken_items(*wire_fingerprint),
+        _ => None,
+    };
+    ClientMsg::Catalogue(items.unwrap_or(Catalogue::FULL).prefix())
 }
 
 /// A name the server would show as it is (cut to its length): 1 to

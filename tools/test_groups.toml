@@ -699,6 +699,23 @@ also_paths = [
 ]
 
 [[group]]
+name = "admitted_builds"
+about = "this build and the builds of the wires it admits playing each other both ways, as separate programs"
+paths = ["crates/bota_server/tests/admitted_builds.rs"]
+# what the earlier builds' programs are made of, and what this build's server speaks
+also_paths = [
+    "crates/bota_server/tests/admitted/**",
+    "crates/bota_server/examples/admitted_*.rs",
+    "crates/bota_server/src/game_loop.rs",
+    "crates/bota_server/src/game_loop/**",
+    "crates/bota_server/src/net/**",
+]
+# tools/admitted.sh builds every admitted wire's commit (its corpus names it) once, then keeps it
+tests = [{ crate = "bota_server", target = "test:admitted_builds", env = { ADMITTED_BUILDS = "{target_dir}/admitted" }, before = [
+    ["tools/admitted.sh", "build"],
+] }]
+
+[[group]]
 name = "server_practice"
 # Half a minute or more: it runs in full, for the server around the game and for what everything shares, not for a
 # change to one game system.

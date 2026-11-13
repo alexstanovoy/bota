@@ -184,3 +184,133 @@ fn a_seat_still_held_for_the_old_connection_is_taken_once_it_is_let_go() {
     drop(link);
     server.join().expect("the server side ends");
 }
+
+/// Reads the frames of one hello and the catalogue after it from a fresh connection.
+fn read_greeting(peer: &mut std::net::TcpStream) -> (ClientMsg, ClientMsg) {
+    let mut frames = bota_proto::FrameReader::new();
+    let mut said = Vec::new();
+    let mut buf = [0u8; 4096];
+    while said.len() < 2 {
+        let read = peer.read(&mut buf).expect("the greeting arrives");
+        assert!(read > 0, "the client closed before its catalogue");
+        frames.push(&buf[..read]);
+        while let Some(msg) = frames.next_message::<ClientMsg>().expect("a client frame") {
+            said.push(msg);
+        }
+    }
+    (said[0].clone(), said[1].clone())
+}
+
+/// A server of an earlier wire this build admits (`bota_core::ADMITTED_WIRES`) answers this
+/// build's hello with `WireMismatch` naming its own and closes: the client dials again speaking
+/// that wire, says that build's items, and is welcomed. Any other wire stays refused.
+#[test]
+fn a_server_of_an_admitted_earlier_wire_is_dialed_again_in_its_wire() {
+    let earlier = *bota_core::ADMITTED_WIRES.first().expect("an admitted wire");
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr").to_string();
+    let server = thread::spawn(move || {
+        let (mut first, _) = listener.accept().expect("accept");
+        let (hello, catalogue) = read_greeting(&mut first);
+        let mismatch = ServerMsg::WireMismatch {
+            server_fingerprint: earlier.wire,
+        };
+        first
+            .write_all(&encode_frame_to_vec(&mismatch).expect("encode"))
+            .expect("mismatch");
+        drop(first);
+        let (mut fresh, _) = listener.accept().expect("the client dials again");
+        let again = read_greeting(&mut fresh);
+        let welcome = ServerMsg::Welcome {
+            player_id: PlayerId(1),
+            slot: Some(SlotId(0)),
+            tick_rate: 30,
+            mode: TickMode::Lockstep,
+        };
+        fresh
+            .write_all(&encode_frame_to_vec(&welcome).expect("encode"))
+            .expect("welcome");
+        let mut buf = [0u8; 4096];
+        while fresh.read(&mut buf).is_ok_and(|read| read > 0) {}
+        ((hello, catalogue), again)
+    });
+    let redial = Redial {
+        attempts: 3,
+        first_wait: Duration::from_millis(1),
+        longest_wait: Duration::from_millis(1),
+    };
+    let endpoint = Endpoint::parse(&addr).expect("an endpoint");
+    let (link, seated) = Link::join_at(
+        endpoint,
+        "net",
+        HeroId::SHADOW_FIEND,
+        None,
+        Duration::from_secs(30),
+        redial,
+    )
+    .expect("a seat on the earlier wire");
+    assert_eq!(seated.slot, SlotId(0));
+    drop(link);
+    let ((hello, catalogue), (hello_again, catalogue_again)) =
+        server.join().expect("the server side ends");
+    let wire = |hello: &ClientMsg| match hello {
+        ClientMsg::Hello {
+            wire_fingerprint, ..
+        } => *wire_fingerprint,
+        other => panic!("a hello first, not {other:?}"),
+    };
+    assert_eq!(wire(&hello), bota_core::WIRE_FINGERPRINT);
+    assert_eq!(
+        catalogue,
+        ClientMsg::Catalogue(bota_core::Catalogue::FULL.prefix())
+    );
+    assert_eq!(wire(&hello_again), earlier.wire);
+    assert_eq!(catalogue_again, ClientMsg::Catalogue(earlier.catalogue));
+}
+
+/// A server of a wire this build does not admit stays refused: no second dial.
+#[test]
+fn a_server_of_a_wire_not_admitted_is_not_dialed_again() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr").to_string();
+    let other = bota_core::WIRE_FINGERPRINT ^ 1;
+    assert!(!bota_core::admits_wire(other));
+    let server = thread::spawn(move || {
+        let (mut first, _) = listener.accept().expect("accept");
+        let _ = read_greeting(&mut first);
+        let mismatch = ServerMsg::WireMismatch {
+            server_fingerprint: other,
+        };
+        first
+            .write_all(&encode_frame_to_vec(&mismatch).expect("encode"))
+            .expect("mismatch");
+        drop(first);
+        listener.set_nonblocking(true).expect("nonblocking");
+        thread::sleep(Duration::from_millis(200));
+        listener.accept().is_ok()
+    });
+    let redial = Redial {
+        attempts: 3,
+        first_wait: Duration::from_millis(1),
+        longest_wait: Duration::from_millis(1),
+    };
+    let endpoint = Endpoint::parse(&addr).expect("an endpoint");
+    let refused = Link::join_at(
+        endpoint,
+        "net",
+        HeroId::SHADOW_FIEND,
+        None,
+        Duration::from_secs(30),
+        redial,
+    )
+    .err()
+    .expect("refused");
+    assert!(
+        refused.to_string().contains(&format!("{other:016x}")),
+        "{refused}"
+    );
+    assert!(
+        !server.join().expect("the server side ends"),
+        "dialed again"
+    );
+}

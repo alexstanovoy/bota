@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
-# The builds of the wires this build admits (bota_core::ADMITTED_WIRES): their corpora.
+# The builds of the wires this build admits (bota_core::ADMITTED_WIRES): their corpora, and their
+# server and peer for the cross-build tests (crates/bota_server/tests/admitted_builds.rs).
 #
 #   tools/admitted.sh corpus COMMIT   builds COMMIT with this tree's corpus program and writes the
 #                                     corpus of its wire to crates/bota_server/tests/admitted/WIRE/
+#   tools/admitted.sh build           builds the server and the peer of every corpus' commit (its
+#                                     corpus.txt names it) under target/admitted/WIRE/
 #
 # ADMITTED_BUILDS names another directory than target/admitted. A commit is exported with
 # `git archive` (never a checkout of this tree) to target/admitted/WIRE/src,
-# this tree's programs (examples/admitted_corpus.rs and tests/admitted/scenarios.rs) are laid over it, and it is built in release with its own lock file
+# this tree's programs (examples/admitted_corpus.rs, examples/admitted_peer.rs,
+# tests/admitted/scenarios.rs and tests/admitted/peer.rs) are laid over it, and it is built in release with its own lock file
 # and a target directory of its own beside the export. See DEVELOPMENT.md, "Admitted wires".
 set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
@@ -14,7 +18,9 @@ target=${ADMITTED_BUILDS:-${CARGO_TARGET_DIR:-$root/target}/admitted}
 corpora=$root/crates/bota_server/tests/admitted
 programs=(
     crates/bota_server/examples/admitted_corpus.rs
+    crates/bota_server/examples/admitted_peer.rs
     crates/bota_server/tests/admitted/scenarios.rs
+    crates/bota_server/tests/admitted/peer.rs
 )
 
 # Exports COMMIT to DIR/src with this tree's programs over it and builds it in DIR/target; prints
@@ -39,7 +45,7 @@ build_commit() {
     ln -sfn -- "$(cd -- "$root/../radovid" && pwd)" "$dir/radovid"
     CARGO_TARGET_DIR=$dir/target cargo build --release --locked -q \
         --manifest-path "$dir/src/Cargo.toml" -p bota_server \
-        --bin bota_server --example admitted_corpus >&2
+        --bin bota_server --example admitted_corpus --example admitted_peer >&2
     "$dir/target/release/bota_server" --wire-fingerprint
 }
 
@@ -55,8 +61,21 @@ case "${1:-}" in
         mv -- "$scratch" "$target/$wire"
         echo "corpus of wire $wire written to crates/bota_server/tests/admitted/$wire" >&2
         ;;
+    build)
+        [ $# -eq 1 ] || { echo "usage: tools/admitted.sh build" >&2; exit 2; }
+        for manifest in "$corpora"/*/corpus.txt; do
+            [ -e "$manifest" ] || continue
+            wire=$(basename -- "$(dirname -- "$manifest")")
+            commit=$(sed -n 's/^commit //p' "$manifest")
+            built=$(build_commit "$commit" "$target/$wire")
+            if [ "$built" != "$wire" ]; then
+                echo "tools/admitted.sh: commit $commit builds wire $built, its corpus is of $wire" >&2
+                exit 1
+            fi
+        done
+        ;;
     *)
-        echo "usage: tools/admitted.sh corpus COMMIT" >&2
+        echo "usage: tools/admitted.sh corpus COMMIT | build" >&2
         exit 2
         ;;
 esac
