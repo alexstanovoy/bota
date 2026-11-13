@@ -287,11 +287,41 @@ impl BotState {
     }
 }
 
-/// Script overrides in engine TOP, MID, BOT order; absent values use native policy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Lane { Top, Mid, Bot }
+impl Lane {
+    pub fn from_core(lane: u8) -> Option<Self> {
+        match lane {
+            bota_core::rules::LANE_MID => Some(Self::Mid),
+            bota_core::rules::LANE_TOP => Some(Self::Top),
+            bota_core::rules::LANE_BOT => Some(Self::Bot),
+            _ => None,
+        }
+    }
+    pub fn from_engine(lane: i32) -> Option<Self> {
+        Self::from_core(match lane {
+            1 => bota_core::rules::LANE_TOP,
+            2 => bota_core::rules::LANE_MID,
+            3 => bota_core::rules::LANE_BOT,
+            _ => return None,
+        })
+    }
+}
+
+/// The decoder supplies engine TOP, MID, BOT order; consumers use a physical lane, never an index.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct LaneDesires([f64; 3]);
+impl LaneDesires {
+    pub fn from_engine_order(values: [f64; 3]) -> Self { Self(values) }
+    pub fn get(self, lane: Lane) -> f64 {
+        match lane { Lane::Top => self.0[0], Lane::Mid => self.0[1], Lane::Bot => self.0[2] }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct TeamDesires {
-    pub push: Option<[f64; 3]>,
-    pub defend: Option<[f64; 3]>,
+    pub push: Option<LaneDesires>,
+    pub defend: Option<LaneDesires>,
 }
 
 pub(crate) struct State {
