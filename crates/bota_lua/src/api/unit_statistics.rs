@@ -21,6 +21,8 @@ pub(super) fn install(lua: &mut Lua, context: &ApiContext) -> Result<(), Binding
         "GetAttackDamage",
         "GetAttackRange",
         "GetSecondsPerAttack",
+        "GetAttackPoint",
+        "GetAttackSpeed",
         "GetCurrentMovementSpeed",
         "GetBoundingRadius",
         "GetEvasion",
@@ -95,6 +97,15 @@ fn read(context: &ApiContext, vm: &mut Vm, args: Args, name: &str) -> Result<usi
         "GetAttackDamage" => f64::from(unit.attack_damage),
         "GetAttackRange" => f64::from(unit.attack_range.to_int()),
         "GetSecondsPerAttack" => scaled(f64::from(unit.attack_time), 1000.0),
+        "GetAttackPoint" => scaled(
+            f64::from(
+                super::unit_data::base_definition(&state, id)
+                    .ok_or_else(|| vm.error("unit base attack data is not known"))?
+                    .attack_point,
+            ),
+            1000.0,
+        ),
+        "GetAttackSpeed" => scaled(f64::from(unit.attack_speed), 100.0),
         "GetCurrentMovementSpeed" => f64::from(unit.move_speed.to_int()),
         "GetBoundingRadius" => fixed(unit.bound),
         "GetEvasion" => fixed(unit.evasion),

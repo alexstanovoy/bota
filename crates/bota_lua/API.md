@@ -142,6 +142,13 @@ narrowing them through fixed-point conversion. Floating-point regeneration,
 armor, evasion and bounding radius retain Q16.16 precision. Integer range, speed,
 attribute and facing reads return whole units; facing uses engine degrees rather
 than protocol brads. Attack intervals are returned in seconds.
+`GetAttackPoint` and `GetAttackSpeed` use INFERRED compatibility semantics,
+pending live engine verification: the point is base seconds before attack-speed
+scaling, and speed is a multiplier with 1.0 at 100 attack speed. The point comes
+from the public core unit definition; the speed comes from the received raw
+attack speed. The speed-adjusted wire point is not multiplied back, avoiding
+millisecond-rounding drift. The purchase test pins this chosen contract, not a
+verified engine convention. Unknown base-body metadata raises a normal Lua error.
 Owned scalar statistics remain available from the session's received body memory
 while a dead hero's short-lived entity track is absent. They remain last-observed
 values until a new body observation arrives; this does not refresh hidden data.

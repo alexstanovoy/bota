@@ -20,6 +20,7 @@ mod patterns;
 pub(crate) mod players;
 mod queries;
 pub(crate) mod shop;
+mod unit_data;
 mod unit_lists;
 mod unit_names;
 mod unit_statistics;

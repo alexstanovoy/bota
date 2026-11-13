@@ -111,7 +111,7 @@ fn unit_statistics_reject_forged_receivers_and_invalid_attribute_indices() {
         function Think()
             local unit = GetBot()
             for _, name in ipairs({'GetMana','GetMaxMana','GetHealthRegen','GetManaRegen','GetArmor',
-                'GetAttackDamage','GetAttackRange','GetSecondsPerAttack',
+                'GetAttackDamage','GetAttackRange','GetSecondsPerAttack','GetAttackPoint','GetAttackSpeed',
                 'GetCurrentMovementSpeed','GetBoundingRadius','GetEvasion','GetFacing',
                 'GetPrimaryAttribute','GetAttributeValue'}) do
                 local method = unit[name]
@@ -145,6 +145,7 @@ fn owned_statistics_remain_available_after_a_dead_body_track_expires() {
         .find(|unit| unit.id == own)
         .expect("hero");
     body.mana = 73;
+    body.attack_speed = 250;
     body.max_mana = 1000;
     let kit = bota_proto::Kit {
         abilities: body.abilities.clone(),
@@ -188,6 +189,7 @@ fn owned_statistics_remain_available_after_a_dead_body_track_expires() {
         function Think()
             turns = turns + 1
             assert(GetBot():GetMana() == 73 and GetBot():GetMaxMana() == 1000)
+            assert(GetBot():GetAttackPoint() == 0.5 and GetBot():GetAttackSpeed() == 2.5)
             GetBot():Action_MoveToLocation(Vector(turns,222,0))
         end
     "#,
@@ -289,7 +291,7 @@ fn enemy_statistics_are_last_observed_only_until_the_received_track_expires() {
                     assert(not enemy:CanBeSeen() and enemy:GetMana() == mana)
                 else
                     for _, name in ipairs({'GetMana','GetMaxMana','GetHealthRegen','GetManaRegen','GetArmor',
-                        'GetAttackDamage','GetAttackRange','GetSecondsPerAttack','GetCurrentMovementSpeed',
+                        'GetAttackDamage','GetAttackRange','GetSecondsPerAttack','GetAttackPoint','GetAttackSpeed','GetCurrentMovementSpeed',
                         'GetBoundingRadius','GetEvasion','GetFacing','GetPrimaryAttribute','GetAttributeValue'}) do
                         local ok, reason = pcall(enemy[name],enemy,0)
                         assert(not ok and string.find(tostring(reason),'unit is no longer known',1,true))
