@@ -233,8 +233,22 @@ pub struct Floater {
     pub age: f32,
 }
 
-/// Seconds a floater rises before it is gone.
+/// Seconds a floater rises before it is gone, unless its kind says otherwise
+/// ([`FloaterKind::life`]).
 pub const FLOATER_LIFE: f32 = 1.3;
+/// Seconds Dota's miss notice stays, as established from the installed game
+/// (build 6975).
+pub const MISS_LIFE: f32 = 1.5;
+
+impl FloaterKind {
+    /// Seconds a floater of this kind rises before it is gone.
+    pub const fn life(self) -> f32 {
+        match self {
+            FloaterKind::Miss => MISS_LIFE,
+            _ => FLOATER_LIFE,
+        }
+    }
+}
 /// An interactive client acknowledges a snapshot as soon as it is folded.
 const SESSION_OPTIONS: SessionOptions = SessionOptions {
     ack: AckPolicy::OnSnapshot,
@@ -1222,7 +1236,7 @@ impl App {
         for f in &mut self.floaters {
             f.age += dt;
         }
-        self.floaters.retain(|f| f.age < FLOATER_LIFE);
+        self.floaters.retain(|f| f.age < f.kind.life());
         if self.floaters.len() > MAX_FLOATERS {
             let extra = self.floaters.len() - MAX_FLOATERS;
             self.floaters.drain(..extra);
