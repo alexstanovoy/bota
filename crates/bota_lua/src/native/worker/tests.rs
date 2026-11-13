@@ -57,12 +57,14 @@ fn a_discarded_courier_turn_retries_its_unpublished_request() {
         last_tick: None,
         in_flight: false,
         late_ticks: 0,
+        deadline_ticks: 0,
         discard_previous: false,
     };
     assert!(matches!(
         native.think(&sessions[0]),
         Err(NativeError::Deadline)
     ));
+    assert_eq!(native.deadline_ticks(), 1);
     waiting
         .recv_timeout(HANG_GUARD)
         .expect("withheld courier result");
@@ -76,6 +78,11 @@ fn a_discarded_courier_turn_retries_its_unpublished_request() {
     // The first deadline is real; retry timing is not the contract under test.
     native.timeout = Duration::from_secs(1);
     let retried = native.think(&sessions[0]).expect("retry");
+    assert_eq!(
+        native.deadline_ticks(),
+        1,
+        "recovery must not erase an earlier missed deadline"
+    );
     assert!(retried.failures.is_empty(), "{:?}", retried.failures);
     assert!(
         retried.bots[0]
@@ -111,6 +118,7 @@ fn lifecycle_drop_returns_before_an_inflight_worker_is_released() {
         last_tick: None,
         in_flight: false,
         late_ticks: 0,
+        deadline_ticks: 0,
         discard_previous: false,
     };
     let (returned, dropped) = mpsc::channel();
@@ -217,6 +225,7 @@ fn one_late_reply_is_discarded_without_retiring_the_worker() {
         last_tick: None,
         in_flight: false,
         late_ticks: 0,
+        deadline_ticks: 0,
         discard_previous: false,
     };
     let first = native.think(&sessions[0]);
@@ -268,6 +277,7 @@ fn marker_turn(tick: u32) -> TeamTurn {
             )],
         }],
         failures: Vec::new(),
+        hook_activity: crate::HookActivity::default(),
     }
 }
 
@@ -296,6 +306,7 @@ fn consecutive_late_ticks_retire_a_still_busy_worker_without_queueing_more_work(
         last_tick: None,
         in_flight: false,
         late_ticks: 0,
+        deadline_ticks: 0,
         discard_previous: false,
     };
     let mut retired = Vec::new();
@@ -390,6 +401,7 @@ fn a_discarded_completion_turn_requeues_stop_until_a_turn_is_accepted() {
         last_tick: None,
         in_flight: false,
         late_ticks: 0,
+        deadline_ticks: 0,
         discard_previous: false,
     };
     let mut late_completion = false;

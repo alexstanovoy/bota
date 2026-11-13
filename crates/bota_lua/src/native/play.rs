@@ -1,5 +1,5 @@
 use super::NativeTeam;
-use crate::TeamTurn;
+use crate::{HookActivity, TeamTurn};
 use bota_client_core::IssuedOrder;
 use bota_client_core::{ClientSession, Ingested, Outcome, Seat, Seated, SessionOptions, Transport};
 use bota_proto::{ClientMsg, Order, ServerMsg, Target};
@@ -7,6 +7,7 @@ use std::io;
 
 #[derive(Debug)]
 pub struct TeamOutcome {
+    pub hook_activity: HookActivity,
     pub outcomes: Vec<Outcome>,
     pub orders_sent: u64,
     pub script_failures: u64,
@@ -28,6 +29,7 @@ pub fn play_team<T: Transport>(
 ) -> io::Result<TeamOutcome> {
     let mut connections = prepare_connections(connections, worker)?;
     let mut result = TeamOutcome {
+        hook_activity: HookActivity::default(),
         outcomes: Vec::new(),
         orders_sent: 0,
         script_failures: 0,
@@ -125,6 +127,7 @@ fn decide(
     let tick = session.current().expect("a complete tick").tick;
     match worker.think(session) {
         Ok(turn) => {
+            result.hook_activity += turn.hook_activity;
             result.script_failures += turn.failures.len() as u64;
             for failure in &turn.failures {
                 if failure.report {

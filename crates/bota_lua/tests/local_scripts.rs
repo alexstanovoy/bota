@@ -35,6 +35,7 @@ fn run_pack(directory: &std::path::Path, runtime: Option<&std::path::Path>, team
     config.think_timeout = std::time::Duration::from_secs(10);
     let mut lua = NativeTeam::new(config, modules).expect("worker");
     let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let mut activity = bota_lua::HookActivity::default();
     let mut sent = 0;
     let mut ended = false;
     let mut ticks = 0;
@@ -42,6 +43,7 @@ fn run_pack(directory: &std::path::Path, runtime: Option<&std::path::Path>, team
         ticks += 1;
         let turn = lua.think(&sessions[index]).expect("think");
         assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+        activity += turn.hook_activity;
         let orders: Vec<_> = turn.bots[0]
             .orders
             .iter()
@@ -67,7 +69,16 @@ fn run_pack(directory: &std::path::Path, runtime: Option<&std::path::Path>, team
     assert!(sent > 0);
     assert!(ended);
     assert!(!lua.retired());
+    assert_eq!(
+        lua.deadline_ticks(),
+        0,
+        "conformance cannot discard late turns"
+    );
     println!(
-        "pack_conformance team={team:?} ticks={ticks} orders={sent} script_failures=0 retired=false"
+        "pack_conformance team={team:?} ticks={ticks} orders={sent} script_failures=0 retired=false script_initializations={} script_hooks={} native_hooks={} deadline_ticks={}",
+        activity.initializations,
+        activity.scripted,
+        activity.native,
+        lua.deadline_ticks()
     );
 }

@@ -93,6 +93,10 @@ fn process_driver_folds_real_streams_and_sends_orders_and_acknowledgements_to_ma
     let result = play_team(vec![(transport, seated)], &mut worker).expect("driver");
     assert_eq!(result.outcomes.len(), 1);
     assert!(result.orders_sent > 0);
+    assert_eq!(result.hook_activity.initializations, 1);
+    assert!(result.hook_activity.scripted > 0);
+    assert_eq!(result.hook_activity.native, 0);
+    assert_eq!(worker.deadline_ticks(), 0);
     assert_eq!(result.script_failures, 0);
     assert!(!result.retired);
 }

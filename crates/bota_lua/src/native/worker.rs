@@ -89,6 +89,7 @@ pub struct NativeTeam {
     last_tick: Option<u32>,
     in_flight: bool,
     late_ticks: u8,
+    deadline_ticks: u64,
     discard_previous: bool,
 }
 impl NativeTeam {
@@ -153,6 +154,7 @@ impl NativeTeam {
                 last_tick: None,
                 in_flight: false,
                 late_ticks: 0,
+                deadline_ticks: 0,
                 discard_previous: false,
             }),
             result => {
@@ -258,7 +260,13 @@ impl NativeTeam {
         }
     }
 
+    /// Total turns that missed their wall deadline, including recoverable misses.
+    pub fn deadline_ticks(&self) -> u64 {
+        self.deadline_ticks
+    }
+
     fn late(&mut self) -> Reply {
+        self.deadline_ticks = self.deadline_ticks.saturating_add(1);
         self.late_ticks = self.late_ticks.saturating_add(1);
         if self.late_ticks >= MAX_CONSECUTIVE_LATE_TICKS {
             self.retire();

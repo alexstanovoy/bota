@@ -59,8 +59,35 @@ pub struct ScriptFailure {
     pub report: bool,
 }
 
+/// Source initializations and attempted hooks; missing functions do not count.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct HookActivity {
+    pub initializations: u64,
+    pub scripted: u64,
+    pub native: u64,
+}
+impl std::ops::AddAssign for HookActivity {
+    fn add_assign(&mut self, other: Self) {
+        self.initializations = self.initializations.saturating_add(other.initializations);
+        self.scripted = self.scripted.saturating_add(other.scripted);
+        self.native = self.native.saturating_add(other.native);
+    }
+}
+impl HookActivity {
+    fn since(self, previous: Self) -> Self {
+        Self {
+            initializations: self
+                .initializations
+                .saturating_sub(previous.initializations),
+            scripted: self.scripted.saturating_sub(previous.scripted),
+            native: self.native.saturating_sub(previous.native),
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct TeamTurn {
+    pub hook_activity: HookActivity,
     pub bots: Vec<BotTurn>,
     pub failures: Vec<ScriptFailure>,
 }
@@ -105,6 +132,7 @@ pub struct LuaTeam {
     module_root: Option<Value>,
     default_mode: Value,
     default_auxiliary: Value,
+    hook_activity: HookActivity,
 }
 
 impl LuaTeam {
@@ -189,6 +217,7 @@ impl LuaTeam {
             module_root: None,
             default_mode,
             default_auxiliary,
+            hook_activity: HookActivity::default(),
         })
     }
 
@@ -350,6 +379,7 @@ impl LuaTeam {
             ));
         }
         let tick = snapshot.tick;
+        let activity_before = self.hook_activity;
         self.last_tick = Some(tick);
         self.state.borrow_mut().snapshot = Some(snapshot);
         let retired = self.state.borrow_mut().retire_handles();
@@ -412,6 +442,7 @@ impl LuaTeam {
                 orders,
             });
         }
+        result.hook_activity = self.hook_activity.since(activity_before);
         Ok(result)
     }
 
@@ -586,6 +617,7 @@ impl LuaTeam {
         if self.scripts[index].initialized {
             return Ok(());
         }
+        self.hook_activity.initializations = self.hook_activity.initializations.saturating_add(1);
         let values = self
             .lua
             .call(self.scripts[index].function, &[self.scripts[index].name])?;
@@ -624,6 +656,7 @@ impl LuaTeam {
         if function == Value::Nil {
             return Ok(Vec::new());
         }
+        self.hook_activity.scripted = self.hook_activity.scripted.saturating_add(1);
         self.lua.call(function, args)
     }
 
@@ -694,21 +727,13 @@ impl LuaTeam {
                 && !(hook == "CourierUsageThink" && minion.is_some())
                 && let Some(default) = default
             {
-                self.lua.call(
-                    self.default_auxiliary,
-                    &[Value::Number(f64::from(default as u8))],
-                )?;
+                self.call_auxiliary(default)?;
             } else if !full_takeover && hook == "ItemUsageThink" {
                 default_item = true;
             }
         }
         if default_item {
-            self.lua.call(
-                self.default_auxiliary,
-                &[Value::Number(f64::from(
-                    crate::default_bot::AuxiliaryHook::Item as u8,
-                ))],
-            )?;
+            self.call_auxiliary(crate::default_bot::AuxiliaryHook::Item)?;
         }
         let purchase = self
             .scripts
@@ -719,14 +744,18 @@ impl LuaTeam {
         {
             self.call_hook(index, "ItemPurchaseThink", &[])?;
         } else if !full_takeover {
-            self.lua.call(
-                self.default_auxiliary,
-                &[Value::Number(f64::from(
-                    crate::default_bot::AuxiliaryHook::Purchase as u8,
-                ))],
-            )?;
+            self.call_auxiliary(crate::default_bot::AuxiliaryHook::Purchase)?;
         }
         self.run_minions(slot, minion)
+    }
+
+    fn call_auxiliary(&mut self, hook: crate::default_bot::AuxiliaryHook) -> Result<(), Error> {
+        self.hook_activity.native = self.hook_activity.native.saturating_add(1);
+        self.lua.call(
+            self.default_auxiliary,
+            &[Value::Number(f64::from(hook as u8))],
+        )?;
+        Ok(())
     }
 
     fn run_mode(&mut self, seat: usize, slot: SlotId, tick: u32) -> Result<(), Error> {
@@ -782,6 +811,7 @@ impl LuaTeam {
     }
 
     fn call_default(&mut self, mode: u8, thinking: bool) -> Result<f64, Error> {
+        self.hook_activity.native = self.hook_activity.native.saturating_add(1);
         let result = self.lua.call(
             self.default_mode,
             &[Value::Number(f64::from(mode)), Value::Boolean(thinking)],

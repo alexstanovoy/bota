@@ -477,3 +477,33 @@ fn lazy_mode_setup_preserves_the_active_turn_fuel_budget() {
         luagee::Error::Limit(luagee::Limit::FuelPerTick)
     ));
 }
+
+#[test]
+fn conformance_counts_distinguish_script_hooks_from_native_fallback() {
+    let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let scripted = team(&[("bot_nevermore", "function Think() end")])
+        .think(&sessions[0])
+        .expect("takeover turn");
+    assert_eq!(scripted.hook_activity.initializations, 1);
+    assert_eq!(scripted.hook_activity.scripted, 1);
+    assert_eq!(scripted.hook_activity.native, 0);
+    let mut fallback = team(&[]);
+    let native = fallback.think(&sessions[0]).expect("native turn");
+    assert_eq!(native.hook_activity.initializations, 0);
+    assert_eq!(native.hook_activity.scripted, 0);
+    assert!(native.hook_activity.native > 0);
+    let initialized = team(&[("bot_nevermore", "return {}")])
+        .think(&sessions[0])
+        .expect("initialization-only turn");
+    assert_eq!(initialized.hook_activity.initializations, 1);
+    assert_eq!(initialized.hook_activity.scripted, 0);
+    assert!(initialized.hook_activity.native > 0);
+    let mut session = sessions[0].clone();
+    observation(&mut session, sessions[0].current().expect("view").clone());
+    let next = fallback.think(&session).expect("next native turn");
+    assert_eq!(next.hook_activity.scripted, 0);
+    assert!(
+        next.hook_activity.native < native.hook_activity.native,
+        "per-turn counts exclude earlier mode arbitration"
+    );
+}
