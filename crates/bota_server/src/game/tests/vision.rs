@@ -564,7 +564,26 @@ fn a_dire_grant_lights_only_dires_cells_as_the_server_sees_them() {
                 "point and grid agree"
             );
         }
-        assert_eq!(lit.iter().any(|lit| *lit), side == Team::Dire);
+        assert!(
+            lit.iter().any(|lit| *lit),
+            "each side's base fields provide permanent sight"
+        );
+        assert_eq!(
+            ground.sees(&view, side, at),
+            side == Team::Dire,
+            "the neutral watcher's grant still belongs only to Dire"
+        );
+        for field in world
+            .map
+            .base_blockers
+            .iter()
+            .filter(|field| field.team == side)
+        {
+            assert!(
+                ground.sees(&view, side, field.at),
+                "the owning side sees its permanent field"
+            );
+        }
     }
 }
 

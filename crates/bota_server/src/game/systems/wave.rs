@@ -8,7 +8,7 @@ use bota_core::{
 };
 use bota_proto::{CreepTier, Team, Vec2};
 
-use crate::game::{Entity, March, Purpose, UnitOrder, World, advance_waypoint};
+use crate::game::{Entity, LandingBody, March, Purpose, UnitOrder, World, advance_waypoint};
 
 impl World {
     /// Puts a wave in each enabled lane when the clock calls for one, unless
@@ -41,7 +41,10 @@ impl World {
                 let flag_slot = self.flag_slot(plan.melee);
                 let tiers = self.wave_creep_tiers(team, lane);
                 for (index, def) in wave_tiers(&plan, flag_slot, tiers).into_iter().enumerate() {
-                    let pos = at + offsets.get(index).copied().unwrap_or(Vec2::ZERO);
+                    let desired = at + offsets.get(index).copied().unwrap_or(Vec2::ZERO);
+                    let Some(pos) = self.place_body(LandingBody::of_def(def, team), desired) else {
+                        continue;
+                    };
                     self.spawn_creep(def, team, pos, lane, plan.upgrades);
                 }
             }
@@ -75,7 +78,10 @@ impl World {
         let flag_slot = self.flag_slot(plan.melee);
         let tiers = self.wave_creep_tiers(team, lane);
         for (place, def) in wave_tiers(&plan, flag_slot, tiers).into_iter().enumerate() {
-            let pos = at + offsets.get(place).copied().unwrap_or(Vec2::ZERO);
+            let desired = at + offsets.get(place).copied().unwrap_or(Vec2::ZERO);
+            let Some(pos) = self.place_body(LandingBody::of_def(def, team), desired) else {
+                continue;
+            };
             let creep = self.spawn_creep(def, team, pos, lane, plan.upgrades);
             self.march.insert(
                 creep,

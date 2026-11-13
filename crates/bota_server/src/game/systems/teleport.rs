@@ -4,7 +4,10 @@
 use bota_core::{Scroll, clamp_to_map, fountain_pos, hero_spawn_pos, kind_def, point_along, rules};
 use bota_proto::{EventKind, Fixed, Target, Team, UnitKind, Vec2};
 
-use crate::game::{Entity, Event, EventVisibility, Teleport, UnitOrder, World, wire_id};
+use crate::game::{
+    Entity, Event, EventVisibility, LandingBody, LandingResolution, Obstacles, Teleport, UnitOrder,
+    World, wire_id,
+};
 
 /// Raw [`Fixed`] of one over the square root of two, for the diagonal spots
 /// of a landing ring.
@@ -22,8 +25,8 @@ impl World {
     /// does not. A building aimed at is carried to at the band's inner edge,
     /// on its side's fountain side. Nothing aimed at is Dota's double tap: the
     /// fountain, from [`rules::SCROLL_FOUNTAIN_MIN_DISTANCE`] off it, landing
-    /// where heroes come in. Where the landing spot is closed ground the
-    /// nearest open ground around it is taken.
+    /// where heroes come in. Where the landing spot is closed ground,
+    /// an open candidate from the bounded search around it is taken.
     pub fn scroll_destination(
         &self,
         user: Entity,
@@ -113,30 +116,96 @@ impl World {
         Some(clamp_to_map(aim))
     }
 
-    /// The open ground nearest a spot: the spot itself, else the first open
-    /// spot on rings of eight around it, [`rules::SCROLL_LANDING_STEP`]
+    /// Open ground sought around a spot: the spot itself, else the first open
+    /// candidate on rings of eight around it, [`rules::SCROLL_LANDING_STEP`]
     /// apart, out to [`rules::SCROLL_LANDING_RINGS`] of them.
     pub fn open_landing(&self, aim: Vec2) -> Option<Vec2> {
-        self.nearest_landing(aim, |at| self.clearance.stands_clear(at))
+        self.search_landing(aim, |at| self.clearance.stands_clear(at))
     }
 
-    /// Whether a unit can finish a displacement here: the body's own side
-    /// passes its base fields, and its hull must clear the others.
+    pub(crate) fn landing_body(&self, unit: Entity) -> LandingBody {
+        let radius = self
+            .hull
+            .get(unit)
+            .map(|hull| hull.collision)
+            .or_else(|| {
+                self.def
+                    .get(unit)
+                    .map(|def| Fixed::from_int(def.0.collision))
+            })
+            .unwrap_or(Fixed::ZERO);
+        LandingBody {
+            team: self.team.get(unit).copied().unwrap_or(Team::Neutral),
+            radius,
+            pathing_flight: self.pathing_flight(unit),
+        }
+    }
+
+    /// Whether the body's team and movement capability permit this field.
+    pub(crate) fn field_placement_clear(&self, body: LandingBody, at: Vec2) -> bool {
+        body.pathing_flight
+            || Obstacles {
+                field: &self.clearance,
+                extra: &[],
+                base_blockers: self.map.base_blockers,
+                team: body.team,
+            }
+            .map_fits(at, body.radius + LANDING_MARGIN)
+    }
+
     pub(crate) fn landing_clear(&self, unit: Entity, at: Vec2) -> bool {
-        self.clearance.stands_clear(at)
-            && (self.stats.get(unit).is_some_and(|stats| stats.flies)
-                || self
-                    .walking_obstacles(unit, &[])
-                    .map_fits(at, self.collision(unit) + LANDING_MARGIN))
+        self.landing_clear_as(self.landing_body(unit), at)
     }
 
-    /// The nearest open release point for a particular unit. Displacement
-    /// paths may cross a field; the final grounded body must clear it.
+    fn landing_clear_as(&self, body: LandingBody, at: Vec2) -> bool {
+        self.clearance.stands_clear(at) && self.field_placement_clear(body, at)
+    }
+
+    /// Resolve near the desired point in a bounded deterministic order.
+    /// Both sides of a field are eligible; incoming travel does not restrict it.
     pub(crate) fn open_landing_for(&self, unit: Entity, aim: Vec2) -> Option<Vec2> {
-        self.nearest_landing(aim, |at| self.landing_clear(unit, at))
+        self.open_landing_as(self.landing_body(unit), aim)
     }
 
-    fn nearest_landing(&self, aim: Vec2, clear: impl Fn(Vec2) -> bool) -> Option<Vec2> {
+    pub(crate) fn open_landing_as(&self, body: LandingBody, aim: Vec2) -> Option<Vec2> {
+        let resolved = self.resolve_landing_as(body, aim);
+        resolved.cleared.then_some(resolved.at)
+    }
+
+    pub(crate) fn resolve_landing_for(&self, unit: Entity, aim: Vec2) -> LandingResolution {
+        self.resolve_landing_as(self.landing_body(unit), aim)
+    }
+
+    /// Exhausted clear-space search returns a hull-inset map clamp without
+    /// certifying obstacle clearance (established from installed build 6975).
+    pub(crate) fn resolve_landing_as(&self, body: LandingBody, aim: Vec2) -> LandingResolution {
+        if let Some(at) = self.search_landing(aim, |at| self.landing_clear_as(body, at)) {
+            return LandingResolution { at, cleared: true };
+        }
+        let bound = rules::units(rules::MAP_SIZE);
+        let inset = body.radius.raw.clamp(0, bound.raw / 2);
+        let coordinate = |value: Fixed| Fixed {
+            raw: value.raw.clamp(inset, bound.raw - inset),
+        };
+        LandingResolution {
+            at: Vec2 {
+                x: coordinate(aim.x),
+                y: coordinate(aim.y),
+            },
+            cleared: false,
+        }
+    }
+
+    /// Correct a new field overlap without changing unrelated placement rules.
+    pub(crate) fn place_body(&self, body: LandingBody, aim: Vec2) -> Option<Vec2> {
+        if self.field_placement_clear(body, aim) {
+            Some(aim)
+        } else {
+            self.open_landing_as(body, aim)
+        }
+    }
+
+    fn search_landing(&self, aim: Vec2, clear: impl Fn(Vec2) -> bool) -> Option<Vec2> {
         if clear(aim) {
             return Some(aim);
         }

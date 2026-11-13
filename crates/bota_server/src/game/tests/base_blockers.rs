@@ -1157,3 +1157,12 @@ fn fields_remain_team_conditional_after_glyph_building_loss_and_late_night() {
         }
     }
 }
+
+mod placements;
+
+mod channels;
+mod routing;
+
+mod property;
+
+mod resolution;

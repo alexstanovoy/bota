@@ -432,6 +432,32 @@ impl Clearance {
     }
 }
 
+/// The movement capabilities needed to place a body before or after creation.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct LandingBody {
+    pub team: Team,
+    pub radius: Fixed,
+    pub pathing_flight: bool,
+}
+
+/// A bounded clear-space query can exhaust its candidates. Its fallback is
+/// a map-bounded position, not a promise of obstacle clearance.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct LandingResolution {
+    pub at: Vec2,
+    pub cleared: bool,
+}
+
+impl LandingBody {
+    pub fn of_def(def: &bota_core::UnitDef, team: Team) -> Self {
+        Self {
+            team,
+            radius: Fixed::from_int(def.collision),
+            pathing_flight: def.flies || def.pathing_flight,
+        }
+    }
+}
+
 /// Static obstacles for planning: the field, and any circles laid over it
 /// for one plan only.
 #[derive(Clone, Copy)]

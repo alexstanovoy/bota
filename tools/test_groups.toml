@@ -310,6 +310,7 @@ paths = [
     "crates/bota_server/src/game/tests/turning.rs",
     "crates/bota_server/src/game/tests/forest_paths.rs",
     "crates/bota_server/src/game/tests/base_blockers.rs",
+    "crates/bota_server/src/game/tests/base_blockers/**",
     "crates/bota_server/src/game/tests/tree_gaps.rs",
     "crates/bota_server/src/game/tests/orders.rs",
     "crates/bota_server/src/game/tests/order_legality.rs",

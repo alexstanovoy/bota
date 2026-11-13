@@ -34,6 +34,12 @@ impl World {
         }
     }
 
+    /// Movement flight does not imply flying vision.
+    pub(crate) fn pathing_flight(&self, entity: Entity) -> bool {
+        self.stats.get(entity).is_some_and(|stats| stats.flies)
+            || self.def.get(entity).is_some_and(|def| def.0.pathing_flight)
+    }
+
     /// The ground and map bodies this particular unit meets while walking.
     pub(crate) fn walking_obstacles<'a>(
         &'a self,
@@ -540,7 +546,7 @@ impl World {
             self.stand(entity);
             return None;
         }
-        if stats.flies {
+        if self.pathing_flight(entity) {
             self.fly_toward(entity, dest, step);
             return None;
         }
@@ -794,7 +800,7 @@ impl World {
         }
         if !self
             .walking_obstacles(entity, &[])
-            .clear(from, target, leg.collision)
+            .map_clear(from, target, leg.collision)
             || (!self.phased(entity) && self.body_in_the_way(entity, from, target).is_some())
         {
             self.walk_into(leg, target);
@@ -941,31 +947,33 @@ impl World {
                 round.push(*circle);
             }
         }
-        let kept = {
-            let ob = Obstacles {
-                field: if self.stats.get(entity).is_some_and(|s| s.tree_walking) {
-                    &self.tree_clearance
-                } else {
-                    &self.clearance
-                },
-                extra: &round,
-                base_blockers: self.map.base_blockers,
-                team: self.team.get(entity).copied().unwrap_or(Team::Neutral),
-            };
-            keeps_route(&ob, &mut route, from, dest, room)
-        };
-        if !kept {
-            round.clear();
-        }
-        let ob = Obstacles {
+        // Separate field borrows keep the planner independently mutable.
+        let ground = Obstacles {
             field: if self.stats.get(entity).is_some_and(|s| s.tree_walking) {
                 &self.tree_clearance
             } else {
                 &self.clearance
             },
-            extra: &round,
+            extra: &[],
             base_blockers: self.map.base_blockers,
             team: self.team.get(entity).copied().unwrap_or(Team::Neutral),
+        };
+        let kept = keeps_route(
+            &Obstacles {
+                extra: &round,
+                ..ground
+            },
+            &mut route,
+            from,
+            dest,
+            room,
+        );
+        if !kept {
+            round.clear();
+        }
+        let ob = Obstacles {
+            extra: &round,
+            ..ground
         };
         let fresh = !kept || left || !extra.is_empty();
         if fresh {

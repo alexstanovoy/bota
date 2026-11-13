@@ -229,6 +229,15 @@ impl World {
                 channel_ms: 0,
             };
             self.take_modifier(on, any, Some(caster));
+            if let Some(from) = self.pos(on)
+                && !self.field_placement_clear(self.landing_body(on), from)
+            {
+                let landing = self.resolve_landing_for(on, from);
+                if let Some(transform) = self.transform.get_mut(on) {
+                    transform.pos = landing.at;
+                }
+                self.forget_walk(on);
+            }
         }
     }
 

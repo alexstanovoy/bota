@@ -110,7 +110,7 @@ impl World {
             if !self.clearance.walkable(next) && self.clearance.walkable(body.at) {
                 continue;
             }
-            if !self.stats.get(body.entity).is_some_and(|stats| stats.flies)
+            if !self.pathing_flight(body.entity)
                 && !self
                     .walking_obstacles(body.entity, &[])
                     .map_clear(body.at, next, body.radius)

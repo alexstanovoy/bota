@@ -111,7 +111,8 @@ impl World {
             }
             let done = !open || to == push.aim;
             let landing = if done {
-                self.open_landing_for(on, to).unwrap_or(push.clear)
+                self.push.remove(on);
+                self.resolve_landing_for(on, to).at
             } else {
                 to
             };
@@ -128,9 +129,7 @@ impl World {
                     Some(2),
                 ),
             );
-            if done {
-                self.push.remove(on);
-            } else {
+            if !done {
                 self.push.insert(on, push);
             }
         }

@@ -6,7 +6,7 @@ use bota_core::{
 };
 use bota_proto::{Inflictor, Vec2};
 
-use crate::game::{Entity, Modifier, StatBonus, World};
+use crate::game::{Entity, LandingBody, Modifier, StatBonus, World};
 
 impl World {
     /// Lets every death throe of a neutral that is dying go off, from where
@@ -99,6 +99,9 @@ impl World {
             .get(dead)
             .map_or(0, |on_it| on_it.count_of(ModifierKind::neutral_upgrade));
         for _ in 0..at_level(&count, level) {
+            let Some(at) = self.place_body(LandingBody::of_def(kind.def(), side), at) else {
+                continue;
+            };
             let shard = self.spawn_neutral_home(kind, at, home.camp, steps);
             self.shape_shard(
                 shard,

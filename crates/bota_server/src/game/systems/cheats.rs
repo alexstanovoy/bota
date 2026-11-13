@@ -5,14 +5,14 @@
 //! experience, a respawn as a respawn, waves and camps as the spawners lay
 //! them), so a match with cheats stays as deterministic as one without.
 
-use bota_core::{hero_spawn_pos, rules};
+use bota_core::{HERO, hero_def, hero_spawn_pos, rules};
 use bota_proto::{
     Cheat, CreepSide, EventKind, ItemId, RejectReason, SlotId, Target, Team, UnitKind, Vec2,
 };
 
 use crate::game::{
-    AppliedModifier, AppliedOrigin, Entity, Event, EventVisibility, Inventory, ItemStack, Level,
-    Modifiers, Seat, UnitOrder, World, hero_kit,
+    AppliedModifier, AppliedOrigin, Entity, Event, EventVisibility, Inventory, ItemStack,
+    LandingBody, Level, Modifiers, Seat, UnitOrder, World, hero_kit,
 };
 
 /// The seats a match may hold at most, cheats' heroes included: as many as
@@ -87,7 +87,9 @@ impl World {
             Cheat::Respawn => self.respawn_now(seat),
             Cheat::CreateHero { hero, enemy, at } => {
                 let team = self.cheat_side(seat, enemy);
-                if let Some(at) = self.open_landing(at) {
+                let body =
+                    LandingBody::of_def(hero_def(hero).map_or(&HERO, |hero| hero.unit), team);
+                if let Some(at) = self.open_landing_as(body, at) {
                     self.create_hero(hero, team, at);
                 }
             }
@@ -107,7 +109,9 @@ impl World {
             Cheat::AllVision { on } => self.all_vision = on,
             Cheat::Invulnerable { on } => self.seats[seat].invulnerable = on,
             Cheat::Teleport { at } => {
-                if let (Some(unit), Some(at)) = (unit, self.open_landing(at)) {
+                if let Some(unit) = unit
+                    && let Some(at) = self.open_landing_for(unit, at)
+                {
                     self.move_unit_to(unit, at);
                 }
             }
@@ -161,11 +165,23 @@ impl World {
                 self.cheat_target(unit.ok_or(RejectReason::HeroDead)?, *target)?;
             }
             Cheat::Item { .. } => {}
-            Cheat::CreateHero { at, .. } => {
+            Cheat::CreateHero { hero, enemy, at } => {
                 if self.seats.len() >= MAX_SEATS_WITH_CHEATS {
                     return Err(RejectReason::BadCheat);
                 }
-                self.open_landing(*at).ok_or(RejectReason::ClosedGround)?;
+                let side = if *enemy {
+                    if seat.team == Team::Radiant {
+                        Team::Dire
+                    } else {
+                        Team::Radiant
+                    }
+                } else {
+                    seat.team
+                };
+                let body =
+                    LandingBody::of_def(hero_def(*hero).map_or(&HERO, |hero| hero.unit), side);
+                self.open_landing_as(body, *at)
+                    .ok_or(RejectReason::ClosedGround)?;
             }
             Cheat::CreateCreeps { at, .. } => {
                 self.open_landing(*at).ok_or(RejectReason::ClosedGround)?;
@@ -177,8 +193,9 @@ impl World {
                 self.nearest_rune_spot(*at).ok_or(RejectReason::BadCheat)?;
             }
             Cheat::Teleport { at } => {
-                unit.ok_or(RejectReason::HeroDead)?;
-                self.open_landing(*at).ok_or(RejectReason::ClosedGround)?;
+                let unit = unit.ok_or(RejectReason::HeroDead)?;
+                self.open_landing_for(unit, *at)
+                    .ok_or(RejectReason::ClosedGround)?;
             }
             Cheat::Gold { .. }
             | Cheat::Levels { .. }
@@ -293,7 +310,9 @@ impl World {
             None => {}
             Some(unit) => {
                 let fountain = hero_spawn_pos(self.map, self.seats[seat].team);
-                let at = self.open_landing(fountain).unwrap_or(fountain);
+                let Some(at) = self.open_landing_for(unit, fountain) else {
+                    return;
+                };
                 self.move_unit_to(unit, at);
                 self.fill_pools(unit);
             }

@@ -31,6 +31,14 @@ impl World {
     /// Health and mana start empty; [`derive_stats`](crate::game::derive_stats)
     /// fills them the first time it sees the entity.
     pub(super) fn spawn_body(&mut self, def: &'static UnitDef, team: Team, pos: Vec2) -> Entity {
+        // Moving bodies share placement before creation, including rune copies.
+        // Immobile map objects and planted wards retain their own placement rules.
+        let body = crate::game::LandingBody::of_def(def, team);
+        let pos = if def.move_speed > 0 && !self.field_placement_clear(body, pos) {
+            self.resolve_landing_as(body, pos).at
+        } else {
+            pos
+        };
         let entity = self.spawn();
         self.def.insert(entity, Def(def));
         self.kind.insert(entity, def.kind);
@@ -208,7 +216,10 @@ impl World {
             return;
         };
         let body = hero_def(self.seats[index].hero).map_or(&HERO, |def| def.unit);
-        self.stand_on_the_map(hero, body, at);
+        if !self.stand_on_the_map(hero, body, at) {
+            self.seats[index].respawn_left = 1;
+            return;
+        }
         self.seats[index].respawn_left = 0;
         self.seats[index].reincarnating_at = None;
         self.settle();
@@ -254,9 +265,14 @@ impl World {
     /// Puts a unit taken off the map back on it at `at`, as `body` stands:
     /// seen by its own side from this moment, with a body, ready to act and
     /// told nothing, its match-setup modifiers put on afresh.
-    fn stand_on_the_map(&mut self, unit: Entity, body: &UnitDef, at: Vec2) {
+    fn stand_on_the_map(&mut self, unit: Entity, body: &UnitDef, at: Vec2) -> bool {
         let Some(team) = self.team.get(unit).copied() else {
-            return;
+            return false;
+        };
+        let mut placement = self.landing_body(unit);
+        placement.radius = Fixed::from_int(body.collision);
+        let Some(at) = self.place_body(placement, at) else {
+            return false;
         };
         self.transform.insert(
             unit,
@@ -270,6 +286,7 @@ impl World {
         self.give_action(unit);
         self.give_orders(unit);
         self.apply_spawn_modifiers(unit);
+        true
     }
 
     /// Lays a seat's courier down for `wait` ticks, off the map as a fallen
@@ -289,7 +306,10 @@ impl World {
         let Some(courier) = self.seats[index].courier else {
             return;
         };
-        self.stand_on_the_map(courier, &COURIER, at);
+        if !self.stand_on_the_map(courier, &COURIER, at) {
+            self.seats[index].courier_left = 1;
+            return;
+        }
         self.put_courier_phased(courier);
         self.errand.insert(courier, Errand::None);
         self.seats[index].courier_left = 0;

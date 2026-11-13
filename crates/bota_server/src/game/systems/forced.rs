@@ -198,11 +198,11 @@ impl World {
             push.clear = next;
         }
         if age == duration {
-            let to = self.open_landing_for(on, push.aim).unwrap_or(push.clear);
+            self.push.remove(on);
+            let to = self.resolve_landing_for(on, push.aim).at;
             if let Some(at) = self.transform.get_mut(on) {
                 at.pos = to;
             }
-            self.push.remove(on);
             self.forget_walk(on);
             if let Some(landing) = landing {
                 if let Err(at) = self.landing_hold.binary_search(&on) {

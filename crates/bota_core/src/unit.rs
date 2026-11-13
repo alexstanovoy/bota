@@ -125,6 +125,8 @@ pub struct UnitDef {
     pub ward_response: Option<WardResponse>,
     /// Whether it flies: closed ground is nothing to it.
     pub flies: bool,
+    /// Passes terrain and pathing obstacles while its vision remains grounded.
+    pub pathing_flight: bool,
     /// Trees are passable; terrain, structures and ground vision still apply.
     pub tree_walking: bool,
     /// Other units cannot carry this body with forced movement.
@@ -223,6 +225,7 @@ pub(crate) const BARE_UNIT: UnitDef = UnitDef {
     pit_blind: false,
     ward_response: None,
     flies: false,
+    pathing_flight: false,
     tree_walking: false,
     forced_move_immune: false,
     porter: false,

@@ -7,7 +7,7 @@ use bota_core::{
 };
 use bota_proto::{Angle, Inflictor, Target, Vec2};
 
-use crate::game::{CampHome, Modifier, Push, StatBonus, World};
+use crate::game::{CampHome, LandingBody, Modifier, Push, StatBonus, World};
 
 use super::spell::Cast;
 
@@ -41,7 +41,13 @@ impl World {
             let facing = Angle {
                 brads: (first + raised * 65536 / i32::from(count)) as u16,
             };
-            let at = point_ahead(from, facing, rules::units(SUMMON_RING));
+            let desired = point_ahead(from, facing, rules::units(SUMMON_RING));
+            let Some(at) = self.place_body(
+                LandingBody::of_def(kind.def(), bota_proto::Team::Neutral),
+                desired,
+            ) else {
+                continue;
+            };
             let unit = self.spawn_neutral_home(
                 kind,
                 at,
@@ -87,7 +93,13 @@ impl World {
             return false;
         };
         let ticks = ticks_of_ms(life_ms);
-        let unit = self.spawn_neutral_home(kind, clamp_to_map(at), home.camp, 0);
+        let Some(at) = self.place_body(
+            LandingBody::of_def(kind.def(), bota_proto::Team::Neutral),
+            clamp_to_map(at),
+        ) else {
+            return false;
+        };
+        let unit = self.spawn_neutral_home(kind, at, home.camp, 0);
         let by = (Some(cast.caster), cast.inflictor());
         self.give_timed_life(unit, ticks, by);
         self.put_modifier(
