@@ -530,14 +530,24 @@ impl World {
             let tier = self.ground.tier(cell.at);
             cell.flying || (tier >= target_tier && self.sight_block.clear(cell.at, tier, at))
         });
-        let landing = self.temporary_sights().any(|(side, from, radius, flying)| {
-            side == team
-                && from.within(at, rules::units(radius))
-                && bota_core::pit_sight_clear(self.map.boss_zones, from, at)
-                && (flying
-                    || (self.ground.tier(from) >= target_tier
-                        && self.sight_block.clear(from, self.ground.tier(from), at)))
-        });
+        let landing = self
+            .temporary_sights()
+            .chain(self.map.base_blockers.iter().map(|blocker| {
+                (
+                    blocker.team,
+                    blocker.at,
+                    bota_core::BASE_BLOCKER_VISION,
+                    false,
+                )
+            }))
+            .any(|(side, from, radius, flying)| {
+                side == team
+                    && from.within(at, rules::units(radius))
+                    && bota_core::pit_sight_clear(self.map.boss_zones, from, at)
+                    && (flying
+                        || (self.ground.tier(from) >= target_tier
+                            && self.sight_block.clear(from, self.ground.tier(from), at)))
+            });
         exposed
             || landing
             || self.entities.iter().any(|entity| {

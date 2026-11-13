@@ -1526,7 +1526,7 @@ impl World {
         } else {
             move_towards(from, pos, rules::units(overshoot))
         });
-        let Some(landing) = self.open_ground_back(from, aim) else {
+        let Some(landing) = self.open_ground_back(user, from, aim) else {
             return false;
         };
         if let Some(transform) = self.transform.get_mut(user) {
@@ -1536,11 +1536,11 @@ impl World {
     }
 
     /// The spot nearest `aim` on the line back to `from` that is open ground.
-    fn open_ground_back(&self, from: Vec2, aim: Vec2) -> Option<Vec2> {
+    fn open_ground_back(&self, user: Entity, from: Vec2, aim: Vec2) -> Option<Vec2> {
         let step = rules::units(rules::BLINK_STEP_BACK);
         let mut at = aim;
         for _ in 0..rules::BLINK_STEP_TRIES {
-            if self.clearance.stands_clear(at) {
+            if self.landing_clear(user, at) {
                 return Some(at);
             }
             if at == from {

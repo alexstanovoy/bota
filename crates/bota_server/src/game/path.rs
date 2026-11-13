@@ -5,7 +5,7 @@ use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 
 use bota_core::{isqrt64, point_along, rules};
-use bota_proto::{Fixed, Vec2};
+use bota_proto::{Fixed, Team, Vec2};
 
 use crate::game::{Clearance, Obstacles};
 
@@ -304,7 +304,12 @@ impl Planner {
 
 /// A* with a planner used once, for routes laid outside a match's walking.
 pub fn find_path(field: &Clearance, from: Vec2, to: Vec2, collision: Fixed) -> Vec<Vec2> {
-    let ob = Obstacles { field, extra: &[] };
+    let ob = Obstacles {
+        field,
+        extra: &[],
+        base_blockers: &[],
+        team: Team::Neutral,
+    };
     Planner::new().find_path(&ob, from, to, collision)
 }
 

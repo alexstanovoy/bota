@@ -106,12 +106,17 @@ impl World {
             let next = move_towards(at, push.aim, per_tick(push.speed));
             let open = self.clearance.walkable(next);
             let to = if open { next } else { at };
-            if self.clearance.stands_clear(to) {
+            if self.landing_clear(on, to) {
                 push.clear = to;
             }
             let done = !open || to == push.aim;
+            let landing = if done {
+                self.open_landing_for(on, to).unwrap_or(push.clear)
+            } else {
+                to
+            };
             if let Some(transform) = self.transform.get_mut(on) {
-                transform.pos = if done { push.clear } else { to };
+                transform.pos = landing;
             }
             self.forget_walk(on);
             self.put_modifier(

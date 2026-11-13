@@ -194,11 +194,11 @@ impl World {
         if tree_radius > 0 {
             self.fell_trees_along(before, next, tree_radius, push.source);
         }
-        if self.clearance.stands_clear(next) {
+        if self.landing_clear(on, next) {
             push.clear = next;
         }
         if age == duration {
-            let to = self.open_landing(push.aim).unwrap_or(push.clear);
+            let to = self.open_landing_for(on, push.aim).unwrap_or(push.clear);
             if let Some(at) = self.transform.get_mut(on) {
                 at.pos = to;
             }

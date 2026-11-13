@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use bota_core::{CellGrid, SightBlock, rules};
-use bota_proto::{Fixed, Team, UnitView, Vec2, WorldView};
+use bota_proto::{Fixed, Team, Vec2, WorldView};
 
 use crate::match_static::MatchStatic;
 
@@ -81,19 +81,18 @@ impl SightGround {
             return;
         }
         lit.fill(false);
-        for (unit, radius) in viewers(view, team) {
-            let Some((cx, cy)) = CellGrid::cell_of(unit.pos) else {
+        for (at, radius) in viewers(view, team, bota_core::map_of(self.statics.metadata().map)) {
+            let Some((cx, cy)) = CellGrid::cell_of(at) else {
                 continue;
             };
             let reach = (radius.to_int() / rules::GRID_CELL_SIZE + 1) as usize;
-            let tier = self.statics.ground_tier(unit.pos);
+            let tier = self.statics.ground_tier(at);
             let last = rules::GRID_CELLS - 1;
             for y in cy.saturating_sub(reach)..=(cy + reach).min(last) {
                 for x in cx.saturating_sub(reach)..=(cx + reach).min(last) {
                     let slot = &mut lit[y * rules::GRID_CELLS + x];
                     if !*slot {
-                        *slot =
-                            self.sees_from(unit.pos, radius, tier, CellGrid::cell_center((x, y)));
+                        *slot = self.sees_from(at, radius, tier, CellGrid::cell_center((x, y)));
                     }
                 }
             }
@@ -102,9 +101,8 @@ impl SightGround {
 
     /// Whether `team` sees a point through units and grants in `view`.
     pub fn sees(&self, view: &WorldView, team: Team, at: Vec2) -> bool {
-        viewers(view, team).any(|(unit, radius)| {
-            self.sees_from(unit.pos, radius, self.statics.ground_tier(unit.pos), at)
-        })
+        viewers(view, team, bota_core::map_of(self.statics.metadata().map))
+            .any(|(from, radius)| self.sees_from(from, radius, self.statics.ground_tier(from), at))
     }
 
     /// The server's rule for one viewer and one point: inside its vision,
@@ -124,18 +122,30 @@ impl SightGround {
 /// A grant contributes sight only to the team it names. No unit of the game sees farther than
 /// [`bota_core::MAX_VISION`], so neither does one here, whatever a view says: a view of thousands
 /// claiming to would have every cell worked out for each of them.
-fn viewers(view: &WorldView, team: Team) -> impl Iterator<Item = (&UnitView, Fixed)> {
-    view.units.iter().filter_map(move |unit| {
-        let own = if unit.team == team {
-            unit.vision_radius
-        } else {
-            Fixed::ZERO
-        };
-        let grant = unit
-            .vision_grant
-            .filter(|(side, _)| *side == team)
-            .map_or(Fixed::ZERO, |(_, radius)| radius);
-        let radius = own.max(grant).min(Fixed::from_int(bota_core::MAX_VISION));
-        (radius > Fixed::ZERO).then_some((unit, radius))
-    })
+fn viewers<'a>(
+    view: &'a WorldView,
+    team: Team,
+    map: &'a bota_core::MapDef,
+) -> impl Iterator<Item = (Vec2, Fixed)> + 'a {
+    view.units
+        .iter()
+        .filter_map(move |unit| {
+            let own = if unit.team == team {
+                unit.vision_radius
+            } else {
+                Fixed::ZERO
+            };
+            let grant = unit
+                .vision_grant
+                .filter(|(side, _)| *side == team)
+                .map_or(Fixed::ZERO, |(_, radius)| radius);
+            let radius = own.max(grant).min(Fixed::from_int(bota_core::MAX_VISION));
+            (radius > Fixed::ZERO).then_some((unit.pos, radius))
+        })
+        .chain(
+            map.base_blockers
+                .iter()
+                .filter(move |blocker| blocker.team == team)
+                .map(|blocker| (blocker.at, Fixed::from_int(bota_core::BASE_BLOCKER_VISION))),
+        )
 }

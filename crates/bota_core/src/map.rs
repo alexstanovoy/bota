@@ -155,6 +155,8 @@ pub struct MapDef {
     pub shrines: &'static [Vec2],
     /// Where the Lotus Pools stand.
     pub lotus_pools: &'static [Vec2],
+    /// Team-conditioned, permanent base exits. Empty on maps without them.
+    pub base_blockers: &'static [crate::BaseBlockerDef],
     /// The Twin Gates: none, or two, each carrying to the other.
     pub twin_gates: &'static [TwinGateDef],
     /// The objectives a match on this map stands up unless its host says
@@ -242,6 +244,7 @@ const DOTA: MapDef = MapDef {
     shrines: &objective::DOTA_SHRINES,
     lotus_pools: &crate::DOTA_LOTUS_POOLS,
     twin_gates: &objective::DOTA_TWIN_GATES,
+    base_blockers: &crate::DOTA_BASE_BLOCKERS,
     default_objectives: SIMULATED_OBJECTIVES,
     default_runes: SIMULATED_RUNES,
     rune_spots: &DOTA_RUNE_SPOTS,
@@ -287,6 +290,7 @@ const DEMO: MapDef = MapDef {
     shrines: &[],
     lotus_pools: &[],
     twin_gates: &[],
+    base_blockers: &[],
     default_objectives: ObjectiveSet::NONE,
     default_runes: RuneSet::NONE,
     rune_spots: &[],
@@ -306,6 +310,7 @@ const DEMO: MapDef = MapDef {
 /// is a Shadow Fiend mirror, so a seat that picks none plays Shadow Fiend.
 const SKIRMISH: MapDef = MapDef {
     id: MAP2_ID,
+    base_blockers: &[],
     protection: &crate::SOLO_MID_PROTECTION,
     wave_lanes: &[rules::LANE_MID],
     death_limit: MAP2_DEATH_LIMIT,

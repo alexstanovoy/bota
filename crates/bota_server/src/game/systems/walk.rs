@@ -5,7 +5,7 @@ use bota_core::{
     clamp_to_map, facing_gap, facing_towards, isqrt64, move_towards, per_tick, point_ahead,
     point_along, rules, turn_towards,
 };
-use bota_proto::{Angle, Fixed, Target, Vec2};
+use bota_proto::{Angle, Fixed, Target, Team, Vec2};
 
 use crate::game::{
     ActionPhase, ActionState, Blocked, Entity, LocalAsk, LocalScratch, Obstacles, Plan, Planner,
@@ -31,6 +31,20 @@ impl World {
             &self.tree_clearance
         } else {
             &self.clearance
+        }
+    }
+
+    /// The ground and map bodies this particular unit meets while walking.
+    pub(crate) fn walking_obstacles<'a>(
+        &'a self,
+        entity: Entity,
+        extra: &'a [(Vec2, Fixed)],
+    ) -> Obstacles<'a> {
+        Obstacles {
+            field: self.walking_field(entity),
+            extra,
+            base_blockers: self.map.base_blockers,
+            team: self.team.get(entity).copied().unwrap_or(Team::Neutral),
         }
     }
 
@@ -469,8 +483,8 @@ impl World {
                     .stood_in_the_way(entity, from, *to, collision)
                     .is_none()
                 && self
-                    .walking_field(entity)
-                    .capsule_clear(from, *to, collision)
+                    .walking_obstacles(entity, &[])
+                    .clear(from, *to, collision)
         }) else {
             return false;
         };
@@ -743,8 +757,8 @@ impl World {
         };
         let next = point_ahead(leg.from, heading, leg.step);
         (self
-            .walking_field(leg.entity)
-            .capsule_clear(leg.from, next, leg.collision)
+            .walking_obstacles(leg.entity, &[])
+            .clear(leg.from, next, leg.collision)
             && self
                 .stood_in_the_way(leg.entity, leg.from, next, leg.collision)
                 .is_none())
@@ -778,7 +792,11 @@ impl World {
             }
             return;
         }
-        if !self.phased(entity) && self.body_in_the_way(entity, from, target).is_some() {
+        if !self
+            .walking_obstacles(entity, &[])
+            .clear(from, target, leg.collision)
+            || (!self.phased(entity) && self.body_in_the_way(entity, from, target).is_some())
+        {
             self.walk_into(leg, target);
             return;
         }
@@ -810,10 +828,7 @@ impl World {
         scratch: &mut LocalScratch,
     ) -> (Vec<Vec2>, bool) {
         let _profile = self.scope(Phase::LocalPlan);
-        let ob = Obstacles {
-            field: self.walking_field(leg.entity),
-            extra: stationary,
-        };
+        let ob = self.walking_obstacles(leg.entity, stationary);
         let ask = LocalAsk {
             from: leg.from,
             facing: self
@@ -934,6 +949,8 @@ impl World {
                     &self.clearance
                 },
                 extra: &round,
+                base_blockers: self.map.base_blockers,
+                team: self.team.get(entity).copied().unwrap_or(Team::Neutral),
             };
             keeps_route(&ob, &mut route, from, dest, room)
         };
@@ -947,6 +964,8 @@ impl World {
                 &self.clearance
             },
             extra: &round,
+            base_blockers: self.map.base_blockers,
+            team: self.team.get(entity).copied().unwrap_or(Team::Neutral),
         };
         let fresh = !kept || left || !extra.is_empty();
         if fresh {

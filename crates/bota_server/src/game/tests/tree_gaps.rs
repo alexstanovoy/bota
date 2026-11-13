@@ -344,6 +344,8 @@ fn the_long_pather_reads_the_ground_as_it_now_stands() {
         let ob = Obstacles {
             field: &world.clearance,
             extra: &[],
+            base_blockers: &[],
+            team: bota_proto::Team::Neutral,
         };
         let corners = planner.find_path(&ob, gap.a, gap.b, collision);
         (length(gap.a, &corners), nearest(gap.a, &corners, gap.tree))
@@ -364,6 +366,8 @@ fn the_long_pather_reads_the_ground_as_it_now_stands() {
     let ob = Obstacles {
         field: &fresh,
         extra: &[],
+        base_blockers: &[],
+        team: bota_proto::Team::Neutral,
     };
     let again = Planner::new().find_path(&ob, gap.a, gap.b, collision);
     assert_eq!(length(gap.a, &again), through);

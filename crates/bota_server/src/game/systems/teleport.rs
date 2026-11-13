@@ -9,6 +9,8 @@ use crate::game::{Entity, Event, EventVisibility, Teleport, UnitOrder, World, wi
 /// Raw [`Fixed`] of one over the square root of two, for the diagonal spots
 /// of a landing ring.
 const DIAGONAL_RAW: i64 = 46_341;
+/// The small clearance beyond a grounded unit's hull when placed.
+const LANDING_MARGIN: Fixed = Fixed::from_ratio(1, 5);
 
 impl World {
     /// Where `scroll` read by `user` at `target` carries: the building and
@@ -55,7 +57,7 @@ impl World {
                 (building, hero_spawn_pos(self.map, side))
             }
         };
-        Some((building, self.open_landing(aim)?))
+        Some((building, self.open_landing_for(user, aim)?))
     }
 
     /// Whether an entity is a standing building of `side` a scroll carries to.
@@ -115,7 +117,27 @@ impl World {
     /// spot on rings of eight around it, [`rules::SCROLL_LANDING_STEP`]
     /// apart, out to [`rules::SCROLL_LANDING_RINGS`] of them.
     pub fn open_landing(&self, aim: Vec2) -> Option<Vec2> {
-        if self.clearance.stands_clear(aim) {
+        self.nearest_landing(aim, |at| self.clearance.stands_clear(at))
+    }
+
+    /// Whether a unit can finish a displacement here: the body's own side
+    /// passes its base fields, and its hull must clear the others.
+    pub(crate) fn landing_clear(&self, unit: Entity, at: Vec2) -> bool {
+        self.clearance.stands_clear(at)
+            && (self.stats.get(unit).is_some_and(|stats| stats.flies)
+                || self
+                    .walking_obstacles(unit, &[])
+                    .map_fits(at, self.collision(unit) + LANDING_MARGIN))
+    }
+
+    /// The nearest open release point for a particular unit. Displacement
+    /// paths may cross a field; the final grounded body must clear it.
+    pub(crate) fn open_landing_for(&self, unit: Entity, aim: Vec2) -> Option<Vec2> {
+        self.nearest_landing(aim, |at| self.landing_clear(unit, at))
+    }
+
+    fn nearest_landing(&self, aim: Vec2, clear: impl Fn(Vec2) -> bool) -> Option<Vec2> {
+        if clear(aim) {
             return Some(aim);
         }
         for ring in 1..=rules::SCROLL_LANDING_RINGS {
@@ -140,7 +162,7 @@ impl World {
                         raw: aim.y.raw.saturating_add(dy as i32),
                     },
                 });
-                if self.clearance.stands_clear(spot) {
+                if clear(spot) {
                     return Some(spot);
                 }
             }
@@ -199,7 +221,7 @@ impl World {
         let Some(teleport) = self.teleport_of(user).filter(|teleport| teleport.live) else {
             return;
         };
-        let landing = self.open_landing(teleport.landing);
+        let landing = self.open_landing_for(user, teleport.landing);
         self.end_teleport(user, landing.is_some());
         let Some(landing) = landing else {
             return;

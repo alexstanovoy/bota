@@ -887,6 +887,14 @@ impl World {
             .map(|(side, at, radius)| (side, at, radius, true))
             .collect();
         scroll_sights.extend(viewers);
+        scroll_sights.extend(self.map.base_blockers.iter().map(|blocker| {
+            (
+                blocker.team,
+                blocker.at,
+                bota_core::BASE_BLOCKER_VISION,
+                false,
+            )
+        }));
         visibility_system(SightCx {
             pits: self.map.boss_zones,
             entities: &self.entities,

@@ -32,6 +32,8 @@ pub use lifesteal::*;
 pub use placement_data::DOTA_NO_WARDS;
 mod ward;
 pub use ward::*;
+mod base_blocker;
+pub use base_blocker::*;
 mod banner;
 pub use banner::*;
 mod disassembly;

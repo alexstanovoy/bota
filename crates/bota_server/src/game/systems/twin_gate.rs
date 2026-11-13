@@ -103,7 +103,12 @@ impl World {
     pub(crate) fn warp_completes(&mut self, caster: Entity, target: Target) {
         let landed = self.warp_gates(target).and_then(|(gate, partner)| {
             let exit = self.gate.get(partner)?.exit;
-            Some((gate, partner, self.pos(partner)?, self.open_landing(exit)?))
+            Some((
+                gate,
+                partner,
+                self.pos(partner)?,
+                self.open_landing_for(caster, exit)?,
+            ))
         });
         let Some((gate, partner, beyond, landing)) = landed else {
             self.warp_breaks_off(caster, target);

@@ -8,6 +8,7 @@ mod attacks;
 mod auras;
 mod backdoor;
 mod backpack_grace;
+mod base_blockers;
 mod bottle;
 mod bounty;
 mod buildings;

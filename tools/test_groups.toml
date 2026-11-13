@@ -309,6 +309,7 @@ paths = [
     "crates/bota_server/src/game/tests/movement.rs",
     "crates/bota_server/src/game/tests/turning.rs",
     "crates/bota_server/src/game/tests/forest_paths.rs",
+    "crates/bota_server/src/game/tests/base_blockers.rs",
     "crates/bota_server/src/game/tests/tree_gaps.rs",
     "crates/bota_server/src/game/tests/orders.rs",
     "crates/bota_server/src/game/tests/order_legality.rs",
@@ -320,6 +321,7 @@ tests = [{ crate = "bota_server", target = "lib", filters = [
     "game::tests::movement::",
     "game::tests::turning::",
     "game::tests::forest_paths::",
+    "game::tests::base_blockers::",
     "game::tests::tree_gaps::",
     "game::tests::orders::",
     "game::tests::order_legality::",
@@ -675,6 +677,7 @@ paths = [
     "crates/bota_server/tests/ordered_inventory.rs",
     "crates/bota_server/tests/twin_gates.rs",
     "crates/bota_server/tests/misses.rs",
+    "crates/bota_server/tests/base_blockers.rs",
 ]
 tests = [
     { crate = "bota_server", target = "test:solo" },
@@ -693,6 +696,7 @@ tests = [
     { crate = "bota_server", target = "test:ordered_inventory" },
     { crate = "bota_server", target = "test:twin_gates" },
     { crate = "bota_server", target = "test:misses" },
+    { crate = "bota_server", target = "test:base_blockers" },
 ]
 # Whole matches play every system: any change to the simulation's code runs them too (a change to its tests does not).
 also_paths = [

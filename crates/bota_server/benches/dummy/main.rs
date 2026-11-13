@@ -215,6 +215,13 @@ fn bench_plan(group: &mut BenchmarkGroup<'_, WallTime>) {
     let ob = Obstacles {
         field: &field,
         extra: &bodies,
+        base_blockers: dummy.world.map.base_blockers,
+        team: dummy
+            .world
+            .team
+            .get(hero)
+            .copied()
+            .expect("the hero has a side"),
     };
     let asks: Vec<LocalAsk> = PLAN_GOALS
         .iter()

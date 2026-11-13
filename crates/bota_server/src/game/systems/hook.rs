@@ -279,6 +279,15 @@ impl World {
     /// Takes a hook and its chain out of the world.
     fn let_go(&mut self, hook: Entity) {
         if let Some(flown) = self.hook.get(hook).copied() {
+            if let Some(caught) = flown.caught.filter(|unit| self.hull.contains(*unit))
+                && let Some(at) = self.pos(caught)
+                && let Some(landing) = self.open_landing_for(caught, at)
+            {
+                if let Some(transform) = self.transform.get_mut(caught) {
+                    transform.pos = landing;
+                }
+                self.forget_walk(caught);
+            }
             for link in flown.links {
                 self.take_mark(link);
             }

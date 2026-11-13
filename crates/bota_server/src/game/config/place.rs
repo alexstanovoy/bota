@@ -57,8 +57,13 @@ pub fn lane_routes_on(
     field: &Clearance,
     planner: &mut Planner,
 ) -> [[Vec<Vec2>; 3]; 2] {
-    let ob = Obstacles { field, extra: &[] };
     let mut build = |team: Team| {
+        let ob = Obstacles {
+            field,
+            extra: &[],
+            base_blockers: map.base_blockers,
+            team,
+        };
         [
             walk_lane(map, &ob, planner, team, rules::LANE_MID),
             walk_lane(map, &ob, planner, team, rules::LANE_TOP),

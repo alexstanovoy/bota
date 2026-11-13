@@ -8,7 +8,7 @@ use bota_core::{
     CellGrid, isqrt64, point_box_distance_squared, rules, segment_box_distance_squared,
     segment_distance_squared,
 };
-use bota_proto::{Fixed, Vec2};
+use bota_proto::{Fixed, Team, Vec2};
 
 use crate::game::{bucket_coords, bucket_of};
 
@@ -441,6 +441,9 @@ pub struct Obstacles<'a> {
     /// Circles that stand only for this plan: bodies routed round as if
     /// they were structures.
     pub extra: &'a [(Vec2, Fixed)],
+    /// Team-conditioned bodies belonging to the map.
+    pub base_blockers: &'a [bota_core::BaseBlockerDef],
+    pub team: Team,
 }
 
 impl Obstacles<'_> {
@@ -451,16 +454,48 @@ impl Obstacles<'_> {
             self.extra
                 .iter()
                 .all(|&(at, theirs)| !centre.within(at, theirs + radius))
+                && self.map_fits(centre, radius)
         }
     }
 
     /// Whether a body of a collision size can walk the straight segment.
     pub fn clear(&self, from: Vec2, to: Vec2, radius: Fixed) -> bool {
-        self.field.capsule_clear(from, to, radius)
+        self.map_clear(from, to, radius)
+            && self.field.capsule_clear(from, to, radius)
             && self
                 .extra
                 .iter()
                 .all(|&(at, theirs)| !circle_stops(at, theirs, from, to, radius, true))
+    }
+
+    /// Whether a body may stand at a point among the team's map bodies.
+    pub fn map_fits(&self, at: Vec2, radius: Fixed) -> bool {
+        self.base_blockers
+            .iter()
+            .filter(|blocker| blocker.team != self.team)
+            .all(|blocker| {
+                !at.within(
+                    blocker.at,
+                    rules::units(bota_core::BASE_BLOCKER_BOUND) + radius,
+                ) || blocker
+                    .bodies()
+                    .all(|(centre, theirs)| !at.within(centre, theirs + radius))
+            })
+    }
+
+    /// Whether the team's map bodies leave a continuous step clear. A body
+    /// displaced inside one may escape, but may not approach its centre.
+    pub fn map_clear(&self, from: Vec2, to: Vec2, radius: Fixed) -> bool {
+        self.base_blockers
+            .iter()
+            .filter(|blocker| blocker.team != self.team)
+            .all(|blocker| {
+                segment_distance_squared(blocker.at, from, to)
+                    >= (rules::units(bota_core::BASE_BLOCKER_BOUND) + radius).squared_raw()
+                    || blocker
+                        .bodies()
+                        .all(|(at, theirs)| !circle_stops(at, theirs, from, to, radius, true))
+            })
     }
 }
 
