@@ -5,6 +5,17 @@ use bota_lua::{BotSeat, Keys, Limits, LuaTeam, ScriptKind};
 use bota_proto::{HeroId, Order, SlotId, Target, Team, UnitKind, Vec2};
 use bota_server::local::LocalMatch;
 
+fn assert_script_ran(turn: &bota_lua::TeamTurn, x: i32, y: i32) {
+    assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+    assert_eq!(turn.bots[0].orders.len(), 1);
+    assert_eq!(
+        turn.bots[0].orders[0].order,
+        Order::Move {
+            target: Target::Pos(Vec2::from_ints(x, y))
+        }
+    );
+}
+
 fn team(side: Team, slot: SlotId) -> LuaTeam {
     LuaTeam::new(
         side,
@@ -78,10 +89,11 @@ fn global_unit_lists_include_visible_units_and_drop_remembered_enemies_from_both
                     if unit == tower then found = true end
                 end
                 assert(tower and found)
+                GetBot():Action_MoveToLocation(Vector(100+phase,200,0))
             end
         "#).expect("script");
         let turn = lua.think(&sessions[index]).expect("initial view");
-        assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+        assert_script_ran(&turn, 9317, 9416);
         let center = Vec2::from_ints(9216, 9216);
         for _ in 0..3600 {
             if sees_enemy(&sessions[index]) {
@@ -94,7 +106,7 @@ fn global_unit_lists_include_visible_units_and_drop_remembered_enemies_from_both
             "the ordinary moves reached enemy vision"
         );
         let turn = lua.think(&sessions[index]).expect("visible enemy");
-        assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+        assert_script_ran(&turn, 9318, 9416);
         let mut positions = [center; 2];
         positions[index] = bota_core::fountain_pos(sessions[index].map(), side);
         for _ in 0..1800 {
@@ -108,7 +120,7 @@ fn global_unit_lists_include_visible_units_and_drop_remembered_enemies_from_both
             "the enemy left this side's sight"
         );
         let turn = lua.think(&sessions[index]).expect("hidden enemy");
-        assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+        assert_script_ran(&turn, 9319, 9416);
     }
 }
 
@@ -132,10 +144,11 @@ fn global_unit_lists_reject_invalid_categories_and_return_independent_tables() {
             local second = GetUnitList(UNIT_LIST_ALLIED_HEROES)
             assert(second ~= first and second[1] == GetBot())
             assert(#GetUnitList(UNIT_LIST_NEUTRAL_CREEPS) == 0)
+            GetBot():Action_MoveToLocation(Vector(123,456,0))
         end
     "#,
     )
     .expect("script");
     let turn = lua.think(&sessions[0]).expect("think");
-    assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+    assert_script_ran(&turn, 9339, 9672);
 }
