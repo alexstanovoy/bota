@@ -309,3 +309,84 @@ fn available_damage_refuses_unproven_resources_and_disabled_casters() {
         }
     }
 }
+
+#[test]
+fn available_damage_includes_passive_continuous_projections_even_when_the_caster_is_disabled() {
+    use bota_core::NeutralAbility;
+    use bota_proto::StatusFlags;
+    // Envenomed Weapon level 2: 20 magical DPS for 2 seconds. Petrify level 1:
+    // 100 physical DPS for 1.2 seconds below 90% HP. No mitigation in this fixture.
+    for (id, level, mask, expected) in [
+        (NeutralAbility::EnvenomedWeapon.id(), 2, 2, 40),
+        (NeutralAbility::Petrify.id(), 1, 1, 120),
+    ] {
+        for disabled in [0, StatusFlags::STUNNED, StatusFlags::FEARED] {
+            let session = session_with_view(|unit| {
+                let mut ability = unit.abilities[0];
+                ability.id = id;
+                ability.level = level;
+                ability.passive = true;
+                ability.cooldown_left = 0;
+                ability.mana_cost = 0;
+                unit.abilities = vec![ability];
+                unit.items.fill(None);
+                unit.effects.clear();
+                unit.hp = 50;
+                unit.max_hp = 100;
+                unit.mana = 0;
+                unit.attack_damage = 0;
+                unit.armor = Fixed::from_int(0);
+                unit.magic_resist = Fixed::from_int(0);
+                unit.statuses.bits = disabled;
+            });
+            let source = format!(
+                r#"
+                function Think()
+                    local bot = GetBot()
+                    assert(bot:GetEstimatedDamageToTarget(false, bot, 2, {mask}) == {expected}, 'passive fixture projection')
+                    assert(bot:GetEstimatedDamageToTarget(true, bot, 2, {mask}) == {expected}, 'passive damage must not require cast readiness')
+                end
+            "#
+            );
+            assert_lua(&session, HeroId::SHADOW_FIEND, source.as_bytes());
+        }
+    }
+}
+
+#[test]
+fn available_damage_includes_a_ready_grenade_but_excludes_disables_and_missing_charges() {
+    use bota_proto::StatusFlags;
+    for (disabled, charges, expected) in [
+        (0, Some(1), 65),
+        (StatusFlags::STUNNED, Some(1), 0),
+        (StatusFlags::FEARED, Some(1), 0),
+        (0, None, 0),
+    ] {
+        let session = session_with_view(|unit| {
+            let mut grenade = unit.items[0].expect("grenade");
+            grenade.charges = charges;
+            grenade.cooldown_left = 0;
+            grenade.mute_left = 0;
+            grenade.mana_cost = 0;
+            unit.items.fill(None);
+            unit.items[0] = Some(grenade);
+            unit.abilities.clear();
+            unit.effects.clear();
+            unit.magic_resist = Fixed::from_int(0);
+            unit.statuses.bits = disabled;
+        });
+        // At 2 seconds, the 0.2-second cast leaves one burn tick: 50 + 15 damage.
+        let source = format!(
+            r#"
+            function Think()
+                local bot = GetBot()
+                assert(bot:GetEstimatedDamageToTarget(false, bot, 2, DAMAGE_TYPE_MAGICAL) == 65, 'grenade damage fixture')
+                assert(bot:GetEstimatedDamageToTarget(true, bot, 2, DAMAGE_TYPE_MAGICAL) == {expected}, 'grenade availability')
+                assert(bot:GetItemInSlot(0):IsFullyCastable() == {castable}, 'grenade readiness')
+            end
+        "#,
+            castable = expected != 0
+        );
+        assert_lua(&session, HeroId::SHADOW_FIEND, source.as_bytes());
+    }
+}

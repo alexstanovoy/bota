@@ -165,7 +165,8 @@ backpack and stash items are not fully castable.
 learned state, cooldown, mana, charges, backpack inactivity and visible disables.
 Owned illusions are never fully castable. Negative costs return false. Abilities whose
 data permits casting while stunned retain that exception (currently a neutral ability,
-not a hero-kit ability). A stored Bottle rune needs no charge. Uncertain rounded mana (including a Mango
+not a hero-kit ability). A stored Bottle rune needs no charge. An item that requires charges
+but has no received charge fact is not fully castable. Uncertain rounded mana (including a Mango
 at its shown maximum) returns false. Unknown root/hidden-control state returns true
 when the other readiness checks pass, so an unexposed hook followthrough does not
 make every ability of its caster permanently unavailable. `CanAbilityBeUpgraded`
@@ -230,8 +231,10 @@ own-side items and owned dead-hero kits retain their received cooldowns.
 Estimated damage is an integer projection of observed attack stats and core spell
 data over the requested duration. For allied casters, `available=true` uses the same
 shared readiness and uncertainty fallback as `IsFullyCastable`, including known
-disables and inventory copies, plus the remaining projected mana budget. Ordinary
-attacks and passive attack projections do not require cast readiness. Enemy
+disables and inventory copies, plus the remaining projected mana budget. An allied caster
+that is stunned or feared has its cast abilities and items excluded, subject to an ability's
+data-defined casting exception. Ordinary attacks and passive projections, including continuous
+passive effects, do not require cast readiness. Enemy
 availability is assumed, as specified by the API; withheld cooldown placeholders
 are not used as evidence of readiness. Mitigation and spell piercing use core
 rules, without positional assumptions.

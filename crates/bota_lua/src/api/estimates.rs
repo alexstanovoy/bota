@@ -156,6 +156,7 @@ fn spell_damage(
         }
         if available
             && projection.cadence != DamageCadence::Attack
+            && !definition.passive
             && (!super::abilities::fully_castable(
                 bota_client_core::order_legality::ability_readiness(actor, ability),
             ) || !budget_readiness(actor, mana, ability.mana_cost).is_legal())
