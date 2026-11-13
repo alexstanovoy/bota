@@ -41,6 +41,8 @@ pub enum PlayError<E = Infallible> {
     Observer(E),
     /// The server closed the connection before the match ended.
     Closed,
+    /// The service that runs the server ended the match before it was played out: nobody won.
+    Aborted(bota_proto::AbortReason),
 }
 
 impl<E: fmt::Display> fmt::Display for PlayError<E> {
@@ -54,6 +56,7 @@ impl<E: fmt::Display> fmt::Display for PlayError<E> {
             ),
             Self::Observer(error) => write!(f, "{error}"),
             Self::Closed => f.write_str("the server closed the connection before the match ended"),
+            Self::Aborted(reason) => write!(f, "the match was ended before its end: {reason:?}"),
         }
     }
 }
@@ -129,6 +132,7 @@ where
             Ingested::Passed(msg) if matches!(*msg, ServerMsg::Ping) => {
                 transport.send(&ClientMsg::Pong)?;
             }
+            Ingested::Aborted { reason, .. } => return Err(PlayError::Aborted(reason)),
             Ingested::Over { winner, .. } => {
                 let session = seat.session().expect("the end comes after the start");
                 return Ok(Outcome {

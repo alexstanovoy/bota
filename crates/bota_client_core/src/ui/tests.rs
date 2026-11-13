@@ -5,9 +5,9 @@ use crate::ui::ChannelStops;
 use crate::ui::app::{App, CueKind, FeedKind, Killer, Tap, Victim, tap_again};
 use crate::ui::slots::{Look, Press, Slot, ability_look, decide, item_look, order_for};
 use bota_proto::{
-    AbilityId, AbilitySlot, AbilityView, Aim, Angle, Attributes, EntityId, EventKind, Fixed,
-    HeroId, ItemId, ItemSlot, ItemView, Order, PlayerView, SlotId, StatusFlags, Target, Team,
-    UnitKind, UnitView, Vec2, WorldView,
+    AbilityId, AbilitySlot, AbilityView, AbortReason, Aim, Angle, Attributes, EntityId, EventKind,
+    Fixed, HeroId, ItemId, ItemSlot, ItemView, Order, PlayerView, SlotId, StatusFlags, Target,
+    Team, UnitKind, UnitView, Vec2, WorldView,
 };
 
 #[test]
@@ -2417,6 +2417,83 @@ fn a_click_on_roshan_from_outside_the_pits_is_a_click_on_the_ground_and_from_ins
         }),
         "from inside, the click attacks"
     );
+}
+
+/// A link that hangs up at its first poll after saying what it was given to say.
+struct Parting {
+    last_words: Vec<bota_proto::ServerMsg>,
+    polls: u32,
+}
+
+impl crate::ui::app::LiveLink for Parting {
+    fn poll(&mut self) -> Vec<bota_proto::ServerMsg> {
+        self.polls += 1;
+        std::mem::take(&mut self.last_words)
+    }
+
+    fn send(&mut self, _: &bota_proto::ClientMsg) -> std::io::Result<()> {
+        Ok(())
+    }
+
+    fn is_closed(&self) -> bool {
+        self.polls >= 1
+    }
+}
+
+fn a_match_whose_link_hangs_up_after(last_words: Vec<bota_proto::ServerMsg>) -> App {
+    let mut app = App::new(crate::ui::app::Source::Live(Box::new(Parting {
+        last_words,
+        polls: 0,
+    })));
+    app.my_slot = Some(SlotId(0));
+    app.handle(a_match_start());
+    app.pump(0.016);
+    app.pump(0.016);
+    app
+}
+
+#[test]
+fn a_match_the_service_ended_is_over_and_names_who_ended_it_and_is_not_a_lost_connection() {
+    for reason in [AbortReason::TimeLimit, AbortReason::Stopped] {
+        let app = a_match_whose_link_hangs_up_after(vec![bota_proto::ServerMsg::MatchAborted {
+            reason,
+            stats: Some(bota_proto::MatchStats {
+                duration: 900,
+                slots: Vec::new(),
+                leaves: Vec::new(),
+            }),
+        }]);
+        assert_eq!(app.aborted, Some(reason));
+        assert_eq!(
+            app.over
+                .as_ref()
+                .map(|(winner, stats)| (*winner, stats.duration)),
+            Some((Team::Neutral, 900)),
+            "nobody won, and the numbers up to the end are kept"
+        );
+        assert!(
+            !app.lost,
+            "{reason:?}: an ended match is not a lost connection"
+        );
+    }
+}
+
+#[test]
+fn a_connection_that_breaks_without_an_ending_is_lost_and_is_no_abort() {
+    let app = a_match_whose_link_hangs_up_after(Vec::new());
+    assert!(app.lost, "no end came: the connection is lost");
+    assert_eq!(app.aborted, None);
+    assert!(app.over.is_none());
+}
+
+#[test]
+fn a_warning_of_the_time_limit_is_kept_for_the_front_end_and_the_match_goes_on() {
+    let mut app = a_started_app();
+    app.handle(bota_proto::ServerMsg::TimeLimitNear {
+        remaining_secs: 300,
+    });
+    assert_eq!(app.limit_near, Some(300));
+    assert!(app.over.is_none() && !app.lost);
 }
 
 #[test]

@@ -9,19 +9,24 @@ use std::time::Duration;
 use clap::{Parser, ValueEnum};
 
 use bota_core::rules;
-use bota_proto::{HeroId, Role, SeatKey, Team, encode_match_report};
+use bota_proto::{AbortReason, HeroId, Role, SeatKey, Team, encode_match_report};
 use bota_server::chat::{ChatOpts, SeatChat};
 use bota_server::game::OrderDelay;
 use bota_server::game_loop::{
-    DEFAULT_IDLE_TIMEOUT, DEFAULT_SPECTATORS_PER_SEAT, MatchEnd, ServerOpts, check_opts,
+    DEFAULT_IDLE_TIMEOUT, DEFAULT_SPECTATORS_PER_SEAT, MatchEnd, ServerOpts, check_opts, run_with,
     run_with_profiles,
 };
 use bota_server::lobby::ReservedSeat;
 use bota_server::net::{DEFAULT_MESSAGES_PER_SEC, Listeners};
+use bota_server::outside::{DEFAULT_WARNING, Outside, StopRequest, TimeLimit};
 use bota_server::spectators::Spectators;
 
 /// The exit code of a match nobody played: no result, nothing to rate.
 const EXIT_ABANDONED: u8 = 3;
+/// The exit code of a match the service ended before it was played out, to a launcher that cannot
+/// read the `aborted` field of the result line (no result is printed then): a failure to it, which
+/// rates nothing either.
+const EXIT_ABORTED: u8 = 4;
 
 /// Connections held at once unless the command line says otherwise.
 const DEFAULT_MAX_CONNECTIONS: usize = 64;
@@ -106,6 +111,18 @@ struct Args {
     /// older launcher reads every line, whatever the order the two are updated in.
     #[arg(long, env = "RADOVID_RESULT_VERSION", default_value_t = 1, value_parser = clap::value_parser!(u16).range(1..))]
     result_version: u16,
+    /// End the match at this many seconds of wall-clock time after the server's start (just before
+    /// `READY`: a launcher that counts from `READY` sees the game's limit fall due first), in
+    /// lockstep and realtime alike, not of game time, whatever is happening: every
+    /// connection is told why and a warning goes out ahead
+    /// (`--time-limit-warning-secs`), the replay is closed and the result line says
+    /// `aborted=time_limit`. A launcher that runs matches for a limit says it in the variable.
+    /// Absent: no limit.
+    #[arg(long, env = "RADOVID_MAX_DURATION_SECS", value_parser = clap::value_parser!(u64).range(1..))]
+    time_limit_secs: Option<u64>,
+    /// How many seconds before the time limit every connection is warned (at most half of it).
+    #[arg(long, default_value_t = DEFAULT_WARNING.as_secs(), requires = "time_limit_secs")]
+    time_limit_warning_secs: u64,
     /// Write the match's metadata file to this file: what each seat held and had earned every
     /// game minute, the kills, purchases, levels, buildings and final items, in a format that
     /// outlives the build (the `bota_replay` crate). Refused before `READY` if it cannot be
@@ -285,6 +302,11 @@ fn main() -> ExitCode {
             );
             ExitCode::SUCCESS
         }
+        Ok(MatchEnd::Aborted {
+            reason,
+            report,
+            replay_truncated,
+        }) => aborted_end(reason, report.as_ref(), replay_truncated, result_version),
         Ok(MatchEnd::Abandoned { leaves }) => {
             if !leaves.is_empty() {
                 let facts = leaves
@@ -301,6 +323,82 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// What a match the service ended from outside leaves on stdout and as an exit code. One that
+/// began reports itself as far as it went to a launcher that reads `aborted` (result version 3):
+/// no winner, nothing rated, the report of its stats. One that did not begin, or a launcher that
+/// cannot read the field, gets no result: the first is a match nobody played, the second a failure,
+/// and the launcher rates neither. The replay file a launcher asked for is made at the server's
+/// start, so one that never began leaves it holding only its header (32 bytes, a replay of no
+/// match), not no file.
+fn aborted_end(
+    reason: AbortReason,
+    report: Option<&bota_proto::MatchReport>,
+    replay_truncated: bool,
+    result_version: u16,
+) -> ExitCode {
+    let (lines, code) = aborted_departure(reason, report, replay_truncated, result_version);
+    for line in lines {
+        println!("{line}");
+    }
+    ExitCode::from(code)
+}
+
+/// The lines and the exit code of [`aborted_end`].
+fn aborted_departure(
+    reason: AbortReason,
+    report: Option<&bota_proto::MatchReport>,
+    replay_truncated: bool,
+    result_version: u16,
+) -> (Vec<String>, u8) {
+    let told = format!("ABORTED reason={}", aborted_word(reason));
+    let Some(report) = report else {
+        return (vec![told], EXIT_ABANDONED);
+    };
+    if result_version < 3 {
+        return (vec![told], EXIT_ABORTED);
+    }
+    (
+        vec![told, aborted_line(reason, report, replay_truncated)],
+        0,
+    )
+}
+
+/// How a launcher is told who ended the match (`aborted=<word>`).
+fn aborted_word(reason: AbortReason) -> &'static str {
+    match reason {
+        AbortReason::TimeLimit => "time_limit",
+        AbortReason::Stopped => "stopped",
+    }
+}
+
+/// The result line of a match ended from outside, for a launcher of result version 3 or later.
+fn aborted_line(
+    reason: AbortReason,
+    report: &bota_proto::MatchReport,
+    replay_truncated: bool,
+) -> String {
+    let (duration_ms, hex) = report_fields(report);
+    let truncated = if replay_truncated {
+        " replay=truncated"
+    } else {
+        ""
+    };
+    format!(
+        "RESULT winner=draw duration_ms={duration_ms} report={hex}{truncated} aborted={} v=3",
+        aborted_word(reason)
+    )
+}
+
+/// The length of the match in milliseconds and its report as hex, as a result line carries them.
+fn report_fields(report: &bota_proto::MatchReport) -> (u32, String) {
+    let ms =
+        u64::from(report.stats.duration) * 1000 / u64::from(bota_core::rules::TICKS_PER_SECOND);
+    let duration_ms = u32::try_from(ms).unwrap_or(u32::MAX);
+    let bytes = encode_match_report(report).expect("a report encodes");
+    let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
+    (duration_ms, hex)
 }
 
 /// Listens, says `READY`, and plays the match.
@@ -324,11 +422,12 @@ fn serve(mut args: Args) -> std::io::Result<MatchEnd> {
         false,
     )?;
     let listeners = listen(&args)?;
+    let outside = outside_of(&args)?;
     println!("READY");
     let profiles = launch_profiles(&args, opts.players).map_err(std::io::Error::other)?;
     match profiles {
-        Some(profiles) => run_with_profiles(listeners, opts, profiles),
-        None => bota_server::game_loop::run(listeners, opts),
+        Some(profiles) => run_with_profiles(listeners, opts, profiles, outside),
+        None => run_with(listeners, opts, outside),
     }
 }
 
@@ -395,6 +494,20 @@ fn launch_profiles(
     Ok(Some(profiles))
 }
 
+/// What the service asks of the server from outside: its time limit, and SIGTERM, which asks
+/// for the match to be ended now (the way a launcher stops a game it runs).
+fn outside_of(args: &Args) -> std::io::Result<Outside> {
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    signal_hook::flag::register(signal_hook::consts::SIGTERM, std::sync::Arc::clone(&stop))?;
+    let limit = args.time_limit_secs.and_then(|secs| {
+        TimeLimit::new(
+            Duration::from_secs(secs),
+            Duration::from_secs(args.time_limit_warning_secs),
+        )
+    });
+    Ok(Outside::new(limit, StopRequest::on(stop)))
+}
+
 /// A variable of the environment; absent when unset or empty.
 fn secret_env(name: &str) -> Result<Option<String>, String> {
     match std::env::var(name) {
@@ -419,11 +532,7 @@ fn result_line(
         Team::Dire => "1",
         Team::Neutral => "draw",
     };
-    let ms =
-        u64::from(report.stats.duration) * 1000 / u64::from(bota_core::rules::TICKS_PER_SECOND);
-    let duration_ms = u32::try_from(ms).unwrap_or(u32::MAX);
-    let bytes = encode_match_report(report).expect("a report encodes");
-    let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
+    let (duration_ms, hex) = report_fields(report);
     let left = left.map_or_else(String::new, |slot| format!(" left={slot}"));
     let truncated = if replay_truncated && result_version >= 2 {
         " replay=truncated"
@@ -660,4 +769,54 @@ fn reservation(slot: usize, entry: &str) -> Result<ReservedSeat, String> {
         team,
         kind,
     })
+}
+
+#[cfg(test)]
+mod aborted_tests {
+    use super::*;
+    use bota_proto::{MatchReport, MatchStats};
+
+    fn report() -> MatchReport {
+        MatchReport {
+            picks: Vec::new(),
+            stats: MatchStats {
+                duration: 600,
+                slots: Vec::new(),
+                leaves: Vec::new(),
+            },
+        }
+    }
+
+    #[test]
+    fn a_match_at_its_limit_gives_a_launcher_of_version_3_an_aborted_result_and_exit_0() {
+        let (lines, code) = aborted_departure(AbortReason::TimeLimit, Some(&report()), false, 3);
+        assert_eq!(code, 0);
+        assert_eq!(lines[0], "ABORTED reason=time_limit");
+        let fields: Vec<&str> = lines[1]
+            .strip_prefix("RESULT ")
+            .expect("a result line")
+            .split(' ')
+            .collect();
+        assert_eq!(&fields[..2], ["winner=draw", "duration_ms=20000"]);
+        assert!(fields.contains(&"aborted=time_limit") && fields.contains(&"v=3"));
+        assert_eq!(lines.len(), 2);
+    }
+
+    #[test]
+    fn a_launcher_that_cannot_read_aborted_gets_no_result_and_exit_code_4() {
+        let (lines, code) = aborted_departure(AbortReason::TimeLimit, Some(&report()), false, 1);
+        assert_eq!(
+            (lines, code),
+            (vec!["ABORTED reason=time_limit".to_owned()], 4)
+        );
+    }
+
+    #[test]
+    fn a_match_that_never_began_gives_no_result_and_exit_code_3() {
+        let (lines, code) = aborted_departure(AbortReason::Stopped, None, false, 3);
+        assert_eq!(
+            (lines, code),
+            (vec!["ABORTED reason=stopped".to_owned()], 3)
+        );
+    }
 }

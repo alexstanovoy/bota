@@ -355,7 +355,12 @@ fn public_profile_provenance_survives_full_and_capped_replays_without_seat_secre
             };
             let launch = context.clone();
             let server = thread::spawn(move || {
-                bota_server::game_loop::run_with_profiles(listener, options, launch)
+                bota_server::game_loop::run_with_profiles(
+                    listener,
+                    options,
+                    launch,
+                    bota_server::outside::Outside::default(),
+                )
             });
             let (link, seated) =
                 Link::join(&address, "player", HeroId::SHADOW_FIEND, None).expect("seat");

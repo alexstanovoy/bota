@@ -22,8 +22,8 @@ use std::sync::Arc;
 
 use bota_core::{MapDef, map_of};
 use bota_proto::{
-    EntityId, EventKind, Heard, HeroId, MatchInfo, MatchStats, OutgoingOrder, PlayerView,
-    RejectReason, ServerMsg, SlotId, Talents, Team, TickMode, UnitView, WorldView,
+    AbortReason, EntityId, EventKind, Heard, HeroId, MatchInfo, MatchStats, OutgoingOrder,
+    PlayerView, RejectReason, ServerMsg, SlotId, Talents, Team, TickMode, UnitView, WorldView,
 };
 
 pub use error::{IngestError, SessionError};
@@ -110,6 +110,12 @@ pub enum Ingested {
     TickComplete { tick: u32 },
     /// The match is over; a neutral winner is a draw.
     Over { winner: Team, stats: MatchStats },
+    /// The match was ended from outside before it was played out
+    /// ([`ServerMsg::MatchAborted`]): nobody won. No numbers when it had not begun.
+    Aborted {
+        reason: AbortReason,
+        stats: Option<MatchStats>,
+    },
     /// A fresh connection picked the match up again (see
     /// [`Seat`](crate::Seat)): the orders that stood are given again, for the
     /// caller to send, since the old connection may have lost them.
@@ -249,6 +255,15 @@ impl ClientSession {
                 }
                 Ok(Ingested::Over { winner, stats })
             }
+            ServerMsg::MatchAborted { reason, stats } => {
+                if self.strict() && self.stream.pending_tick.is_some() {
+                    return Err(SessionError::Stream(
+                        "server ended the match before completing the snapshot tick",
+                    )
+                    .into());
+                }
+                Ok(Ingested::Aborted { reason, stats })
+            }
             ServerMsg::MatchStart { .. } => {
                 Err(SessionError::Stream("server sent repeated MatchStart").into())
             }
@@ -274,6 +289,7 @@ impl ClientSession {
             | ServerMsg::SayRefused { .. }
             | ServerMsg::Echo { .. }
             | ServerMsg::OrderReceived { .. }
+            | ServerMsg::TimeLimitNear { .. }
             | ServerMsg::Ping) => Ok(Ingested::Passed(Box::new(other))),
         }
     }

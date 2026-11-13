@@ -106,6 +106,10 @@ impl Seat {
         }
         let refused = match msg {
             ServerMsg::MatchStart { info } => return Ok(self.start(&info)?),
+            // Ended before it began: no numbers, nobody dialled again.
+            ServerMsg::MatchAborted { reason, stats } => {
+                return Ok(Ingested::Aborted { reason, stats });
+            }
             ServerMsg::Snapshot { .. } => "server sent Snapshot before MatchStart",
             ServerMsg::Events { .. } => "server sent Events before MatchStart",
             ServerMsg::OrderRejected { .. } => "server rejected an order before MatchStart",
@@ -152,6 +156,7 @@ impl Seat {
             | ServerMsg::ParticipantLeft { .. }
             | ServerMsg::Echo { .. }
             | ServerMsg::OrderReceived { .. }
+            | ServerMsg::TimeLimitNear { .. }
             | ServerMsg::Ping) => return Ok(Ingested::Passed(Box::new(other))),
         };
         Err(SessionError::Stream(refused).into())

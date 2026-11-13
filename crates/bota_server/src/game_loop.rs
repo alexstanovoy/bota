@@ -10,9 +10,9 @@ use std::time::{Duration, Instant};
 
 use bota_core::{Catalogue, WIRE_FINGERPRINT, rules};
 use bota_proto::{
-    CataloguePrefix, ClientMsg, Heard, HeroId, MapId, MatchLeave, MatchReport, PlayerId,
-    RejectReason, ReplayRecord, Role, SeatKey, ServerMsg, SlotId, SlotOrder, Team, TickMode,
-    WorldView, encode_frame_to_vec,
+    AbortReason, CataloguePrefix, ClientMsg, Heard, HeroId, MapId, MatchLeave, MatchReport,
+    PlayerId, RejectReason, ReplayRecord, Role, SeatKey, ServerMsg, SlotId, SlotOrder, Team,
+    TickMode, WorldView, encode_frame_to_vec,
 };
 use rand_chacha::rand_core::Rng as _;
 
@@ -22,6 +22,7 @@ use crate::game::{
 };
 use crate::lobby::{ReservedSeat, Roster, RosterSeat};
 use crate::net::{Connection, FrameStream, Linger, Listeners, LiveConnections, NetEvent, Terms};
+use crate::outside::{Ask, Outside, wire_seconds};
 use crate::pick_clock::PickClock;
 use crate::replay::ReplayWriter;
 use crate::spectators::{DelayedFeed, HeldTick, MAX_DELAYED_TICKS, Spectators, sight};
@@ -195,26 +196,49 @@ pub enum MatchEnd {
         /// Permanent departures accepted before abandonment; pick-phase ticks are zero.
         leaves: Vec<MatchLeave>,
     },
+    /// The service that runs the server ended it before it was played out, at its time limit or
+    /// by asking ([`crate::outside`]). Every connection was told ([`ServerMsg::MatchAborted`]),
+    /// the replay closed. It is nobody's win: there is a report, of the match as far as it went,
+    /// but no winner.
+    Aborted {
+        reason: AbortReason,
+        /// The match as far as it went. None when it ended before the match began.
+        report: Option<MatchReport>,
+        /// The replay was closed short of the match's end (its size cap, a failed write).
+        replay_truncated: bool,
+    },
 }
 
 /// Runs one match on already-bound listeners and returns how it ended.
 /// Fails before the lobby opens when the options contradict themselves, the
 /// replay file cannot be created or the listeners cannot be started.
 pub fn run(listeners: impl Into<Listeners>, opts: ServerOpts) -> std::io::Result<MatchEnd> {
+    run_with(listeners, opts, Outside::default())
+}
+
+/// [`run`] for a server a service looks after: the match is also ended when `outside` says so (a
+/// time limit, a request to stop), see [`crate::outside`].
+pub fn run_with(
+    listeners: impl Into<Listeners>,
+    opts: ServerOpts,
+    outside: Outside,
+) -> std::io::Result<MatchEnd> {
     run_inner(
         listeners,
         opts,
         None,
+        outside,
         #[cfg(test)]
         TestHooks::default(),
     )
 }
 
-/// Runs with explicit public launch provenance, retained in metadata and replay trailers.
+/// [`run_with`] with explicit public launch provenance, retained in metadata and replay trailers.
 pub fn run_with_profiles(
     listeners: impl Into<Listeners>,
     opts: ServerOpts,
     profiles: bota_replay::meta::Profiles,
+    outside: Outside,
 ) -> std::io::Result<MatchEnd> {
     if profiles
         .seats()
@@ -229,6 +253,7 @@ pub fn run_with_profiles(
         listeners,
         opts,
         Some(profiles),
+        outside,
         #[cfg(test)]
         TestHooks::default(),
     )
@@ -263,13 +288,14 @@ pub(crate) fn run_hooked(
     opts: ServerOpts,
     hooks: TestHooks,
 ) -> std::io::Result<MatchEnd> {
-    run_inner(listeners, opts, None, hooks)
+    run_inner(listeners, opts, None, Outside::default(), hooks)
 }
 
 fn run_inner(
     listeners: impl Into<Listeners>,
     opts: ServerOpts,
     profiles: Option<bota_replay::meta::Profiles>,
+    outside: Outside,
     #[cfg(test)] hooks: TestHooks,
 ) -> std::io::Result<MatchEnd> {
     check_opts(&opts).map_err(std::io::Error::other)?;
@@ -333,6 +359,7 @@ fn run_inner(
         next_player: 1,
         told: participants::Told::default(),
         started: Instant::now(),
+        outside,
         delayed,
         pick_clock: PickClock::Waiting,
         left: Vec::new(),
@@ -342,13 +369,39 @@ fn run_inner(
         #[cfg(test)]
         hold: hooks.hold,
     };
-    let Some(cfg) = server.lobby_phase() else {
-        server.close_all();
-        return Ok(MatchEnd::Abandoned {
-            leaves: server.left.clone(),
-        });
-    };
-    Ok(server.match_phase(cfg))
+    match server.lobby_phase() {
+        Lobby::Match(cfg) => Ok(server.match_phase(*cfg)),
+        Lobby::Abandoned => {
+            server.close_all();
+            Ok(MatchEnd::Abandoned {
+                leaves: server.left.clone(),
+            })
+        }
+        Lobby::Aborted(reason) => {
+            server.broadcast(&ServerMsg::MatchAborted {
+                reason,
+                stats: None,
+            });
+            let replay = std::mem::replace(&mut server.replay, ReplayWriter::disabled());
+            let replay_truncated = replay.finish();
+            server.close_all();
+            Ok(MatchEnd::Aborted {
+                reason,
+                report: None,
+                replay_truncated,
+            })
+        }
+    }
+}
+
+/// How the lobby phase ended.
+enum Lobby {
+    /// The match begins with this setup.
+    Match(Box<MatchConfig>),
+    /// Nobody played: no seat was held in time, or a seat left for good during the picks.
+    Abandoned,
+    /// The service ended the match before it began.
+    Aborted(AbortReason),
 }
 
 /// Seats a side holds at most: a Dota lobby's team has five slots.
@@ -514,6 +567,8 @@ struct Server {
     scenery: ServerMsg,
     secrets: MatchSecrets,
     started: Instant,
+    /// What the service that runs the server asks of it: a time limit, a request to stop.
+    outside: Outside,
     /// Tests only: the lobby's clock (the time to start the match, the time to give up on
     /// nobody coming) does not run until this is sent to.
     #[cfg(test)]
@@ -1002,6 +1057,7 @@ impl Server {
             self.drop_conn(id);
             return false;
         };
+        let late_warning = self.outside.warned_remaining();
         if let Some(conn) = self.conn(id) {
             conn.send(&ServerMsg::Welcome {
                 player_id: told,
@@ -1012,6 +1068,13 @@ impl Server {
             match info {
                 Some(cfg) => conn.send(&ServerMsg::MatchStart { info: cfg.info() }),
                 None => conn.send(&self.scenery),
+            }
+            // A connection that comes after the warning went out (a seat dialing again, a late
+            // spectator) is told what is left, as the others were.
+            if let Some(remaining) = late_warning {
+                conn.send(&ServerMsg::TimeLimitNear {
+                    remaining_secs: wire_seconds(remaining),
+                });
             }
         }
         true
@@ -1147,9 +1210,9 @@ impl Server {
     }
 
     /// Collects seats and picks until everyone is ready, or until the time
-    /// set for it runs out. Nothing when the time ran out with no seat held
-    /// and such a match is to be abandoned.
-    fn lobby_phase(&mut self) -> Option<MatchConfig> {
+    /// set for it runs out. Abandoned when the time ran out with no seat held
+    /// and such a match is to be abandoned; aborted when the service ends it.
+    fn lobby_phase(&mut self) -> Lobby {
         #[cfg(test)]
         let mut gated = self.start_gate.take();
         #[allow(unused_mut)] // the gate (tests) moves them
@@ -1185,6 +1248,9 @@ impl Server {
                             .map(|_| Instant::now() + Duration::from_millis(5))
                     })
             };
+            if let Some(reason) = self.outside_ends() {
+                return Lobby::Aborted(reason);
+            }
             if self.run_pick_clock(Instant::now()) {
                 return self.close_lobby();
             }
@@ -1192,6 +1258,7 @@ impl Server {
                 .into_iter()
                 .chain(abandon_by)
                 .chain(self.pick_clock.due())
+                .chain(self.outside_looks_again())
                 .chain({
                     #[cfg(test)]
                     {
@@ -1208,7 +1275,7 @@ impl Server {
                 if abandon_by.is_some_and(|by| now >= by) {
                     if !self.roster.anyone_seated() {
                         eprintln!("bota_server: no seat was held when the lobby ran out of time");
-                        return None;
+                        return Lobby::Abandoned;
                     }
                     abandon_by = None;
                 }
@@ -1220,7 +1287,7 @@ impl Server {
             };
             self.hear_in_lobby(event);
             if self.left_during_picks() {
-                return None;
+                return Lobby::Abandoned;
             }
         }
     }
@@ -1250,17 +1317,45 @@ impl Server {
     /// The lobby closes: what was already said in it is heard in it first, so a LeaveGame
     /// queued behind the last readiness cancels the match instead of forfeiting one that never
     /// began. Then the match's configuration, or none when a seat left.
-    fn close_lobby(&mut self) -> Option<MatchConfig> {
+    fn close_lobby(&mut self) -> Lobby {
         for _ in 0..MAX_LOBBY_DRAIN {
             let Ok(event) = self.rx.try_recv() else {
                 break;
             };
             self.hear_in_lobby(event);
             if self.left_during_picks() {
-                return None;
+                return Lobby::Abandoned;
             }
         }
-        Some(self.build_config())
+        Lobby::Match(Box::new(self.build_config()))
+    }
+
+    /// What the service asks of the server now: the warning of the time limit is told to every
+    /// connection here, once; the reason to end the match, if there is one, is the answer.
+    fn outside_ends(&mut self) -> Option<AbortReason> {
+        match self.outside.ask(self.outside.elapsed()) {
+            Ask::Nothing => None,
+            Ask::Warn { remaining } => {
+                eprintln!(
+                    "bota_server: the time limit is {} s away; the players are told",
+                    remaining.as_secs()
+                );
+                self.broadcast(&ServerMsg::TimeLimitNear {
+                    remaining_secs: wire_seconds(remaining),
+                });
+                None
+            }
+            Ask::End(reason) => {
+                eprintln!("bota_server: the match is ended from outside: {reason:?}");
+                Some(reason)
+            }
+        }
+    }
+
+    /// When the lobby has to look at what the service asks again, if it watches anything.
+    fn outside_looks_again(&self) -> Option<Instant> {
+        let after = self.outside.look_again_in(self.outside.elapsed())?;
+        Instant::now().checked_add(after)
     }
 
     /// One message in the lobby.
@@ -1529,7 +1624,9 @@ impl Server {
         let mut empty_since = None;
         let mut recorded_leaves = 0;
         let end = loop {
-            self.gather_input(&world, &cfg, &mut inbox, &pace);
+            if let Some(reason) = self.gather_input(&world, &cfg, &mut inbox, &pace) {
+                break self.abort_match(reason, &world, &cfg, &mut replay);
+            }
             self.record_heard(&mut replay);
             for left in &self.left[recorded_leaves..] {
                 replay.record(&ReplayRecord::Leave {
@@ -1604,7 +1701,40 @@ impl Server {
                 left,
                 replay_truncated,
             },
-            abandoned => abandoned,
+            MatchEnd::Aborted { reason, report, .. } => MatchEnd::Aborted {
+                reason,
+                report,
+                replay_truncated,
+            },
+            abandoned @ MatchEnd::Abandoned { .. } => abandoned,
+        }
+    }
+
+    /// The service ends the match: everybody is told and shown the last tick, the replay gets
+    /// the same word, and the match is reported as far as it went.
+    fn abort_match(
+        &mut self,
+        reason: AbortReason,
+        world: &World,
+        cfg: &MatchConfig,
+        replay: &mut ReplayWriter,
+    ) -> MatchEnd {
+        let mut stats = world.match_stats();
+        stats.leaves = self.left.clone();
+        let aborted = ServerMsg::MatchAborted {
+            reason,
+            stats: Some(stats.clone()),
+        };
+        replay.record(&ReplayRecord::Msg(aborted.clone()));
+        self.show_late_the_end();
+        self.broadcast(&aborted);
+        MatchEnd::Aborted {
+            reason,
+            report: Some(MatchReport {
+                picks: cfg.picks.clone(),
+                stats,
+            }),
+            replay_truncated: false,
         }
     }
 
@@ -1840,26 +1970,43 @@ impl Server {
         Some((eyes, team))
     }
 
-    /// Waits out the tick according to the mode, handling messages meanwhile.
-    fn gather_input(&mut self, world: &World, cfg: &MatchConfig, inbox: &mut Inbox, pace: &Pace) {
+    /// Waits out the tick according to the mode, handling messages meanwhile. The wait is never
+    /// longer than the outside's next look ([`Self::outside_looks_again`]), so a request to stop
+    /// or a limit that falls due ends the match from here, within that look, even while a
+    /// lockstep seat that does not acknowledge holds the tick for its whole timeout: the reason
+    /// to end the match is the answer.
+    fn gather_input(
+        &mut self,
+        world: &World,
+        cfg: &MatchConfig,
+        inbox: &mut Inbox,
+        pace: &Pace,
+    ) -> Option<AbortReason> {
         self.drop_strangers();
         let deadline = match self.opts.mode {
             TickMode::Realtime => pace.started + pace.period * (world.tick + 1),
             TickMode::Lockstep => Instant::now() + pace.ack_timeout,
         };
         loop {
+            if let Some(reason) = self.outside_ends() {
+                return Some(reason);
+            }
             if self.opts.mode == TickMode::Lockstep && self.all_acked(world.tick, &inbox.acked) {
-                break;
+                return None;
             }
             let now = Instant::now();
             if now >= deadline {
-                break;
+                return None;
             }
-            let Ok(event) = self.rx.recv_timeout(deadline - now) else {
-                break;
-            };
-            if let Some((id, msg)) = self.hear(event, true) {
-                self.receive_in_match(id, msg, world, cfg, inbox);
+            let wake = deadline.min(self.outside_looks_again().unwrap_or(deadline));
+            match self.rx.recv_timeout(wake.saturating_duration_since(now)) {
+                Ok(event) => {
+                    if let Some((id, msg)) = self.hear(event, true) {
+                        self.receive_in_match(id, msg, world, cfg, inbox);
+                    }
+                }
+                Err(RecvTimeoutError::Timeout) => {}
+                Err(RecvTimeoutError::Disconnected) => return None,
             }
         }
     }

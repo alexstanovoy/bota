@@ -206,7 +206,11 @@ impl Rejoin {
             ServerMsg::WireMismatch { server_fingerprint } => {
                 return self.mismatched(*server_fingerprint);
             }
-            ServerMsg::MatchOver { .. } | ServerMsg::Refused { .. } => self.finished = true,
+            ServerMsg::MatchOver { .. }
+            | ServerMsg::MatchAborted { .. }
+            | ServerMsg::Refused { .. } => {
+                self.finished = true;
+            }
             _ => {}
         }
         false

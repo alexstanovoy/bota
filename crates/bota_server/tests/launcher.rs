@@ -8,11 +8,11 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use bota_client_core::{ClientSession, IssuedOrder, Link, Outcome, UnpackedReplay};
+use bota_client_core::{ClientSession, IssuedOrder, Link, Outcome, PlayError, UnpackedReplay};
 use bota_core::fountain_pos;
 use bota_proto::{
-    FrameReader, HeroId, MatchReport, Order, ReplayRecord, SeatKey, ServerMsg, SlotId, Target,
-    Team, decode_match_report,
+    AbortReason, FrameReader, HeroId, MatchReport, Order, ReplayRecord, SeatKey, ServerMsg, SlotId,
+    Target, Team, decode_match_report,
 };
 
 /// How long a test waits for the server binary to speak or exit. It guards against a hang
@@ -77,6 +77,15 @@ fn start(args: &[&str]) -> Server {
 /// As [`start`], under a file size limit of `fsize_kib` KiB (what `docker --ulimit fsize` sets),
 /// when given.
 fn start_limited(args: &[&str], fsize_kib: Option<u32>) -> Server {
+    start_with(args, fsize_kib, &[])
+}
+
+/// As [`start`], with these environment variables (what a launcher sets) besides the seats'.
+fn start_env(args: &[&str], env: &[(&str, &str)]) -> Server {
+    start_with(args, None, env)
+}
+
+fn start_with(args: &[&str], fsize_kib: Option<u32>, env: &[(&str, &str)]) -> Server {
     let seats = format!("{}:1:first,{}:0:second", KEYS[0].to_hex(), KEYS[1].to_hex());
     let mut command = match fsize_kib {
         None => Command::new(env!("CARGO_BIN_EXE_bota_server")),
@@ -93,6 +102,7 @@ fn start_limited(args: &[&str], fsize_kib: Option<u32>) -> Server {
         .args(["--bind", "127.0.0.1", "--port", "0", "--map", "2"])
         .args(args)
         .env("BOTA_SEATS", seats)
+        .envs(env.iter().copied())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -277,6 +287,89 @@ fn a_file_size_signal_does_not_end_the_server() {
     first.join().expect("the first seat plays to the end");
     second.join().expect("the second seat plays to the end");
     assert!(server.line(WAIT).starts_with("RESULT winner="));
+    assert!(server.exit(WAIT).success());
+}
+
+/// The seats of a match the service ends: they play on until the server tells them it is over,
+/// whatever it says; what each was told comes back, and `started` hears of the first tick.
+fn play_until_told(
+    addr: String,
+    key: SeatKey,
+    hero: HeroId,
+) -> (thread::JoinHandle<Option<AbortReason>>, mpsc::Receiver<()>) {
+    let (started, ticking) = mpsc::channel();
+    let seat = thread::spawn(move || {
+        let (mut link, seated) = Link::join(&addr, "bot", hero, Some(key)).expect("a seat");
+        // Standing still: the match is not over before the service ends it.
+        let mut told = false;
+        match bota_client_core::play(&mut link, seated, &mut (), |_: &ClientSession| {
+            if !std::mem::replace(&mut told, true) {
+                let _ = started.send(());
+            }
+            None::<IssuedOrder>
+        }) {
+            Err(PlayError::Aborted(reason)) => Some(reason),
+            Ok(_) => None,
+            Err(error) => panic!("the stream broke instead of ending: {error}"),
+        }
+    });
+    (seat, ticking)
+}
+
+/// The time limit a launcher gives (`RADOVID_MAX_DURATION_SECS`) is read by the server, counted on
+/// its wall clock from its start (a second here, the least there is), and ends a match nobody
+/// came to as an abort for the time limit: the line says so, the exit code is the one of a match
+/// nobody played, and no result is said. What a match that began says at its limit (the result
+/// line, the code for a launcher that cannot read it) is `aborted_tests` of the binary; what its
+/// players are told and what its replay holds is `time_limit.rs`, on a clock they move by hand.
+// This is the one test of the unit that waits for real time, and it cannot be otherwise: the limit
+// is a wall-clock limit of another process, and 0 is no limit (the flag refuses it, and a limit
+// that counted 0 as expired would end every match of a misconfigured service at once), so the
+// least limit there is, one second, is waited out. Its outcome cannot depend on the machine's
+// load: nobody joins and nothing else can end or delay the match (no seat to wait for, no
+// tick to spend, no cap to reach), so the limit is the only thing left to happen.
+#[test]
+fn the_limit_a_launcher_gave_is_read_and_ends_a_match_nobody_came_to_as_a_time_limit() {
+    let mut server = start_env(&[], &[("RADOVID_MAX_DURATION_SECS", "1")]);
+    assert_eq!(server.line(WAIT), "ABORTED reason=time_limit");
+    assert_eq!(server.exit(WAIT).code(), Some(3));
+    assert_eq!(
+        server.stdout.recv_timeout(WAIT),
+        Err(mpsc::RecvTimeoutError::Disconnected),
+        "no result is said for a match nobody played"
+    );
+}
+
+/// SIGTERM is how a launcher asks a game to finish: the match ends by the service's request.
+#[test]
+fn a_launcher_that_asks_with_sigterm_gets_the_match_ended_as_stopped() {
+    let mut server = start_env(
+        &[
+            // Paced by the clock, so that a match of seats that stand still cannot reach the
+            // map's own end (a draw at its tick cap) between the first tick and the signal.
+            "--mode",
+            "realtime",
+            "--immortal-structures",
+            "--immortal-heroes",
+        ],
+        &[("RADOVID_RESULT_VERSION", "3")],
+    );
+    let (first, first_ticking) = play_until_told(server.addr.clone(), KEYS[0], HeroId::PUDGE);
+    let (second, second_ticking) =
+        play_until_told(server.addr.clone(), KEYS[1], HeroId::SHADOW_FIEND);
+    // The request comes once the match is running, whatever the machine's load.
+    first_ticking.recv().expect("the first seat's first tick");
+    second_ticking.recv().expect("the second seat's first tick");
+    let sent = Command::new("kill")
+        .args(["-s", "TERM", &server.child.id().to_string()])
+        .status()
+        .expect("kill runs");
+    assert!(sent.success());
+    assert_eq!(first.join().expect("first"), Some(AbortReason::Stopped));
+    assert_eq!(second.join().expect("second"), Some(AbortReason::Stopped));
+    assert_eq!(server.line(WAIT), "ABORTED reason=stopped");
+    let result = server.line(WAIT);
+    assert!(result.contains(" aborted=stopped v=3"), "{result}");
     assert!(server.exit(WAIT).success());
 }
 

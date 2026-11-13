@@ -103,6 +103,10 @@ impl Recorder {
             ReplayRecord::Msg(ServerMsg::Snapshot { view }) => self.view(view),
             ReplayRecord::Msg(ServerMsg::Events { tick, events }) => self.events(*tick, events),
             ReplayRecord::Msg(ServerMsg::MatchOver { winner, stats }) => self.over(*winner, stats),
+            // Ended from outside: the numbers up to the end count, and the match was not decided.
+            ReplayRecord::Msg(ServerMsg::MatchAborted {
+                stats: Some(stats), ..
+            }) => self.aborted(stats),
             ReplayRecord::Leave { tick, slot } => self.leave(*tick, slot.0),
             ReplayRecord::SeatName { slot, name, bot } => self.name(slot.0, name, *bot),
             _ => {}
@@ -431,17 +435,26 @@ impl Recorder {
         if !self.started || self.ended {
             return;
         }
-        self.conclude(Some((winner, stats)));
+        self.conclude(Some(stats), Some(winner));
     }
 
-    fn conclude(&mut self, over: Option<(Team, &MatchStats)>) {
-        if let Some((_, stats)) = over {
+    /// The match was ended from outside: its numbers count, and it was decided for nobody, as a
+    /// match that ends without an `End` record.
+    pub fn aborted(&mut self, stats: &MatchStats) {
+        if !self.started || self.ended {
+            return;
+        }
+        self.conclude(Some(stats), None);
+    }
+
+    fn conclude(&mut self, stats: Option<&MatchStats>, winner: Option<Team>) {
+        if let Some(stats) = stats {
             for left in &stats.leaves {
                 self.leave(left.tick, left.slot.0);
             }
         }
         self.ended = true;
-        if let Some((_, stats)) = over {
+        if let Some(stats) = stats {
             for earned in &stats.slots {
                 if let Some(at) = self.seat_of(earned.slot) {
                     let value = i64::from(earned.net_worth);
@@ -458,7 +471,7 @@ impl Recorder {
             };
             self.out.push(&record, true);
         }
-        if let Some((winner, _)) = over {
+        if let Some(winner) = winner {
             self.out.push(
                 &MetaRecord::End {
                     tick: self.tick,
@@ -472,7 +485,7 @@ impl Recorder {
     /// The file. A match that was not decided is ended without an `End` record.
     pub fn finish(mut self) -> Vec<u8> {
         if self.started && !self.ended {
-            self.conclude(None);
+            self.conclude(None, None);
         }
         self.out.into_bytes()
     }

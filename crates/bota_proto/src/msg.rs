@@ -684,6 +684,36 @@ pub enum ServerMsg {
         )]
         trees: Vec<Vec2>,
     },
+    /// The match was ended from outside, before it was played to a winner or a draw: the last
+    /// message of the connection, as [`ServerMsg::MatchOver`] is of a match played out, and it
+    /// ends the match for the client the same way (nothing is dialled again). The ending is
+    /// nobody's win or loss; `reason` says who ended it. Appended: a server of an earlier wire
+    /// never sends it.
+    MatchAborted {
+        /// Who ended the match.
+        reason: AbortReason,
+        /// The numbers of the match up to its end. Absent when it ended before the match began
+        /// (in the lobby or the picks), where there are none.
+        stats: Option<MatchStats>,
+    },
+    /// The match will be ended at its time limit unless it is over before: sent once to each
+    /// connection, a few minutes ahead to those held then, and on admission, with the time that
+    /// is left, to one admitted after (a seat dialing again, a late spectator). It follows the
+    /// server's wall clock, not the game's, and is no part of the simulation or of a replay.
+    /// Appended.
+    TimeLimitNear {
+        /// Seconds left until the match is ended by [`AbortReason::TimeLimit`].
+        remaining_secs: u32,
+    },
+}
+
+/// Who ended a match that was not played to its end ([`ServerMsg::MatchAborted`]).
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum AbortReason {
+    /// The time limit the server was given ran out.
+    TimeLimit,
+    /// The service that runs the server asked it to end the match (an operator, a shutdown).
+    Stopped,
 }
 
 /// What a replay file is, and which wire recorded it: its first record.

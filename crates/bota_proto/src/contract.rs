@@ -410,6 +410,20 @@
 //! the server sets (a thousand a second by default, two seconds' worth of
 //! burst) and four more for every tick it is sent.
 //!
+//! # How a match ends
+//!
+//! A match played out ends with [`ServerMsg::MatchOver`]: a winner, or a draw. A match the service
+//! that runs the server ends from outside, at the time limit it gave the server or by asking it
+//! to stop, ends with [`ServerMsg::MatchAborted`]: nobody won, `reason` says who ended it, and the
+//! final numbers come with it when the match had begun. Either is the last message of a
+//! connection, followed by a clean close (a client dials no more after it). A connection that
+//! simply breaks, with neither, is a network failure, and the seat may take its place again.
+//!
+//! Some minutes before a time limit the server sends [`ServerMsg::TimeLimitNear`] once to every
+//! connection it holds then, with the seconds left. The warning and the abort follow the
+//! server's wall clock: they are no part of the simulation, and a replay records the abort (its
+//! last message) but not the warning.
+//!
 //! # Spectators and picks
 //!
 //! A spectator that comes with a seat's key (reserved, or the key that

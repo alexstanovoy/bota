@@ -34,7 +34,7 @@ game = "bota"
 game_fingerprint = "<16 printed hex digits>"
 teams = [1, 1]
 rated = true
-max_duration_secs = 1800
+max_duration_secs = 3600
 [ruleset.launcher]
 kind = "local"
 binary = "/absolute/path/to/bota_server"
@@ -48,6 +48,14 @@ env = { BOTA_SEATS = "{seats}" }
 
 Start the service with `../radovid/target/release/radovid serve --config dev/radovid.toml`. Game clients connect to
 `wss://localhost:4460`, trust `dev/cert.pem`, and use this crate to queue, accept and connect directly to the game.
+
+`max_duration_secs` is a backstop against stuck and endless matches, not a rule of the game, so keep it above the longest
+legitimate match. radovid tells the server the limit (`RADOVID_MAX_DURATION_SECS`, read by `bota_server`): five minutes
+before it (half the limit for a short one) every client is sent `ServerMsg::TimeLimitNear`, and at the limit the server ends
+the match as `ServerMsg::MatchAborted` (the client shows a match-ended screen naming the time limit, never a lost
+connection), closes its replay and prints a result with `aborted=time_limit`: radovid records the match as ended by the
+time limit, never rated. radovid asks a server it must stop (an admin, its shutdown, a limit the server missed) to finish
+the same way with SIGTERM before it kills it.
 
 [radovid.example.toml](radovid.example.toml) carries the full, solo-mid and demo configurations, including server
 arguments, replay/metadata files and the demo `info` byte consumed by `bota_radovid::is_demo`. Its container images

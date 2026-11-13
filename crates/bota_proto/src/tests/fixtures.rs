@@ -909,6 +909,17 @@ pub fn all_server_msgs() -> Vec<ServerMsg> {
             map: MapId(2),
             trees: vec![Vec2::from_ints(128, -256), Vec2::from_ints(7552, 9024)],
         },
+        ServerMsg::MatchAborted {
+            reason: AbortReason::TimeLimit,
+            stats: Some(match_stats()),
+        },
+        ServerMsg::MatchAborted {
+            reason: AbortReason::Stopped,
+            stats: None,
+        },
+        ServerMsg::TimeLimitNear {
+            remaining_secs: 300,
+        },
     ]
 }
 
@@ -1007,5 +1018,7 @@ pub fn server_msg_name(msg: &ServerMsg) -> &'static str {
         ServerMsg::Echo { .. } => "Echo",
         ServerMsg::OrderReceived { .. } => "OrderReceived",
         ServerMsg::Scenery { .. } => "Scenery",
+        ServerMsg::MatchAborted { .. } => "MatchAborted",
+        ServerMsg::TimeLimitNear { .. } => "TimeLimitNear",
     }
 }

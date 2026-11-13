@@ -50,7 +50,7 @@ game_fingerprint = "0123456789abcdef"      # what `bota_server --wire-fingerprin
 teams = [1, 1]
 rated = true
 # lobby_min_players = 1                    # a lobby starts with its host alone by default (the empty seats stay empty)
-max_duration_secs = 1800                   # a match running longer is killed (a null); absent: 7200, room for a long one of any game
+max_duration_secs = 3600                   # a backstop, not a rule of the game: the server is told it, warns its players ahead, ends a match that runs longer (never rated), and is stopped if it does not; keep it above the longest legitimate match. Absent: 7200
 # audience = "everyone"                    # or "humans_only" / "bots_only"
 
 [ruleset.launcher]
@@ -161,7 +161,7 @@ game_fingerprint = "0123456789abcdef"
 teams = [1, 1]
 rated = false
 rating_ruleset = "solo_mid"
-max_duration_secs = 1800
+max_duration_secs = 3600
 [ruleset.rating_window]
 initial = 600
 widen_per_minute = 300

@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use bota_proto::{
-    AbilityId, ClientMsg, EntityId, EventKind, ItemId, MatchStats, Order, PlayerView, RuneKind,
-    ServerMsg, SlotId, StockView, TalentSlot, TalentView, Team, UnitKind, UnitView, Vec2,
+    AbilityId, AbortReason, ClientMsg, EntityId, EventKind, ItemId, MatchStats, Order, PlayerView,
+    RuneKind, ServerMsg, SlotId, StockView, TalentSlot, TalentView, Team, UnitKind, UnitView, Vec2,
     WorldView,
 };
 
@@ -454,6 +454,8 @@ pub enum FeedKind {
     ProtocolBroken { why: String },
     /// The socket died.
     ConnectionLost,
+    /// The server warned that the match will be ended at its time limit.
+    TimeLimitNear { remaining_secs: u32 },
     /// An outpost changed hands: the building as last seen (kind, side and
     /// place), if it was ever in sight, and the side that took it.
     Captured {
@@ -577,8 +579,15 @@ pub struct App {
     pub reject: Option<(Refused, f32)>,
     /// The console line being typed. Absent while it is closed.
     pub console: Option<String>,
-    /// The end of the match, once it came.
+    /// The end of the match, once it came. A match ended from outside
+    /// ([`aborted`](Self::aborted)) is no win for anybody: the winner is neutral, as in a draw.
     pub over: Option<(Team, MatchStats)>,
+    /// Who ended the match, when the service ended it before it was played out (its time limit,
+    /// a request to stop) rather than a side's win or a draw. Set together with [`over`](Self::over),
+    /// and never by a connection that merely broke: that one is [`lost`](Self::lost).
+    pub aborted: Option<AbortReason>,
+    /// Seconds left to the match's time limit when the server warned of it (once), if it did.
+    pub limit_near: Option<u32>,
     /// The clock between snapshots.
     pub smooth: Smooth,
     /// What successive snapshots tell that one alone does not.
@@ -638,6 +647,8 @@ impl App {
             reject: None,
             console: None,
             over: None,
+            aborted: None,
+            limit_near: None,
             smooth: Smooth::default(),
             derived: Derived::default(),
             cues: Vec::new(),
@@ -1076,6 +1087,11 @@ impl App {
             }
             Ok(Ingested::Rejected { seq, reason }) => self.on_rejected(seq, reason),
             Ok(Ingested::Over { winner, stats }) => self.over = Some((winner, stats)),
+            Ok(Ingested::Aborted { reason, stats }) => {
+                self.aborted = Some(reason);
+                // The numbers up to the end; a match that never began has none.
+                self.over = Some((Team::Neutral, stats.unwrap_or_else(no_stats)));
+            }
             // Back in the match: the RECONNECTING notice going away tells
             // it, as in Dota; nothing more to say.
             Ok(Ingested::Resumed { resend }) => {
@@ -1110,6 +1126,12 @@ impl App {
                 {
                     self.seat.assign(seated);
                 }
+            }
+            ServerMsg::TimeLimitNear { remaining_secs } => {
+                self.limit_near = Some(*remaining_secs);
+                self.push_feed(FeedKind::TimeLimitNear {
+                    remaining_secs: *remaining_secs,
+                });
             }
             ServerMsg::LobbyState { slots, .. } => {
                 self.names = slots
@@ -1312,6 +1334,15 @@ impl App {
 }
 
 /// Takes `dt` seconds off a timed notice, and clears it once its time is up.
+/// The numbers of a match that ended before it began: none.
+fn no_stats() -> MatchStats {
+    MatchStats {
+        duration: 0,
+        slots: Vec::new(),
+        leaves: Vec::new(),
+    }
+}
+
 fn count_down<T>(notice: &mut Option<(T, f32)>, dt: f32) {
     if let Some((_, left)) = notice {
         *left -= dt;

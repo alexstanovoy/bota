@@ -621,8 +621,12 @@ tests = [{ crate = "bota_server", target = "lib", filters = [
 name = "server_net"
 about = "connections, the game loop, lobbies, picks, chat, spectators, replays as the server writes them"
 # the wire helpers and the test certificate the net tests share with the end-to-end ones
-paths = ["crates/bota_server/tests/wire/**", "crates/bota_server/tests/tls/**"]
-tests = [{ crate = "bota_server", target = "lib", filters = ["net::", "game_loop::", "replay::"] }]
+paths = [
+    "crates/bota_server/tests/wire/**",
+    "crates/bota_server/tests/tls/**",
+    "crates/bota_server/src/outside.rs",
+]
+tests = [{ crate = "bota_server", target = "lib", filters = ["net::", "game_loop::", "outside::", "replay::"] }]
 
 [[group]]
 name = "server_launch"
@@ -666,6 +670,7 @@ paths = [
     "crates/bota_server/tests/nxm.rs",
     "crates/bota_server/tests/seated_start.rs",
     "crates/bota_server/tests/pick_leave.rs",
+    "crates/bota_server/tests/time_limit.rs",
     "crates/bota_server/tests/team_leave.rs",
     "crates/bota_server/tests/permanent_leave.rs",
     "crates/bota_server/tests/departed_orders.rs",
@@ -685,6 +690,7 @@ tests = [
     { crate = "bota_server", target = "test:nxm" },
     { crate = "bota_server", target = "test:seated_start" },
     { crate = "bota_server", target = "test:pick_leave" },
+    { crate = "bota_server", target = "test:time_limit" },
     { crate = "bota_server", target = "test:team_leave" },
     { crate = "bota_server", target = "test:permanent_leave" },
     { crate = "bota_server", target = "test:departed_orders" },

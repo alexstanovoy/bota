@@ -23,6 +23,8 @@ field AbilityView 6 aim: Aim
 field AbilityView 7 passive: bool
 field AbilityView 8 on: bool
 field AbilityView 9 can_level: bool
+variant AbortReason 0 TimeLimit
+variant AbortReason 1 Stopped
 field AggroView 0 unit: EntityId
 field AggroView 1 target: Option<EntityId>
 field AggroView 2 swing: Option<SwingView>
@@ -665,6 +667,11 @@ field WorldView 17 pools: Vec<PoolView>
 variant ServerMsg 17 Scenery {}
 field ServerMsg::Scenery 0 map: MapId
 field ServerMsg::Scenery 1 trees: Vec<Vec2>
+variant ServerMsg 18 MatchAborted {}
+field ServerMsg::MatchAborted 0 reason: AbortReason
+field ServerMsg::MatchAborted 1 stats: Option<MatchStats>
+variant ServerMsg 19 TimeLimitNear {}
+field ServerMsg::TimeLimitNear 0 remaining_secs: u32
 field ShopEntry 4 secret_shop: bool
 field ShopZoneView 0 pos: Vec2
 field ShopZoneView 1 corners: Vec<Vec2>
