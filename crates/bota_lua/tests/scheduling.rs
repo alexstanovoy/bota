@@ -51,7 +51,11 @@ fn modes_arbitrate_every_nine_ticks_and_run_transition_hooks() {
     for tick in 0..10 {
         let turn = lua.think(&sessions[0]).expect("think");
         assert!(turn.failures.is_empty(), "{:?}", turn.failures);
-        assert_eq!(turn.bots[0].orders.len(), 1);
+        assert_eq!(turn.bots[0].orders,vec![
+            bota_client_core::IssuedOrder::hero(Order::Move {target:Target::Pos(bota_proto::Vec2::from_ints(9216+if tick<9 {2}else{1},9216))}),
+            bota_client_core::IssuedOrder::hero(Order::Learn {slot:bota_proto::AbilitySlot(0)}),
+            bota_client_core::IssuedOrder::hero(Order::Buy {item:bota_proto::ItemId::IRON_BRANCH}),
+        ],"mode overrides replace body movement while missing auxiliary hooks retain their defaults");
         let Order::Move {
             target: Target::Pos(position),
         } = turn.bots[0].orders[0].order
