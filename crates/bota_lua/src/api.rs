@@ -21,6 +21,7 @@ mod patterns;
 pub(crate) mod players;
 mod queries;
 pub(crate) mod shop;
+mod structures;
 mod unit_data;
 mod unit_lists;
 mod unit_names;
@@ -133,6 +134,7 @@ pub(crate) fn install(lua: &mut Lua, state: Shared, vectors: Vectors) -> Result<
     globals::install(lua, state.clone(), vectors)?;
     lane_desires::install(lua, &context)?;
     match_metadata::install(lua, &context)?;
+    structures::install(lua, &context)?;
     players::install(lua, &context)?;
     unit_lists::install(lua, &context)?;
     unit_statistics::install(lua, &context)?;

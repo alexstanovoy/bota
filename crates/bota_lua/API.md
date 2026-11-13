@@ -77,6 +77,14 @@ returns engine MID (2) for roster heroes in Solo Mid. Other units, and maps with
 no host lane assignment, return NONE (0). Assignment does not depend on a unit's
 current position or on hidden facts. These queries require a received view.
 
+`GetBarracks` and `GetAncient` resolve building positions from the public map,
+then return an authenticated handle only for a living building in the received
+side's current sight. A remembered enemy building does not disclose its current
+existence or health through these lookups. Missing or unseen buildings return nil.
+Barracks indices are TOP melee/ranged (0/1), MID (2/3), BOT (4/5); other nonnegative
+engine integers return nil. Invalid teams, negative/fractional indices and values
+outside the engine integer domain raise ordinary Lua errors.
+
 Player ids are engine ids: Radiant 0–4 and Dire 5–9. Active-view queries derive
 each side's rank from its public roster's wire seat order; wire seat 1 can therefore
 be engine player 5. The host continues to use wire seats internally. Team arrays
