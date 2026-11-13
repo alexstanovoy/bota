@@ -212,7 +212,10 @@ impl LuaTeam {
         lua.pin(default_auxiliary)?;
         let raw_next = lua.global("next")?;
         lua.pin(raw_next)?;
-        let lane_desire_reader = lua.function("team_lane_desires", Rc::new(move |vm,args| lane_desire_values(vm,args,raw_next)))?;
+        let lane_desire_reader = lua.function(
+            "team_lane_desires",
+            Rc::new(move |vm, args| lane_desire_values(vm, args, raw_next)),
+        )?;
         lua.pin(lane_desire_reader)?;
         let set_environment = lua.global("setfenv")?;
         let get_environment = lua.global("getfenv")?;
@@ -695,14 +698,18 @@ impl LuaTeam {
         if let Ok(desires) = &lanes {
             self.state.borrow_mut().team_desires = *desires;
         }
-        if first_error.is_none() { first_error = lanes.err(); }
+        if first_error.is_none() {
+            first_error = lanes.err();
+        }
         for hook in [
             "UpdateFarmLaneDesires",
             "UpdateRoamDesire",
             "UpdateRoshanDesire",
         ] {
-            if let Err(error) = self.call_hook(index, hook, &[]) {
-                if first_error.is_none() { first_error = Some(error); }
+            if let Err(error) = self.call_hook(index, hook, &[])
+                && first_error.is_none()
+            {
+                first_error = Some(error);
             }
         }
         first_error.map_or(Ok(()), Err)
@@ -1071,9 +1078,11 @@ fn lane_desire_values(vm: &mut Vm, args: Args, raw_next: Value) -> Result<usize,
     }
     let mut key = Value::Nil;
     for count in 0..=3 {
-        let entry = vm.call(raw_next, &[Value::Table(table),key])?;
+        let entry = vm.call(raw_next, &[Value::Table(table), key])?;
         key = entry.first().copied().unwrap_or(Value::Nil);
-        if key == Value::Nil && count == 3 { return vm.results(&values); }
+        if key == Value::Nil && count == 3 {
+            return vm.results(&values);
+        }
         if key == Value::Nil || count == 3 {
             return Err(vm.error("team lane desires must have exactly three array entries"));
         }

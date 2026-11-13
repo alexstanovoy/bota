@@ -305,21 +305,56 @@ fn malformed_team_desires_discard_only_the_first_configured_seats_orders() {
 
 #[test]
 fn restarted_teams_query_empty_desires_after_the_previous_interpreter_published() {
-    let (_,sessions)=support::local(&[Team::Radiant,Team::Dire]);
-    let mut previous=team("function UpdatePushLaneDesires() return {0,0.5,1} end function UpdateDefendLaneDesires() return {1,0.5,0} end");
-    assert!(previous.think(&sessions[0]).expect("published pair").failures.is_empty());
-    let getter=previous.lua.global("GetPushLaneDesire").expect("getter");
+    let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let mut previous = team(
+        "function UpdatePushLaneDesires() return {0,0.5,1} end function UpdateDefendLaneDesires() return {1,0.5,0} end",
+    );
+    assert!(
+        previous
+            .think(&sessions[0])
+            .expect("published pair")
+            .failures
+            .is_empty()
+    );
+    let getter = previous.lua.global("GetPushLaneDesire").expect("getter");
     previous.lua.begin_tick();
-    assert_eq!(previous.lua.call(getter,&[Value::Number(2.0)]).expect("published query"),vec![Value::Number(0.5)]);
+    assert_eq!(
+        previous
+            .lua
+            .call(getter, &[Value::Number(2.0)])
+            .expect("published query"),
+        vec![Value::Number(0.5)]
+    );
     drop(previous);
-    for (index,side) in [(0,Team::Radiant),(1,Team::Dire)] {
-        let (_,fresh_sessions)=support::local(&[Team::Radiant,Team::Dire]);
-        let slot=SlotId(index as u8);
-        let mut restarted=LuaTeam::new(side,&[BotSeat{slot,hero:HeroId::SHADOW_FIEND}],Limits::DEFAULT,Keys{hash:[17,19],random:23}).expect("restarted team");
+    for (index, side) in [(0, Team::Radiant), (1, Team::Dire)] {
+        let (_, fresh_sessions) = support::local(&[Team::Radiant, Team::Dire]);
+        let slot = SlotId(index as u8);
+        let mut restarted = LuaTeam::new(
+            side,
+            &[BotSeat {
+                slot,
+                hero: HeroId::SHADOW_FIEND,
+            }],
+            Limits::DEFAULT,
+            Keys {
+                hash: [17, 19],
+                random: 23,
+            },
+        )
+        .expect("restarted team");
         restarted.add_script(slot,ScriptKind::Takeover,"=restart_reader",b"function Think() for lane=1,3 do assert(GetPushLaneDesire(lane)==0 and GetDefendLaneDesire(lane)==0) end GetBot():Action_MoveToLocation(Vector(61,0,0)) end").expect("restart reader");
-        let turn=restarted.think(&fresh_sessions[index]).expect("restarted query");
-        assert!(turn.failures.is_empty(),"{:?}",turn.failures);
-        assert_eq!(turn.bots[0].orders,vec![bota_client_core::IssuedOrder::hero(bota_proto::Order::Move{target:bota_proto::Target::Pos(bota_proto::Vec2::from_ints(9277,9216))})]);
+        let turn = restarted
+            .think(&fresh_sessions[index])
+            .expect("restarted query");
+        assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+        assert_eq!(
+            turn.bots[0].orders,
+            vec![bota_client_core::IssuedOrder::hero(
+                bota_proto::Order::Move {
+                    target: bota_proto::Target::Pos(bota_proto::Vec2::from_ints(9277, 9216))
+                }
+            )]
+        );
     }
 }
 
@@ -411,35 +446,76 @@ fn unrelated_team_think_call_fuel_exhaustion_does_not_freeze_lane_pairs() {
 #[test]
 fn every_team_hook_is_attempted_after_another_team_hook_errors() {
     for failing in 1..=6 {
-        let (_,sessions)=support::local(&[Team::Radiant,Team::Dire]);
-        let source=format!("_G.hook_calls={{0,0,0,0,0,0}} local function mark(n) _G.hook_calls[n]=_G.hook_calls[n]+1 if n=={failing} then error('independent hook error') end end function TeamThink() mark(1) end function UpdatePushLaneDesires() mark(2) return {{0,0.5,1}} end function UpdateDefendLaneDesires() mark(3) return {{1,0.5,0}} end function UpdateFarmLaneDesires() mark(4) end function UpdateRoamDesire() mark(5) end function UpdateRoshanDesire() mark(6) end");
-        let mut lua=team(&source);
-        let turn=lua.think(&sessions[0]).expect("team hooks");
-        assert_eq!(turn.failures.len(),1);
-        assert!(matches!(&turn.failures[0].error,Error::Runtime{message,..} if message.contains("independent hook error")));
-        let Value::Table(calls)=lua.lua.global("hook_calls").expect("counters") else {panic!("hook counters");};
+        let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
+        let source = format!(
+            "_G.hook_calls={{0,0,0,0,0,0}} local function mark(n) _G.hook_calls[n]=_G.hook_calls[n]+1 if n=={failing} then error('independent hook error') end end function TeamThink() mark(1) end function UpdatePushLaneDesires() mark(2) return {{0,0.5,1}} end function UpdateDefendLaneDesires() mark(3) return {{1,0.5,0}} end function UpdateFarmLaneDesires() mark(4) end function UpdateRoamDesire() mark(5) end function UpdateRoshanDesire() mark(6) end"
+        );
+        let mut lua = team(&source);
+        let turn = lua.think(&sessions[0]).expect("team hooks");
+        assert_eq!(turn.failures.len(), 1);
+        assert!(
+            matches!(&turn.failures[0].error,Error::Runtime{message,..} if message.contains("independent hook error"))
+        );
+        let Value::Table(calls) = lua.lua.global("hook_calls").expect("counters") else {
+            panic!("hook counters");
+        };
         for hook in 1..=6 {
-            assert_eq!(lua.lua.vm().raw_get(calls,Value::Number(f64::from(hook))).expect("counter"),Value::Number(1.0),"hook{hook} skipped after hook{failing} failed");
+            assert_eq!(
+                lua.lua
+                    .vm()
+                    .raw_get(calls, Value::Number(f64::from(hook)))
+                    .expect("counter"),
+                Value::Number(1.0),
+                "hook{hook} skipped after hook{failing} failed"
+            );
         }
-        assert_eq!(lua.state.borrow().team_desires.push.is_some(),!matches!(failing,2|3));
+        assert_eq!(
+            lua.state.borrow().team_desires.push.is_some(),
+            !matches!(failing, 2 | 3)
+        );
     }
 }
 
 #[test]
 fn lane_getters_require_exactly_three_fuel_with_a_two_fuel_read_charge() {
-    for name in ["GetPushLaneDesire","GetDefendLaneDesire"] {
-        for budget in [2,3] {
-            let mut lua=LuaTeam::new(Team::Radiant,&[BotSeat{slot:SlotId(0),hero:HeroId::SHADOW_FIEND}],Limits{fuel_per_tick:budget,..Limits::DEFAULT},Keys{hash:[17,19],random:23}).expect("team");
-            let desires=Some(LaneDesires::from_engine_order([0.125,0.5,1.0]));
-            lua.state.borrow_mut().team_desires=crate::state::TeamDesires{push:desires,defend:desires};
-            let function=lua.lua.global(name).expect("getter");
+    for name in ["GetPushLaneDesire", "GetDefendLaneDesire"] {
+        for budget in [2, 3] {
+            let mut lua = LuaTeam::new(
+                Team::Radiant,
+                &[BotSeat {
+                    slot: SlotId(0),
+                    hero: HeroId::SHADOW_FIEND,
+                }],
+                Limits {
+                    fuel_per_tick: budget,
+                    ..Limits::DEFAULT
+                },
+                Keys {
+                    hash: [17, 19],
+                    random: 23,
+                },
+            )
+            .expect("team");
+            let desires = Some(LaneDesires::from_engine_order([0.125, 0.5, 1.0]));
+            lua.state.borrow_mut().team_desires = crate::state::TeamDesires {
+                push: desires,
+                defend: desires,
+            };
+            let function = lua.lua.global(name).expect("getter");
             lua.lua.begin_tick();
-            let result=lua.lua.call(function,&[Value::Number(2.0)]);
-            if budget==3 {
-                assert_eq!(result.expect("minimum fuel"),vec![Value::Number(0.5)]);
-                assert_eq!(lua.lua.tick_fuel_left(),0,"one top-level call fuel plus two read fuel");
+            let result = lua.lua.call(function, &[Value::Number(2.0)]);
+            if budget == 3 {
+                assert_eq!(result.expect("minimum fuel"), vec![Value::Number(0.5)]);
+                assert_eq!(
+                    lua.lua.tick_fuel_left(),
+                    0,
+                    "one top-level call fuel plus two read fuel"
+                );
             } else {
-                assert!(matches!(result,Err(Error::Limit(Limit::FuelPerTick))),"{name}: min-1 fuel must fail");
+                assert!(
+                    matches!(result, Err(Error::Limit(Limit::FuelPerTick))),
+                    "{name}: min-1 fuel must fail"
+                );
             }
         }
     }

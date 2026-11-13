@@ -36,18 +36,58 @@ fn minion_think_moves_its_courier_through_the_real_order_path() {
     .expect("script");
     let turn = lua.think(&sessions[0]).expect("think");
     assert!(turn.failures.is_empty(), "{:?}", turn.failures);
-    let hero:Vec<_>=turn.bots[0].orders.iter().copied().filter(|order|order.unit.is_none()).collect();
-    let courier_orders:Vec<_>=turn.bots[0].orders.iter().copied().filter(|order|order.unit==Some(courier.id)).collect();
-    assert_eq!(hero,vec![
-        bota_client_core::IssuedOrder::hero(bota_proto::Order::Attack {target:bota_proto::Target::Pos(bota_proto::Vec2::from_ints(9216,9216))}),
-        bota_client_core::IssuedOrder::hero(bota_proto::Order::Learn {slot:bota_proto::AbilitySlot(0)}),
-        bota_client_core::IssuedOrder::hero(bota_proto::Order::Buy {item:bota_proto::ItemId::IRON_BRANCH}),
-    ],"missing hero hooks use the designed native body, learning and purchase defaults");
-    assert_eq!(courier_orders,vec![bota_client_core::IssuedOrder::courier(courier.id,bota_proto::Order::Move {target:bota_proto::Target::Pos(bota_proto::Vec2::from_ints(9216,9216))})]);
-    assert_eq!(turn.bots[0].orders.len(),hero.len()+courier_orders.len(),"no other unit receives orders");
-    let mut first = Some(turn.bots[0].orders.iter().map(|&order|sessions[0].issue(order).expect("ordinary order")).collect::<Vec<_>>());
+    let hero: Vec<_> = turn.bots[0]
+        .orders
+        .iter()
+        .copied()
+        .filter(|order| order.unit.is_none())
+        .collect();
+    let courier_orders: Vec<_> = turn.bots[0]
+        .orders
+        .iter()
+        .copied()
+        .filter(|order| order.unit == Some(courier.id))
+        .collect();
+    assert_eq!(
+        hero,
+        vec![
+            bota_client_core::IssuedOrder::hero(bota_proto::Order::Attack {
+                target: bota_proto::Target::Pos(bota_proto::Vec2::from_ints(9216, 9216))
+            }),
+            bota_client_core::IssuedOrder::hero(bota_proto::Order::Learn {
+                slot: bota_proto::AbilitySlot(0)
+            }),
+            bota_client_core::IssuedOrder::hero(bota_proto::Order::Buy {
+                item: bota_proto::ItemId::IRON_BRANCH
+            }),
+        ],
+        "missing hero hooks use the designed native body, learning and purchase defaults"
+    );
+    assert_eq!(
+        courier_orders,
+        vec![bota_client_core::IssuedOrder::courier(
+            courier.id,
+            bota_proto::Order::Move {
+                target: bota_proto::Target::Pos(bota_proto::Vec2::from_ints(9216, 9216))
+            }
+        )]
+    );
+    assert_eq!(
+        turn.bots[0].orders.len(),
+        hero.len() + courier_orders.len(),
+        "no other unit receives orders"
+    );
+    let mut first = Some(
+        turn.bots[0]
+            .orders
+            .iter()
+            .map(|&order| sessions[0].issue(order).expect("ordinary order"))
+            .collect::<Vec<_>>(),
+    );
     for _ in 0..30 {
-        let streams = local.step(&[first.take().as_deref().unwrap_or(&[]), &[]]).expect("step");
+        let streams = local
+            .step(&[first.take().as_deref().unwrap_or(&[]), &[]])
+            .expect("step");
         for (session, stream) in sessions.iter_mut().zip(streams) {
             assert!(
                 !stream

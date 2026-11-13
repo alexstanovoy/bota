@@ -98,11 +98,21 @@ fn a_pack_without_a_takeover_loads_its_generic_mode_override() {
     let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
     let turn = lua.think(&sessions[0]).expect("think");
     assert!(turn.failures.is_empty(), "{:?}", turn.failures);
-    assert_eq!(turn.bots[0].orders,vec![
-        bota_client_core::IssuedOrder::hero(bota_proto::Order::Move {target:bota_proto::Target::Pos(bota_proto::Vec2::from_ints(9216,9216))}),
-        bota_client_core::IssuedOrder::hero(bota_proto::Order::Learn {slot:bota_proto::AbilitySlot(0)}),
-        bota_client_core::IssuedOrder::hero(bota_proto::Order::Buy {item:bota_proto::ItemId::IRON_BRANCH}),
-    ],"the explicit farm movement keeps the missing learning and purchase defaults");
+    assert_eq!(
+        turn.bots[0].orders,
+        vec![
+            bota_client_core::IssuedOrder::hero(bota_proto::Order::Move {
+                target: bota_proto::Target::Pos(bota_proto::Vec2::from_ints(9216, 9216))
+            }),
+            bota_client_core::IssuedOrder::hero(bota_proto::Order::Learn {
+                slot: bota_proto::AbilitySlot(0)
+            }),
+            bota_client_core::IssuedOrder::hero(bota_proto::Order::Buy {
+                item: bota_proto::ItemId::IRON_BRANCH
+            }),
+        ],
+        "the explicit farm movement keeps the missing learning and purchase defaults"
+    );
 }
 
 #[test]
