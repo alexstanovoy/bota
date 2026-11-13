@@ -29,6 +29,7 @@ keywords = ["game", "simulation", "deterministic", "dota", "bot"]
 categories = ["games", "simulation"]
 
 [workspace.dependencies]
+heatel = { version = "0.1.0", default-features = false }
 syn = { version = "=2.0.119", default-features = false, features = ["full", "parsing", "printing", "visit-mut", "clone-impls"] }
 proc-macro2 = { version = "=1.0.107", default-features = false }
 quote = { version = "1.0.47", default-features = false }

@@ -270,6 +270,7 @@ impl LuaTeam {
         self.lua.pin(root)?;
         self.lua
             .set_loader(crate::modules::MemoryLoader(modules.clone()));
+        self.state.borrow_mut().activity_profiles = modules.activity_profiles.clone();
         self.modules = Some(modules);
         self.module_root = Some(root);
         Ok(())

@@ -76,6 +76,14 @@ fn run(name: &str, fuel: u64) -> Result<Vec<Value>, luagee::Error> {
             hero: HeroId::SHADOW_FIEND,
         }],
     )));
+    state.borrow_mut().activity_profiles =
+        std::sync::Arc::new(std::collections::BTreeMap::from([(
+            "npc_dota_hero_nevermore".to_owned(),
+            bota_client_core::ActivityProfile {
+                idle_ms: Some(1000),
+                ..Default::default()
+            },
+        )]));
     state.borrow_mut().snapshot = Some(snapshot);
     let vectors = vector::install(&mut lua).expect("vectors");
     install(&mut lua, state.clone(), vectors).expect("API");
@@ -275,4 +283,12 @@ fn buyback_calls_pay_a_fixed_minimum_for_two_received_seats() {
     ] {
         assert_budget(name, 11);
     }
+}
+
+#[test]
+fn activity_queries_charge_their_explicit_work_and_received_unit_searches() {
+    // Two retained bodies and two public roster rows: 8 work + 1 handle + 8 searches.
+    assert_budget("GetAnimActivity", 17);
+    assert_budget("GetAnimCycle", 17);
+
 }

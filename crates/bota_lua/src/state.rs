@@ -77,6 +77,7 @@ pub(crate) struct KnownUnit {
     pub visible: bool,
     pub last_visible: (u32, bota_proto::Vec2),
     pub velocity: Option<VelocityEstimate>,
+    pub activity: bota_client_core::ActivityClock,
 }
 
 pub(crate) struct AttackFact {
@@ -287,6 +288,7 @@ impl Snapshot {
                         .is_ok(),
                     last_visible: (track.last_seen_tick, track.unit.pos),
                     velocity: track.velocity,
+                    activity: track.activity,
                 })
                 .collect(),
         })
@@ -405,6 +407,8 @@ pub(crate) struct TeamDesires {
 }
 
 pub(crate) struct State {
+    pub activity_profiles:
+        std::sync::Arc<std::collections::BTreeMap<String, bota_client_core::ActivityProfile>>,
     pub team: Team,
     pub seats: Vec<BotSeat>,
     pub declared_bots: [bool; 10],
@@ -427,6 +431,7 @@ pub(crate) struct State {
 impl State {
     pub fn new(team: Team, seats: &[BotSeat]) -> Self {
         Self {
+            activity_profiles: std::sync::Arc::new(std::collections::BTreeMap::new()),
             team,
             seats: seats.to_vec(),
             declared_bots: [false; 10],

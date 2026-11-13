@@ -6,10 +6,14 @@
 //! acknowledgements are returned for the caller to transmit, and a client's
 //! own state rides along through an [`Observer`].
 
+mod activity;
 mod confirmations;
 mod error;
 mod memory;
 mod missiles;
+pub use activity::{
+    Activity, ActivityClock, ActivityPhase, ActivityProfile, CurrentActivity, INSTANT_MOVE_DISTANCE,
+};
 mod tracks;
 mod validate;
 
@@ -489,6 +493,10 @@ impl ClientSession {
         let viewer = self.owner.map_or(view.viewer, |owner| Some(owner.team));
         self.tracks
             .fold_snapshot(view, self.owner, viewer, self.options.forget_after_ticks);
+        self.tracks.refresh_activities(
+            map_of(self.statics.metadata().map),
+            self.statics.metadata().tick_rate,
+        );
         self.memory.fold(view);
         self.missiles.fold(view.tick, &view.projectiles, &view.loot);
     }
@@ -515,6 +523,10 @@ impl ClientSession {
     fn record_events(&mut self, tick: u32, events: &[EventKind]) {
         assert!(self.last_event_tick.is_none_or(|previous| previous < tick));
         self.tracks.fold_events(tick, events);
+        self.tracks.refresh_activities(
+            map_of(self.statics.metadata().map),
+            self.statics.metadata().tick_rate,
+        );
         for event in events {
             if matches!(event, EventKind::AttackLaunched { .. }) {
                 continue;

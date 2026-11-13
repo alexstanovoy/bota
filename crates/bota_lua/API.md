@@ -343,3 +343,32 @@ book and public innate definition, raises `active ability is not observed` rathe
 than fabricating a handle or claiming that no cast exists. The signature follows
 the [generated bot API](https://docs.moddota.com/lua_bots/)'s
 `GetCurrentActiveAbility(): handle` declaration.
+
+### Observed animation activity
+
+`GetAnimActivity()` and `GetAnimCycle()` read the shared client activity model.
+The former returns the registered `ACTIVITY_*` id, the latter a cycle in `[0,1)`.
+The identifiers and unseen sentinels were established from the installed game,
+build 6975.
+An authenticated foreign unit outside current sight returns `-1` / `-1.0`, even
+while its frozen last observation remains in memory. A forgotten non-roster unit
+errors with `unit is no longer known`; forged handles are rejected.
+
+The model observes movement, received attack wind-ups and launch facts, casts,
+channels, forced movement and stun. Attack and cast phases use public catalogue
+and received timing; loop durations come from trusted local model metadata
+supplied before execution. Missing timing metadata raises an explicit error,
+rather than inventing a duration. Native loading reads that metadata only during
+setup from the user's install; no model data is distributed with the binding.
+The model is a deterministic client observation, not a claim of identical
+reference-engine sequence selection. In particular, rare-idle selection and
+attack alternation follow the client model. Pre-launch swings are currently
+received only when the target is also visible: a stationary attack at a hidden
+target cannot yet be distinguished from idle before launch.
+
+Each query charges eight fuel units plus handle validation and two units per
+received body and roster row searched, above `bare_native_call_fuel()`.
+The binding alone maps semantic activities to engine constants: idle, rare idle,
+run, attack, alternate attack, flail, disabled, six cast and six channel slots,
+death and spawn. Death/spawn/teleport transitions require observed signals; no
+private controller state is read.

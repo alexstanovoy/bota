@@ -71,6 +71,8 @@ mod seat;
 mod session;
 mod shop;
 mod sight;
+mod unit_definition;
+pub use unit_definition::unit_definition;
 #[cfg(not(target_arch = "wasm32"))]
 mod socket;
 mod timer_journal;

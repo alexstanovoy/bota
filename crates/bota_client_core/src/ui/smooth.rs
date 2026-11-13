@@ -11,7 +11,7 @@ use bota_proto::{Angle, EntityId, ProjectileView, UnitView, WorldView};
 const FIRST_INTERVAL: f32 = 1.0 / 30.0;
 /// A move longer than this in one tick, in world units, is a jump: a blink,
 /// a teleport or a respawn. It is drawn at once.
-const JUMP: f32 = 450.0;
+const JUMP: f32 = crate::INSTANT_MOVE_DISTANCE as f32;
 
 /// The clock between snapshots.
 #[derive(Clone, Copy, Debug, PartialEq)]

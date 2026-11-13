@@ -15,6 +15,7 @@ const ENTRY_OVERHEAD: usize = 2048;
 #[derive(Debug)]
 pub struct ModuleBank {
     sources: BTreeMap<String, Vec<u8>>,
+    activity_profiles: BTreeMap<String, bota_client_core::ActivityProfile>,
     limits: Limits,
     source_bytes: usize,
     max_source: usize,
@@ -25,11 +26,64 @@ impl ModuleBank {
     pub fn new(limits: Limits) -> Self {
         Self {
             sources: BTreeMap::new(),
+            activity_profiles: BTreeMap::new(),
             limits,
             source_bytes: 0,
             max_source: 0,
             retained_bytes: BANK_OVERHEAD,
         }
+    }
+
+    /// Supplies trusted local model timing before scripts start. No script can change it.
+    pub fn set_activity_profile(
+        &mut self,
+        unit: &str,
+        profile: bota_client_core::ActivityProfile,
+    ) -> Result<(), BindingError> {
+        if unit.is_empty()
+            || unit.len() > 256
+            || !unit.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+        {
+            return Err(BindingError::Configuration("invalid activity profile key"));
+        }
+        if self.activity_profiles.contains_key(unit) || self.activity_profiles.len() >= 1024 {
+            return Err(BindingError::Configuration(
+                "activity profile count limit exceeded",
+            ));
+        }
+        let periods = [
+            profile.idle_ms,
+            profile.rare_idle_ms,
+            profile.run_ms,
+            profile.flail_ms,
+            profile.stunned_ms,
+            profile.die_ms,
+            profile.spawn_ms,
+        ];
+        if periods
+            .into_iter()
+            .chain(profile.channel_ms)
+            .flatten()
+            .any(|ms| ms > 600_000)
+        {
+            return Err(BindingError::Configuration(
+                "activity profile duration is out of range",
+            ));
+        }
+        let bytes = self
+            .retained_bytes
+            .checked_add(ENTRY_OVERHEAD + unit.len())
+            .ok_or(BindingError::Configuration(
+                "activity profile storage limit exceeded",
+            ))?;
+        if bytes > self.limits.memory {
+            return Err(BindingError::Configuration(
+                "activity profile storage limit exceeded",
+            ));
+        }
+        self.activity_profiles.insert(unit.to_owned(), profile);
+        self.retained_bytes = bytes;
+        Ok(())
     }
 
     /// Copies source only after checking its canonical name and every storage bound.
@@ -117,6 +171,7 @@ impl ModuleBank {
         }
         Ok(Arc::new(Sources {
             sources: self.sources,
+            activity_profiles: Arc::new(self.activity_profiles),
             retained_bytes,
         }))
     }
@@ -125,6 +180,7 @@ impl ModuleBank {
 #[derive(Debug)]
 pub(crate) struct Sources {
     sources: BTreeMap<String, Vec<u8>>,
+    pub activity_profiles: Arc<BTreeMap<String, bota_client_core::ActivityProfile>>,
     pub retained_bytes: usize,
 }
 

@@ -48,6 +48,27 @@ fn run_pack(directory: &std::path::Path, runtime: Option<&std::path::Path>, team
     for _ in 0..bota_core::MAP2_TICK_CAP {
         ticks += 1;
         let turn = lua.think(&sessions[index]).expect("think");
+        if !turn.failures.is_empty() {
+            let discarded = turn
+                .bots
+                .iter()
+                .filter(|bot| turn.failures.iter().any(|failure| failure.slot == bot.slot))
+                .count();
+            assert!(
+                turn.bots
+                    .iter()
+                    .filter(|bot| { turn.failures.iter().any(|failure| failure.slot == bot.slot) })
+                    .all(|bot| bot.orders.is_empty()),
+                "a failed turn cannot leak orders"
+            );
+            eprintln!(
+                "pack_first_failure team={team:?} tick={ticks} reported_errors={} additional_team_errors={} discarded_bot_turns={discarded} deadline_ticks={} retired={}",
+                turn.failures.len(),
+                turn.hook_activity.suppressed_team_errors,
+                lua.deadline_ticks(),
+                lua.retired()
+            );
+        }
         assert!(turn.failures.is_empty(), "{:?}", turn.failures);
         activity += turn.hook_activity;
         let orders: Vec<_> = turn.bots[0]

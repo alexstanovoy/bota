@@ -10,6 +10,8 @@ use crate::{BindingError, Limits, ModuleBank};
 
 #[cfg(target_os = "linux")]
 mod files;
+#[cfg(target_os = "linux")]
+mod timing_profiles;
 
 /// Preloads regular Lua files into an immutable-ready bank. Only setup performs filesystem I/O.
 /// Linux requires openat2 and trusted procfs; descendants may contain neither symlinks nor submounts.
@@ -20,7 +22,9 @@ pub fn load_modules(
 ) -> Result<ModuleBank, BindingError> {
     #[cfg(target_os = "linux")]
     {
-        files::load(pack, runtime, limits)
+        let mut bank = files::load(pack, runtime, limits)?;
+        timing_profiles::populate(&mut bank, runtime)?;
+        Ok(bank)
     }
     #[cfg(not(target_os = "linux"))]
     {

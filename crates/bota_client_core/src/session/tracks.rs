@@ -106,6 +106,8 @@ pub struct EntityTrack {
     pub mana_delta: i64,
     /// Whether the entity is present in the current snapshot.
     pub visible: bool,
+    /// Renderer-independent current activity, advanced only by visible observations.
+    pub activity: super::activity::ActivityClock,
     /// Latest damage dealt by this entity.
     pub last_damage_dealt: Option<DamageObservation>,
     /// Latest damage taken by this entity.
@@ -167,6 +169,13 @@ pub(crate) struct Tracks {
 }
 
 impl Tracks {
+    pub(crate) fn refresh_activities(&mut self, map: &bota_core::MapDef, rate: u16) {
+        for entity in self.entities.iter_mut().filter(|entity| entity.visible) {
+            let mut activity = entity.activity;
+            activity.observe(entity, map, rate);
+            entity.activity = activity;
+        }
+    }
     #[inline]
     pub(crate) fn all(&self) -> &[EntityTrack] {
         &self.entities
@@ -529,6 +538,7 @@ fn new_entity(tick: u32, unit: &UnitView) -> EntityTrack {
         hp_delta: 0,
         mana_delta: 0,
         visible: true,
+        activity: super::activity::ActivityClock::default(),
         last_damage_dealt: None,
         last_damage_taken: None,
         last_heal_dealt: None,

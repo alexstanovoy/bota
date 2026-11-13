@@ -16,13 +16,14 @@ rustix = { workspace = true, features = ["fs", "std"], optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 getrandom = { workspace = true, optional = true }
+heatel = { workspace = true, optional = true }
 
 [dev-dependencies]
 bota_server.workspace = true
 
 [features]
 default = []
-native = ["dep:rustix", "dep:getrandom"]
+native = ["dep:rustix", "dep:getrandom", "dep:heatel"]
 
 [lints]
 workspace = true
