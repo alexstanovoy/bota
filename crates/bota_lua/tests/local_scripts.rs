@@ -13,7 +13,13 @@ fn local_scripts_play_a_complete_match_without_script_failures() {
     let directory =
         std::env::var_os("BOTA_LUA_LOCAL_PACK").expect("BOTA_LUA_LOCAL_PACK is required");
     let runtime = std::env::var_os("BOTA_LUA_RUNTIME_SCRIPTS").map(std::path::PathBuf::from);
-    for team in [Team::Radiant, Team::Dire] {
+    let sides: &[Team] = match std::env::var("BOTA_LUA_LOCAL_TEAM").as_deref() {
+        Ok("radiant") => &[Team::Radiant],
+        Ok("dire") => &[Team::Dire],
+        Err(std::env::VarError::NotPresent) => &[Team::Radiant, Team::Dire],
+        _ => panic!("BOTA_LUA_LOCAL_TEAM must be radiant or dire when set"),
+    };
+    for &team in sides {
         run_pack(std::path::Path::new(&directory), runtime.as_deref(), team);
     }
 }
