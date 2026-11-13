@@ -462,9 +462,17 @@ fn fuse(threads: usize, jobs: usize) -> (usize, usize) {
             .into_iter()
             .map(|data| Armed(Some(data)))
             .chain([Armed(None)]);
-        // Every job is answered: the first failing position's error comes back.
+        // Every job is answered: the first failing position's error comes back. With several
+        // workers the first position's job may be answered unrun, if another worker's panic made
+        // the pool terminal before that job's worker looked.
         let stepped = env.step(actions, &ticket, |_, _| {});
-        assert!(matches!(stepped, Err(Error(GymError::Panicked { .. }))));
+        assert!(matches!(
+            stepped,
+            Err(Error(GymError::Panicked { .. } | GymError::Undisposed))
+        ));
+        if threads == 1 {
+            assert_eq!(stepped, Err(Error(GymError::Panicked { position: 0 })));
+        }
         assert_eq!(
             VecEnv::<Fuse>::start(workers, vec![0], &ticket).err(),
             Some(Error(GymError::Undisposed))
