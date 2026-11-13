@@ -71,12 +71,14 @@ contain occupied roster entries only. Out-of-range or fractional player/team ids
 raise ordinary Lua errors; an unoccupied player id supplies no fabricated row.
 Before a roster is received, a selected hero name is supplied only when the
 configured seats prove its rank without assuming any missing lower seat's side.
-Other names remain empty. This does not reconstruct a selection-phase roster.
+Other names remain empty, and unproven ids do not select a seat. `SelectHero`
+and `GetSelectedHeroName` use the same engine-id resolver. This does not
+reconstruct a selection-phase roster.
 Roster queries require a received view; this host's fixed selection mode skips
 pack selection scripts. In an active view, an unoccupied hero-name lookup returns
 an empty string; queries requiring a player row report its absence as an error.
 `GetHeroLastSeenInfo` returns an array with the last received `location` and
-`time_since_seen`, or an empty array for a hero never observed. It uses the
+`time_since_seen`, or an empty array when no corresponding observation remains. It uses the
 session's remembered body even after short-lived entity tracking expires.
 When the public roster withholds the real hero's identity, last-seen results list
 received hero-body candidates instead of identifying a real hero or an illusion.

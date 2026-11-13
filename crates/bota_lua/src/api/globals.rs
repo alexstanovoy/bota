@@ -83,16 +83,13 @@ pub(super) fn install(lua: &mut Lua, state: Shared, _vectors: Vectors) -> Result
                         )?
                     }
                     "SelectHero" => {
-                        let slot = integer(vm, args, 0)?;
+                        let player = bounded_integer(vm, args, 0, 0, 9)?;
                         let name = string(vm, args, 1)?;
                         let hero = std::str::from_utf8(name)
                             .ok()
                             .and_then(bota_core::hero_by_key);
                         if state.selecting
-                            && let Some(index) = state
-                                .seats
-                                .iter()
-                                .position(|seat| i64::from(seat.slot.0) == slot)
+                            && let Some(index) = super::players::selection_index(&state, player)
                             && state.picks[index].is_none()
                         {
                             state.picks[index] = Some(hero.unwrap_or(state.seats[index].hero));

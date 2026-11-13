@@ -57,6 +57,15 @@ pub(super) fn selected_hero(state: &State, id: i32) -> Option<HeroId> {
     if let Some(snapshot) = &state.snapshot {
         return player(snapshot, id).map(|player| player.hero);
     }
+    let index = selection_index(state, id)?;
+    Some(state.picks[index].unwrap_or(state.seats[index].hero))
+}
+
+pub(super) fn selection_index(state: &State, id: i32) -> Option<usize> {
+    if let Some(snapshot) = &state.snapshot {
+        let slot = player(snapshot, id)?.slot;
+        return state.seats.iter().position(|seat| seat.slot == slot);
+    }
     let base = match state.team {
         Team::Radiant => 0,
         Team::Dire => 5,
@@ -81,7 +90,7 @@ pub(super) fn selected_hero(state: &State, id: i32) -> Option<HeroId> {
         .seats
         .iter()
         .position(|seat| usize::from(seat.slot.0) == rank)?;
-    Some(state.picks[index].unwrap_or(state.seats[index].hero))
+    Some(index)
 }
 
 pub(super) fn install(lua: &mut Lua, context: &ApiContext) -> Result<(), BindingError> {

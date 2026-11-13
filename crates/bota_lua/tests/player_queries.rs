@@ -421,16 +421,23 @@ fn hero_name_lookup_does_not_guess_ranks_before_a_roster_is_received() {
         function Think()
             assert(GetSelectedHeroName(0) == '')
             SelectHero(1, 'npc_dota_hero_pudge')
+            error('selection rank checked')
         end
     "#,
     )
     .expect("script");
     let selected = lua.select_heroes(0).expect("selection");
-    assert!(selected.failures.is_empty(), "{:?}", selected.failures);
+    assert_eq!(selected.failures.len(), 1);
+    assert!(
+        selected.failures[0]
+            .error
+            .to_string()
+            .contains("selection rank checked")
+    );
     assert_eq!(
         selected.seats[0].hero,
-        HeroId::PUDGE,
-        "the hook reached its final selection action"
+        HeroId::SHADOW_FIEND,
+        "an unproven engine rank cannot select a wire seat"
     );
     assert_eq!(
         lua.set_bot_declarations(&[])
@@ -438,6 +445,51 @@ fn hero_name_lookup_does_not_guess_ranks_before_a_roster_is_received() {
             .to_string(),
         "bot declarations must be set before execution"
     );
+}
+
+#[test]
+fn selection_queries_and_picks_share_proven_engine_ids_on_both_sides() {
+    for (side, base) in [(Team::Radiant, 0), (Team::Dire, 5)] {
+        let mut lua = LuaTeam::new(
+            side,
+            &[
+                BotSeat {
+                    slot: SlotId(0),
+                    hero: HeroId::SHADOW_FIEND,
+                },
+                BotSeat {
+                    slot: SlotId(1),
+                    hero: HeroId::SHADOW_FIEND,
+                },
+            ],
+            Limits::DEFAULT,
+            Keys {
+                hash: [17, 19],
+                random: 23,
+            },
+        )
+        .expect("team");
+        let source = r#"
+            function Think()
+                assert(GetSelectedHeroName(__FIRST__) == 'npc_dota_hero_nevermore')
+                assert(GetSelectedHeroName(__SECOND__) == 'npc_dota_hero_nevermore')
+                SelectHero(__SECOND__, 'npc_dota_hero_pudge')
+                assert(GetSelectedHeroName(__SECOND__) == 'npc_dota_hero_pudge')
+            end
+        "#
+        .replace("__FIRST__", &base.to_string())
+        .replace("__SECOND__", &(base + 1).to_string());
+        lua.add_script(
+            SlotId(0),
+            ScriptKind::HeroSelection,
+            "selection_ids",
+            source.as_bytes(),
+        )
+        .expect("script");
+        let selected = lua.select_heroes(0).expect("selection");
+        assert!(selected.failures.is_empty(), "{:?}", selected.failures);
+        assert_eq!(selected.seats[1].hero, HeroId::PUDGE);
+    }
 }
 
 #[test]
