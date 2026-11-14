@@ -215,7 +215,19 @@ impl Snapshot {
                                 .checked_mul(std::mem::size_of::<bota_proto::Order>())?,
                         )
                 });
-        let bytes=bytes.and_then(|bytes|bytes.checked_add(view.felled_trees.len().checked_mul(std::mem::size_of::<u32>())?)?.checked_add(view.planted_trees.len().checked_mul(std::mem::size_of::<bota_proto::Vec2>())?));
+        let bytes = bytes.and_then(|bytes| {
+            bytes
+                .checked_add(
+                    view.felled_trees
+                        .len()
+                        .checked_mul(std::mem::size_of::<u32>())?,
+                )?
+                .checked_add(
+                    view.planted_trees
+                        .len()
+                        .checked_mul(std::mem::size_of::<bota_proto::Vec2>())?,
+                )
+        });
         if session.recent_events().len() > 16384
             || session.entities().len() > MAX_HANDLES
             || view.players.len() > 10
@@ -365,14 +377,14 @@ pub(crate) struct HostCheckpoint {
 impl BotState {
     pub fn checkpoint(&self) -> HostCheckpoint {
         HostCheckpoint {
-            last_chat:self.last_chat,
+            last_chat: self.last_chat,
             pending_once: self.pending_once,
             native_courier: self.native_courier,
             native_laning: self.native_laning,
         }
     }
     pub fn restore(&mut self, checkpoint: HostCheckpoint) {
-        self.last_chat=checkpoint.last_chat;
+        self.last_chat = checkpoint.last_chat;
         self.pending_once = checkpoint.pending_once;
         self.native_courier = checkpoint.native_courier;
         self.native_laning = checkpoint.native_laning;

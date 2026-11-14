@@ -485,7 +485,7 @@ impl LuaTeam {
             self.state.borrow_mut().current_slot = seat.slot;
             if index != 0 {
                 self.state.borrow_mut().orders.clear();
-        self.state.borrow_mut().chat.clear();
+                self.state.borrow_mut().chat.clear();
             }
             let host_before = if index == 0 {
                 first_host
@@ -507,7 +507,7 @@ impl LuaTeam {
             };
             let orders = if let Err(error) = ended {
                 self.state.borrow_mut().orders.clear();
-        self.state.borrow_mut().chat.clear();
+                self.state.borrow_mut().chat.clear();
                 self.state.borrow_mut().bots[index].restore(host_before);
                 self.state.borrow_mut().purchases = purchases_before;
                 result
@@ -524,7 +524,7 @@ impl LuaTeam {
                 }
                 std::mem::take(&mut state.orders)
             };
-            let chat=std::mem::take(&mut self.state.borrow_mut().chat);
+            let chat = std::mem::take(&mut self.state.borrow_mut().chat);
             result.bots.push(BotTurn {
                 slot: seat.slot,
                 chat,

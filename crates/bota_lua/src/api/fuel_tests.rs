@@ -335,79 +335,273 @@ fn populated_projectile_results_pay_their_exact_scan_row_and_allocation_budget()
 
 #[test]
 fn environment_queries_pay_exact_native_and_host_prices() {
-    fn call(name:&str,fuel:u64)->Result<Vec<Value>,luagee::Error> {
-        let (_,sessions)=support::local(&[Team::Radiant,Team::Dire]);
-        let snapshot=Snapshot::capture(&sessions[0]).unwrap();
-        let own=sessions[0].own_hero().unwrap().id;
-        let state=Rc::new(RefCell::new(State::new(Team::Radiant,&[crate::BotSeat {slot:SlotId(0),hero:HeroId::SHADOW_FIEND}])));
-        state.borrow_mut().snapshot=Some(snapshot);
-        let mut lua=Lua::new(Limits::DEFAULT.with_fuel_per_tick(fuel),Keys{hash:[1,2],random:3})?;
-        let vectors=vector::install(&mut lua).unwrap();install(&mut lua,state.clone(),vectors).unwrap();
-        if name=="GetCourier" {
-            let id=state.borrow().snapshot.as_ref().unwrap().units.iter().find(|known|known.unit.kind==bota_proto::UnitKind::Courier && known.unit.team==Team::Radiant).unwrap().unit.id;
-            state.borrow_mut().handle(lua.vm(),Some(id)).unwrap();
+    fn call(name: &str, fuel: u64) -> Result<Vec<Value>, luagee::Error> {
+        let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
+        let snapshot = Snapshot::capture(&sessions[0]).unwrap();
+        let own = sessions[0].own_hero().unwrap().id;
+        let state = Rc::new(RefCell::new(State::new(
+            Team::Radiant,
+            &[crate::BotSeat {
+                slot: SlotId(0),
+                hero: HeroId::SHADOW_FIEND,
+            }],
+        )));
+        state.borrow_mut().snapshot = Some(snapshot);
+        let mut lua = Lua::new(
+            Limits::DEFAULT.with_fuel_per_tick(fuel),
+            Keys {
+                hash: [1, 2],
+                random: 3,
+            },
+        )?;
+        let vectors = vector::install(&mut lua).unwrap();
+        install(&mut lua, state.clone(), vectors).unwrap();
+        if name == "GetCourier" {
+            let id = state
+                .borrow()
+                .snapshot
+                .as_ref()
+                .unwrap()
+                .units
+                .iter()
+                .find(|known| {
+                    known.unit.kind == bota_proto::UnitKind::Courier
+                        && known.unit.team == Team::Radiant
+                })
+                .unwrap()
+                .unit
+                .id;
+            state.borrow_mut().handle(lua.vm(), Some(id)).unwrap();
         }
-        let (function,args)=if matches!(name,"DistanceFromSideShop"|"ActionImmediate_Chat"|"Action_Chat"|"GetNearbyTrees"|"NumQueuedActions") {
-            let receiver=state.borrow_mut().handle(lua.vm(),Some(own)).unwrap();let key=lua.string(name.as_bytes())?;
-            { let mut args=vec![receiver];if name=="GetNearbyTrees" {args.push(Value::Number(0.0));}else if !matches!(name,"DistanceFromSideShop"|"NumQueuedActions") {args.push(lua.string(b"hi")?);args.push(Value::Boolean(false));} (lua.vm().raw_get(state.borrow().unit_methods.unwrap(),key).unwrap(),args) }
-        }else{
-            let args=match name {"GetLaneFrontAmount"=>vec![Value::Number(2.0),Value::Number(2.0),Value::Boolean(true)],"GetShopLocation"=>vec![Value::Number(2.0),Value::Number(1.0)],"GetCourier"=>vec![Value::Number(0.0)],"IsItemPurchasedFromSideShop"=>vec![lua.string(b"item_boots")?],_=>vec![]};
-            (lua.global(name)?,args)
+        let (function, args) = if matches!(
+            name,
+            "DistanceFromSideShop"
+                | "ActionImmediate_Chat"
+                | "Action_Chat"
+                | "GetNearbyTrees"
+                | "NumQueuedActions"
+        ) {
+            let receiver = state.borrow_mut().handle(lua.vm(), Some(own)).unwrap();
+            let key = lua.string(name.as_bytes())?;
+            {
+                let mut args = vec![receiver];
+                if name == "GetNearbyTrees" {
+                    args.push(Value::Number(0.0));
+                } else if !matches!(name, "DistanceFromSideShop" | "NumQueuedActions") {
+                    args.push(lua.string(b"hi")?);
+                    args.push(Value::Boolean(false));
+                }
+                (
+                    lua.vm()
+                        .raw_get(state.borrow().unit_methods.unwrap(), key)
+                        .unwrap(),
+                    args,
+                )
+            }
+        } else {
+            let args = match name {
+                "GetLaneFrontAmount" => {
+                    vec![Value::Number(2.0), Value::Number(2.0), Value::Boolean(true)]
+                }
+                "GetShopLocation" => vec![Value::Number(2.0), Value::Number(1.0)],
+                "GetCourier" => vec![Value::Number(0.0)],
+                "IsItemPurchasedFromSideShop" => vec![lua.string(b"item_boots")?],
+                _ => vec![],
+            };
+            (lua.global(name)?, args)
         };
-        lua.begin_tick();lua.call(function,&args)
+        lua.begin_tick();
+        lua.call(function, &args)
     }
-    let (_,sessions)=support::local(&[Team::Radiant,Team::Dire]);
-    let units=sessions[0].entities().len() as u64;
-    let trees=sessions[0].statics().trees().len() as u64;
-    let felled=sessions[0].current().unwrap().felled_trees.len();
-    let search=1+felled.max(1).ilog2() as u64;
-    let segments=bota_core::lane_polyline(sessions[0].map(),bota_core::rules::LANE_MID).len()-1;
-    let towers=sessions[0].map().radiant_towers.len();
-    let front_price=32+8*segments as u64+units*(4+8*segments as u64+towers as u64);
-    for (name,work) in [("GetShopLocation",12),("GetGameState",8),("IsItemPurchasedFromSideShop",9),("GetNumCouriers",8+units),("GetCourier",9+units),("DistanceFromSideShop",9+units/8),("ActionImmediate_Chat",14+units/8),("Action_Chat",14+units/8),("GetNearbyTrees",13+units+units/8+trees*(1+search)),("NumQueuedActions",9+units/8),("GetLaneFrontAmount",front_price)] {
-        let minimum=support::bare_native_call_fuel()+work;
-        assert!(call(name,minimum).is_ok(),"{name} minimum {minimum}");
-        assert!(matches!(call(name,minimum-1),Err(luagee::Error::Limit(luagee::Limit::FuelPerTick))),"{name} minimum-1");
+    let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let units = sessions[0].entities().len() as u64;
+    let trees = sessions[0].statics().trees().len() as u64;
+    let felled = sessions[0].current().unwrap().felled_trees.len();
+    let search = 1 + felled.max(1).ilog2() as u64;
+    let segments =
+        bota_core::lane_polyline(sessions[0].map(), bota_core::rules::LANE_MID).len() - 1;
+    let towers = sessions[0].map().radiant_towers.len();
+    let front_price = 32 + 8 * segments as u64 + units * (4 + 8 * segments as u64 + towers as u64);
+    for (name, work) in [
+        ("GetShopLocation", 12),
+        ("GetGameState", 8),
+        ("IsItemPurchasedFromSideShop", 9),
+        ("GetNumCouriers", 8 + units),
+        ("GetCourier", 9 + units),
+        ("DistanceFromSideShop", 9 + units / 8),
+        ("ActionImmediate_Chat", 14 + units / 8),
+        ("Action_Chat", 14 + units / 8),
+        (
+            "GetNearbyTrees",
+            13 + units + units / 8 + trees * (1 + search),
+        ),
+        ("NumQueuedActions", 9 + units / 8),
+        ("GetLaneFrontAmount", front_price),
+    ] {
+        let minimum = support::bare_native_call_fuel() + work;
+        assert!(call(name, minimum).is_ok(), "{name} minimum {minimum}");
+        assert!(
+            matches!(
+                call(name, minimum - 1),
+                Err(luagee::Error::Limit(luagee::Limit::FuelPerTick))
+            ),
+            "{name} minimum-1"
+        );
     }
 }
 
 #[test]
 fn nonempty_tree_rows_pay_fuel_above_the_interpreters_table_storage_work() {
     use bota_client_core::IssuedOrder;
-    use bota_proto::{Cheat,Fixed,Order};
-    fn fixture()->Snapshot {
-        let (mut local,mut sessions)=support::local_with_cheats(&[Team::Radiant,Team::Dire],bota_core::MAP2_ID);
-        let tree=sessions[0].statics().trees()[0];
-        let command=sessions[0].issue(IssuedOrder::hero(Order::Cheat {cheat:Cheat::Teleport {at:tree}})).unwrap();
-        for (session,stream) in sessions.iter_mut().zip(local.step(&[&[command],&[]]).unwrap()) {support::fold(session,stream);}
+    use bota_proto::{Cheat, Fixed, Order};
+    fn fixture() -> Snapshot {
+        let (mut local, mut sessions) =
+            support::local_with_cheats(&[Team::Radiant, Team::Dire], bota_core::MAP2_ID);
+        let tree = sessions[0].statics().trees()[0];
+        let command = sessions[0]
+            .issue(IssuedOrder::hero(Order::Cheat {
+                cheat: Cheat::Teleport { at: tree },
+            }))
+            .unwrap();
+        for (session, stream) in sessions
+            .iter_mut()
+            .zip(local.step(&[&[command], &[]]).unwrap())
+        {
+            support::fold(session, stream);
+        }
         Snapshot::capture(&sessions[0]).unwrap()
     }
-    fn storage(rows:usize)->u64 {
-        let limits=Limits::DEFAULT;
-        let mut lua=Lua::new(limits,Keys{hash:[1,2],random:3}).unwrap();
-        let function=lua.function("result_table_baseline",Rc::new(move |vm,_| {
-            let table=vm.new_table()?;
-            for index in 0..rows {vm.raw_set(table,Value::Number((index+1) as f64),Value::Number(index as f64))?;}
-            vm.results(&[Value::Table(table)])
-        })).unwrap();
-        lua.begin_tick();lua.call(function,&[]).unwrap();limits.fuel_per_tick-lua.tick_fuel_left()-support::bare_native_call_fuel()
+    fn storage(rows: usize) -> u64 {
+        let limits = Limits::DEFAULT;
+        let mut lua = Lua::new(
+            limits,
+            Keys {
+                hash: [1, 2],
+                random: 3,
+            },
+        )
+        .unwrap();
+        let function = lua
+            .function(
+                "result_table_baseline",
+                Rc::new(move |vm, _| {
+                    let table = vm.new_table()?;
+                    for index in 0..rows {
+                        vm.raw_set(
+                            table,
+                            Value::Number((index + 1) as f64),
+                            Value::Number(index as f64),
+                        )?;
+                    }
+                    vm.results(&[Value::Table(table)])
+                }),
+            )
+            .unwrap();
+        lua.begin_tick();
+        lua.call(function, &[]).unwrap();
+        limits.fuel_per_tick - lua.tick_fuel_left() - support::bare_native_call_fuel()
     }
-    fn call(budget:u64)->Result<Vec<Value>,luagee::Error> {
-        let snapshot=fixture();let own=snapshot.players[0].unit.unwrap();
-        let state=Rc::new(RefCell::new(State::new(Team::Radiant,&[crate::BotSeat{slot:SlotId(0),hero:HeroId::SHADOW_FIEND}])));
-        state.borrow_mut().snapshot=Some(snapshot);
-        let mut lua=Lua::new(Limits::DEFAULT.with_fuel_per_tick(budget),Keys{hash:[1,2],random:3})?;
-        let vectors=vector::install(&mut lua).unwrap();install(&mut lua,state.clone(),vectors).unwrap();
-        let receiver=state.borrow_mut().handle(lua.vm(),Some(own)).unwrap();
-        let key=lua.string(b"GetNearbyTrees")?;let function=lua.vm().raw_get(state.borrow().unit_methods.unwrap(),key).unwrap();
-        lua.begin_tick();lua.call(function,&[receiver,Value::Number(256.0)])
+    fn call(budget: u64) -> Result<Vec<Value>, luagee::Error> {
+        let snapshot = fixture();
+        let own = snapshot.players[0].unit.unwrap();
+        let state = Rc::new(RefCell::new(State::new(
+            Team::Radiant,
+            &[crate::BotSeat {
+                slot: SlotId(0),
+                hero: HeroId::SHADOW_FIEND,
+            }],
+        )));
+        state.borrow_mut().snapshot = Some(snapshot);
+        let mut lua = Lua::new(
+            Limits::DEFAULT.with_fuel_per_tick(budget),
+            Keys {
+                hash: [1, 2],
+                random: 3,
+            },
+        )?;
+        let vectors = vector::install(&mut lua).unwrap();
+        install(&mut lua, state.clone(), vectors).unwrap();
+        let receiver = state.borrow_mut().handle(lua.vm(), Some(own)).unwrap();
+        let key = lua.string(b"GetNearbyTrees")?;
+        let function = lua
+            .vm()
+            .raw_get(state.borrow().unit_methods.unwrap(), key)
+            .unwrap();
+        lua.begin_tick();
+        lua.call(function, &[receiver, Value::Number(256.0)])
     }
-    let snapshot=fixture();let own=snapshot.players[0].unit.unwrap();let position=snapshot.units.iter().find(|known|known.unit.id==own).unwrap().unit.pos;
-    let rows=snapshot.statics.trees().iter().enumerate().filter(|(index,tree)|snapshot.felled_trees.binary_search(&(*index as u32)).is_err() && position.within(**tree,Fixed::from_int(256))).count();
-    assert!(rows>0,"real planted fixture must return tree rows");
-    let units=snapshot.units.len() as u64;let trees=snapshot.statics.trees().len() as u64;let search=1+snapshot.felled_trees.len().max(1).ilog2() as u64;
-    let host=1+units/8+8+units+trees*(1+search)+rows as u64;
-    let minimum=support::bare_native_call_fuel()+storage(rows)+host;
-    assert!(call(minimum).is_ok(),"exact populated minimum {minimum}");
-    assert!(matches!(call(minimum-1),Err(luagee::Error::Limit(luagee::Limit::FuelPerTick))));
+    let snapshot = fixture();
+    let own = snapshot.players[0].unit.unwrap();
+    let position = snapshot
+        .units
+        .iter()
+        .find(|known| known.unit.id == own)
+        .unwrap()
+        .unit
+        .pos;
+    let rows = snapshot
+        .statics
+        .trees()
+        .iter()
+        .enumerate()
+        .filter(|(index, tree)| {
+            snapshot
+                .felled_trees
+                .binary_search(&(*index as u32))
+                .is_err()
+                && position.within(**tree, Fixed::from_int(256))
+        })
+        .count();
+    assert!(rows > 0, "real forest fixture must return tree rows");
+    let units = snapshot.units.len() as u64;
+    let trees = snapshot.statics.trees().len() as u64;
+    let search = 1 + snapshot.felled_trees.len().max(1).ilog2() as u64;
+    let host = 1 + units / 8 + 8 + units + trees * (1 + search) + rows as u64;
+    let minimum = support::bare_native_call_fuel() + storage(rows) + host;
+    assert!(call(minimum).is_ok(), "exact populated minimum {minimum}");
+    assert!(matches!(
+        call(minimum - 1),
+        Err(luagee::Error::Limit(luagee::Limit::FuelPerTick))
+    ));
+}
+
+#[test]
+fn forgotten_tree_receivers_raise_the_unknown_unit_error() {
+    let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let own = sessions[0].own_hero().unwrap().id;
+    let state = Rc::new(RefCell::new(State::new(
+        Team::Radiant,
+        &[crate::BotSeat {
+            slot: SlotId(0),
+            hero: HeroId::SHADOW_FIEND,
+        }],
+    )));
+    state.borrow_mut().snapshot = Some(Snapshot::capture(&sessions[0]).unwrap());
+    let mut lua = Lua::new(
+        Limits::DEFAULT,
+        Keys {
+            hash: [1, 2],
+            random: 3,
+        },
+    )
+    .unwrap();
+    let vectors = vector::install(&mut lua).unwrap();
+    install(&mut lua, state.clone(), vectors).unwrap();
+    let receiver = state.borrow_mut().handle(lua.vm(), Some(own)).unwrap();
+    let key = lua.string(b"GetNearbyTrees").unwrap();
+    let function = lua
+        .vm()
+        .raw_get(state.borrow().unit_methods.unwrap(), key)
+        .unwrap();
+    {
+        let mut state = state.borrow_mut();
+        let snapshot = state.snapshot.as_mut().unwrap();
+        snapshot.units.clear();
+        snapshot.players.clear();
+    }
+    lua.begin_tick();
+    let error = lua
+        .call(function, &[receiver, Value::Number(256.0)])
+        .unwrap_err();
+    assert!(error.to_string().contains("unit is no longer known"));
 }
