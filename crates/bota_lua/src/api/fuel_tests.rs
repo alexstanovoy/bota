@@ -112,6 +112,7 @@ fn run(name: &str, fuel: u64) -> Result<Vec<Value>, luagee::Error> {
     state.borrow_mut().snapshot = Some(snapshot);
     let vectors = vector::install(&mut lua).expect("vectors");
     install(&mut lua, state.clone(), vectors).expect("API");
+    lua.collect().expect("setup collection");
     let mut args = Vec::new();
     let function = if matches!(
         name,
@@ -201,8 +202,10 @@ fn run(name: &str, fuel: u64) -> Result<Vec<Value>, luagee::Error> {
 
 #[test]
 fn unit_list_fuel_has_a_fixed_minimum_for_two_received_units() {
-    // 103 since c9c029c6 pinned the host purchase callback at install (`shop::install`): that one more root moves the
-    // collector's per-tick accounting by one fuel (it was 104 before; removing the pin restores 104).
+    // 103 is a property of the collector's schedule, not of GetUnitList's own work: it was 104 before c9c029c6 pinned the
+    // host purchase callback at install (removing that pin gave 104 again before `run` collected after the install, and
+    // moves it elsewhere since). Which unit of collector work moves, and why, is not isolated; the value is
+    // deterministic, so a change of it points at the schedule (pins, install, interpreter), not at this query.
     assert_budget("GetUnitList", 103);
 }
 

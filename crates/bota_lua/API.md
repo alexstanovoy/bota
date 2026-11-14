@@ -510,14 +510,18 @@ The unit-list corrections replace former host ids: ENEMIES 6→7, enemy subcateg
 and NEUTRAL_CREEPS 11→13. ALLIED_OTHER=6, ENEMY_OTHER=12 and THINKERS=14 are now defined;
 the previous numbers are not aliases.
 
-Fuel and the catalogue. Publishing the constants grew the global catalogue from 185 to 437 names. With measurement
-off or on alike, every script that runs more than an empty `Think` now needs about 127 more fuel per tick: the shift is
-one fixed amount per tick, not a price per lookup or per allocation, and the empty `Think` (284) is unchanged. Measured
-minimum fuel per tick before and after: a loop of 100 additions 596 and 723, 100 reads of an undefined global 969 and
-1096, 100 reads of a defined one 967 and 1095. The default budget is 2,000,000 per tick. The cause is inside the
-interpreter's per-tick collector work, which grows with the heap the catalogue fills; it is not the missing-read observer.
-`tests/fixed_script_fuel.rs` pins the four exact numbers, so later catalogue growth shows as a change there and must be
-re-pinned together with this paragraph.
+Fuel and the catalogue. Installing the API leaves about 16.5 MB live in the interpreter, and the host's install runs no
+instruction, so the collector's first threshold (one megabyte) would still be pending when the first `Think` starts
+and that `Think` would start a whole collection and pay for tracing the catalogue. `LuaTeam::new` therefore ends its
+setup with one collection run by the host, outside any script's fuel (`Lua::collect`), and no script is billed for
+the host's setup. Measured minimum fuel per tick (measurement on or off alike), first `Think` and ticks 2 to 6:
+an empty `Think` 16 and 13; a loop of 100 additions 221 and 207; 100 reads of an undefined or of a defined global,
+then one move order, 591 and 567. Before the setup collection the first `Think` needed 284, 723, 1096 and 1095, and
+before the constants were published 284, 596, 969 and 967. With the collection the numbers are identical for the
+185-name catalogue of before 4c-1 and for today's 437 names, so a published name costs a script no fuel, on the first
+tick or any later one. The default budget is 2,000,000 per tick.
+`tests/fixed_script_fuel.rs` pins the first-`Think` numbers and the additions' later ticks exactly: a change there means
+the collector's schedule or a price changed, and must be re-pinned together with this paragraph.
 
 Only when summary measurement is requested, `undefined_api_reads` retains up to 128 distinct
 API-looking names (64 ASCII identifier bytes each), with saturating counts and one overflow counter.

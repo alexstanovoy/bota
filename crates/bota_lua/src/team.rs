@@ -257,6 +257,9 @@ impl LuaTeam {
         let get_environment = lua.global("getfenv")?;
         lua.pin(set_environment)?;
         lua.pin(get_environment)?;
+        // The install ran no instruction, so no collection started and the threshold is still its first megabyte: the
+        // first Think would start a whole collection and be billed for tracing the host's catalogue. End setup here.
+        lua.collect()?;
         Ok(Self {
             lua,
             state,
