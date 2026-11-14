@@ -9,9 +9,9 @@ use super::items::*;
 use crate::{
     Affects, AllyUse, AreaSupport, AreaWaveSpec, Buff, Carried, DamageBlock, DamagePulse, Dec,
     DisassembleRule, Dispel, Drink, Grenade, Immunity, ItemAura, ItemBarrier, ItemData, ItemDef,
-    ItemModifier, LOTUS_TAKE_RANGE, MagicBlock, Mend, NOTHING, Odds, OnAttack, PLAIN, Pool,
-    ProcTargets, Reach, Recipe, Scroll, Spends, Stat, Stock, Strike, UseSpec,
-    hundredths_per_second, points, points_with, rules,
+    ItemModifier, LOTUS_TAKE_RANGE, MagicBlock, Mend, MovementSteal, NOTHING, Odds, OnAttack,
+    PLAIN, Pool, ProcTargets, Reach, Recipe, RestorationAura, Scroll, Spends, Stat, Stock, Strike,
+    UseSpec, hundredths_per_second, points, points_with, rules,
 };
 
 /// The row of an item as its script gives it; a row of the catalog adds what bota does with it.
@@ -1774,6 +1774,76 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
             ..AreaSupport::recovery(int(&ITEM_BOOTS_OF_BEARING, "radius"), 0, 0)
         }),
         ..from(&ITEM_BOOTS_OF_BEARING)
+    },
+    ItemDef {
+        aim: Some(Aim::Own),
+        carried: Carried {
+            attributes: Attributes::all(int(&ITEM_CRELLAS_CROZIER, "bonus_all_stats")),
+            hp: int(&ITEM_CRELLAS_CROZIER, "bonus_health"),
+            mana: int(&ITEM_CRELLAS_CROZIER, "bonus_mana"),
+            ..NOTHING
+        },
+        modifiers: &[
+            ItemModifier {
+                restoration: Some(RestorationAura {
+                    passive_cut_pct: int(&ITEM_CRELLAS_CROZIER, "health_steal"),
+                    active_redirect_pct: int(&ITEM_CRELLAS_CROZIER, "active_health_steal"),
+                    active: 1,
+                }),
+                ..ItemModifier::buff(EffectId(123), Buff::many(&[]))
+            },
+            ItemModifier {
+                ticks: ticks(&ITEM_CRELLAS_CROZIER, "duration"),
+                collection_period: Some(ticks(&ITEM_CRELLAS_CROZIER, "interval")),
+                movement_steal: Some(MovementSteal {
+                    period: ticks(&ITEM_CRELLAS_CROZIER, "interval"),
+                    radius: int(&ITEM_CRELLAS_CROZIER, "active_radius"),
+                    debuff: 3,
+                    buff: 4,
+                }),
+                ..ItemModifier::buff(EffectId(124), Buff::many(&[]))
+            },
+            ItemModifier {
+                ticks: ticks(&ITEM_CRELLAS_CROZIER, "duration"),
+                ethereal_pct: Some(-int(&ITEM_CRELLAS_CROZIER, "extra_spell_damage_percent")),
+                ..ItemModifier::buff(bota_proto::EffectId::GHOST_FORM, Buff::many(&[]))
+            },
+            ItemModifier {
+                ticks: ticks(&ITEM_CRELLAS_CROZIER, "stack_duration"),
+                stacking: true,
+                ..ItemModifier::buff(
+                    EffectId(125),
+                    Buff::of(
+                        Stat::MovePct,
+                        [-int(&ITEM_CRELLAS_CROZIER, "movespeed_steal_pct"); 4],
+                    ),
+                )
+            },
+            ItemModifier {
+                ticks: ticks(&ITEM_CRELLAS_CROZIER, "stack_duration"),
+                stacking: true,
+                ..ItemModifier::buff(
+                    EffectId(126),
+                    Buff::of(
+                        Stat::MovePct,
+                        [int(&ITEM_CRELLAS_CROZIER, "movespeed_steal_pct"); 4],
+                    ),
+                )
+            },
+        ],
+        auras: &[ItemAura {
+            reaches: Reach::Heroes,
+            ..ItemAura::enemies(0, int(&ITEM_CRELLAS_CROZIER, "radius"))
+        }],
+        effect: UseSpec::Support(AreaSupport {
+            grants: &[1, 2],
+            reaches: Reach::Bearer,
+            ..AreaSupport::recovery(0, 0, 0)
+        }),
+        ..from(&ITEM_CRELLAS_CROZIER)
+    },
+    ItemDef {
+        ..from(&ITEM_RECIPE_CRELLAS_CROZIER)
     },
 ];
 
