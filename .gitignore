@@ -1,5 +1,5 @@
-/target/
-/tools/import_items/target/
+# Build output of the workspace and of any crate built on its own.
+target/
 *.pid
 /temp/
 __pycache__/
