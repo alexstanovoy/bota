@@ -38,12 +38,28 @@ impl SightGround {
         let (felled, planted) = view.map_or((Vec::new(), Vec::new()), |view| {
             (view.felled_trees.clone(), view.planted_trees.clone())
         });
+        Self::lay_forest(statics, &felled, &planted)
+    }
+
+    /// O(GRID_CELLS² + static trees + planted trees); build once per received forest.
+    /// Only the receiving seat's forest changes belong in these slices.
+    pub fn lay_forest(
+        statics: &Arc<MatchStatic>,
+        felled: &[u32],
+        planted: &[Vec2],
+    ) -> Option<Self> {
+        if statics.metadata().terrain_cells as usize != rules::GRID_CELLS
+            || felled.len() > bota_proto::limits::MAX_STATIC_TREES
+            || planted.len() > bota_proto::limits::MAX_PLANTED_TREES
+        {
+            return None;
+        }
         let mut walls = CellGrid::open();
         for &(x, y) in statics.opaque_cells() {
             walls.close_cell(usize::from(x), usize::from(y));
         }
         let mut down = vec![false; statics.trees().len()];
-        for &index in &felled {
+        for &index in felled {
             if let Some(down) = down.get_mut(index as usize) {
                 *down = true;
             }
@@ -63,14 +79,17 @@ impl SightGround {
         Some(Self {
             statics: Arc::clone(statics),
             block,
-            felled,
-            planted,
+            felled: felled.to_vec(),
+            planted: planted.to_vec(),
         })
     }
 
     /// Whether the forest laid is the one `view` tells.
     pub fn fits(&self, view: &WorldView) -> bool {
-        self.felled == view.felled_trees && self.planted == view.planted_trees
+        self.fits_forest(&view.felled_trees, &view.planted_trees)
+    }
+    pub fn fits_forest(&self, felled: &[u32], planted: &[Vec2]) -> bool {
+        self.felled == felled && self.planted == planted
     }
 
     /// Marks in `lit`, one entry per cell row-major from the south-west,
@@ -101,7 +120,16 @@ impl SightGround {
 
     /// Whether `team` sees a point through units and grants in `view`.
     pub fn sees(&self, view: &WorldView, team: Team, at: Vec2) -> bool {
-        viewers(view, team, bota_core::map_of(self.statics.metadata().map))
+        self.sees_units(view.units.iter(), team, at)
+    }
+    /// O(visible units × maximum sight ray length), bounded by the view and grid limits.
+    pub fn sees_units<'a>(
+        &self,
+        units: impl Iterator<Item = &'a bota_proto::UnitView> + 'a,
+        team: Team,
+        at: Vec2,
+    ) -> bool {
+        unit_viewers(units, team, bota_core::map_of(self.statics.metadata().map))
             .any(|(from, radius)| self.sees_from(from, radius, self.statics.ground_tier(from), at))
     }
 
@@ -127,8 +155,15 @@ fn viewers<'a>(
     team: Team,
     map: &'a bota_core::MapDef,
 ) -> impl Iterator<Item = (Vec2, Fixed)> + 'a {
-    view.units
-        .iter()
+    unit_viewers(view.units.iter(), team, map)
+}
+fn unit_viewers<'a>(
+    units: impl Iterator<Item = &'a bota_proto::UnitView> + 'a,
+    team: Team,
+    map: &'a bota_core::MapDef,
+) -> impl Iterator<Item = (Vec2, Fixed)> + 'a {
+    units
+        .take(bota_proto::limits::MAX_VIEW_UNITS)
         .filter_map(move |unit| {
             let own = if unit.team == team {
                 unit.vision_radius

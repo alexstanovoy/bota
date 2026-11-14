@@ -72,7 +72,9 @@ mod session;
 mod shop;
 mod sight;
 mod unit_definition;
+mod unit_queries;
 pub use unit_definition::unit_definition;
+pub use unit_queries::*;
 #[cfg(not(target_arch = "wasm32"))]
 mod socket;
 mod timer_journal;

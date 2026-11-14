@@ -112,6 +112,8 @@ pub struct EntityTrack {
     pub last_damage_dealt: Option<DamageObservation>,
     /// Latest damage taken by this entity.
     pub last_damage_taken: Option<DamageObservation>,
+    /// Last observed damage tick per source class and player; bounded, with no amount log.
+    pub recent_damage: super::RecentDamage,
     /// Latest positive manual health-restoration report from this entity.
     pub last_heal_dealt: Option<HealObservation>,
     /// Latest positive manual health-restoration report targeting this entity.
@@ -452,6 +454,15 @@ impl Tracks {
         amount: i32,
         kind: DamageKind,
     ) {
+        let source_class =
+            source
+                .and_then(|id| self.get(id))
+                .map_or(super::DamageSource::Other, |track| match track.unit.kind {
+                    UnitKind::Hero => super::DamageSource::Hero(track.unit.owner),
+                    UnitKind::Tower => super::DamageSource::Tower,
+                    kind if bota_core::kind_def(kind).creep => super::DamageSource::Creep,
+                    _ => super::DamageSource::Other,
+                });
         if let Some(source) = source
             && let Some(entity) = self.get_mut(source)
         {
@@ -470,6 +481,9 @@ impl Tracks {
             }
         }
         if let Some(entity) = self.get_mut(target) {
+            if amount > 0 {
+                entity.recent_damage.record(tick, source_class);
+            }
             entity.last_damage_taken = Some(DamageObservation {
                 tick,
                 amount,
@@ -542,6 +556,7 @@ fn new_entity(tick: u32, unit: &UnitView) -> EntityTrack {
         activity: super::activity::ActivityClock::default(),
         last_damage_dealt: None,
         last_damage_taken: None,
+        recent_damage: super::RecentDamage::default(),
         last_heal_dealt: None,
         last_heal_received: None,
         last_mana_restoration_dealt: None,

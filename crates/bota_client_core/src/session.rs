@@ -8,6 +8,8 @@
 
 mod activity;
 mod confirmations;
+mod damage;
+pub use damage::{DamageSource, RecentDamage};
 mod error;
 mod memory;
 mod missiles;
