@@ -68,6 +68,44 @@ pub struct ApiCounter {
     pub calls: u64,
     pub cpu_ns: u64,
 }
+/// Distinct undefined API-looking names; full tables and malformed names share one overflow count.
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct UndefinedApiReads {
+    pub names: Vec<UndefinedApiName>,
+    pub other_reads: u64,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct UndefinedApiName {
+    pub name: String,
+    pub reads: u64,
+}
+impl UndefinedApiReads {
+    pub(crate) const CAPACITY: usize = 128;
+    pub(crate) const NAME_BYTES: usize = 64;
+    pub(crate) fn record(&mut self, name: &[u8]) {
+        if name.len() <= Self::NAME_BYTES
+            && name.iter().all(|b| b.is_ascii_alphanumeric() || *b == b'_')
+        {
+            if let Some(entry) = self
+                .names
+                .iter_mut()
+                .find(|entry| entry.name.as_bytes() == name)
+            {
+                entry.reads = entry.reads.saturating_add(1);
+                return;
+            }
+            if self.names.len() < Self::CAPACITY {
+                self.names.push(UndefinedApiName {
+                    name: String::from_utf8(name.to_vec()).expect("ASCII"),
+                    reads: 1,
+                });
+                return;
+            }
+        }
+        self.other_reads = self.other_reads.saturating_add(1);
+    }
+}
+
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct TurnStatistics {
     pub tick: u32,
@@ -80,6 +118,7 @@ pub struct TurnStatistics {
     #[serde(skip)]
     pub(crate) api_depth: u32,
     pub api: Vec<ApiCounter>,
+    pub undefined_api_reads: UndefinedApiReads,
 }
 pub(crate) type SharedStatistics = Rc<RefCell<TurnStatistics>>;
 thread_local! {
@@ -224,6 +263,7 @@ pub struct RunStatistics {
     pub api_ns: Histogram,
     pub script_ns: Histogram,
     pub api: Vec<ApiCounter>,
+    pub undefined_api_reads: UndefinedApiReads,
     pub late: TickList,
     pub discarded: TickList,
     pub fuel_exhaustions: TickList,
@@ -239,6 +279,7 @@ impl RunStatistics {
     }
     pub fn record(&mut self, data: &TurnStatistics) {
         self.turns = self.turns.saturating_add(1);
+        self.undefined_api_reads = data.undefined_api_reads.clone();
         let api = data.api_cpu_ns.saturating_sub(data.api_handles_ns);
         self.fuel.record(data.fuel);
         self.cpu_ns

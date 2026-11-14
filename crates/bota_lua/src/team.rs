@@ -252,6 +252,7 @@ impl LuaTeam {
             )
         })?;
         lua.pin(lane_desire_reader)?;
+        api::undefined_reads::install(&mut lua, state.clone())?;
         let set_environment = lua.global("setfenv")?;
         let get_environment = lua.global("getfenv")?;
         lua.pin(set_environment)?;

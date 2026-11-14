@@ -495,3 +495,15 @@ Overwriting them changes script-visible values, not the host's independently bou
 The unit-list corrections replace former host ids: ENEMIES 6→7, enemy subcategories 7..10→8..11,
 and NEUTRAL_CREEPS 11→13. ALLIED_OTHER=6, ENEMY_OTHER=12 and THINKERS=14 are now defined;
 the previous numbers are not aliases.
+
+Only when summary measurement is requested, `undefined_api_reads` retains up to 128 distinct
+API-looking names (64 ASCII identifier bytes each), with saturating counts and one overflow counter.
+The interpreter observes nil results in the selected global/unit/ability namespaces, including
+standard `rawget`, initializations and caught or uncaught missing-call errors. It neither installs
+metatables nor replaces any script-visible function. A script's own global metatable, its index
+and assignment handlers, `getmetatable`, `setmetatable`, `rawget` and `pairs` keep their usual behavior.
+Values synthesized by an index handler are not missing; an index-handler error is observed.
+There is no additional instruction or fuel charge, even at exhaustion boundaries, and no observer
+is installed when measurement is off. Callback work is bounded by 128 retained names and 64-byte
+identifier checks; telemetry pays CPU overhead outside the script's fuel. Cumulative snapshots
+preserve initialization counts and run aggregation does not double count them.

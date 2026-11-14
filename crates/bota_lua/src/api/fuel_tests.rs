@@ -706,3 +706,81 @@ fn game_state_reports_init_selection_strategy_and_abort_from_host_facts() {
     state.borrow_mut().snapshot = Some(Snapshot::capture(&sessions[0]).unwrap());
     assert_eq!(query(&mut lua), vec![Value::Number(7.0)]);
 }
+
+fn missing_lookup_fixture(
+    measured: bool,
+) -> (Lua, Value, Option<crate::statistics::SharedStatistics>) {
+    let limits = Limits::DEFAULT.with_fuel_per_call(Limits::DEFAULT.fuel_per_tick);
+    let mut lua = Lua::new(
+        limits,
+        Keys {
+            hash: [17, 19],
+            random: 23,
+        },
+    )
+    .unwrap();
+    let program=lua.load("lookup",b"local n=0; for i=1,100 do if BOT_OBSERVER_MISSING == nil then n=n+1 end end; return n").unwrap();
+    lua.pin(program).unwrap();
+    let environment = lua.vm().new_table().unwrap();
+    lua.pin(Value::Table(environment)).unwrap();
+    let meta = lua.vm().new_table().unwrap();
+    let key = lua.string(b"__index").unwrap();
+    let globals = lua.globals();
+    lua.vm().raw_set(meta, key, Value::Table(globals)).unwrap();
+    lua.vm().set_metatable(environment, Some(meta)).unwrap();
+    let setter = lua.global("setfenv").unwrap();
+    lua.call(setter, &[program, Value::Table(environment)])
+        .unwrap();
+    let state = Rc::new(RefCell::new(State::new(
+        Team::Radiant,
+        &[crate::BotSeat {
+            slot: SlotId(0),
+            hero: HeroId::SHADOW_FIEND,
+        }],
+    )));
+    let stats = measured.then(crate::statistics::collector);
+    state.borrow_mut().statistics = stats.clone();
+    undefined_reads::install(&mut lua, state).unwrap();
+    (lua, program, stats)
+}
+#[test]
+fn undefined_api_lookup_charges_the_same_bounded_work_with_or_without_collection() {
+    // This fixed namespace fixture costs 507 fuel on the pre-observer registry interpreter.
+    // Keep it independent of the growing API catalogue's startup/interner work.
+    const LEGACY_MINIMUM: u64 = 507;
+    for measured in [false, true] {
+        for budget in [LEGACY_MINIMUM, LEGACY_MINIMUM - 1] {
+            let (mut lua, program, stats) = missing_lookup_fixture(measured);
+            lua.begin_tick();
+            let spend = lua.tick_fuel_left() - budget - support::bare_native_call_fuel();
+            let drain = lua
+                .function(
+                    "budget",
+                    Rc::new(move |vm, _| {
+                        vm.charge_fuel(spend)?;
+                        Ok(0)
+                    }),
+                )
+                .unwrap();
+            lua.call(drain, &[]).unwrap();
+            assert_eq!(lua.tick_fuel_left(), budget);
+            let result = lua.call(program, &[]);
+            if budget == LEGACY_MINIMUM {
+                assert!(
+                    result.is_ok(),
+                    "legacy floor, measured={measured}: {result:?}"
+                );
+                assert_eq!(result.unwrap(), vec![Value::Number(100.0)]);
+                assert_eq!(lua.tick_fuel_left(), 0);
+                if let Some(stats) = stats {
+                    assert_eq!(stats.borrow().undefined_api_reads.names[0].reads, 100);
+                }
+            } else {
+                assert!(matches!(
+                    result,
+                    Err(luagee::Error::Limit(luagee::Limit::FuelPerTick))
+                ));
+            }
+        }
+    }
+}

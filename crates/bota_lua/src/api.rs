@@ -37,6 +37,7 @@ mod queries;
 pub(crate) mod shop;
 mod structures;
 mod trees;
+pub(crate) mod undefined_reads;
 mod unit_data;
 mod unit_lists;
 mod unit_names;
