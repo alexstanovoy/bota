@@ -3,14 +3,14 @@
 //! what it does, and which of its values stand for which of bota's stats. Every number comes
 //! from the script by its Dota key; a number written here is bota's own, and says why.
 
-use bota_proto::{Aim, Attribute, Attributes, EffectId, Fixed, ItemId};
+use bota_proto::{Aim, Attribute, Attributes, DamageKind, EffectId, Fixed, ItemId};
 
 use super::items::*;
 use crate::{
-    Affects, AllyUse, Carried, DamageBlock, Dec, DisassembleRule, Dispel, Drink, Grenade, Immunity,
-    ItemData, ItemDef, LOTUS_TAKE_RANGE, MagicBlock, Mend, NOTHING, Odds, OnAttack, PLAIN, Pool,
-    ProcTargets, Recipe, Scroll, Spends, Stock, Strike, UseSpec, hundredths_per_second, points,
-    points_with, rules,
+    Affects, AllyUse, AreaSupport, Buff, Carried, DamageBlock, Dec, DisassembleRule, Dispel, Drink,
+    Grenade, Immunity, ItemAura, ItemBarrier, ItemData, ItemDef, ItemModifier, LOTUS_TAKE_RANGE,
+    MagicBlock, Mend, NOTHING, Odds, OnAttack, PLAIN, Pool, ProcTargets, Reach, Recipe, Scroll,
+    Spends, Stat, Stock, Strike, UseSpec, hundredths_per_second, points, points_with, rules,
 };
 
 /// The row of an item as its script gives it; a row of the catalog adds what bota does with it.
@@ -1286,6 +1286,353 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
             ..VANGUARD
         }),
         ..from(&ITEM_VANGUARD)
+    },
+    ItemDef {
+        carried: Carried {
+            hp_regen: regen(&ITEM_HEADDRESS, "health_regen"),
+            ..NOTHING
+        },
+        modifiers: &[ItemModifier::buff(
+            EffectId(101),
+            Buff::of(
+                Stat::HpRegen,
+                [ITEM_HEADDRESS.first("aura_health_regen").hundredths() / 10; 4],
+            ),
+        )],
+        auras: &[ItemAura::allies(0, int(&ITEM_HEADDRESS, "aura_radius"))],
+        ..from(&ITEM_HEADDRESS)
+    },
+    ItemDef {
+        ..from(&ITEM_RECIPE_HEADDRESS)
+    },
+    ItemDef {
+        carried: Carried {
+            mana_regen: regen(&ITEM_RING_OF_BASILIUS, "mana_regen"),
+            ..NOTHING
+        },
+        modifiers: &[ItemModifier::buff(
+            EffectId(102),
+            Buff::of(
+                Stat::ManaRegen,
+                [ITEM_RING_OF_BASILIUS.first("aura_mana_regen").hundredths(); 4],
+            ),
+        )],
+        auras: &[ItemAura::allies(
+            0,
+            int(&ITEM_RING_OF_BASILIUS, "aura_radius"),
+        )],
+        ..from(&ITEM_RING_OF_BASILIUS)
+    },
+    ItemDef {
+        ..from(&ITEM_RECIPE_RING_OF_BASILIUS)
+    },
+    ItemDef {
+        carried: Carried {
+            armor: armor(&ITEM_BUCKLER, "armor"),
+            ..NOTHING
+        },
+        modifiers: &[ItemModifier::buff(
+            EffectId(103),
+            Buff::of(Stat::Armor, [int(&ITEM_BUCKLER, "bonus_aoe_armor"); 4]),
+        )],
+        auras: &[ItemAura::allies(0, int(&ITEM_BUCKLER, "bonus_aoe_radius"))],
+        ..from(&ITEM_BUCKLER)
+    },
+    ItemDef {
+        ..from(&ITEM_RECIPE_BUCKLER)
+    },
+    ItemDef {
+        carried: Carried {
+            armor: armor(&ITEM_MEKANSM, "bonus_armor"),
+            ..NOTHING
+        },
+        modifiers: &[
+            ItemModifier::buff(
+                EffectId(104),
+                Buff::of(
+                    Stat::HpRegen,
+                    [ITEM_MEKANSM.first("aura_health_regen").hundredths() / 10; 4],
+                ),
+            ),
+            ItemModifier {
+                lockout_family: Some(EffectId(105)),
+                ..ItemModifier::buff(EffectId(105), Buff::many(&[]))
+            },
+        ],
+        auras: &[ItemAura::allies(0, int(&ITEM_MEKANSM, "aura_radius"))],
+        aim: Some(Aim::Own),
+        immediate: true,
+        effect: UseSpec::Support(AreaSupport {
+            lockout: Some(1),
+            lockout_margin: rules::TICKS_PER_SECOND,
+            lockout_scope: crate::SupportLockout::Health,
+            ..AreaSupport::recovery(
+                int(&ITEM_MEKANSM, "heal_radius"),
+                int(&ITEM_MEKANSM, "heal_amount"),
+                0,
+            )
+        }),
+        ..from(&ITEM_MEKANSM)
+    },
+    ItemDef {
+        ..from(&ITEM_RECIPE_MEKANSM)
+    },
+    ItemDef {
+        carried: Carried {
+            move_speed: int(&ITEM_ARCANE_BOOTS, "bonus_movement"),
+            mana: int(&ITEM_ARCANE_BOOTS, "bonus_mana"),
+            mana_regen: regen(&ITEM_ARCANE_BOOTS, "mana_regen"),
+            ..NOTHING
+        },
+        modifiers: &[ItemModifier::buff(
+            EffectId(102),
+            Buff::of(
+                Stat::ManaRegen,
+                [ITEM_ARCANE_BOOTS.first("aura_mana_regen").hundredths(); 4],
+            ),
+        )],
+        auras: &[ItemAura::allies(0, int(&ITEM_ARCANE_BOOTS, "aura_radius"))],
+        aim: Some(Aim::Own),
+        immediate: true,
+        effect: UseSpec::Support(AreaSupport::recovery(
+            int(&ITEM_ARCANE_BOOTS, "replenish_radius"),
+            0,
+            int(&ITEM_ARCANE_BOOTS, "replenish_amount"),
+        )),
+        ..from(&ITEM_ARCANE_BOOTS)
+    },
+    ItemDef {
+        ..from(&ITEM_RECIPE_ARCANE_BOOTS)
+    },
+    ItemDef {
+        carried: Carried {
+            attributes: Attributes {
+                strength: Fixed::from_int(int(&ITEM_ANCIENT_JANGGO, "bonus_str")),
+                intelligence: Fixed::from_int(int(&ITEM_ANCIENT_JANGGO, "bonus_int")),
+                agility: Fixed::ZERO,
+            },
+            ..NOTHING
+        },
+        modifiers: &[
+            ItemModifier {
+                buff_family: Some(EffectId(106)),
+                ..ItemModifier::buff(
+                    EffectId(106),
+                    Buff::two(
+                        Stat::MoveFlat,
+                        [int(&ITEM_ANCIENT_JANGGO, "aura_movement_speed"); 4],
+                        Stat::HpRegen,
+                        [ITEM_ANCIENT_JANGGO.first("aura_health_regen").hundredths() / 10; 4],
+                    ),
+                )
+            },
+            ItemModifier {
+                ticks: ticks(&ITEM_ANCIENT_JANGGO, "duration"),
+                priority: 0, // Base Endurance family rank.
+                buff_family: Some(EffectId(107)),
+                ..ItemModifier::buff(
+                    EffectId(107),
+                    Buff::two(
+                        Stat::AttackSpeed,
+                        [int(&ITEM_ANCIENT_JANGGO, "bonus_attack_speed_pct"); 4],
+                        Stat::MovePct,
+                        [int(&ITEM_ANCIENT_JANGGO, "bonus_movement_speed_pct"); 4],
+                    ),
+                )
+            },
+        ],
+        auras: &[ItemAura::allies(0, int(&ITEM_ANCIENT_JANGGO, "radius"))],
+        aim: Some(Aim::Own),
+        immediate: true,
+        ignores_channel: true,
+        effect: UseSpec::Support(AreaSupport {
+            grants: &[1],
+            ..AreaSupport::recovery(int(&ITEM_ANCIENT_JANGGO, "radius"), 0, 0)
+        }),
+        ..from(&ITEM_ANCIENT_JANGGO)
+    },
+    ItemDef {
+        ..from(&ITEM_RECIPE_ANCIENT_JANGGO)
+    },
+    ItemDef {
+        carried: Carried {
+            hp_regen: regen(&ITEM_PIPE, "health_regen"),
+            magic_resist_bp: magic_resist(&ITEM_PIPE, "magic_resistance"),
+            ..NOTHING
+        },
+        modifiers: &[
+            ItemModifier::buff(
+                EffectId(108),
+                Buff::two(
+                    Stat::MagicResistPct,
+                    [int(&ITEM_PIPE, "magic_resistance_aura"); 4],
+                    Stat::MagicResistCreepPct,
+                    [int(&ITEM_PIPE, "magic_resistance_aura"); 4],
+                ),
+            ),
+            ItemModifier {
+                ticks: ticks(&ITEM_PIPE, "barrier_duration"),
+                barrier: Some(ItemBarrier {
+                    kind: DamageKind::Magical,
+                    amount: int(&ITEM_PIPE, "barrier_block"),
+                }),
+                ..ItemModifier::buff(EffectId(109), Buff::many(&[]))
+            },
+            ItemModifier {
+                lockout_family: Some(EffectId(110)),
+                ..ItemModifier::buff(EffectId(110), Buff::many(&[]))
+            },
+        ],
+        auras: &[ItemAura::allies(0, int(&ITEM_PIPE, "aura_radius"))],
+        aim: Some(Aim::Own),
+        immediate: true,
+        effect: UseSpec::Support(AreaSupport {
+            grants: &[1],
+            lockout: if int(&ITEM_PIPE, "add_nostack_debuff") != 0 {
+                Some(2)
+            } else {
+                None
+            },
+            lockout_margin: rules::TICKS_PER_SECOND,
+            reaches: Reach::CombatantsAndBuildings,
+            ..AreaSupport::recovery(int(&ITEM_PIPE, "barrier_radius"), 0, 0)
+        }),
+        ..from(&ITEM_PIPE)
+    },
+    ItemDef {
+        ..from(&ITEM_RECIPE_PIPE)
+    },
+    ItemDef {
+        // The script retains bonus_mana, but the live item no longer grants it (7.41).
+        carried: Carried {
+            move_speed: int(&ITEM_GUARDIAN_GREAVES, "bonus_movement"),
+            armor: armor(&ITEM_GUARDIAN_GREAVES, "bonus_armor"),
+            mana_regen: regen(&ITEM_GUARDIAN_GREAVES, "mana_regen"),
+            ..NOTHING
+        },
+        modifiers: &[
+            ItemModifier::buff(
+                EffectId(111),
+                Buff::two(
+                    Stat::HpRegen,
+                    [ITEM_GUARDIAN_GREAVES
+                        .first("aura_health_regen")
+                        .hundredths()
+                        / 10; 4],
+                    Stat::ManaRegen,
+                    [ITEM_GUARDIAN_GREAVES.first("aura_mana_regen").hundredths(); 4],
+                ),
+            ),
+            ItemModifier {
+                ticks: 1,
+                ..ItemModifier::buff(
+                    EffectId(112),
+                    Buff::of(
+                        Stat::HpRegen,
+                        [(ITEM_GUARDIAN_GREAVES
+                            .first("aura_health_regen_bonus")
+                            .hundredths()
+                            - ITEM_GUARDIAN_GREAVES
+                                .first("aura_health_regen")
+                                .hundredths())
+                            / 10; 4],
+                    ),
+                )
+            },
+            ItemModifier {
+                lockout_family: Some(EffectId(105)),
+                ..ItemModifier::buff(EffectId(105), Buff::many(&[]))
+            },
+        ],
+        auras: &[
+            ItemAura::allies(0, int(&ITEM_GUARDIAN_GREAVES, "aura_radius")),
+            ItemAura {
+                reaches: Reach::Bearer,
+                health_below_pct: Some(int(&ITEM_GUARDIAN_GREAVES, "aura_bonus_threshold")),
+                ..ItemAura::allies(1, 0)
+            },
+        ],
+        aim: Some(Aim::Own),
+        immediate: true,
+        effect: UseSpec::Support(AreaSupport {
+            lockout: Some(2),
+            lockout_margin: rules::TICKS_PER_SECOND,
+            lockout_scope: crate::SupportLockout::Health,
+            dispel_self: true,
+            ..AreaSupport::recovery(
+                int(&ITEM_GUARDIAN_GREAVES, "replenish_radius"),
+                int(&ITEM_GUARDIAN_GREAVES, "replenish_health"),
+                int(&ITEM_GUARDIAN_GREAVES, "replenish_mana"),
+            )
+        }),
+        ..from(&ITEM_GUARDIAN_GREAVES)
+    },
+    ItemDef {
+        ..from(&ITEM_RECIPE_GUARDIAN_GREAVES)
+    },
+    ItemDef {
+        carried: Carried {
+            armor: armor(&ITEM_ASSAULT, "bonus_armor"),
+            attack_speed: int(&ITEM_ASSAULT, "bonus_attack_speed"),
+            ..NOTHING
+        },
+        modifiers: &[
+            ItemModifier::buff(
+                EffectId(113),
+                Buff::two(
+                    Stat::Armor,
+                    [int(&ITEM_ASSAULT, "aura_positive_armor"); 4],
+                    Stat::AttackSpeed,
+                    [int(&ITEM_ASSAULT, "aura_attack_speed"); 4],
+                ),
+            ),
+            ItemModifier {
+                pierces_immunity: true,
+                ..ItemModifier::buff(
+                    EffectId(114),
+                    Buff::of(Stat::Armor, [int(&ITEM_ASSAULT, "aura_negative_armor"); 4]),
+                )
+            },
+        ],
+        auras: &[
+            ItemAura {
+                reaches: Reach::CombatantsAndBuildings,
+                ..ItemAura::allies(0, int(&ITEM_ASSAULT, "aura_radius"))
+            },
+            ItemAura {
+                reaches: Reach::CombatantsAndBuildings,
+                ..ItemAura::enemies(1, int(&ITEM_ASSAULT, "aura_radius"))
+            },
+        ],
+        ..from(&ITEM_ASSAULT)
+    },
+    ItemDef {
+        ..from(&ITEM_RECIPE_ASSAULT)
+    },
+    ItemDef {
+        disassemble: DisassembleRule::Always,
+        carried: Carried {
+            armor: armor(&ITEM_VLADMIR, "armor"),
+            mana_regen: regen(&ITEM_VLADMIR, "mana_regen"),
+            ..NOTHING
+        },
+        modifiers: &[ItemModifier::buff(
+            EffectId(115),
+            Buff::many(&[
+                (Stat::Armor, [int(&ITEM_VLADMIR, "armor_aura"); 4]),
+                (
+                    Stat::ManaRegen,
+                    [ITEM_VLADMIR.first("mana_regen_aura").hundredths(); 4],
+                ),
+                (
+                    Stat::LifestealPct,
+                    [int(&ITEM_VLADMIR, "lifesteal_aura"); 4],
+                ),
+                (Stat::DamagePct, [int(&ITEM_VLADMIR, "damage_aura"); 4]),
+            ]),
+        )],
+        auras: &[ItemAura::allies(0, int(&ITEM_VLADMIR, "aura_radius"))],
+        ..from(&ITEM_VLADMIR)
     },
 ];
 
