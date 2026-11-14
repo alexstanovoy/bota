@@ -8,6 +8,8 @@ lockstep, no reproducible matches, no fair view of the map. bota gives you that:
 
 - **Deterministic.** The same seed and the same orders give the same match, bit for bit, on any machine. A replay is
   a few megabytes and plays back exactly.
+  A script bot's orders are an input to the match, so script bots replay only in the reproducible mode of
+  `bota_botscript` (`crates/bota_lua/README.md`, "Determinism"); the match itself stays deterministic given the orders.
 - **Fair.** The server is authoritative and tells each side only what it can see. A bot gets exactly the view a human
   gets: no hidden state, no shortcuts.
 - **Built for bots.** Lockstep mode waits for slow bots, a whole match can run inside your own program with no

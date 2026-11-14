@@ -26,7 +26,11 @@ fn modules() -> ModuleBank {
 fn frame(bytes: &mut Vec<u8>, record: ReplayRecord) {
     bota_proto::encode_frame(&record, bytes).unwrap();
 }
-fn play(measured: bool) -> (Vec<u8>, Vec<(u32, Vec<bota_client_core::IssuedOrder>)>) {
+type Played = (Vec<u8>, Vec<(u32, Vec<bota_client_core::IssuedOrder>)>);
+fn play(measured: bool) -> Played {
+    play_with(measured, keys())
+}
+fn play_with(measured: bool, keys: Keys) -> Played {
     let (mut local, opening) = support::opening(&[Team::Radiant, Team::Dire]);
     let mut bytes = Vec::new();
     frame(
@@ -64,7 +68,7 @@ fn play(measured: bool) -> (Vec<u8>, Vec<(u32, Vec<bota_client_core::IssuedOrder
             hero: HeroId::SHADOW_FIEND,
         }],
         limits,
-        keys(),
+        keys,
         measured,
     )
     .unwrap();
@@ -154,6 +158,24 @@ fn explicit_keys_reproduce_live_orders_and_two_offline_refeeds() {
             .api
             .iter()
             .any(|entry| entry.name == "Action_MoveToLocation" && entry.calls == 17)
+    );
+}
+#[test]
+fn orders_follow_the_random_seed_and_ignore_the_hash_key() {
+    let (_, reference) = play(false);
+    let hash_only = Keys {
+        hash: [u64::MAX, 3],
+        ..keys()
+    };
+    assert_eq!(play_with(false, hash_only).1, reference);
+    let other_seed = Keys {
+        random: 24,
+        ..keys()
+    };
+    assert_ne!(
+        play_with(false, other_seed).1,
+        reference,
+        "the script draws math.random, so another seed gives other orders"
     );
 }
 #[test]

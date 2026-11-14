@@ -46,7 +46,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         .eq([std::ffi::OsString::from("--help")])
     {
         println!(
-            "bota_botscript --scripts DIR [--hash-keys A,B --rng-seed N] [--summary-json PATH] [--record-views PATH | --replay-in PATH --seat N] [--selection pack|fixed] [--team radiant|dire] [--address HOST:PORT] [--think-ms N] [--runtime-scripts DIR] [--hero KEY]\nSummary measurement costs about 0.5 microseconds per API call and may change live discard timing; measured and unmeasured strength results are not comparable. Supply both keys and seed for deterministic fuel-only runs."
+            "bota_botscript --scripts DIR [--hash-keys A,B --rng-seed N] [--summary-json PATH] [--record-views PATH | --replay-in PATH --seat N] [--selection pack|fixed] [--team radiant|dire] [--address HOST:PORT] [--think-ms N] [--runtime-scripts DIR] [--hero KEY]\nDefault: hash keys and random seed come from OS entropy (printed at startup) and each turn is bounded by fuel and a wall deadline (--think-ms), so two runs of a match can differ.\nSupply both --hash-keys and --rng-seed for a reproducible fuel-only run without wall deadlines: the same pack, binary, keys, seed and game give the same orders. One of them alone changes nothing about the deadline.\nSummary measurement costs about 0.5 microseconds per API call and may change live discard timing; measured and unmeasured strength results are not comparable."
         );
         return Ok(());
     }

@@ -360,8 +360,9 @@ and received timing; loop durations come from trusted local model metadata
 supplied before execution. Missing timing metadata returns -1 for the affected getter and preserves the
 bot turn, rather than inventing a duration. Native loading reads that metadata only during
 setup from the user's install; no model data is distributed with the binding.
-The model is a deterministic client observation, not a claim of identical
-reference-engine sequence selection. In particular, rare-idle selection and
+The model is computed from the received observations and the local metadata loaded at setup (rare idle is chosen by
+tick number, with no clock or random draw), not a claim of identical
+reference-engine sequence selection. Whether two runs of a script agree is a separate matter: see "Determinism" in the README. In particular, rare-idle selection and
 attack alternation follow the client model. Attack and cast phases read the
 received body's target-independent phase kind and raw elapsed animation beats, including
 a visible attacker winding up at a hidden target. No target identity or location

@@ -78,6 +78,41 @@ Setup I/O has no latency guarantee. Thinks load exclusively from the completed b
 `bots/` and bare module names address pack sources; `game/` addresses the optional
 runtime-source root. Diagnostics use logical module names.
 
+## Determinism
+
+By default two runs of the same match can differ. `bota_botscript` draws the interpreter's hash key and the random
+seed of `math.random` from the operating system's entropy at startup and prints them (`script_keys ...`) before it
+connects. Every bot turn is bounded by fuel and by a wall-clock deadline (`--think-ms`, 33 by default; a turn that
+misses it is discarded). Why: scripts are untrusted, so the hash key must be secret from them and differ per
+interpreter, and play is live, so a slow script must not stall the match. Consequences: a script's `math.random`
+draws differ between runs, and under machine load a turn can be discarded at a different point (`deadline_ticks`).
+
+Reproducible mode needs both `--hash-keys A,B` and `--rng-seed N`. Supplying only one changes nothing about the
+deadline: the other value is still drawn from entropy and the wall deadline stays. With both, the host runs
+fuel-bounded with no wall deadline (`--think-ms` has no effect; a script that never ends is stopped by fuel, with
+`deadline_ticks` 0), so the outcome of a turn depends on the script and its observations only. Two runs give the same
+orders when all of these are equal: the pack and runtime sources, the `bota_botscript` binary (with the `luagee`
+version it was built against), the keys and seed, the selection policy (`--selection`, `--hero`, `--team`) and the
+game the bot is shown (the match seed and what the other seats order). Pinned by
+`explicit_keys_reproduce_live_orders_and_two_offline_refeeds` and `measured_native_turn_reports_exhaustion_on_its_exact_tick`
+in `tests/embedding_statistics.rs`, which play a local match and compare the orders of a live run with two re-feeds.
+
+What each flag is for. The seed is the one that changes what a script sees: `math.random` follows it, and other seeds give
+other orders (`orders_follow_the_random_seed_and_ignore_the_hash_key`). The hash key does not: the interpreter's output,
+iteration order, fuel and memory accounting are identical under every key, and the same test shows equal orders under
+another key. The host still asks for both so that a run states every input of its interpreter (both are printed and
+written to the summary); a reproduction may use any hash key.
+A bot match is reproducible only when the script's orders are: the orders of a script bot are an input to the match,
+and the match itself stays deterministic given them.
+
+`--record-views PATH` records the first joined seat's filtered observations. `--replay-in PATH --seat N --hash-keys A,B
+--rng-seed N` re-feeds them to a fresh host synchronously, with no server, network or deadline, and recomputes the orders
+the script gives for each recorded turn: the same orders as the live run that recorded them when that run was
+reproducible and every item above is equal. The re-feed does not play the match (the recorded observations already
+contain the effect of the orders given back then), it refuses fogless recordings and recordings of another wire
+fingerprint. Not covered: a default-mode run, whose recording holds what that run saw but whose draws and discarded turns
+cannot be repeated, and any change of pack, binary or interpreter version.
+
 ## Building and testing
 
 `bota_lua` is a member of the bota workspace, outside the default members like `bota_radovid` and `bota_gym` (a plain
@@ -162,9 +197,8 @@ explicit decision to retain an own-design policy before claiming engine parity.
 Embedding measurements and recorded runs
 ---------------------------------------
 `bota_botscript --hash-keys A,B --rng-seed N` fixes both interpreter streams; the used
-keys and seed are always printed before connection or source loading. Supplying both enables
-fuel-bounded deterministic execution without wall deadlines. Without both, live play retains
-its wall-time guard (and therefore can discard turns differently under different machine load).
+keys and seed are always printed before connection or source loading. What supplying them
+guarantees is under "Determinism" above.
 `--summary-json PATH` opts into bounded per-turn fuel and per-thread CPU histograms and
 catalogue API counters. Histograms report exact min/max and base-two bucket upper bounds for
 median/p99. No timing measurements or API wrappers are installed for ordinary play.
