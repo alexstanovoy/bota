@@ -344,7 +344,7 @@ impl NativeTeam {
     fn late(&mut self) -> Reply {
         if let (Some(summary), Some(tick)) = (&mut self.statistics, self.last_tick) {
             summary.late.record(tick);
-            summary.discarded.record(tick);
+            summary.discarded.record_once_recent(tick);
         }
         self.deadline_ticks = self.deadline_ticks.saturating_add(1);
         self.late_ticks = self.late_ticks.saturating_add(1);
@@ -483,6 +483,9 @@ mod tests;
 pub(super) fn record_turn(summary: &mut crate::statistics::RunStatistics, turn: &TeamTurn) {
     if let Some(data) = &turn.statistics {
         summary.record(data);
+        if !turn.failures.is_empty() || turn.hook_activity.suppressed_team_errors > 0 {
+            summary.discarded.record_once_recent(data.tick);
+        }
         summary.script_failures = summary
             .script_failures
             .saturating_add(turn.hook_activity.suppressed_team_errors);

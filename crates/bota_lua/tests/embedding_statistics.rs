@@ -232,6 +232,7 @@ fn measured_native_turn_reports_exhaustion_on_its_exact_tick() {
     assert_eq!(stats.turns, 1);
     assert_eq!(stats.fuel_exhaustions.ticks, [tick]);
     assert_eq!(stats.script_failures, 1);
+    assert_eq!(stats.discarded.ticks, [tick]);
     assert!(stats.first_error.is_some());
     assert_eq!(host.deadline_ticks(), 0);
 }
@@ -259,4 +260,37 @@ fn fogless_recording_is_rejected_instead_of_granting_hidden_state() {
         |_, _| {},
     );
     assert!(result.err().unwrap().to_string().contains("fogless"));
+}
+
+#[test]
+fn native_fallback_work_is_measured_as_host_work_without_changing_orders() {
+    let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let run = |measured| {
+        let mut lua = LuaTeam::new_measured(
+            Team::Radiant,
+            &[BotSeat {
+                slot: SlotId(0),
+                hero: HeroId::SHADOW_FIEND,
+            }],
+            SCRIPT_LIMITS,
+            keys(),
+            measured,
+        )
+        .unwrap();
+        lua.set_modules(ModuleBank::new(SCRIPT_LIMITS)).unwrap();
+        lua.load_pack().unwrap();
+        lua.think(&sessions[0]).unwrap()
+    };
+    let plain = run(false);
+    let measured = run(true);
+    assert!(measured.hook_activity.native > 0);
+    assert_eq!(plain.bots[0].orders, measured.bots[0].orders);
+    assert!(
+        measured
+            .statistics
+            .unwrap()
+            .api
+            .iter()
+            .any(|entry| entry.name == "other" && entry.calls > 0)
+    );
 }

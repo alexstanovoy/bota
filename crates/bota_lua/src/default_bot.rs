@@ -27,15 +27,18 @@ pub(crate) fn install(lua: &mut Lua, state: Shared) -> Result<Value, BindingErro
     laning::prepare();
     Ok(lua.function(
         "default_mode",
-        Rc::new(move |vm, args| {
-            let mode = vm.check_number(args, 0)?;
-            if mode.fract() != 0.0 || !(1.0..=BOT_MODES.len() as f64).contains(&mode) {
-                return Err(vm.arg_error(args, 0, "known mode expected"));
-            }
-            let name = BOT_MODES[mode as usize - 1];
-            let thinking = matches!(vm.arg(args, 1), Value::Boolean(true));
-            callback(vm, &state, name, thinking)
-        }),
+        crate::statistics::instrument(
+            "other",
+            Rc::new(move |vm, args| {
+                let mode = vm.check_number(args, 0)?;
+                if mode.fract() != 0.0 || !(1.0..=BOT_MODES.len() as f64).contains(&mode) {
+                    return Err(vm.arg_error(args, 0, "known mode expected"));
+                }
+                let name = BOT_MODES[mode as usize - 1];
+                let thinking = matches!(vm.arg(args, 1), Value::Boolean(true));
+                callback(vm, &state, name, thinking)
+            }),
+        ),
     )?)
 }
 

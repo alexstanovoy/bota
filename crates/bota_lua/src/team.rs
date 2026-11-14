@@ -228,19 +228,28 @@ impl LuaTeam {
                 Value::Number((index + 1) as f64),
             )?;
         }
-        crate::statistics::registering(statistics, || {
+        crate::statistics::registering(statistics.clone(), || {
             api::install(&mut lua, state.clone(), vectors)
         })?;
-        let default_mode = crate::default_bot::install(&mut lua, state.clone())?;
+        let default_mode = crate::statistics::registering(statistics.clone(), || {
+            crate::default_bot::install(&mut lua, state.clone())
+        })?;
         lua.pin(default_mode)?;
-        let default_auxiliary = crate::default_bot::install_auxiliary(&mut lua, state.clone())?;
+        let default_auxiliary = crate::statistics::registering(statistics.clone(), || {
+            crate::default_bot::install_auxiliary(&mut lua, state.clone())
+        })?;
         lua.pin(default_auxiliary)?;
         let raw_next = lua.global("next")?;
         lua.pin(raw_next)?;
-        let lane_desire_reader = lua.function(
-            "team_lane_desires",
-            Rc::new(move |vm, args| lane_desire_values(vm, args, raw_next)),
-        )?;
+        let lane_desire_reader = crate::statistics::registering(statistics, || {
+            lua.function(
+                "team_lane_desires",
+                crate::statistics::instrument(
+                    "other",
+                    Rc::new(move |vm, args| lane_desire_values(vm, args, raw_next)),
+                ),
+            )
+        })?;
         lua.pin(lane_desire_reader)?;
         let set_environment = lua.global("setfenv")?;
         let get_environment = lua.global("getfenv")?;

@@ -186,3 +186,9 @@ unmeasured games. Supplying both keys and seed selects deterministic fuel-only e
 case. Recorded views are atomically published only on success, capped at 1 GiB and 1,048,576 frames;
 a cap or write failure stops the run with an error and removes the temporary recording.
 Re-feed requires the exact current wire fingerprint and refuses simultaneous recording.
+
+Internal native policy and decoder callbacks are timed under the fixed `other` bucket, so their
+work is not attributed to the interpreter. Discard ticks include script-failed outboxes as well
+as late results; a delayed failure and its late event count as one recent discarded turn.
+The instruction measure is fuel. `Lua::memory()` already supplies currently accounted heap bytes;
+additional allocation and collector statistics belong in the independent interpreter embedding API.

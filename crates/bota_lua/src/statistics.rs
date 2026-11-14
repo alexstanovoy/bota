@@ -192,8 +192,21 @@ impl Drop for HandleTimer {
 pub struct TickList {
     pub total: u64,
     pub ticks: Vec<u32>,
+    #[serde(skip)]
+    recent: [Option<u32>; 4],
+    #[serde(skip)]
+    next: usize,
 }
 impl TickList {
+    /// Coalesce late and script-failure discards for the bounded outstanding worker replies.
+    pub fn record_once_recent(&mut self, tick: u32) {
+        if self.recent.contains(&Some(tick)) {
+            return;
+        }
+        self.recent[self.next] = Some(tick);
+        self.next = (self.next + 1) % self.recent.len();
+        self.record(tick);
+    }
     pub fn record(&mut self, tick: u32) {
         self.total = self.total.saturating_add(1);
         if self.ticks.len() < MAX_RECORDED_TICKS {
@@ -439,4 +452,16 @@ mod partition_tests {
             (MAX_API_NAMES + 10) as u64
         );
     }
+}
+
+#[cfg(test)]
+#[test]
+fn script_and_late_discards_of_one_turn_are_counted_once() {
+    let mut ticks = TickList::default();
+    ticks.record_once_recent(1);
+    ticks.record_once_recent(2);
+    ticks.record_once_recent(1);
+    ticks.record_once_recent(2);
+    assert_eq!(ticks.total, 2);
+    assert_eq!(ticks.ticks, [1, 2]);
 }

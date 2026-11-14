@@ -24,42 +24,45 @@ pub(crate) enum AuxiliaryHook {
 pub(crate) fn install(lua: &mut Lua, shared: Shared) -> Result<Value, BindingError> {
     Ok(lua.function(
         "default_auxiliary",
-        Rc::new(move |vm, args| {
-            let phase = vm.check_number(args, 0)?;
-            if phase.fract() != 0.0 || !(0.0..=4.0).contains(&phase) {
-                return Err(vm.arg_error(args, 0, "known auxiliary hook expected"));
-            }
-            if phase == 3.0 {
-                return super::economy::purchase(vm, &shared);
-            }
-            if phase == 4.0 {
-                return super::courier::run(vm, &shared);
-            }
-            let mut state = shared.borrow_mut();
-            let Some((snapshot, own)) = context(&state) else {
-                return Ok(0);
-            };
-            let book = state.ability_book(own.id).unwrap_or(&[]);
-            let work = if phase == 1.0 {
-                snapshot.units.len() + book.len() + snapshot.talents.len() * 8
-            } else if phase == 2.0 {
-                snapshot.units.len() * (bota_proto::limits::INVENTORY_SLOTS + 1)
-                    + bota_proto::limits::INVENTORY_SLOTS * (own.effects.len() + 1)
-            } else {
-                snapshot.units.len() * (book.len() + 3) + book.len()
-            };
-            vm.charge_fuel(8 + work as u64 + state.orders.len() as u64)?;
-            let order = match phase as u8 {
-                0 => casting(&state, snapshot, own),
-                1 => learning(&state, snapshot, own),
-                2 => super::items::use_item(&state, snapshot, own),
-                _ => None,
-            };
-            if let Some(order) = order {
-                state.order(vm, IssuedOrder::hero(order))?;
-            }
-            Ok(0)
-        }),
+        crate::statistics::instrument(
+            "other",
+            Rc::new(move |vm, args| {
+                let phase = vm.check_number(args, 0)?;
+                if phase.fract() != 0.0 || !(0.0..=4.0).contains(&phase) {
+                    return Err(vm.arg_error(args, 0, "known auxiliary hook expected"));
+                }
+                if phase == 3.0 {
+                    return super::economy::purchase(vm, &shared);
+                }
+                if phase == 4.0 {
+                    return super::courier::run(vm, &shared);
+                }
+                let mut state = shared.borrow_mut();
+                let Some((snapshot, own)) = context(&state) else {
+                    return Ok(0);
+                };
+                let book = state.ability_book(own.id).unwrap_or(&[]);
+                let work = if phase == 1.0 {
+                    snapshot.units.len() + book.len() + snapshot.talents.len() * 8
+                } else if phase == 2.0 {
+                    snapshot.units.len() * (bota_proto::limits::INVENTORY_SLOTS + 1)
+                        + bota_proto::limits::INVENTORY_SLOTS * (own.effects.len() + 1)
+                } else {
+                    snapshot.units.len() * (book.len() + 3) + book.len()
+                };
+                vm.charge_fuel(8 + work as u64 + state.orders.len() as u64)?;
+                let order = match phase as u8 {
+                    0 => casting(&state, snapshot, own),
+                    1 => learning(&state, snapshot, own),
+                    2 => super::items::use_item(&state, snapshot, own),
+                    _ => None,
+                };
+                if let Some(order) = order {
+                    state.order(vm, IssuedOrder::hero(order))?;
+                }
+                Ok(0)
+            }),
+        ),
     )?)
 }
 
