@@ -445,3 +445,19 @@ fn is_running(track: &EntityTrack, rate: u16) -> bool {
     }
     u128::from(distance) * u128::from(rate) > 25 * 65536 * u128::from(velocity.elapsed_ticks)
 }
+
+#[cfg(test)]
+mod cycle_bounds {
+    #[test]
+    fn non_looping_cycles_exclude_one_at_and_after_the_endpoint() {
+        for (elapsed, duration, expected) in [
+            (0, 1, 0),
+            (1, 1, 65535),
+            (2, 1, 65535),
+            (u64::MAX, 1, 65535),
+        ] {
+            assert_eq!(super::fixed_cycle(elapsed, duration, false).raw, expected);
+        }
+        assert_eq!(super::fixed_cycle(1, 1, true).raw, 0);
+    }
+}

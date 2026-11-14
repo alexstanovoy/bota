@@ -414,45 +414,103 @@ fn a_visible_illusion_keeps_its_own_action_phase_while_its_hero_is_hidden() {
         .action_phase
         .expect("its own visible phase");
     assert_eq!(phase.phase, UnitActionPhase::AttackWindup);
-    assert!(phase.elapsed < u32::MAX);
+    assert!(
+        phase.elapsed
+            < bota_core::beats(
+                world
+                    .stats
+                    .get(illusion)
+                    .expect("illusion stats")
+                    .attack_point
+            ),
+        "wind-up progress is before its actual attack point"
+    );
 }
 
 #[test]
-fn equal_visible_animation_progress_does_not_expose_an_illusions_missing_speed_buff() {
-    use crate::game::{Action, ActionPhase, ActionState};
-    let cfg = mid_config();
+fn stepped_illusion_progress_rate_matches_the_worn_hero_sheet() {
+    type Row = (
+        i32,
+        Option<bota_proto::ActionPhaseView>,
+        i32,
+        Option<bota_proto::ActionPhaseView>,
+    );
+    use bota_proto::UnitActionPhase;
+    let mut cfg = mid_config();
+    cfg.cheats = true;
     let (mut local, hero, at) = face_off(&cfg);
-    let illusion = stand_in_illusion(local.world_mut(), hero, at + Vec2::from_ints(150, 0));
-    let world = local.world_mut();
-    let target = world.seats[1].unit.expect("target");
-    world.stats.get_mut(hero).expect("hero stats").attack_speed += 100;
-    assert_ne!(
-        world.stats.get(hero).expect("hero").attack_speed,
-        world.stats.get(illusion).expect("illusion").attack_speed
+    let illusion = stand_in_illusion(local.world_mut(), hero, at + Vec2::from_ints(100, 0));
+    local.world_mut().cheat(
+        SlotId(0),
+        Some(hero),
+        Cheat::Item {
+            item: bota_proto::ItemId::GLOVES,
+        },
+        &mut Vec::new(),
     );
-    for entity in [hero, illusion] {
-        world.action.insert(
-            entity,
-            Action {
-                state: ActionState::Attack {
-                    target,
-                    phase: ActionPhase::Before {
-                        progress: bota_core::BEATS_PER_TICK,
-                    },
-                },
-                attack_cooldown: 0,
-            },
+    local.restate();
+    let dire = local.world().seats[1].unit.expect("dire hero");
+    let target = local.handle_of(0, dire).expect("enemy handle");
+    let h = local.handle_of(0, hero).expect("hero handle");
+    let i = local.handle_of(0, illusion).expect("illusion handle");
+    let order = |seq, unit| OutgoingOrder {
+        seq,
+        unit: Some(unit),
+        order: Order::Attack {
+            target: Target::Unit(target),
+        },
+        seen: local.tick(),
+        queue: false,
+    };
+    local
+        .step(&[&[order(2, h), order(3, i)], &[]])
+        .expect("orders");
+    let mut rows = Vec::new();
+    for _ in 0..60 {
+        let view = local.world().view(Team::Dire);
+        let a = view.unit(crate::game::wire_id(hero)).expect("hero");
+        let b = view.unit(crate::game::wire_id(illusion)).expect("illusion");
+        assert_eq!(
+            a.attack_speed, b.attack_speed,
+            "both bodies wear the same visible speed"
         );
+        rows.push((
+            a.attack_speed,
+            a.action_phase,
+            b.attack_speed,
+            b.action_phase,
+        ));
+        local.step(&[&[], &[]]).expect("tick");
     }
-    let view = world.view(Team::Dire);
-    let a = view.unit(crate::game::wire_id(hero)).expect("hero");
-    let b = view.unit(crate::game::wire_id(illusion)).expect("illusion");
+    let rate = |pick: fn(&Row) -> Option<bota_proto::ActionPhaseView>| -> Vec<u32> {
+        rows.windows(2)
+            .filter_map(|w| {
+                let (x, y) = (pick(&w[0])?, pick(&w[1])?);
+                (x.phase == UnitActionPhase::AttackWindup && y.phase == x.phase)
+                    .then(|| y.elapsed - x.elapsed)
+            })
+            .collect()
+    };
     assert_eq!(
-        a.attack_speed, b.attack_speed,
-        "the sheet already conceals the buff difference"
+        rate(|r| r.1),
+        rate(|r| r.3),
+        "progress rate distinguishes illusion from hero"
     );
-    assert_eq!(
-        a.action_phase, b.action_phase,
-        "equal visible pose progress must not recover the concealed buff difference"
-    );
+    for choose in [|r: &Row| r.1, |r: &Row| r.3] {
+        let mut observed = 0;
+        for pair in rows.windows(2) {
+            if let (Some(a), Some(b)) = (choose(&pair[0]), choose(&pair[1]))
+                && a.phase == UnitActionPhase::AttackBackswing
+                && b.phase == a.phase
+            {
+                assert_eq!(
+                    b.elapsed - a.elapsed,
+                    bota_core::attack_gain(pair[0].0),
+                    "backswing advances at the worn speed"
+                );
+                observed += 1;
+            }
+        }
+        assert!(observed > 0, "exercise real backswing progression");
+    }
 }

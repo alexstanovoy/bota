@@ -213,6 +213,21 @@ fn phase_observations_ignore_hidden_target_properties_for_every_stage() {
             );
             assert!(world.shows(Team::Dire, actor));
             assert!(!world.shows(Team::Dire, target));
+            let own = world.view(Team::Radiant);
+            let watcher = world.view(Team::Dire);
+            assert!(
+                own.unit(wire_id(target)).is_some(),
+                "caster side sees target"
+            );
+            assert!(
+                watcher.unit(wire_id(target)).is_none(),
+                "watcher does not see target"
+            );
+            assert_eq!(
+                own.unit(wire_id(actor)).expect("actor").action_phase,
+                watcher.unit(wire_id(actor)).expect("actor").action_phase,
+                "phase progress must not depend on whether the observer sees the target"
+            );
             let before = encode_frame_to_vec(&ServerMsg::Snapshot {
                 view: world.view(Team::Dire),
             })

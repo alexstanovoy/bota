@@ -451,9 +451,21 @@ fn real_cast_points_backswings_and_item_channels_publish_their_own_progress() {
         let unit = sessions[actor].own_hero().expect("caster");
         let point = unit.action_phase.expect("phase");
         assert_eq!(point.phase, Kind::CastPoint);
-        assert!(unit.cast.is_some());
+        let cast_ticks = bota_core::ms_to_ticks_ceil(
+            bota_core::ability_def(unit.abilities[5].id)
+                .expect("Requiem")
+                .point,
+            bota_core::rules::TICKS_PER_SECOND,
+        );
+        assert_eq!(point.elapsed % bota_core::BEATS_PER_TICK, 0);
+        assert_eq!(
+            point.elapsed / bota_core::BEATS_PER_TICK
+                + unit.cast.expect("cast observation").goes_off_in,
+            cast_ticks,
+            "elapsed plus observed time left equals the catalogue cast point"
+        );
         let mut recovered = false;
-        for _ in 0..90 {
+        for steps in 1..=90 {
             step(&mut local, &mut sessions, &[&[], &[]]);
             let phase = sessions[actor]
                 .own_hero()
@@ -461,7 +473,23 @@ fn real_cast_points_backswings_and_item_channels_publish_their_own_progress() {
                 .action_phase
                 .expect("phase");
             if phase.phase == Kind::CastBackswing {
-                assert!(phase.elapsed < u32::MAX);
+                let definition = bota_core::ability_def(
+                    sessions[actor].own_hero().expect("hero").abilities[5].id,
+                )
+                .expect("Requiem");
+                assert_eq!(
+                    steps,
+                    cast_ticks - point.elapsed / bota_core::BEATS_PER_TICK,
+                    "exact cast-to-recovery tick"
+                );
+                let point_beats = bota_core::beats(definition.point);
+                assert_eq!(
+                    phase.elapsed,
+                    (bota_core::BEATS_PER_TICK - point_beats % bota_core::BEATS_PER_TICK)
+                        % bota_core::BEATS_PER_TICK,
+                    "recovery begins with exactly the cast-point overshoot"
+                );
+                assert!(phase.elapsed < bota_core::beats(definition.backswing));
                 let observed = sessions[actor]
                     .entity(sessions[actor].own_hero().expect("hero").id)
                     .expect("track")
@@ -537,7 +565,10 @@ fn real_cast_points_backswings_and_item_channels_publish_their_own_progress() {
             step(&mut local, &mut sessions, &[&[], &[]]);
         }
         let channel = channel.expect("real item channel");
-        assert!(channel.elapsed < 1000);
+        assert_eq!(
+            channel.elapsed, 0,
+            "the first channel observation begins at zero elapsed beats"
+        );
         let hero = sessions[actor].own_hero().expect("hero");
         assert!(
             hero.channel.is_none(),
@@ -568,7 +599,29 @@ fn real_cast_points_backswings_and_item_channels_publish_their_own_progress() {
             .action_phase
             .expect("phase");
         assert_eq!(next.phase, Kind::Channel);
-        assert!(next.elapsed > channel.elapsed);
+        assert_eq!(next.elapsed, channel.elapsed + bota_core::BEATS_PER_TICK);
+        let duration = bota_core::item_def(ItemId::TOWN_PORTAL_SCROLL)
+            .expect("scroll")
+            .duration;
+        for elapsed in 2..duration {
+            step(&mut local, &mut sessions, &[&[], &[]]);
+            let phase = sessions[actor]
+                .own_hero()
+                .expect("hero")
+                .action_phase
+                .expect("channel not over early");
+            assert_eq!(phase.phase, Kind::Channel);
+            assert_eq!(phase.elapsed, elapsed * bota_core::BEATS_PER_TICK);
+        }
+        step(&mut local, &mut sessions, &[&[], &[]]);
+        assert!(
+            sessions[actor]
+                .own_hero()
+                .expect("hero")
+                .action_phase
+                .is_none(),
+            "channel ends on its exact catalogue tick"
+        );
     }
 }
 

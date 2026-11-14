@@ -546,6 +546,7 @@ impl World {
         if let Some(illusion) = self.illusion.get(entity)
             && let Some(hero) = self.project_unit(viewer, illusion.of)
         {
+            unit.action_phase = self.worn_attack_phase(entity, illusion.of, unit.action_phase);
             wear_sheet(&mut unit, hero);
         }
         unit.queue.clear();
@@ -566,6 +567,48 @@ impl World {
         unit.vision_grant = unit.vision_grant.filter(|(side, _)| Some(*side) == viewer);
         keep_to_its_side(&mut unit);
         Some(unit)
+    }
+
+    /// Keep an illusion's displayed attack progress consistent with its worn stats,
+    /// without copying anything about the real hero's current action.
+    fn worn_attack_phase(
+        &self,
+        body: Entity,
+        hero: Entity,
+        phase: Option<bota_proto::ActionPhaseView>,
+    ) -> Option<bota_proto::ActionPhaseView> {
+        use bota_proto::{ActionPhaseView, UnitActionPhase as Kind};
+        let observed = phase?;
+        let progress = match self.action.get(body)?.state {
+            ActionState::Attack {
+                phase: ActionPhase::Before { progress },
+                ..
+            } => u64::from(progress),
+            ActionState::Attack {
+                phase: ActionPhase::During { progress } | ActionPhase::After { progress },
+                ..
+            } => {
+                u64::from(progress)
+                    + u64::from(bota_core::beats(self.stats.get(body)?.attack_point))
+            }
+            _ => return Some(observed),
+        };
+        let actual = self.stats.get(body)?;
+        let shown = self.stats.get(hero)?;
+        let displayed = progress * u64::from(bota_core::attack_gain(shown.attack_speed))
+            / u64::from(bota_core::attack_gain(actual.attack_speed));
+        let point = u64::from(bota_core::beats(shown.attack_point));
+        let (kind, elapsed) = if displayed < point {
+            (Kind::AttackWindup, displayed)
+        } else if displayed < point + u64::from(bota_core::beats(shown.attack_backswing)) {
+            (Kind::AttackBackswing, displayed - point)
+        } else {
+            return None;
+        };
+        Some(ActionPhaseView {
+            phase: kind,
+            elapsed: u32::try_from(elapsed).unwrap_or(u32::MAX),
+        })
     }
 
     fn creep_tier_shown(&self, entity: Entity) -> Option<CreepTier> {
@@ -671,7 +714,7 @@ impl World {
             }),
             forced: self.forced_view(entity),
             channel: self.channel_view(entity),
-            action_phase: self.action_phase_view(viewer, entity),
+            action_phase: self.action_phase_view(entity),
             creep_tier: self.creep_tier_shown(entity),
             true_sight_radius: stats.true_sight,
             statuses: StatusFlags {
@@ -917,15 +960,8 @@ impl World {
     }
 
     /// Only the visible body's present animation stage and raw progress.
-    fn action_phase_view(
-        &self,
-        viewer: Option<Team>,
-        entity: Entity,
-    ) -> Option<bota_proto::ActionPhaseView> {
+    fn action_phase_view(&self, entity: Entity) -> Option<bota_proto::ActionPhaseView> {
         use bota_proto::{ActionPhaseView, UnitActionPhase as Kind};
-        if !self.viewer_sees(viewer, entity) {
-            return None;
-        }
         let (phase, progress) = match self.action.get(entity)?.state {
             ActionState::Ready => return None,
             ActionState::Attack {

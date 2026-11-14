@@ -402,3 +402,8 @@ searched; each result row adds 24 plus body/roster search work (two per row for 
 12 for an ability inflictor, 36 for an item inflictor). Tables,
 vectors and authenticated handles pay their ordinary allocation charges. Empty
 results still allocate and charge their result table.
+
+Illusion attack progress is projected at its worn hero sheet's rate for both
+wind-up and backswing; the real hero's current action is never copied. Cast
+progress already uses the same unscaled timebase on both bodies. Turning has no
+phase/progress field on this wire.

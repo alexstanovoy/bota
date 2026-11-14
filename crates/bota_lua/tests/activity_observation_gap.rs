@@ -175,7 +175,16 @@ fn a_visible_attack_phase_does_not_identify_which_hidden_neutral_is_attacked() {
             .action_phase
             .expect("visible phase");
         assert_eq!(phase.phase, UnitActionPhase::AttackWindup);
-        assert!(phase.elapsed < u32::MAX);
+        assert!(
+            phase.elapsed
+                < bota_core::beats(
+                    bota_core::hero_def(HeroId::SHADOW_FIEND)
+                        .expect("hero")
+                        .unit
+                        .attack_point
+                ),
+            "wind-up progress is inside the actual attack point"
+        );
         let before = world.hash();
         let full_before = world.view_full();
         assert_eq!(
@@ -315,7 +324,7 @@ fn both_animation_getters_observe_a_hidden_target_windup_and_return_sentinels_af
             .expect("phase");
         think(&mut reader, &sessions[observer]);
         let mut advanced = false;
-        for _ in 0..12 {
+        for ticks in 1..=12 {
             step(&mut local, &mut sessions, &[&[], &[]]);
             let phase = sessions[observer]
                 .current()
@@ -325,6 +334,17 @@ fn both_animation_getters_observe_a_hidden_target_windup_and_return_sentinels_af
                 .action_phase
                 .expect("phase");
             if phase.phase == UnitActionPhase::AttackWindup && phase.elapsed > first.elapsed {
+                let speed = sessions[observer]
+                    .current()
+                    .expect("view")
+                    .unit(attacker)
+                    .expect("actor")
+                    .attack_speed;
+                assert_eq!(
+                    phase.elapsed,
+                    first.elapsed + ticks * bota_core::attack_gain(speed),
+                    "exact visible wind-up progress per tick"
+                );
                 advanced = true;
                 break;
             }
@@ -361,10 +381,28 @@ fn both_animation_getters_observe_a_hidden_target_windup_and_return_sentinels_af
             "hidden body and phase absent"
         );
         think(&mut reader, &sessions[observer]);
-        let _frozen = sessions[observer]
+        let frozen = sessions[observer]
             .entity(attacker)
             .expect("remembered actor")
             .activity;
+        for _ in 0..3 {
+            step(&mut local, &mut sessions, &[&[], &[]]);
+            assert!(
+                sessions[observer]
+                    .current()
+                    .expect("view")
+                    .unit(attacker)
+                    .is_none()
+            );
+            assert_eq!(
+                sessions[observer]
+                    .entity(attacker)
+                    .expect("remembered actor")
+                    .activity,
+                frozen,
+                "a clock out of sight is exactly frozen"
+            );
+        }
         {
             let world = local.world_mut();
             let body = world.seats[actor].unit.expect("actor");
