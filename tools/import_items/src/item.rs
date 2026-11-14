@@ -52,7 +52,7 @@ pub struct Item {
 }
 
 /// The `AbilityBehavior` flags an item may carry.
-pub const BEHAVIORS: [&str; 17] = [
+pub const BEHAVIORS: [&str; 19] = [
     "AOE",
     "CHANNELLED",
     "DIRECTIONAL",
@@ -70,6 +70,8 @@ pub const BEHAVIORS: [&str; 17] = [
     "ROOT_DISABLES",
     "SUPPRESS_ASSOCIATED_CONSUMABLE",
     "UNIT_TARGET",
+    "TOGGLE",
+    "IGNORE_INVISIBLE",
 ];
 
 /// Keys read into [`Item`].
@@ -117,6 +119,8 @@ const LEFT_OUT: &[&str] = &[
     "IsObsolete",
     "IsTempestDoubleClonable",
     "ItemAllowCombineFromGround",
+    // Alt-click notification metadata; it changes no simulation rule.
+    "ItemAlertable",
     "ItemContributesToNetWorthWhenDropped",
     "ItemDeclarations",
     "ItemDisassembleRule",
@@ -346,6 +350,75 @@ mod tests {
     use crate::install::Source;
 
     use super::{read, requirements};
+
+    #[test]
+    fn leading_interior_and_repeated_terminal_recipe_delimiters_are_refused() {
+        for (parts, normalized) in [
+            (";item_a", ";item_a"),
+            ("item_a;;item_b", "item_a;;item_b"),
+            ("item_a;;", "item_a;"),
+            ("item_a; ;item_b", "item_a; ;item_b"),
+        ] {
+            let text = format!(
+                r#""DOTAAbilities" {{ "item_recipe_x" {{ "ItemResult" "item_x" "ItemRequirements" {{ "01" "{parts}" }} }} }}"#
+            );
+            let source = Source::new("fixture".into(), &text).expect("KV");
+            let error = read(
+                "item_recipe_x",
+                source.items().get("item_recipe_x").expect("recipe"),
+            )
+            .expect_err(parts);
+            assert_eq!(
+                error,
+                format!("item_recipe_x: requirement \"01\": {normalized:?} names an empty part"),
+                "{parts}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_empty_recipe_requirement_is_refused_instead_of_building_from_nothing() {
+        let source = Source::new("fixture".into(), r#""DOTAAbilities" { "item_recipe_x" { "ItemResult" "item_x" "ItemRequirements" { "01" "; ; " } } }"#).expect("KV");
+        let error = read(
+            "item_recipe_x",
+            source.items().get("item_recipe_x").expect("recipe"),
+        )
+        .expect_err("empty components");
+        assert_eq!(
+            error,
+            "item_recipe_x: requirement \"01\": \"; \" names an empty part"
+        );
+    }
+
+    #[test]
+    fn a_trailing_recipe_separator_does_not_create_an_empty_component() {
+        let source = Source::new("fixture".into(), r#""DOTAAbilities" { "item_recipe_x" { "ItemResult" "item_x" "ItemRequirements" { "01" "item_a;item_b;" } } }"#).expect("KV");
+        let parsed = read(
+            "item_recipe_x",
+            source.items().get("item_recipe_x").expect("recipe"),
+        )
+        .expect("recipe data");
+        assert_eq!(
+            parsed.recipe.expect("build").1,
+            vec![vec!["item_a".to_owned(), "item_b".to_owned()]]
+        );
+    }
+
+    #[test]
+    fn support_item_alert_metadata_does_not_change_simulation_data() {
+        let parse = |body: &str| {
+            let source = Source::new(
+                "fixture".into(),
+                &format!("\"DOTAAbilities\" {{ \"item_x\" {{ {body} }} }}"),
+            )
+            .expect("KV");
+            read("item_x", source.items().get("item_x").expect("item"))
+        };
+        let alertable =
+            parse(r#""ItemCost" "50" "ItemAlertable" "1""#).expect("support notification metadata");
+        let plain = parse(r#""ItemCost" "50""#).expect("ordinary item");
+        assert_eq!(alertable, plain);
+    }
 
     #[test]
     fn secret_shop_flag_is_read_and_rejects_values_other_than_zero_or_one() {
