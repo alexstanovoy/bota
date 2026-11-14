@@ -39,3 +39,31 @@ fn check(source:&str) {
   assert!(lua.think(session).unwrap().failures.is_empty());
  }
 }
+
+#[test]
+fn hidden_enemy_inventory_changes_do_not_change_query_answers() {
+ use bota_client_core::{ClientSession,IssuedOrder};
+ use bota_proto::{Cheat,Order};
+ let (base,sessions)=support::local_with_cheats(&[Team::Radiant,Team::Dire],bota_core::MAP2_ID);
+ let mut a=base.clone();let mut b=base;let mut sa=sessions.clone();let mut sb=sessions;
+ let item=bota_core::item_by_key("item_gloves").expect("registered gloves");
+ let command=sb[1].issue(IssuedOrder::hero(Order::Cheat {cheat:Cheat::Item {item}})).unwrap();
+ for (session,stream) in sa.iter_mut().zip(a.step(&[&[],&[]]).unwrap()) {support::fold(session,stream);}
+ for (session,stream) in sb.iter_mut().zip(b.step(&[&[],&[command]]).unwrap()) {support::fold(session,stream);}
+ assert_ne!(sa[1].own_hero().unwrap().attack_speed,sb[1].own_hero().unwrap().attack_speed,"the hidden property really changed");
+ assert!(!sa[0].current().unwrap().units.iter().any(|unit|unit.kind==bota_proto::UnitKind::Hero && unit.team==Team::Dire),"the modified enemy must be hidden");
+ fn query(session:&ClientSession)->Vec<IssuedOrder> {
+  let mut lua=LuaTeam::new(Team::Radiant,&[BotSeat{slot:SlotId(0),hero:HeroId::SHADOW_FIEND}],Limits::DEFAULT,Keys{hash:[1,2],random:3}).unwrap();
+  lua.add_script(SlotId(0),ScriptKind::Takeover,"fog",br#"function Think()
+    local bot=GetBot(); local p=GetShopLocation(GetTeam(),SHOP_HOME)
+    assert(GetCourier(0):GetTeam()==GetTeam()); assert(GetCourier(99)==nil)
+    assert(GetGameState()==GAME_STATE_PRE_GAME); assert(bot:NumQueuedActions()==0)
+    assert(bot:DistanceFromSideShop()==-2147483648); assert(not IsItemPurchasedFromSideShop('item_boots'))
+    local front=GetLaneFrontAmount(GetOpposingTeam(),LANE_MID,true)
+    local trees=bot:GetNearbyTrees(256)
+    bot:Action_MoveToLocation(Vector(p.x+GetNumCouriers()+#trees,p.y+front,0))
+  end"#).unwrap();
+  let turn=lua.think(session).unwrap();assert!(turn.failures.is_empty(),"{:?}",turn.failures);turn.bots[0].orders.clone()
+ }
+ assert_eq!(query(&sa[0]),query(&sb[0]));
+}
