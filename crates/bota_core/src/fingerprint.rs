@@ -55,8 +55,14 @@ impl AdmittedWire {
 /// records, snapshots and world fingerprints (`bota_server`'s `admitted` test). A wire without a
 /// corpus, or whose corpus this build plays otherwise, fails that test: a change that moves it
 /// changes the rules, and takes the entry out. See `DEVELOPMENT.md`, "Admitted wires".
-// The visible action-phase field changes the view layout. Earlier layouts are refused.
-pub const ADMITTED_WIRES: &[AdmittedWire] = &[];
+// Layouts before the visible action phase remain withdrawn. The current catalogue is preserved.
+pub const ADMITTED_WIRES: &[AdmittedWire] = &[AdmittedWire {
+    wire: 0xc879_48a5_48e6_9a62,
+    catalogue: CataloguePrefix {
+        items: 130,
+        digest: 16_413_569_144_973_479_579,
+    },
+}];
 
 /// The earlier build of `wire`, when this build admits it.
 pub const fn admitted_wire(wire: u64) -> Option<AdmittedWire> {

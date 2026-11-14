@@ -7,6 +7,7 @@ use bota_proto::{DamageKind, EffectId, Fixed, IdSpace, RegisteredId, registered}
 /// the match below until it is listed here as well.
 fn every_modifier() -> Vec<ModifierKind> {
     let mut every = vec![
+        ModifierKind::SpellImmunity,
         ModifierKind::Journey {
             ability: bota_core::NeutralAbility::StrengthOfTheImmortal,
             stops: 0,
@@ -136,6 +137,14 @@ fn every_modifier() -> Vec<ModifierKind> {
                 since: 0,
             }),
     );
+    for item in bota_core::ITEMS.iter().filter(|item| !item.retired) {
+        every.extend(
+            item.modifiers
+                .iter()
+                .enumerate()
+                .map(|(index, template)| template.kind(item.id, index as u8, 0, false)),
+        );
+    }
     for kind in &every {
         match kind {
             ModifierKind::Recovery { .. }
@@ -196,7 +205,9 @@ fn every_modifier() -> Vec<ModifierKind> {
             | ModifierKind::Control { .. }
             | ModifierKind::BonusArmor { .. }
             | ModifierKind::Dismembered { .. }
-            | ModifierKind::MeatShield { .. } => {}
+            | ModifierKind::MeatShield { .. }
+            | ModifierKind::ItemBuff { .. }
+            | ModifierKind::SpellImmunity => {}
         }
     }
     every
@@ -364,7 +375,9 @@ fn every_effect_is_shown_under_its_registered_id() {
             ModifierKind::Journey { .. }
             | ModifierKind::DelayedSpell { .. }
             | ModifierKind::AuraEmitter { .. }
-            | ModifierKind::Control { .. } => (
+            | ModifierKind::Control { .. }
+            | ModifierKind::ItemBuff { .. }
+            | ModifierKind::SpellImmunity => (
                 kind.effect_id().0,
                 effect_def(kind.effect_id())
                     .expect("registered")

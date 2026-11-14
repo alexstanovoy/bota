@@ -415,10 +415,13 @@ paths = [
     "crates/bota_server/src/game/systems/disassemble.rs",
     "crates/bota_server/src/game/systems/courier.rs",
     "crates/bota_server/src/game/systems/grenade.rs",
+    "crates/bota_server/src/game/systems/area_wave.rs",
+    "crates/bota_server/src/game/systems/support.rs",
     "crates/bota_server/src/game/systems/teleport.rs",
     "crates/bota_server/src/game/components/handling.rs",
     "crates/bota_server/src/game/components/courier.rs",
     "crates/bota_server/src/game/components/grenade.rs",
+    "crates/bota_server/src/game/components/area_wave.rs",
     "crates/bota_server/src/game/config/item.rs",
     "crates/bota_server/src/game/tests/items.rs",
     "crates/bota_server/src/game/tests/backpack_grace.rs",
@@ -679,6 +682,7 @@ paths = [
     "crates/bota_server/tests/cheats.rs",
     "crates/bota_server/tests/catalogue.rs",
     "crates/bota_server/tests/secret_shop.rs",
+    "crates/bota_server/tests/item_support.rs",
     "crates/bota_server/tests/flagbearer_gold.rs",
     "crates/bota_server/tests/ordered_inventory.rs",
     "crates/bota_server/tests/twin_gates.rs",
@@ -699,6 +703,7 @@ tests = [
     { crate = "bota_server", target = "test:cheats" },
     { crate = "bota_server", target = "test:catalogue" },
     { crate = "bota_server", target = "test:secret_shop" },
+    { crate = "bota_server", target = "test:item_support" },
     { crate = "bota_server", target = "test:flagbearer_gold" },
     { crate = "bota_server", target = "test:ordered_inventory" },
     { crate = "bota_server", target = "test:twin_gates" },
@@ -756,3 +761,8 @@ groups = ["game_items", "game_objectives"]
 [[route]]
 paths = ["crates/bota_server/src/game/systems/spell_block.rs"]
 groups = ["game_abilities", "game_neutrals", "game_objectives", "game_determinism"]
+
+[[route]]
+# Every source of healing uses the same restoration path.
+paths = ["crates/bota_server/src/game/systems/restoration.rs"]
+groups = ["game_items", "game_abilities", "game_heroes", "game_neutrals", "game_combat"]

@@ -25,7 +25,10 @@ use bota_server::local::LocalMatch;
 pub type Play = fn(Catalogue) -> Played;
 
 /// The scripted matches, by the name their replay is filed under.
-pub const SCENARIOS: [(&str, Play); 1] = [("every_item", every_item)];
+pub const SCENARIOS: [(&str, Play); 2] = [
+    ("every_item", every_item),
+    ("free_components", free_components),
+];
 
 /// A scripted match as one build played it.
 pub struct Played {
@@ -125,6 +128,43 @@ pub fn every_item(catalogue: Catalogue) -> Played {
         let none = Vec::new();
         script.wave([&wave[0], wave.get(1).unwrap_or(&none)]);
     }
+    script.played
+}
+
+/// Unlocked components of later recipes, bought together through the shop. The records also
+/// guard assembly: recipes outside a match's catalogue must not take the components away.
+fn free_components(catalogue: Catalogue) -> Played {
+    let mut script = Script::start(catalogue);
+    script.order(
+        0,
+        Order::Cheat {
+            cheat: Cheat::CreepSpawning { on: false },
+        },
+    );
+    for seat in 0..2 {
+        script.order(
+            seat,
+            Order::Cheat {
+                cheat: Cheat::Gold { amount: 60_000 },
+            },
+        );
+    }
+    script.step();
+    let bundles: [&[&str]; 2] = [
+        &["item_boots", "item_wind_lace", "item_ring_of_regen"],
+        &["item_relic", "item_talisman_of_evasion"],
+    ];
+    for (seat, keys) in bundles.into_iter().enumerate() {
+        for key in keys {
+            let item = (0..catalogue.items())
+                .map(ItemId)
+                .find(|&item| catalogue.item(item).is_some_and(|def| def.key == *key))
+                .expect("the components belong to every admitted catalogue");
+            script.order(seat, Order::Buy { item });
+            script.step();
+        }
+    }
+    script.fight();
     script.played
 }
 

@@ -1374,7 +1374,7 @@ fn an_illusions_phantom_critical_lands_its_weakened_magic() {
     let place = item_place(slot_holding(&world, illusion, ItemId::REVENANTS_BROOCH));
     let mut run = Prd::new(&world, illusion, place, C30);
     let stats = *world.stats.get(illusion).expect("derived");
-    let amp = stats.spell_damage_amp_bp(DamageKind::Magical);
+    let amp = stats.attack_rider_amp_bp(DamageKind::Magical);
     assert!(amp < rules::NOMINAL_BP, "an illusion's magic is weakened");
     let magic = |raw: i32| magical_on(&world, enemy, bota_core::amplify(raw * 80 / 100, amp));
     let span = magic(stats.damage)..=magic(stats.damage + stats.damage_spread);

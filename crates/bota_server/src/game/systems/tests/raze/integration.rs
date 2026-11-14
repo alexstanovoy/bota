@@ -26,6 +26,7 @@ fn auras_and_shadowraze_project_distinct_ids_and_round_trip_together() {
         ticks_left: Some(15),
         ticks_total: Some(15),
         breakable: false,
+        cached_radius: None,
     });
     modifiers.put(Modifier {
         kind: ModifierKind::Inspired {
@@ -37,6 +38,7 @@ fn auras_and_shadowraze_project_distinct_ids_and_round_trip_together() {
         ticks_left: Some(14),
         ticks_total: Some(14),
         breakable: false,
+        cached_radius: None,
     });
     modifiers.stack_raze(caster, RAZE);
     modifiers.stack_raze(caster, RAZE);
@@ -98,6 +100,7 @@ fn expired_auras_are_not_projected_or_counted_as_shadowraze() {
                 ticks_left: Some(1),
                 ticks_total: Some(1),
                 breakable: false,
+                cached_radius: None,
             },
             Modifier {
                 kind: ModifierKind::Inspired {
@@ -109,6 +112,7 @@ fn expired_auras_are_not_projected_or_counted_as_shadowraze() {
                 ticks_left: Some(1),
                 ticks_total: Some(1),
                 breakable: false,
+                cached_radius: None,
             },
         ]),
     );

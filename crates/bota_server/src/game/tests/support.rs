@@ -21,6 +21,7 @@ pub(crate) fn stats() -> Stats {
         max_hp: Fixed::from_int(20),
         max_mana: Fixed::from_int(20),
         hp_regen: Fixed::ZERO,
+        hp_regen_redirect: Fixed::ZERO,
         mana_regen: Fixed::ZERO,
         damage: 0,
         attack_range: Fixed::ZERO,
@@ -38,6 +39,7 @@ pub(crate) fn stats() -> Stats {
         physical_amp_bp: rules::NOMINAL_BP,
         magic_amp_bp: rules::NOMINAL_BP,
         pure_amp_bp: rules::NOMINAL_BP,
+        illusion_spell_amp_bp: None,
         cooldown_rate_bp: rules::NOMINAL_BP,
         mana_cost_rate_bp: rules::NOMINAL_BP,
         move_speed: Fixed::ZERO,
@@ -70,6 +72,7 @@ pub(crate) fn stats() -> Stats {
         magic_taken_pct: 0,
         damage_taken_bp: rules::NOMINAL_BP,
         restoration_bp: rules::NOMINAL_BP,
+        restoration_redirect_bp: 0,
         illusion_attack_taken_bp: rules::NOMINAL_BP,
         slow_resist_bp: 0,
         accuracy: Odds::NEVER,
@@ -698,6 +701,8 @@ pub(crate) fn hand_item(world: &mut World, hero: Entity, item: ItemId, charges: 
 /// An untouched stack of one item for seat 0.
 pub(crate) fn fresh_stack(item: ItemId, charges: u8) -> ItemStack {
     ItemStack {
+        active: true,
+        passive_wait: 0,
         level: 1,
         id: item,
         charges,
@@ -845,6 +850,8 @@ pub(crate) fn on_the_ground(world: &World) -> Vec<Entity> {
 /// A plain stack of one item for a seat, already touched.
 pub(crate) fn a_stack_of(item: ItemId, owner: u8) -> ItemStack {
     ItemStack {
+        active: true,
+        passive_wait: 0,
         level: 1,
         id: item,
         charges: 0,

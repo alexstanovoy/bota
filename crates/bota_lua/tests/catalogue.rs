@@ -476,9 +476,11 @@ fn growing_spells_use_the_received_game_clock_instead_of_the_transport_tick() {
     );
 }
 
-fn buff_field(stat: bota_core::Stat) -> (&'static str, i32) {
+fn neutral_buff_field(stat: bota_core::Stat) -> Option<(&'static str, i32)> {
     use bota_core::Stat;
-    match stat {
+    Some(match stat {
+        // These item-template stats have no neutral script-number mapping.
+        Stat::MoveFlat | Stat::RestorationCutPct => return None,
         Stat::MovePct => ("movement_speed_pct", 1),
         Stat::AttackSpeed => ("bonus_attack_speed", 1),
         Stat::Armor => ("bonus_armor", 1),
@@ -500,7 +502,7 @@ fn buff_field(stat: bota_core::Stat) -> (&'static str, i32) {
         Stat::StatusResistPct => ("status_resistance", 1),
         Stat::IllusionAttackReductionPct => ("illusion_attack_reduction_pct", 1),
         Stat::IncomingDamagePct => ("incoming_damage_pct", 1),
-    }
+    })
 }
 
 #[test]
@@ -535,7 +537,8 @@ fn every_catalogued_neutral_modifier_exposes_its_existing_numeric_stats() {
             entry.def.key
         );
         for (stat, _) in buff.stats {
-            let (key, scale) = buff_field(stat);
+            let (key, scale) = neutral_buff_field(stat)
+                .unwrap_or_else(|| panic!("{stat:?} needs a neutral script-number mapping"));
             let expected = buff.get(stat, level) / scale;
             source.push_str(&format!(
                 "assert(a:GetSpecialValueInt('{key}')=={expected},'{key}') "

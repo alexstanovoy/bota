@@ -149,6 +149,7 @@ fn regen_accumulates_exact_raw_health_for_thirty_ticks() {
             &world.stats,
             &mut world.health,
             &mut world.mana,
+            &mut world.modifiers,
         );
     }
     assert_eq!(

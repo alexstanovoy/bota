@@ -23,6 +23,7 @@ fn carried(items: &[ItemId]) -> Carried {
     carried_bonus(
         items.iter().map(|&id| CarriedItem {
             id,
+            passive: true,
             charges: 0,
             mode: None,
         }),
