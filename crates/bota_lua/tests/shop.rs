@@ -38,7 +38,7 @@ fn purchase_failures_report_missing_names_gold_and_received_stock_without_orders
         )
         .expect("events");
     let source = format!(
-        "function Think() local b=GetBot() assert(b:ActionImmediate_PurchaseItem('missing_item')==7,'invalid name result') assert(b:ActionImmediate_PurchaseItem('{}')==3,'insufficient gold result') assert(b:ActionImmediate_PurchaseItem('{}')==1,'out of stock result') end",
+        "function Think() local b=GetBot() assert(b:ActionImmediate_PurchaseItem('missing_item')==PURCHASE_ITEM_INVALID_ITEM_NAME,'invalid name result') assert(b:ActionImmediate_PurchaseItem('{}')==PURCHASE_ITEM_INSUFFICIENT_GOLD,'insufficient gold result') assert(b:ActionImmediate_PurchaseItem('{}')==PURCHASE_ITEM_OUT_OF_STOCK,'out of stock result') end",
         expensive.key, sold_out
     );
     let mut lua = LuaTeam::new(
@@ -140,7 +140,7 @@ fn purchases_in_one_think_reserve_gold_before_reporting_success() {
         })
         .expect("one affordable item");
     let source = format!(
-        "function Think() local b=GetBot() assert(b:ActionImmediate_PurchaseItem('{}')==0) assert(b:GetGold()=={},'projected gold') assert(b:ActionImmediate_PurchaseItem('{}')==3,'second purchase must reserve gold') end",
+        "function Think() local b=GetBot() assert(b:ActionImmediate_PurchaseItem('{}')==PURCHASE_ITEM_SUCCESS) assert(b:GetGold()=={},'projected gold') assert(b:ActionImmediate_PurchaseItem('{}')==PURCHASE_ITEM_INSUFFICIENT_GOLD,'second purchase must reserve gold') end",
         item.key,
         gold - item.cost,
         item.key
@@ -184,7 +184,7 @@ fn purchases_in_one_think_reserve_the_last_public_stock_unit() {
     let item = bota_core::item_def(stock.item).expect("item").key;
     replace_view(&mut sessions[0], view);
     let source = format!(
-        "function Think() local b=GetBot() assert(b:ActionImmediate_PurchaseItem('{item}')==0) assert(b:ActionImmediate_PurchaseItem('{item}')==1,'last stock is reserved') end"
+        "function Think() local b=GetBot() assert(b:ActionImmediate_PurchaseItem('{item}')==PURCHASE_ITEM_SUCCESS) assert(b:ActionImmediate_PurchaseItem('{item}')==PURCHASE_ITEM_OUT_OF_STOCK,'last stock is reserved') end"
     );
     let turn = run_script(&sessions[0], source.as_bytes());
     assert!(turn.failures.is_empty(), "{:?}", turn.failures);
@@ -220,7 +220,7 @@ fn purchases_in_one_think_reserve_the_last_inventory_space() {
         .expect("player")
         .stash = Some(vec![item; 6]);
     replace_view(&mut sessions[0], view);
-    let turn = run_script(&sessions[0], b"function Think() local b=GetBot() assert(b:ActionImmediate_PurchaseItem('item_branches')==0) assert(b:ActionImmediate_PurchaseItem('item_branches')==1,'last slot is reserved') end");
+    let turn = run_script(&sessions[0], b"function Think() local b=GetBot() assert(b:ActionImmediate_PurchaseItem('item_branches')==PURCHASE_ITEM_SUCCESS) assert(b:ActionImmediate_PurchaseItem('item_branches')==PURCHASE_ITEM_OUT_OF_STOCK,'last slot is reserved') end");
     assert!(turn.failures.is_empty(), "{:?}", turn.failures);
     assert_eq!(turn.bots[0].orders.len(), 1);
 }
@@ -258,10 +258,10 @@ fn a_failed_bot_turn_releases_purchase_reservations_for_its_allied_bot() {
     )
     .expect("team");
     let failing = format!(
-        "function Think() assert(GetBot():ActionImmediate_PurchaseItem('{item}')==0) error('cancel purchase turn') end"
+        "function Think() assert(GetBot():ActionImmediate_PurchaseItem('{item}')==PURCHASE_ITEM_SUCCESS) error('cancel purchase turn') end"
     );
     let allied = format!(
-        "function Think() assert(GetBot():ActionImmediate_PurchaseItem('{item}')==0,'failed turn released stock') end"
+        "function Think() assert(GetBot():ActionImmediate_PurchaseItem('{item}')==PURCHASE_ITEM_SUCCESS,'failed turn released stock') end"
     );
     lua.add_script(
         SlotId(0),
