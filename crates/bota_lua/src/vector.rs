@@ -73,7 +73,7 @@ fn field(
     name: &'static str,
     function: luagee::HostFunction,
 ) -> Result<(), BindingError> {
-    let function = lua.function(name, crate::statistics::instrument(name, function))?;
+    let function = lua.function(name, crate::statistics::instrument("other", function))?;
     let key = lua.string(name.as_bytes())?;
     lua.vm().raw_set(table, key, function)?;
     Ok(())

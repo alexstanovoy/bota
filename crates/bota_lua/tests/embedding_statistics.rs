@@ -16,6 +16,7 @@ fn modules() -> ModuleBank {
         "bots/bot_nevermore",
         br#"function Think()
       local n=0; for k,v in pairs({a=1,b=7,c=31}) do n=n*33+v end
+      local x=GetBot():GetLocation().x
       GetBot():Action_MoveToLocation(Vector(math.random(0,100)+n,0,0))
     end"#,
     )
@@ -133,6 +134,20 @@ fn explicit_keys_reproduce_live_orders_and_two_offline_refeeds() {
             .collect::<Vec<_>>()
     };
     assert_eq!(calls(&first), calls(&second));
+    assert!(
+        !first
+            .statistics
+            .api
+            .iter()
+            .any(|entry| entry.name.starts_with("__"))
+    );
+    assert!(
+        first
+            .statistics
+            .api
+            .iter()
+            .any(|entry| entry.name == "other" && entry.calls >= 17)
+    );
     assert!(
         first
             .statistics
