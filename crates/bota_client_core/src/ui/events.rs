@@ -222,7 +222,7 @@ impl App {
             | EventKind::LotusPlucked { .. } => {}
             // Dota's feed tells no warp: the gates glow and hum, and the unit
             // comes out at the other end.
-            EventKind::GateWarped { .. } => {}
+            EventKind::GateWarped { .. } | EventKind::RetiredItemState { .. } => {}
         }
     }
 

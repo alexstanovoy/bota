@@ -66,6 +66,11 @@ pub struct Look {
 }
 
 impl App {
+    /// What the observed working inventory contributes, including passive state.
+    pub fn carried_of(&self, unit: &UnitView) -> bota_core::Carried {
+        crate::lasthit::carried_of(unit)
+    }
+
     /// The unit whose ability slots the panel is about.
     pub fn slot_unit(&self) -> Option<&UnitView> {
         let commanded = self.commanded()?;
@@ -225,12 +230,15 @@ impl App {
                     match def.effect {
                         // A ward's circle is what the planted ward gives, no radius of its user's.
                         bota_core::UseSpec::Ward { .. } => def.radius_at(item.level),
-                        _ => def.radius().map(|radius| {
-                            let bonus = self
-                                .slot_unit()
-                                .map_or(0, |unit| crate::lasthit::carried_of(unit).aoe_bonus);
-                            bota_core::widened(radius, bonus)
-                        }),
+                        _ => def
+                            .radius()
+                            .or_else(|| def.auras.iter().map(|aura| aura.radius).max())
+                            .map(|radius| {
+                                let bonus = self
+                                    .slot_unit()
+                                    .map_or(0, |unit| self.carried_of(unit).aoe_bonus);
+                                bota_core::widened(radius, bonus)
+                            }),
                     }
                 })
                 .unwrap_or(0),

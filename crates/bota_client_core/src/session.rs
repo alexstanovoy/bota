@@ -555,7 +555,10 @@ impl ClientSession {
             self.statics.metadata().tick_rate,
         );
         for event in events {
-            if matches!(event, EventKind::AttackLaunched { .. }) {
+            if matches!(
+                event,
+                EventKind::AttackLaunched { .. } | EventKind::RetiredItemState { .. }
+            ) {
                 continue;
             }
             if self.recent_events.len() == MAX_RECENT_EVENTS {

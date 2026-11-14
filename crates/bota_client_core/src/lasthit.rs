@@ -31,6 +31,7 @@ pub fn carried_of(unit: &UnitView) -> Carried {
             .map(|item| CarriedItem {
                 id: item.id,
                 charges: item.charges.unwrap_or(0),
+                passive: true,
                 mode: item.mode,
             }),
         ranged(unit),

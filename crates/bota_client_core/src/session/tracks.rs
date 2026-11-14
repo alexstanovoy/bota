@@ -439,7 +439,8 @@ impl Tracks {
             | EventKind::ItemDestroyed { .. }
             | EventKind::ItemPlaced { .. }
             | EventKind::ItemTaken { .. }
-            | EventKind::GateWarped { .. } => {}
+            | EventKind::GateWarped { .. }
+            | EventKind::RetiredItemState { .. } => {}
         }
     }
 
