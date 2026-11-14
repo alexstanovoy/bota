@@ -394,7 +394,9 @@ mod tests {
         ] {
             assert_eq!(
                 parse(list),
-                Err(format!(r#"requirement "01": "{empty}" names an empty part"#)),
+                Err(format!(
+                    r#"requirement "01": "{empty}" names an empty part"#
+                )),
                 "{list:?}"
             );
         }

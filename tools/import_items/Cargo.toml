@@ -10,4 +10,4 @@ description = "Writes bota_core's item and hero data from the scripts of a local
 [workspace]
 
 [dependencies]
-heatel = { path = "../../../heatel", default-features = false }
+heatel = { version = "0.1.0", default-features = false }
