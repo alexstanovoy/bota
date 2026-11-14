@@ -418,14 +418,8 @@ fn run_with_reply_hook(
             lua.restore_host(checkpoint);
         }
         let checkpoint = lua.host_checkpoint();
-        let (mut reply, panicked) =
-            match catch_unwind(AssertUnwindSafe(|| lua.think_snapshot(request.snapshot))) {
-                Ok(result) => (
-                    result.map_err(|error| NativeError::Input(error.to_string())),
-                    false,
-                ),
-                Err(_) => (Err(NativeError::Panicked), true),
-            };
+        let mut reply = guarded_call(|| lua.think_snapshot(request.snapshot));
+        let panicked = matches!(reply, Err(NativeError::Panicked));
         if let Ok(turn) = &mut reply
             && let Some(data) = &mut turn.statistics
         {
@@ -501,5 +495,12 @@ pub(super) fn record_turn(summary: &mut crate::statistics::RunStatistics, turn: 
                 summary.fuel_exhaustions.record(data.tick);
             }
         }
+    }
+}
+
+pub(super) fn guarded_call(call: impl FnOnce() -> Result<TeamTurn, crate::BindingError>) -> Reply {
+    match catch_unwind(AssertUnwindSafe(call)) {
+        Ok(result) => result.map_err(|error| NativeError::Input(error.to_string())),
+        Err(_) => Err(NativeError::Panicked),
     }
 }

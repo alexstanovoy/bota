@@ -179,3 +179,10 @@ Both modes can write the same summary. Tick lists retain their first 256 entries
 API names are limited to 512 installed names including one other bucket. The first error retains
 at most 1024 Unicode characters and JSON encoding escapes control characters. Summary output is
 written beside its requested destination then atomically renamed; paths never come from scripts.
+
+Summary measurement costs about half a microsecond per API call in a small local measurement.
+It can change wall-deadline discard timing: measured live games are not strength-comparable with
+unmeasured games. Supplying both keys and seed selects deterministic fuel-only execution in either
+case. Recorded views are atomically published only on success, capped at 1 GiB and 1,048,576 frames;
+a cap or write failure stops the run with an error and removes the temporary recording.
+Re-feed requires the exact current wire fingerprint and refuses simultaneous recording.

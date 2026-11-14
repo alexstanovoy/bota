@@ -34,15 +34,13 @@ pub fn play_team<T: Transport>(
 pub fn play_team_recorded<T: Transport>(
     connections: Vec<(T, Seated)>,
     worker: &mut NativeTeam,
-    mut recording: Option<&mut dyn io::Write>,
+    recording: Option<&mut dyn io::Write>,
 ) -> io::Result<TeamOutcome> {
-    if let Some(writer) = recording.as_deref_mut() {
-        record(
-            writer,
-            &bota_proto::ReplayRecord::Header(bota_proto::ReplayHeader::new(
-                bota_core::WIRE_FINGERPRINT,
-            )),
-        )?;
+    let mut recording = recording.map(Recording::new);
+    if let Some(writer) = recording.as_mut() {
+        writer.record(&bota_proto::ReplayRecord::Header(
+            bota_proto::ReplayHeader::new(bota_core::WIRE_FINGERPRINT),
+        ))?;
     }
     let mut connections = prepare_connections(connections, worker)?;
     let mut result = TeamOutcome {
@@ -217,7 +215,7 @@ fn send_turn<T: Transport>(
 
 fn collect_tick<T: Transport>(
     connection: &mut Connection<T>,
-    recording: &mut Option<&mut dyn io::Write>,
+    recording: &mut Option<Recording<'_>>,
 ) -> io::Result<()> {
     for _ in 0..65536 {
         let message = connection
@@ -225,9 +223,9 @@ fn collect_tick<T: Transport>(
             .recv()?
             .ok_or_else(|| io::Error::other("server closed before match end"))?;
         if (connection.seat.session().is_some() || matches!(message, ServerMsg::MatchStart { .. }))
-            && let Some(writer) = recording.as_deref_mut()
+            && let Some(writer) = recording.as_mut()
         {
-            record(writer, &bota_proto::ReplayRecord::Msg(message.clone()))?;
+            writer.record(&bota_proto::ReplayRecord::Msg(message.clone()))?;
         }
         match connection
             .seat
@@ -292,7 +290,76 @@ fn stand(
     Ok(())
 }
 
-fn record(writer: &mut dyn io::Write, record: &bota_proto::ReplayRecord) -> io::Result<()> {
-    let frame = bota_proto::encode_frame_to_vec(record).map_err(io::Error::other)?;
-    writer.write_all(&frame)
+const MAX_RECORDING_BYTES: u64 = 1 << 30;
+const MAX_RECORDING_FRAMES: u64 = 1 << 20;
+struct Recording<'a> {
+    writer: &'a mut dyn io::Write,
+    bytes: u64,
+    frames: u64,
+    max_bytes: u64,
+    max_frames: u64,
+}
+impl<'a> Recording<'a> {
+    fn new(writer: &'a mut dyn io::Write) -> Self {
+        Self {
+            writer,
+            bytes: 0,
+            frames: 0,
+            max_bytes: MAX_RECORDING_BYTES,
+            max_frames: MAX_RECORDING_FRAMES,
+        }
+    }
+    fn record(&mut self, record: &bota_proto::ReplayRecord) -> io::Result<()> {
+        if self.frames >= self.max_frames {
+            return Err(io::Error::other(
+                "recording frame cap reached; recording was not published",
+            ));
+        }
+        let frame = bota_proto::encode_frame_to_vec(record).map_err(io::Error::other)?;
+        let bytes = self
+            .bytes
+            .checked_add(frame.len() as u64)
+            .filter(|&bytes| bytes <= self.max_bytes)
+            .ok_or_else(|| {
+                io::Error::other("recording byte cap reached; recording was not published")
+            })?;
+        self.writer.write_all(&frame)?;
+        self.bytes = bytes;
+        self.frames += 1;
+        Ok(())
+    }
+}
+#[cfg(test)]
+mod recording_tests {
+    use super::*;
+    #[test]
+    fn recording_limits_stop_before_writing_an_excess_frame_or_byte() {
+        let record = bota_proto::ReplayRecord::Header(bota_proto::ReplayHeader::new(
+            bota_core::WIRE_FINGERPRINT,
+        ));
+        for byte_cap in [false, true] {
+            let mut bytes = Vec::new();
+            let size = {
+                let mut writer = Recording::new(&mut bytes);
+                if byte_cap {
+                    writer.max_bytes =
+                        bota_proto::encode_frame_to_vec(&record).unwrap().len() as u64;
+                } else {
+                    writer.max_frames = 1;
+                }
+                writer.record(&record).unwrap();
+                let size = writer.bytes;
+                let error = writer.record(&record).unwrap_err();
+                assert!(error.to_string().contains(if byte_cap {
+                    "byte cap"
+                } else {
+                    "frame cap"
+                }));
+                assert_eq!(writer.frames, 1);
+                assert_eq!(writer.bytes, size);
+                size
+            };
+            assert_eq!(bytes.len() as u64, size);
+        }
+    }
 }

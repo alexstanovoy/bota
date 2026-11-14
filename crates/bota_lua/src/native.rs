@@ -1,6 +1,8 @@
 //! Native execution and source loading. The core binding uses neither threads nor filesystem access.
 
 use std::path::Path;
+mod output;
+pub use output::AtomicOutput;
 mod play;
 mod refeed;
 pub use refeed::{RefeedOutcome, refeed};

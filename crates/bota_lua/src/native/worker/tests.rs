@@ -479,3 +479,12 @@ fn a_discarded_completion_turn_requeues_stop_until_a_turn_is_accepted() {
             .is_some()
     );
 }
+
+#[test]
+fn live_and_recorded_calls_share_a_panic_guard() {
+    assert_eq!(
+        guarded_call(|| panic!("injected host failure")).unwrap_err(),
+        NativeError::Panicked
+    );
+    assert!(guarded_call(|| Ok(TeamTurn::default())).is_ok());
+}

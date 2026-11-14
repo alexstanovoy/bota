@@ -3,6 +3,7 @@ use serde::Serialize;
 use std::{cell::RefCell, rc::Rc};
 
 pub const MAX_API_NAMES: usize = 512;
+const MAX_API_NAME_BYTES: usize = 64;
 pub const MAX_RECORDED_TICKS: usize = 256;
 #[derive(Clone, Debug)]
 pub struct Histogram {
@@ -74,6 +75,10 @@ pub struct TurnStatistics {
     pub cpu_ns: u64,
     pub capture_ns: u64,
     pub handles_ns: u64,
+    pub api_handles_ns: u64,
+    pub api_cpu_ns: u64,
+    #[serde(skip)]
+    pub(crate) api_depth: u32,
     pub api: Vec<ApiCounter>,
 }
 pub(crate) type SharedStatistics = Rc<RefCell<TurnStatistics>>;
@@ -101,7 +106,9 @@ pub(crate) fn instrument(
     };
     let index = {
         let mut data = stats.borrow_mut();
-        if let Some(index) = data.api.iter().position(|entry| entry.name == name) {
+        if name.len() > MAX_API_NAME_BYTES {
+            0
+        } else if let Some(index) = data.api.iter().position(|entry| entry.name == name) {
             index
         } else if data.api.len() < MAX_API_NAMES {
             data.api.push(ApiCounter {
@@ -115,10 +122,23 @@ pub(crate) fn instrument(
         }
     };
     Rc::new(move |vm, args| {
+        let (handles_before, outer) = {
+            let mut data = stats.borrow_mut();
+            let outer = data.api_depth == 0;
+            data.api_depth += 1;
+            (data.handles_ns, outer)
+        };
         let start = cpu_now();
         let result = function(vm, args);
         let elapsed = cpu_now().saturating_sub(start);
         let mut data = stats.borrow_mut();
+        data.api_depth -= 1;
+        if outer {
+            data.api_cpu_ns = data.api_cpu_ns.saturating_add(elapsed);
+            data.api_handles_ns = data
+                .api_handles_ns
+                .saturating_add(data.handles_ns.saturating_sub(handles_before));
+        }
         data.api[index].calls = data.api[index].calls.saturating_add(1);
         data.api[index].cpu_ns = data.api[index].cpu_ns.saturating_add(elapsed);
         result
@@ -206,26 +226,49 @@ impl RunStatistics {
     }
     pub fn record(&mut self, data: &TurnStatistics) {
         self.turns = self.turns.saturating_add(1);
-        let api = data
-            .api
-            .iter()
-            .fold(0u64, |sum, entry| sum.saturating_add(entry.cpu_ns));
+        let api = data.api_cpu_ns.saturating_sub(data.api_handles_ns);
         self.fuel.record(data.fuel);
         self.cpu_ns
             .record(data.cpu_ns.saturating_add(data.capture_ns));
         self.capture_ns.record(data.capture_ns);
         self.handles_ns.record(data.handles_ns);
-        self.api_ns.record(api.saturating_sub(data.handles_ns));
-        self.script_ns.record(data.cpu_ns.saturating_sub(api));
+        self.api_ns.record(api);
+        self.script_ns.record(
+            data.cpu_ns
+                .saturating_sub(api)
+                .saturating_sub(data.handles_ns),
+        );
+        if self.api.is_empty() {
+            self.api.push(ApiCounter {
+                name: "other",
+                calls: 0,
+                cpu_ns: 0,
+            });
+        }
         for entry in &data.api {
-            if let Some(old) = self.api.iter_mut().find(|old| old.name == entry.name) {
-                old.calls = old.calls.saturating_add(entry.calls);
-                old.cpu_ns = old.cpu_ns.saturating_add(entry.cpu_ns);
+            let name = if entry.name.len() > MAX_API_NAME_BYTES {
+                "other"
+            } else {
+                entry.name
+            };
+            let at = if let Some(at) = self.api.iter().position(|old| old.name == name) {
+                at
             } else if self.api.len() < MAX_API_NAMES {
-                self.api.push(entry.clone());
-            }
+                self.api.push(ApiCounter {
+                    name,
+                    calls: 0,
+                    cpu_ns: 0,
+                });
+                self.api.len() - 1
+            } else {
+                0
+            };
+            let old = &mut self.api[at];
+            old.calls = old.calls.saturating_add(entry.calls);
+            old.cpu_ns = old.cpu_ns.saturating_add(entry.cpu_ns);
         }
     }
+    #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
     pub fn write_atomic(
         &self,
         path: &std::path::Path,
@@ -236,32 +279,10 @@ impl RunStatistics {
         let hist = |value: &Histogram| serde_json::json!({"buckets":value.buckets.as_slice(),"count":value.count,"min":value.min,"median":value.percentile(50),"p99":value.percentile(99),"max":value.max});
         let data = serde_json::json!({"hash_keys":keys.hash,"rng_seed":keys.random,"result":result,"statistics":self,
             "percentiles":{"fuel":hist(&self.fuel),"cpu_ns":hist(&self.cpu_ns)}});
-        let parent = path
-            .parent()
-            .filter(|p| !p.as_os_str().is_empty())
-            .unwrap_or(std::path::Path::new("."));
-        let mut entropy = [0u8; 8];
-        #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
-        getrandom::fill(&mut entropy).map_err(std::io::Error::other)?;
-        let temp = parent.join(format!(
-            ".embedding-summary-{}-{}",
-            std::process::id(),
-            u64::from_le_bytes(entropy)
-        ));
-        let result = (|| {
-            let mut file = std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&temp)?;
-            serde_json::to_writer(&mut file, &data)?;
-            file.write_all(b"\n")?;
-            file.flush()?;
-            std::fs::rename(&temp, path)
-        })();
-        if result.is_err() {
-            let _ = std::fs::remove_file(&temp);
-        }
-        result
+        crate::native::AtomicOutput::write_atomic(path, |file| {
+            serde_json::to_writer(&mut *file, &data)?;
+            file.write_all(b"\n")
+        })
     }
 }
 #[cfg(test)]
@@ -295,6 +316,65 @@ mod tests {
         assert_eq!(stats.borrow().api[1].cpu_ns, 70);
     }
     #[test]
+    fn nested_and_external_handle_timers_partition_injected_cpu_exactly() {
+        let stats = collector();
+        INJECTED_CPU.with(|clock| clock.set(Some(0)));
+        let outer = HandleTimer::new(&Some(stats.clone()));
+        INJECTED_CPU.with(|clock| clock.set(Some(20)));
+        drop(outer);
+        let capture = stats.clone();
+        let callback = registering(Some(stats.clone()), || {
+            instrument(
+                "GetBot",
+                Rc::new(move |vm, _| {
+                    let inner = HandleTimer::new(&Some(capture.clone()));
+                    INJECTED_CPU.with(|clock| clock.set(Some(50)));
+                    drop(inner);
+                    INJECTED_CPU.with(|clock| clock.set(Some(60)));
+                    vm.results(&[])
+                }),
+            )
+        });
+        let mut lua = luagee::Lua::new(
+            crate::SCRIPT_LIMITS,
+            crate::Keys {
+                hash: [1, 2],
+                random: 3,
+            },
+        )
+        .unwrap();
+        let function = lua.function("nested", callback).unwrap();
+        lua.call(function, &[]).unwrap();
+        INJECTED_CPU.with(|clock| clock.set(None));
+        let mut data = stats.borrow().clone();
+        data.cpu_ns = 100;
+        data.capture_ns = 5;
+        assert_eq!(data.api_handles_ns, 30);
+        assert_eq!(data.api_cpu_ns, 40);
+        assert_eq!(data.handles_ns, 50);
+        let mut summary = RunStatistics::default();
+        summary.record(&data);
+        assert_eq!(
+            summary.capture_ns.min.unwrap()
+                + summary.handles_ns.min.unwrap()
+                + summary.api_ns.min.unwrap()
+                + summary.script_ns.min.unwrap(),
+            105
+        );
+        assert_eq!(summary.script_ns.min, Some(40));
+        assert_eq!(summary.api_ns.min, Some(10));
+    }
+    #[test]
+    fn oversized_api_names_use_the_fixed_other_bucket() {
+        let stats = collector();
+        let name = Box::leak("x".repeat(513).into_boxed_str());
+        let _callback = registering(Some(stats.clone()), || {
+            instrument(name, Rc::new(|vm, _| vm.results(&[])))
+        });
+        assert_eq!(stats.borrow().api.len(), 1);
+        assert_eq!(stats.borrow().api[0].name, "other");
+    }
+    #[test]
     fn injected_samples_pin_histograms_and_bounded_diagnostics() {
         let mut stats = RunStatistics::default();
         for value in [0, 1, 2, 3, 4, 8, 1024, u64::MAX] {
@@ -316,5 +396,47 @@ mod tests {
         let text = serde_json::to_string(&stats).unwrap();
         assert!(text.contains("\\u0000"));
         assert_eq!(stats.first_error.as_deref(), Some("\"\\\n\0"));
+    }
+}
+
+#[cfg(test)]
+mod partition_tests {
+    use super::*;
+    #[test]
+    fn handle_time_outside_an_api_still_partitions_the_turn() {
+        let mut stats = RunStatistics::default();
+        stats.record(&TurnStatistics {
+            cpu_ns: 100,
+            capture_ns: 40,
+            handles_ns: 50,
+            ..Default::default()
+        });
+        assert_eq!(
+            stats.capture_ns.min.unwrap()
+                + stats.handles_ns.min.unwrap()
+                + stats.api_ns.min.unwrap()
+                + stats.script_ns.min.unwrap(),
+            stats.cpu_ns.min.unwrap()
+        );
+    }
+    #[test]
+    fn more_than_the_catalogue_capacity_uses_one_other_bucket() {
+        let data = TurnStatistics {
+            api: (0..MAX_API_NAMES + 10)
+                .map(|i| ApiCounter {
+                    name: Box::leak(format!("function_{i}").into_boxed_str()),
+                    calls: 1,
+                    cpu_ns: 0,
+                })
+                .collect(),
+            ..Default::default()
+        };
+        let mut stats = RunStatistics::default();
+        stats.record(&data);
+        assert_eq!(stats.api.len(), MAX_API_NAMES);
+        assert_eq!(
+            stats.api.iter().map(|entry| entry.calls).sum::<u64>(),
+            (MAX_API_NAMES + 10) as u64
+        );
     }
 }

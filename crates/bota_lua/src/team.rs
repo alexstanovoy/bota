@@ -423,6 +423,9 @@ impl LuaTeam {
             let mut data = stats.borrow_mut();
             data.tick = snapshot.tick;
             data.handles_ns = 0;
+            data.api_handles_ns = 0;
+            data.api_cpu_ns = 0;
+            data.api_depth = 0;
             for entry in &mut data.api {
                 entry.calls = 0;
                 entry.cpu_ns = 0;

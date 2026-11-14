@@ -46,6 +46,7 @@ struct ReplayStream {
     /// Whether the file turned out to be a Zstandard stream, now read
     /// unpacked. A stream inside the stream is not unpacked again.
     unpacked: bool,
+    exact_wire: bool,
 }
 
 /// Playback progress, for clients to present in their own words.
@@ -101,6 +102,7 @@ impl ReplayPlayer {
                 offset: 0,
                 records: 0,
                 unpacked: false,
+                exact_wire: false,
             },
             pending: None,
             error: None,
@@ -113,6 +115,17 @@ impl ReplayPlayer {
             paused: false,
             speed: 1.0,
         }
+    }
+
+    /// Require this build's exact wire before any header has been consumed.
+    pub fn require_current_wire(&mut self) -> io::Result<()> {
+        if self.stream.records != 0 {
+            return Err(io::Error::other(
+                "exact replay policy requires an unread header",
+            ));
+        }
+        self.stream.exact_wire = true;
+        Ok(())
     }
 
     /// Advances elapsed seconds and performs at most one batch of replay work.
@@ -279,11 +292,34 @@ impl std::error::Error for ReplayRefusal {}
 
 /// Why a record cannot stand where it does: the first must be this build's
 /// header, and no other may be a header.
-fn header_refusal(record: &ReplayRecord, first: bool) -> Option<ReplayRefusal> {
+fn replay_wire_allowed(wire: u64, exact: bool, admitted: bool) -> bool {
+    wire == WIRE_FINGERPRINT || (!exact && admitted)
+}
+#[cfg(test)]
+#[test]
+fn exact_replay_policy_refuses_even_an_admitted_other_wire() {
+    assert!(replay_wire_allowed(WIRE_FINGERPRINT, true, false));
+    assert!(!replay_wire_allowed(
+        WIRE_FINGERPRINT.wrapping_add(1),
+        true,
+        true
+    ));
+    assert!(replay_wire_allowed(
+        WIRE_FINGERPRINT.wrapping_add(1),
+        false,
+        true
+    ));
+}
+
+fn header_refusal(record: &ReplayRecord, first: bool, exact: bool) -> Option<ReplayRefusal> {
     match (record, first) {
         (ReplayRecord::Header(header), true)
             if header.magic == ReplayHeader::MAGIC
-                && bota_core::admits_wire(header.wire_fingerprint) =>
+                && replay_wire_allowed(
+                    header.wire_fingerprint,
+                    exact,
+                    bota_core::admits_wire(header.wire_fingerprint),
+                ) =>
         {
             None
         }
@@ -320,7 +356,7 @@ impl ReplayStream {
                             self.failure(io::ErrorKind::InvalidData, error)
                         }
                     })?;
-                    if let Some(refusal) = header_refusal(&record, first) {
+                    if let Some(refusal) = header_refusal(&record, first, self.exact_wire) {
                         return Err(io::Error::new(io::ErrorKind::InvalidData, refusal));
                     }
                     self.prefix_read = 0;
