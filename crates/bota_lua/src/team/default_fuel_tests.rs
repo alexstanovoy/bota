@@ -149,6 +149,7 @@ fn native_auxiliary_and_courier_callbacks_charge_their_exact_work() {
     }
 }
 
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 #[test]
 fn native_laning_cancellation_rewinds_with_a_discarded_outbox() {
     use bota_client_core::IssuedOrder;
