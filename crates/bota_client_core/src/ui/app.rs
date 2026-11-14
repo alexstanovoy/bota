@@ -437,6 +437,9 @@ pub enum FeedKind {
         /// (`EventKind::Died::assists`).
         assists: u16,
     },
+    /// A hero's kill streak of `streak` kills ended with its fall to an enemy hero's kill. Told
+    /// by a front end that counts streaks, with [`App::push_feed`].
+    StreakEnded { victim: Victim, streak: u16 },
     /// A structure of this side fell: what it was, and where it stood.
     StructureFell {
         team: Team,
@@ -599,6 +602,8 @@ pub struct App {
     /// sounds beyond the cues, as a teleport's end or where a grenade lands.
     /// Every frame's systems read them.
     pub told: Vec<EventKind>,
+    /// The tick each of [`told`](Self::told) happened on, one for one: a pump may read many ticks.
+    pub told_ticks: Vec<u32>,
     /// Referenced units before each event's tick, retained across a pump that reads many ticks.
     pub(crate) before_told: Vec<std::sync::Arc<[UnitView]>>,
     /// Seconds before the next low-health cue may come.
@@ -653,6 +658,7 @@ impl App {
             derived: Derived::default(),
             cues: Vec::new(),
             told: Vec::new(),
+            told_ticks: Vec::new(),
             before_told: Vec::new(),
             heartbeat: 0.0,
             pov: None,
@@ -1080,9 +1086,9 @@ impl App {
                 self.phase = Phase::Playing;
             }
             Ok(Ingested::Snapshot { ack, .. }) => self.on_snapshot(ack),
-            Ok(Ingested::TickComplete { .. }) => {
+            Ok(Ingested::TickComplete { tick }) => {
                 for event in events {
-                    self.absorb_event(event);
+                    self.absorb_event(tick, event);
                 }
             }
             Ok(Ingested::Rejected { seq, reason }) => self.on_rejected(seq, reason),
@@ -1162,9 +1168,9 @@ impl App {
         }
         // The events of snapshots the server skipped for a slow client, so
         // no popup, sound or feed line is lost.
-        let skipped: Vec<EventKind> = session_skipped(self.seat.session());
-        for event in skipped {
-            self.absorb_event(event);
+        let skipped = session_skipped(self.seat.session());
+        for (tick, event) in skipped {
+            self.absorb_event(tick, event);
         }
         self.smooth.snapshot();
         self.send_next_queued_buy();
@@ -1196,7 +1202,7 @@ impl App {
     }
 
     /// Adds a line to the kill feed.
-    pub(crate) fn push_feed(&mut self, kind: FeedKind) {
+    pub fn push_feed(&mut self, kind: FeedKind) {
         self.feed.push(FeedLine {
             kind,
             age: 0.0,
@@ -1222,6 +1228,7 @@ impl App {
     pub fn pump(&mut self, dt: f32) {
         self.rejected_orders.clear();
         self.told.clear();
+        self.told_ticks.clear();
         self.before_told.clear();
         self.smooth.advance(dt);
         // A link marks itself closed after it has handed over its last message, so a link seen
@@ -1353,13 +1360,18 @@ fn count_down<T>(notice: &mut Option<(T, f32)>, dt: f32) {
 }
 
 /// The events of the ticks the latest snapshot says the server skipped.
-fn session_skipped(session: Option<&ClientSession>) -> Vec<EventKind> {
+fn session_skipped(session: Option<&ClientSession>) -> Vec<(u32, EventKind)> {
     session
         .and_then(ClientSession::current)
         .map(|view| {
             view.skipped_ticks
                 .iter()
-                .flat_map(|skipped| skipped.events.iter().cloned())
+                .flat_map(|skipped| {
+                    skipped
+                        .events
+                        .iter()
+                        .map(|event| (skipped.tick, event.clone()))
+                })
                 .collect()
         })
         .unwrap_or_default()

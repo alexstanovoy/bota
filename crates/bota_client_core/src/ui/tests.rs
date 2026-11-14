@@ -1854,6 +1854,38 @@ fn a_hero_falling_cues_its_death_for_that_hero() {
 }
 
 #[test]
+fn events_read_in_one_pump_keep_the_tick_each_happened_on() {
+    let (mut app, us, theirs) = a_duel_app();
+    let death = |unit, killer| EventKind::Died {
+        credited_hero: None,
+        unit,
+        killer,
+        denied: false,
+        gold: 0,
+        bounty: None,
+        assists: 0,
+        awards: None,
+    };
+    app.handle(bota_proto::ServerMsg::Events {
+        tick: 10,
+        events: vec![death(theirs, Some(us))],
+    });
+    app.handle(bota_proto::ServerMsg::Events {
+        tick: 12,
+        events: vec![death(us, None), death(theirs, None)],
+    });
+    assert_eq!(app.told.len(), 3, "the pump told three deaths");
+    assert_eq!(
+        app.told_ticks,
+        [10, 12, 12],
+        "each death has the tick of the batch that told it"
+    );
+    app.pump(0.0);
+    assert!(app.told.is_empty(), "the next pump tells afresh");
+    assert!(app.told_ticks.is_empty(), "and keeps no stale ticks");
+}
+
+#[test]
 fn our_blow_cues_the_unit_it_lands_on() {
     let (mut app, us, theirs) = a_duel_app();
     app.cues.clear();

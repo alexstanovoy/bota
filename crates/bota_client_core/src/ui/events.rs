@@ -29,8 +29,8 @@ impl App {
             .or(self.selected.filter(|id| hero(*id)))
     }
 
-    /// Takes in one event, and keeps it for the front end.
-    pub(crate) fn absorb_event(&mut self, event: EventKind) {
+    /// Takes in one event of `tick`, and keeps it for the front end.
+    pub(crate) fn absorb_event(&mut self, tick: u32, event: EventKind) {
         let before = if self.told.len() < MAX_TOLD {
             let mut referenced = event.clone();
             let mut before = Vec::new();
@@ -45,6 +45,7 @@ impl App {
             let before: std::sync::Arc<[UnitView]> = before.into();
             self.before_told.push(before.clone());
             self.told.push(event.clone());
+            self.told_ticks.push(tick);
             Some(before)
         } else {
             None
