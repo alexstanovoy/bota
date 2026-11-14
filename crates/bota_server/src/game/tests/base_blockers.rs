@@ -435,6 +435,21 @@ fn rune_copy(world: &mut World, seat: usize) -> Entity {
             },
         },
     );
+    world.settle();
+    let lying: Vec<_> = world
+        .view_full()
+        .runes
+        .into_iter()
+        .filter(|rune| rune.kind == bota_proto::RuneKind::Illusion)
+        .collect();
+    assert_eq!(lying.len(), 1, "the cheat put one Illusion Rune down");
+    issue(
+        world,
+        seat,
+        Order::Take {
+            target: Target::Unit(lying[0].id),
+        },
+    );
     for _ in 0..5 {
         if let Some(copy) = world
             .entities
