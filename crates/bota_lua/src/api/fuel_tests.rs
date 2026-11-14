@@ -201,7 +201,9 @@ fn run(name: &str, fuel: u64) -> Result<Vec<Value>, luagee::Error> {
 
 #[test]
 fn unit_list_fuel_has_a_fixed_minimum_for_two_received_units() {
-    assert_budget("GetUnitList", 104);
+    // 103 since c9c029c6 pinned the host purchase callback at install (`shop::install`): that one more root moves the
+    // collector's per-tick accounting by one fuel (it was 104 before; removing the pin restores 104).
+    assert_budget("GetUnitList", 103);
 }
 
 /// `host_work` is the fuel the callback charges above the bare call of a native.
