@@ -485,7 +485,7 @@ finishes on its end message and does not submit actions after the match.
 
 Numeric bot API constants follow the installed game (build 6975), including action desires,
 mode ids, ability behavior/target flags, courier states, activities, selection states and unit-list
-categories. The reference table test enumerates all 356 numeric registrations in that source.
+categories. The reference table test checks all 357 numeric registrations of that game, `BOT_MODE_NONE`=0 among them.
 Mode ids are translated at the scheduler boundary; private scheduling indices are not public ids.
 Unit lists include the allied/enemy other and thinker categories (the simulator has no thinker units).
 Pack-local constants, misspellings and names absent from that API are not aliases.

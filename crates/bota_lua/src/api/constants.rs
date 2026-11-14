@@ -154,6 +154,7 @@ const CONSTANTS: &[(&str, f64)] = &[
     ("BOT_MODE_FARM", 17.0),
     ("BOT_MODE_ITEM", 21.0),
     ("BOT_MODE_LANING", 1.0),
+    ("BOT_MODE_NONE", 0.0),
     ("BOT_MODE_OUTPOST", 26.0),
     ("BOT_MODE_PUSH_TOWER_BOT", 10.0),
     ("BOT_MODE_PUSH_TOWER_MID", 9.0),

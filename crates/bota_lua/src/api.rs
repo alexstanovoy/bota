@@ -85,7 +85,6 @@ fn identity(vm: &mut Vm, state: &State, args: Args) -> Result<bota_proto::Entity
 }
 
 pub(crate) fn install(lua: &mut Lua, state: Shared, vectors: Vectors) -> Result<(), BindingError> {
-    lua.set_global("BOT_MODE_NONE", Value::Number(0.0))?;
     let capture = state.clone();
     global(
         lua,
