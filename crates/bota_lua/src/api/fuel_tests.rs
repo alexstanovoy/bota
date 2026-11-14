@@ -358,10 +358,13 @@ fn environment_queries_pay_exact_native_and_host_prices() {
     }
     let (_,sessions)=support::local(&[Team::Radiant,Team::Dire]);
     let units=sessions[0].entities().len() as u64;
+    let trees=sessions[0].statics().trees().len() as u64;
+    let felled=sessions[0].current().unwrap().felled_trees.len();
+    let search=1+felled.max(1).ilog2() as u64;
     let segments=bota_core::lane_polyline(sessions[0].map(),bota_core::rules::LANE_MID).len()-1;
     let towers=sessions[0].map().radiant_towers.len();
     let front_price=32+8*segments as u64+units*(4+8*segments as u64+towers as u64);
-    for (name,work) in [("GetShopLocation",12),("GetGameState",8),("IsItemPurchasedFromSideShop",9),("GetNumCouriers",8+units),("GetCourier",9+units),("DistanceFromSideShop",9+units/8),("NumQueuedActions",9+units/8),("GetLaneFrontAmount",front_price)] {
+    for (name,work) in [("GetShopLocation",12),("GetGameState",8),("IsItemPurchasedFromSideShop",9),("GetNumCouriers",8+units),("GetCourier",9+units),("DistanceFromSideShop",9+units/8),("GetNearbyTrees",13+units+units/8+trees*(1+search)),("NumQueuedActions",9+units/8),("GetLaneFrontAmount",front_price)] {
         let minimum=support::bare_native_call_fuel()+work;
         assert!(call(name,minimum).is_ok(),"{name} minimum {minimum}");
         assert!(matches!(call(name,minimum-1),Err(luagee::Error::Limit(luagee::Limit::FuelPerTick))),"{name} minimum-1");

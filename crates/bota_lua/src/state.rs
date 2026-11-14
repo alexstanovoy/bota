@@ -97,6 +97,9 @@ pub(crate) struct PendingOnce {
 }
 
 pub(crate) struct Snapshot {
+    pub statics: std::sync::Arc<bota_client_core::MatchStatic>,
+    pub felled_trees: Vec<u32>,
+    pub planted_trees: Vec<bota_proto::Vec2>,
     pub team: Team,
     pub tick: u32,
     pub game_tick: u32,
@@ -212,6 +215,7 @@ impl Snapshot {
                                 .checked_mul(std::mem::size_of::<bota_proto::Order>())?,
                         )
                 });
+        let bytes=bytes.and_then(|bytes|bytes.checked_add(view.felled_trees.len().checked_mul(std::mem::size_of::<u32>())?)?.checked_add(view.planted_trees.len().checked_mul(std::mem::size_of::<bota_proto::Vec2>())?));
         if session.recent_events().len() > 16384
             || session.entities().len() > MAX_HANDLES
             || view.players.len() > 10
@@ -222,6 +226,9 @@ impl Snapshot {
             ));
         }
         Ok(Self {
+            statics: session.statics().clone(),
+            felled_trees: view.felled_trees.clone(),
+            planted_trees: view.planted_trees.clone(),
             team: session.team(),
             tick: view.tick,
             game_tick: view.game_tick(),
@@ -418,6 +425,8 @@ pub(crate) struct TeamDesires {
 pub(crate) struct State {
     pub activity_profiles:
         std::sync::Arc<std::collections::BTreeMap<String, bota_client_core::ActivityProfile>>,
+    pub planted_tree_ids: Vec<bota_proto::Vec2>,
+
     pub statistics: Option<crate::statistics::SharedStatistics>,
 
     pub team: Team,
@@ -445,6 +454,7 @@ impl State {
             activity_profiles: std::sync::Arc::new(std::collections::BTreeMap::new()),
             team,
             statistics: None,
+            planted_tree_ids: Vec::new(),
             seats: seats.to_vec(),
             declared_bots: [false; 10],
             team_desires: TeamDesires::default(),

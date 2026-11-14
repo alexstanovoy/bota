@@ -430,6 +430,18 @@ These enum values and absent-shop behavior were established from the installed g
 locations and the current roster use the configured map and the receiving side's observations.
 
 
+`GetNearbyTrees(radius)` returns a one-based Lua array of opaque tree ids from the client's
+known forest, within the integer radius (0..32767). Static ids are match-tree indices; observed
+planted positions receive stable ids after that prefix (at most 8192 retained planted identities).
+Ids never reveal whether a tree outside sight has secretly been cut or planted. A foreign receiver
+outside the current view returns nil; a forgotten owned receiver errors unless its body position
+is retained. The call shape and tree query are established from the installed game, build 6975.
+Host ids translate the configured match's forest; they are not native entity indexes.
+Fuel: checked receiver, 8 plus received bodies scanned, each static tree and its binary-search
+work in remembered felled indices, each planted tree scanned, each retained identity examined,
+and each result, plus interpreter table/write charges. The scan and retained storage are bounded.
+
+
 `GetLaneFrontAmount(team, lane, ignoreTowers)` returns progress in the viewer's orientation:
 allied fronts advance upward from 0, enemy fronts downward from 1. It considers observed living
 lane creeps within 1000 units of their lane and, unless ignored, observed towers of that team.

@@ -34,6 +34,7 @@ mod projectiles;
 mod queries;
 pub(crate) mod shop;
 mod structures;
+mod trees;
 mod unit_data;
 mod unit_lists;
 mod unit_names;
@@ -151,6 +152,7 @@ pub(crate) fn install(lua: &mut Lua, state: Shared, vectors: Vectors) -> Result<
     };
     patterns::install(lua, &context)?;
     environment::install(lua, &context)?;
+    trees::install(lua, &context)?;
     distances::install(lua, &context)?;
     estimates::install(lua, &context)?;
     activities::install(lua, &context)?;
