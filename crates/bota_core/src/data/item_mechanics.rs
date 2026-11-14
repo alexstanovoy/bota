@@ -1703,6 +1703,78 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
     ItemDef {
         ..from(&ITEM_RECIPE_SHIVAS_GUARD)
     },
+    ItemDef {
+        carried: Carried {
+            move_speed: int(&ITEM_TRANQUIL_BOOTS, "bonus_movement_speed"),
+            hp_regen: regen(&ITEM_TRANQUIL_BOOTS, "bonus_health_regen"),
+            ..NOTHING
+        },
+        attack_break: Some(crate::AttackBreak {
+            ticks: ticks(&ITEM_TRANQUIL_BOOTS, "break_time"),
+            broken: Carried {
+                move_speed: int(&ITEM_TRANQUIL_BOOTS, "broken_movement_speed"),
+                ..NOTHING
+            },
+        }),
+        ..from(&ITEM_TRANQUIL_BOOTS)
+    },
+    ItemDef {
+        carried: Carried {
+            attributes: Attributes {
+                strength: Fixed::from_int(int(&ITEM_BOOTS_OF_BEARING, "bonus_str")),
+                agility: Fixed::ZERO,
+                intelligence: Fixed::from_int(int(&ITEM_BOOTS_OF_BEARING, "bonus_int")),
+            },
+            move_speed: int(&ITEM_BOOTS_OF_BEARING, "bonus_movement_speed"),
+            hp_regen: regen(&ITEM_BOOTS_OF_BEARING, "bonus_health_regen"),
+            ..NOTHING
+        },
+        modifiers: &[
+            ItemModifier {
+                priority: 1, // Upgraded Swiftness family rank.
+                buff_family: Some(EffectId(106)),
+                ..ItemModifier::buff(
+                    EffectId(119),
+                    Buff::two(
+                        Stat::MoveFlat,
+                        [int(&ITEM_BOOTS_OF_BEARING, "aura_movement_speed"); 4],
+                        Stat::HpRegen,
+                        [ITEM_BOOTS_OF_BEARING
+                            .first("aura_health_regen")
+                            .hundredths()
+                            / 10; 4],
+                    ),
+                )
+            },
+            ItemModifier {
+                ticks: ticks(&ITEM_BOOTS_OF_BEARING, "duration"),
+                priority: 1, // Upgraded Endurance family rank.
+                buff_family: Some(EffectId(107)),
+                ..ItemModifier::buff(
+                    EffectId(120),
+                    Buff::two(
+                        Stat::AttackSpeed,
+                        [int(&ITEM_BOOTS_OF_BEARING, "bonus_attack_speed_pct"); 4],
+                        Stat::MovePct,
+                        [int(&ITEM_BOOTS_OF_BEARING, "bonus_movement_speed_pct"); 4],
+                    ),
+                )
+            },
+            ItemModifier {
+                ticks: ticks(&ITEM_BOOTS_OF_BEARING, "bonus_ms_duration"),
+                ..ItemModifier::buff(EffectId(121), Buff::of(Stat::SlowResistPct, [100; 4]))
+            },
+        ],
+        auras: &[ItemAura::allies(0, int(&ITEM_BOOTS_OF_BEARING, "radius"))],
+        aim: Some(Aim::Own),
+        immediate: true,
+        ignores_channel: true,
+        effect: UseSpec::Support(AreaSupport {
+            grants: &[1, 2],
+            ..AreaSupport::recovery(int(&ITEM_BOOTS_OF_BEARING, "radius"), 0, 0)
+        }),
+        ..from(&ITEM_BOOTS_OF_BEARING)
+    },
 ];
 
 /// A critical strike of an item: `crit_chance` percent to deal `crit_multiplier` percent, or that
