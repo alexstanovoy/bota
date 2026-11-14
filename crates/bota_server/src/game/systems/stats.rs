@@ -12,7 +12,7 @@ use bota_proto::{Attributes, Fixed, ModifierSpec};
 use crate::game::{
     AbilityBook, AppliedModifiers, Def, Entity, EntityAllocator, Health, Illusion, Inventory,
     Level, MAX_COMBINED_MODIFIER_SCALE, Mana, Modifier, Modifiers, StatBonus, Stats, Table,
-    Upgrades, carried_bonus, disabled_in,
+    Upgrades, disabled_in,
 };
 
 use super::grenade::grenade_of;
@@ -114,7 +114,7 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         let carried = inventory
             .get(entity)
             .filter(|_| !kind.porter)
-            .map(|bag| carried_bonus(bag, ranged));
+            .map(|bag| super::gear::carried_bonus_for(bag, ranged, illusion));
         // Every percent change of the pace and of the main attack damage is
         // summed and taken once, and flat bonus damage is added after, as
         // Dota works movement speed and attack damage out.
@@ -123,13 +123,21 @@ pub fn derive_stats(cx: StatsCx<'_>) {
             .find(|l| l.unit == Some(entity))
             .and_then(|l| l.journey)
             .map(|j| j.modifier(entity));
+        now.spell_immune |= wears(ModifierKind::SpellImmunity);
+        let spell_immune = now.spell_immune;
         let working = || {
             modifiers
                 .get(entity)
                 .into_iter()
                 .flat_map(|on_it| on_it.active())
                 .chain(journey.iter())
-                .filter(|held| !disabled_in(modifiers, held))
+                .filter(|held| {
+                    !disabled_in(modifiers, held)
+                        && super::support::item_works(held.kind, spell_immune)
+                })
+                .filter(|held| {
+                    !item_buff_outranked(held, modifiers.get(entity), spell_immune, modifiers)
+                })
         };
         // What the items carried keep off a slow, of what the modifiers on it let through.
         let carried_slow_keep =
@@ -185,7 +193,7 @@ pub fn derive_stats(cx: StatsCx<'_>) {
             sheltered_by_fountain: kind.fountain_shelters,
             night,
         };
-        add_modifiers(&mut now, &mut sums, working(), wearer);
+        add_modifiers(&mut now, &mut sums, working(), wearer, modifiers);
         sums.pace.change(-sums.laid_slow_pct);
         // Ethereal form does nothing while its wearer is spell immune (Dota 7.39e: "Ghost Form is
         // no longer active while the wearer is Debuff Immune"); its cut stacks multiplicatively
@@ -194,14 +202,17 @@ pub fn derive_stats(cx: StatsCx<'_>) {
             now.ethereal = true;
             let_more_magic_through(&mut now, pct);
         }
-        // Amplifications and cuts of Health Restoration are each stacked apart, then summed, and
-        // the sum held between none and twice of it (Dota 7.39).
+        // Positive and negative Health Restoration stack separately (Dota 7.39).
         let restoration_amp_bp = carried
             .as_ref()
             .map_or(0, |carried| carried.restoration_amp_bp);
-        now.restoration_bp = rules::NOMINAL_BP
-            + (restoration_amp_bp - sums.restoration_cut_pct * rules::NOMINAL_BP / 100)
-                .clamp(-rules::NOMINAL_BP, rules::NOMINAL_BP);
+        let restoration_keep_bp = sums.restoration_keep_bp * (100 - sums.restoration_cut_pct) / 100;
+        let before_redirect =
+            (restoration_keep_bp + restoration_amp_bp).clamp(0, 2 * rules::NOMINAL_BP);
+        now.restoration_bp = (restoration_amp_bp
+            + restoration_keep_bp * (100 - sums.restoration_redirect_pct) / 100)
+            .clamp(0, 2 * rules::NOMINAL_BP);
+        now.restoration_redirect_bp = (before_redirect - now.restoration_bp).max(0);
         if working().any(|held| held.kind.reveals()) {
             now.hides = false;
         }
@@ -243,6 +254,8 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         // An illusion deals a share of its hero's damage and takes more of
         // what is dealt to it.
         if let Some(illusion) = illusions.get(entity) {
+            now.illusion_spell_amp_bp =
+                Some([now.physical_amp_bp, now.magic_amp_bp, now.pure_amp_bp]);
             let dealt = |amp: i32| {
                 (i64::from(amp) * i64::from(illusion.dealt_bp) / i64::from(rules::NOMINAL_BP))
                     as i32
@@ -273,12 +286,10 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         }
         // Health Restoration takes its share of what is regenerated, never of
         // a loss.
-        let hp_regen = if regen.hp > Fixed::ZERO {
-            scaled_bp(regen.hp, now.restoration_bp)
-        } else {
-            regen.hp
-        };
-        (now.hp_regen, now.mana_regen) = (hp_regen, regen.mana);
+        let health = super::restoration::gain(regen.hp, &now);
+        now.hp_regen = health.amount;
+        now.hp_regen_redirect = health.redirected;
+        now.mana_regen = regen.mana;
         stats.insert(entity, now);
     }
 }
@@ -418,6 +429,8 @@ struct Sums {
     /// attacks laid: Dota's Frost-based items do not stack, "the highest
     /// values take priority" (7.39).
     restoration_cut_pct: i32,
+    restoration_keep_bp: i32,
+    restoration_redirect_pct: i32,
     /// Percent of the pace taken off by the strongest of what attacks laid,
     /// on the same rule; it adds to every other slow.
     laid_slow_pct: i32,
@@ -435,6 +448,8 @@ impl Sums {
             damage_pct: 0,
             bonus_damage: 0,
             restoration_cut_pct: 0,
+            restoration_keep_bp: rules::NOMINAL_BP,
+            restoration_redirect_pct: 0,
             laid_slow_pct: 0,
             ethereal_pct: None,
         }
@@ -526,6 +541,7 @@ fn add_modifiers<'a>(
     sums: &mut Sums,
     working: impl Iterator<Item = &'a Modifier>,
     wearer: Wearer,
+    modifiers: &Table<Modifiers>,
 ) {
     for held in working {
         match held.kind {
@@ -539,6 +555,31 @@ fn add_modifiers<'a>(
             ModifierKind::Spell { ability, level, .. } => {
                 if let Some(buff) = spell_buff(ability) {
                     add_buff(now, sums, &buff, level, wearer);
+                }
+            }
+            ModifierKind::ItemBuff { .. } => {
+                if let Some((buff, level)) = held.kind.stat_buff() {
+                    add_buff(
+                        now,
+                        sums,
+                        &buff,
+                        level,
+                        Wearer {
+                            illusion: false,
+                            ..wearer
+                        },
+                    );
+                }
+                match super::restoration::effect(held, modifiers) {
+                    Some(super::restoration::Effect::Cut(pct)) => {
+                        sums.restoration_keep_bp =
+                            cut_rate(sums.restoration_keep_bp, pct * rules::NOMINAL_BP / 100);
+                    }
+                    Some(super::restoration::Effect::Redirect { pct, .. }) => {
+                        sums.restoration_redirect_pct =
+                            sums.restoration_redirect_pct.saturating_add(pct);
+                    }
+                    None => {}
                 }
             }
             ModifierKind::Slowed { pct } => sums.pace.change(-pct.clamp(0, 100)),
@@ -652,6 +693,7 @@ fn add_modifiers<'a>(
             | ModifierKind::BackdoorProtection
             | ModifierKind::TimedLife
             | ModifierKind::Illusion
+            | ModifierKind::SpellImmunity
             | ModifierKind::NeutralUpgrade { .. }
             | ModifierKind::FleshHeap { .. }
             | ModifierKind::Souls { .. }
@@ -667,12 +709,42 @@ fn add_modifiers<'a>(
     }
 }
 
+fn item_buff_outranked(
+    held: &Modifier,
+    on_it: Option<&Modifiers>,
+    spell_immune: bool,
+    modifiers: &Table<Modifiers>,
+) -> bool {
+    let rank = |modifier: &Modifier| {
+        let template = bota_core::item_modifier(modifier.kind)?;
+        let family = template.buff_family?;
+        let ModifierKind::ItemBuff { item, index, .. } = modifier.kind else {
+            return None;
+        };
+        Some((family, (template.priority, modifier.source, item.0, index)))
+    };
+    let Some((family, ours)) = rank(held) else {
+        return false;
+    };
+    on_it.is_some_and(|on_it| {
+        on_it.active().any(|other| {
+            !disabled_in(modifiers, other)
+                && super::support::item_works(other.kind, spell_immune)
+                && rank(other)
+                    .is_some_and(|(their_family, theirs)| family == their_family && theirs > ours)
+        })
+    })
+}
+
 /// What a spell's buff is worth at a level: everything of it but what it
 /// does to regeneration, which [`bota_core::regen`] reads.
 fn add_buff(now: &mut Stats, sums: &mut Sums, buff: &Buff, level: u8, wearer: Wearer) {
     let of = |stat| buff.get(stat, level);
     sums.pace.change(of(Stat::MovePct));
     now.attack_speed += of(Stat::AttackSpeed);
+    now.move_speed += Fixed::from_int(of(Stat::MoveFlat));
+    sums.restoration_keep_bp =
+        sums.restoration_keep_bp * (100 - of(Stat::RestorationCutPct).clamp(0, 100)) / 100;
     now.armor += kept(wearer.illusion, Fixed::from_int(of(Stat::Armor)));
     now.armor += kept(
         wearer.illusion,
@@ -826,6 +898,7 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32, night: bool) -> Stats {
         max_hp: Fixed::from_int(kind.max_hp + up.hp),
         max_mana: Fixed::from_int(kind.max_mana + up.mana),
         hp_regen: Fixed::ZERO,
+        hp_regen_redirect: Fixed::ZERO,
         mana_regen: Fixed::ZERO,
         damage: kind.damage + up.damage,
         damage_spread: kind.damage_spread,
@@ -843,6 +916,7 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32, night: bool) -> Stats {
         physical_amp_bp: rules::NOMINAL_BP,
         magic_amp_bp: rules::NOMINAL_BP,
         pure_amp_bp: rules::NOMINAL_BP,
+        illusion_spell_amp_bp: None,
         cooldown_rate_bp: rules::NOMINAL_BP,
         mana_cost_rate_bp: rules::NOMINAL_BP,
         evasion: Odds::NEVER,
@@ -853,6 +927,7 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32, night: bool) -> Stats {
         magic_taken_pct: 0,
         damage_taken_bp: rules::NOMINAL_BP,
         restoration_bp: rules::NOMINAL_BP,
+        restoration_redirect_bp: 0,
         illusion_attack_taken_bp: rules::NOMINAL_BP,
         slow_resist_bp: 0,
         accuracy: Odds::NEVER,
@@ -951,9 +1026,10 @@ fn resistance_keep<'a>(working: impl Iterator<Item = &'a Modifier>, stat: Stat) 
     let mut count = 0;
     for held in working.take(rules::MAX_EFFECTS_PER_UNIT) {
         let pct = match held.kind {
-            ModifierKind::Spell { ability, level, .. } => {
-                spell_buff(ability).map_or(0, |buff| buff.get(stat, level))
-            }
+            ModifierKind::Spell { .. } | ModifierKind::ItemBuff { .. } => held
+                .kind
+                .stat_buff()
+                .map_or(0, |(buff, level)| buff.get(stat, level)),
             ModifierKind::Journey { ability, .. } if stat == Stat::SlowResistPct => {
                 bota_core::migration_of(ability).map_or(0, |p| p.slow_resist_pct)
             }

@@ -37,6 +37,8 @@ pub struct Modifier {
     /// Whether a Break on its source disables it while the break holds: what
     /// a breakable aura put on ([`disabled_in`]).
     pub breakable: bool,
+    /// Resolved radius of a timed item callback, captured on creation or refresh.
+    pub cached_radius: Option<i32>,
 }
 
 impl Modifier {
@@ -53,6 +55,8 @@ impl Modifier {
             ticks_left,
             ticks_total: ticks_left,
             breakable: false,
+            cached_radius: bota_core::item_modifier(kind)
+                .and_then(|template| template.movement_steal.map(|steal| steal.radius)),
         }
     }
 }
@@ -116,6 +120,19 @@ fn replaces(fresh: &Modifier, held: &Modifier) -> bool {
             spell_effect(had) == spell_effect(ability)
                 && (!ability.per_source() || held.source == fresh.source)
         }
+        (ModifierKind::ItemBuff { .. }, ModifierKind::ItemBuff { .. }) => {
+            let fresh_family =
+                bota_core::item_modifier(fresh.kind).and_then(|template| template.lockout_family);
+            let held_family =
+                bota_core::item_modifier(held.kind).and_then(|template| template.lockout_family);
+            if fresh_family.is_some() && fresh_family == held_family {
+                return true;
+            }
+            let effect = fresh.kind.effect_id();
+            held.kind.effect_id() == effect
+                && (!bota_core::effect_def(effect).is_some_and(|def| def.per_source)
+                    || held.source == fresh.source)
+        }
         // What one item lays freshens its own; another item's stays.
         (ModifierKind::Laid { item: had, .. }, ModifierKind::Laid { item, .. }) => had == item,
         // Each Regeneration Rune taken is an instance of its own
@@ -144,7 +161,32 @@ impl Modifiers {
     /// record, and a neutral's spell the same spell (the same source's, for
     /// those [`per_source`](bota_core::NeutralAbility::per_source) keeps
     /// apart). Its time left is its full length from here.
-    pub fn put(&mut self, modifier: Modifier) {
+    pub fn put(&mut self, mut modifier: Modifier) {
+        let effect = modifier.kind.effect_id();
+        if let ModifierKind::ItemBuff {
+            item,
+            index,
+            since,
+            amount,
+        } = &mut modifier.kind
+        {
+            let template = bota_core::ITEMS[item.0 as usize].modifiers[usize::from(*index)];
+            if (template.pulse.is_some()
+                || template.collection_period.is_some()
+                || template.movement_steal.is_some())
+                && let Some(previous) = self.active().find(|held| held.kind.effect_id() == effect)
+                && let ModifierKind::ItemBuff {
+                    since: began,
+                    amount: pending,
+                    ..
+                } = previous.kind
+            {
+                *since = began;
+                if template.collection_period.is_some() {
+                    *amount = pending;
+                }
+            }
+        }
         let modifier = Modifier {
             ticks_total: modifier.ticks_left,
             ..modifier
@@ -344,6 +386,6 @@ state_hash!(Modifier {
     inflictor,
     ticks_left,
     ticks_total,
-    breakable
-});
+    breakable,
+}; 0xB5 => { cached_radius: None });
 state_hash!(Modifiers(0));

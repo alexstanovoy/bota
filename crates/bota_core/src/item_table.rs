@@ -111,6 +111,68 @@ const _: () = {
             ward_sources_precede_item(def),
             "ward values must be inside the negotiated prefix"
         );
+        assert!(def.modifiers.len() <= u8::MAX as usize);
+        let mut aura = 0;
+        while aura < def.auras.len() {
+            assert!((def.auras[aura].index as usize) < def.modifiers.len());
+            assert!(def.auras[aura].radius >= 0);
+            aura += 1;
+        }
+        let mut modifier = 0;
+        while modifier < def.modifiers.len() {
+            let template = def.modifiers[modifier];
+            assert!((template.effect.0 as usize) < crate::EFFECT_COUNT);
+            let mut emitter = 0;
+            while emitter < template.emitters.len() {
+                assert!((template.emitters[emitter].index as usize) < def.modifiers.len());
+                emitter += 1;
+            }
+            if let Some(steal) = template.movement_steal {
+                assert!(steal.period > 0);
+                assert!((steal.debuff as usize) < def.modifiers.len());
+                assert!((steal.buff as usize) < def.modifiers.len());
+                assert!(def.modifiers[steal.debuff as usize].stacking);
+                assert!(def.modifiers[steal.buff as usize].stacking);
+            }
+            if let Some(pulse) = template.pulse {
+                assert!(pulse.period > 0);
+            }
+            if let Some(period) = template.collection_period {
+                assert!(period > 0);
+            }
+            if let Some(restoration) = template.restoration {
+                assert!((restoration.active as usize) < def.modifiers.len());
+                assert!(
+                    def.modifiers[restoration.active as usize]
+                        .collection_period
+                        .is_some()
+                );
+                assert!(restoration.passive_cut_pct >= 0 && restoration.passive_cut_pct <= 100);
+                assert!(
+                    restoration.active_redirect_pct >= 0 && restoration.active_redirect_pct <= 100
+                );
+            }
+            if let Some(barrier) = template.barrier {
+                assert!(barrier.amount > 0);
+            }
+            modifier += 1;
+        }
+        if let UseSpec::Wave(wave) = def.effect {
+            assert!(wave.speed > 0);
+            assert!(wave.radius > 0);
+            assert!((wave.debuff as usize) < def.modifiers.len());
+        }
+        if let UseSpec::Support(support) = def.effect {
+            let mut grant = 0;
+            while grant < support.grants.len() {
+                assert!((support.grants[grant] as usize) < def.modifiers.len());
+                grant += 1;
+            }
+            if let Some(index) = support.lockout {
+                assert!((index as usize) < def.modifiers.len());
+                assert!(def.modifiers[index as usize].lockout_family.is_some());
+            }
+        }
         let instant = def.point == 0 && def.backswing == 0 && def.duration == 0;
         assert!(!def.ignores_channel || instant);
         assert!(!def.immediate || instant);

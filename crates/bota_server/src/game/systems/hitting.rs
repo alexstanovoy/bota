@@ -292,7 +292,7 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         // A dismember heals its holder by the bite's full damage, whatever
         // the target's resistance took off (Liquipedia, *Pudge*).
         if blow.effect == HitEffect::Dismember {
-            heal_source(blow.source, blow.amount, health, stats);
+            heal_source(blow.source, blow.amount, health, stats, modifiers);
         }
         if !fatal && (applied > 0 || blow.effect.holds()) {
             apply_hit_effect(blow, stats, modifiers);
@@ -347,9 +347,9 @@ fn damage_taken<const AMPLIFIED: bool>(
         // abilities", "Ignores every form of incoming damage amplification").
         taken = guard.block(taken, amount, stat.cooldown_rate_bp);
         taken = more_magic(taken, stat.magic_taken_pct);
-        if let Some(on_it) = on_it.as_deref_mut() {
-            taken = soak(on_it, taken);
-        }
+    }
+    if let Some(on_it) = on_it.as_deref_mut() {
+        taken = soak(on_it, taken, blow.kind);
     }
     let stolen = taken;
     let mut taken = blocked(taken, on_it.as_deref());
@@ -645,16 +645,17 @@ fn heal_source(
     amount: i32,
     health: &mut Table<Health>,
     stats: &Table<Stats>,
+    modifiers: &mut Table<Modifiers>,
 ) {
-    let (Some(source), true) = (source, amount > 0) else {
-        return;
-    };
-    let (Some(pool), Some(stat)) = (health.get_mut(source), stats.get(source)) else {
-        return;
-    };
-    if pool.hp > Fixed::ZERO {
-        let amount = super::bubble::restored(Fixed::from_int(amount), stat.restoration_bp);
-        pool.hp = (pool.hp + amount).min(stat.max_hp);
+    if let Some(source) = source.filter(|_| amount > 0) {
+        super::restoration::heal(
+            source,
+            Fixed::from_int(amount),
+            None,
+            stats,
+            health,
+            modifiers,
+        );
     }
 }
 

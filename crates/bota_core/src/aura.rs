@@ -28,6 +28,12 @@ pub enum Reach {
     Units,
     /// Every unit standing alive but buildings and wards.
     Living,
+    /// Heroes and creeps, including controlled summons, but no courier or ward.
+    Combatants,
+    /// Combatants and buildings.
+    CombatantsAndBuildings,
+    /// Only the unit emitting this aura.
+    Bearer,
 }
 
 /// What an aura puts on whoever it reaches, as its carrier holds it.

@@ -810,3 +810,20 @@ variant UnitActionPhase 4 Channel
 variant UnitActionPhase 5 CastBackswing
 field ActionPhaseView 0 phase: UnitActionPhase
 field ActionPhaseView 1 elapsed: u32
+
+# Support setup extensions; event tag 30 and its payload are retired forever.
+variant Cheat 24 SetPools {}
+field Cheat::SetPools 0 health: u8
+field Cheat::SetPools 1 mana: u8
+variant Cheat 25 Damage {}
+field Cheat::Damage 0 target: Target
+field Cheat::Damage 1 amount: u16
+field Cheat::Damage 2 kind: DamageKind
+variant Cheat 26 SpellImmunity {}
+field Cheat::SpellImmunity 0 target: Target
+field Cheat::SpellImmunity 1 ticks: u32
+variant EventKind 30 RetiredItemState {}
+field EventKind::RetiredItemState 0 unit: EntityId
+field EventKind::RetiredItemState 1 slot: ItemSlot
+field EventKind::RetiredItemState 2 item: ItemId
+field EventKind::RetiredItemState 3 active: bool

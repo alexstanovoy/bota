@@ -676,7 +676,11 @@ impl World {
         let lets_out = match what {
             PendingCast::Item { slot, .. } => self
                 .held_in_bag(entity, usize::from(slot.0))
-                .is_some_and(|stack| stack.rune.is_some()),
+                .is_some_and(|stack| {
+                    stack.rune.is_some()
+                        || item_def(stack.id)
+                            .is_some_and(|def| def.behavior.has(Behavior::IGNORE_INVISIBLE))
+                }),
             PendingCast::Ability { .. } => false,
         };
         let went = match what {
@@ -922,7 +926,7 @@ impl World {
                 item,
                 kind: RiderKind::Magic {
                     damage: damage * pct / 100 * class_pct / 100,
-                    amp_bp: stats.spell_damage_amp_bp(DamageKind::Magical),
+                    amp_bp: stats.attack_rider_amp_bp(DamageKind::Magical),
                 },
             });
         }
@@ -973,7 +977,7 @@ impl World {
             pierced: self.roll_pierces(attacker, on, stats, class_pct),
             physical_amp_bp: stats.damage_amp_bp(DamageKind::Physical),
             // The magic riding with a swing (a pierce's) takes spell amplification as a spell's.
-            magical_amp_bp: stats.spell_damage_amp_bp(DamageKind::Magical),
+            magical_amp_bp: stats.attack_rider_amp_bp(DamageKind::Magical),
             effect: self.attack_effect(attacker),
             laid: self.laid_by(attacker),
             riders,

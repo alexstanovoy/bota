@@ -265,6 +265,44 @@ const EFFECT_ROWS: &[EffectDef] = &[
         ..buff(99, "modifier_twin_gate_fx")
     },
     hidden(100, "modifier_pudge_meat_hook_followthrough"),
+    buff(101, "modifier_item_headdress_aura"),
+    buff(102, "modifier_item_ring_of_basilius_aura"),
+    buff(103, "modifier_item_buckler_effect"),
+    buff(104, "modifier_item_mekansm_aura"),
+    buff(105, "modifier_item_mekansm_noheal"),
+    buff(106, "modifier_item_ancient_janggo_aura"),
+    EffectDef {
+        per_source: true,
+        ..buff(107, "modifier_item_ancient_janggo_active")
+    },
+    buff(108, "modifier_item_pipe_aura"),
+    buff(109, "modifier_item_pipe_barrier"),
+    buff(110, "modifier_item_pipe_debuff"),
+    buff(111, "modifier_item_guardian_greaves_aura"),
+    hidden(112, "modifier_item_guardian_greaves_bonus"),
+    buff(113, "modifier_item_assault_positive_armor"),
+    debuff(114, "modifier_item_assault_negative_armor"),
+    buff(115, "modifier_item_vladmir_aura"),
+    debuff(116, "modifier_item_radiance_debuff"),
+    debuff(117, "modifier_item_shivas_guard_aura"),
+    dispellable_debuff(118, "modifier_item_shivas_guard_blast"),
+    buff(119, "modifier_item_boots_of_bearing_aura"),
+    EffectDef {
+        per_source: true,
+        ..buff(120, "modifier_item_boots_of_bearing_active")
+    },
+    buff(121, "modifier_item_boots_of_bearing_active_bonus"),
+    hidden(122, "bota_spell_immunity"),
+    debuff(123, "modifier_item_crellas_crozier_debuff"),
+    buff(124, "modifier_item_crellas_crozier_active"),
+    EffectDef {
+        dispellable: true,
+        ..debuff(125, "modifier_item_crellas_crozier_movespeed_debuff")
+    },
+    EffectDef {
+        dispellable: true,
+        ..buff(126, "modifier_item_crellas_crozier_movespeed_buff")
+    },
 ];
 
 /// How many effect ids the protocol has ever handed out, retired ones

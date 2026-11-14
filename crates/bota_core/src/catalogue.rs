@@ -472,11 +472,182 @@ impl Fnv {
             .flag(breaks)
     }
 
+    const fn item_aura(self, aura: crate::ItemAura) -> Fnv {
+        let crate::ItemAura {
+            index,
+            radius,
+            whom,
+            reaches,
+            health_below_pct,
+        } = aura;
+        let fnv = self
+            .u64(index as u64)
+            .u64(whom as u64)
+            .u64(reaches as u64)
+            .int(radius as i64);
+        match health_below_pct {
+            None => fnv.u64(0),
+            Some(threshold) => fnv.u64(1).int(threshold as i64),
+        }
+    }
+
+    const fn item_modifier(self, value: crate::ItemModifier) -> Fnv {
+        let crate::ItemModifier {
+            effect,
+            buff,
+            ticks,
+            priority,
+            pierces_immunity,
+            barrier,
+            pulse,
+            restoration,
+            collection_period,
+            lockout_family,
+            emitters,
+            ethereal_pct,
+            movement_steal,
+            stacking,
+            buff_family,
+        } = value;
+        let mut fnv = self
+            .u64(effect.0 as u64)
+            .u64(ticks as u64)
+            .int(priority as i64)
+            .flag(pierces_immunity);
+        let mut at = 0;
+        while at < buff.stats.len() {
+            let (stat, levels) = buff.stats[at];
+            fnv = fnv.u64(stat as u64);
+            let mut level = 0;
+            while level < levels.len() {
+                fnv = fnv.int(levels[level] as i64);
+                level += 1;
+            }
+            at += 1;
+        }
+        fnv = match barrier {
+            None => fnv.u64(0),
+            Some(crate::ItemBarrier { kind, amount }) => {
+                fnv.u64(1).u64(kind as u64).int(amount as i64)
+            }
+        };
+        fnv = match buff_family {
+            None => fnv.u64(0),
+            Some(effect) => fnv.u64(1).u64(effect.0 as u64),
+        };
+        fnv = fnv.flag(stacking).u64(emitters.len() as u64);
+        let mut emitter = 0;
+        while emitter < emitters.len() {
+            fnv = fnv.item_aura(emitters[emitter]);
+            emitter += 1;
+        }
+        fnv = match ethereal_pct {
+            None => fnv.u64(0),
+            Some(pct) => fnv.u64(1).int(pct as i64),
+        };
+        fnv = match movement_steal {
+            None => fnv.u64(0),
+            Some(crate::MovementSteal {
+                period,
+                radius,
+                debuff,
+                buff,
+            }) => fnv
+                .u64(1)
+                .u64(period as u64)
+                .int(radius as i64)
+                .u64(debuff as u64)
+                .u64(buff as u64),
+        };
+        let fnv = match lockout_family {
+            None => fnv.u64(0),
+            Some(effect) => fnv.u64(1).u64(effect.0 as u64),
+        };
+        let fnv = match restoration {
+            None => fnv.u64(0),
+            Some(crate::RestorationAura {
+                passive_cut_pct,
+                active_redirect_pct,
+                active,
+            }) => fnv
+                .u64(1)
+                .int(passive_cut_pct as i64)
+                .int(active_redirect_pct as i64)
+                .u64(active as u64),
+        };
+        let fnv = match collection_period {
+            None => fnv.u64(0),
+            Some(period) => fnv.u64(1).u64(period as u64),
+        };
+        match pulse {
+            None => fnv.u64(0),
+            Some(crate::DamagePulse {
+                damage,
+                illusion_damage,
+                kind,
+                period,
+            }) => fnv
+                .u64(1)
+                .int(damage as i64)
+                .int(illusion_damage as i64)
+                .u64(kind as u64)
+                .u64(period as u64),
+        }
+    }
+
+    const fn support(self, value: crate::AreaSupport) -> Fnv {
+        let crate::AreaSupport {
+            radius,
+            health,
+            mana,
+            grants,
+            lockout,
+            lockout_margin,
+            dispel_self,
+            reaches,
+            lockout_scope,
+        } = value;
+        let mut fnv = self
+            .int(radius as i64)
+            .int(health as i64)
+            .int(mana as i64)
+            .flag(dispel_self)
+            .u64(reaches as u64)
+            .u64(lockout_margin as u64)
+            .u64(lockout_scope as u64);
+        fnv = match lockout {
+            None => fnv.u64(0),
+            Some(index) => fnv.u64(1).u64(index as u64),
+        };
+        fnv = fnv.u64(grants.len() as u64);
+        let mut at = 0;
+        while at < grants.len() {
+            fnv = fnv.u64(grants[at] as u64);
+            at += 1;
+        }
+        fnv
+    }
+
     /// What a use does, each kind under a tag of its own.
     const fn effect(self, value: UseSpec, item: ItemId) -> Fnv {
         match value {
             UseSpec::Refresh { items } => self.u64(15).flag(items),
             UseSpec::None => self.u64(0),
+            UseSpec::Toggle => self.u64(66),
+            UseSpec::Support(support) => self.u64(64).support(support),
+            UseSpec::Wave(crate::AreaWaveSpec {
+                pierces_immunity,
+                radius,
+                speed,
+                damage,
+                debuff,
+            }) => self
+                .u64(65)
+                .flag(pierces_immunity)
+                .int(radius as i64)
+                .int(speed as i64)
+                .int(damage as i64)
+                .u64(debuff as u64),
             UseSpec::Mend(mend) => self.u64(1).mend(mend),
             UseSpec::PlantTree { ticks } => self.u64(2).u64(ticks as u64),
             UseSpec::FellTree => self.u64(3),
@@ -567,6 +738,9 @@ impl Fnv {
 /// [`ItemDef`] fail to build here until it is digested too.
 pub(crate) const fn item_digest(def: &ItemDef) -> u64 {
     let ItemDef {
+        attack_break,
+        auras,
+        modifiers,
         limits,
         pickup,
         public_loot,
@@ -745,6 +919,28 @@ pub(crate) const fn item_digest(def: &ItemDef) -> u64 {
             .u64(recovery.ticks as u64)
             .int(recovery.health_pct as i64)
             .int(recovery.mana_pct as i64);
+    }
+    if let Some(passive) = attack_break {
+        fnv = fnv
+            .u64(0xE2)
+            .u64(passive.ticks as u64)
+            .carried(passive.broken);
+    }
+    if !auras.is_empty() {
+        fnv = fnv.u64(0xE0).u64(auras.len() as u64);
+        let mut at = 0;
+        while at < auras.len() {
+            fnv = fnv.item_aura(auras[at]);
+            at += 1;
+        }
+    }
+    if !modifiers.is_empty() {
+        fnv = fnv.u64(0xE1).u64(modifiers.len() as u64);
+        let mut at = 0;
+        while at < modifiers.len() {
+            fnv = fnv.item_modifier(modifiers[at]);
+            at += 1;
+        }
     }
     fnv.0
 }

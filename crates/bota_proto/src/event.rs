@@ -350,6 +350,13 @@ pub enum EventKind {
         /// The seat that bought back.
         slot: SlotId,
     },
+    /// Retired item-state event. Never emitted; its tag and payload remain reserved.
+    RetiredItemState {
+        unit: EntityId,
+        slot: crate::ItemSlot,
+        item: ItemId,
+        active: bool,
+    },
 }
 
 /// The seats a [`EventKind::Died`] names as assisting, in seat order.

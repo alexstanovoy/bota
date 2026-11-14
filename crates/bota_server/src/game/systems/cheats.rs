@@ -8,6 +8,7 @@
 use bota_core::{HERO, hero_def, hero_spawn_pos, rules};
 use bota_proto::{
     Cheat, CreepSide, EventKind, ItemId, RejectReason, SlotId, Target, Team, UnitKind, Vec2,
+    modifier_ticks_bounded,
 };
 
 use crate::game::{
@@ -36,6 +37,33 @@ impl World {
             return;
         };
         match cheat {
+            Cheat::SpellImmunity { target, ticks } => {
+                if let Some(mark) = unit.and_then(|unit| self.cheat_target(unit, target).ok()) {
+                    self.put_modifier(
+                        mark,
+                        crate::game::Modifier::new(
+                            bota_core::ModifierKind::SpellImmunity,
+                            None,
+                            None,
+                            Some(ticks),
+                        ),
+                    );
+                }
+            }
+            Cheat::Damage {
+                target,
+                amount,
+                kind,
+            } => {
+                if let Some(target) = unit.and_then(|unit| self.cheat_target(unit, target).ok()) {
+                    self.push_hit(None, target, i32::from(amount), kind, None);
+                }
+            }
+            Cheat::SetPools { health, mana } => {
+                if let Some(unit) = unit {
+                    self.set_pools(unit, health, mana);
+                }
+            }
             Cheat::Gold { amount } => {
                 let gold = &mut self.seats[seat].gold;
                 *gold = gold.saturating_add(amount).max(0);
@@ -138,6 +166,21 @@ impl World {
         }
     }
 
+    fn set_pools(&mut self, unit: Entity, health: u8, mana: u8) {
+        let Some(stats) = self.stats.get(unit) else {
+            return;
+        };
+        let fraction = |maximum: bota_proto::Fixed, percent: u8| bota_proto::Fixed {
+            raw: (i64::from(maximum.raw) * i64::from(percent) / 100) as i32,
+        };
+        if let Some(pool) = self.health.get_mut(unit) {
+            pool.hp = fraction(stats.max_hp, health).max(bota_proto::Fixed::ONE);
+        }
+        if let Some(pool) = self.mana.get_mut(unit) {
+            pool.mana = fraction(stats.max_mana, mana);
+        }
+    }
+
     /// Whether a seat may issue a cheat now: cheats on, what it names real
     /// and in bounds, and a hero standing for what works through one.
     pub fn check_cheat(
@@ -158,6 +201,33 @@ impl World {
             !self.map.rune_spots.is_empty(),
         )?;
         match cheat {
+            Cheat::SpellImmunity { target, ticks } => {
+                if !modifier_ticks_bounded(*ticks) {
+                    return Err(RejectReason::BadCheat);
+                }
+                self.cheat_target(unit.ok_or(RejectReason::HeroDead)?, *target)?;
+            }
+            Cheat::Damage { target, amount, .. } => {
+                if *amount == 0 || *amount > 1000 {
+                    return Err(RejectReason::BadCheat);
+                }
+                let target = self.cheat_target(unit.ok_or(RejectReason::HeroDead)?, *target)?;
+                if !self.alive(target) {
+                    return Err(RejectReason::BadCheat);
+                }
+            }
+            Cheat::SetPools { health, mana } => {
+                if !(1..=100).contains(health) || *mana > 100 {
+                    return Err(RejectReason::BadCheat);
+                }
+                let unit = unit.ok_or(RejectReason::HeroDead)?;
+                if !self.alive(unit)
+                    || self.health.get(unit).is_none()
+                    || self.mana.get(unit).is_none()
+                {
+                    return Err(RejectReason::BadCheat);
+                }
+            }
             Cheat::ApplyModifier { target, .. } => {
                 self.cheat_target(unit.ok_or(RejectReason::HeroDead)?, *target)?;
             }

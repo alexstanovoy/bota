@@ -224,6 +224,8 @@ world_tables! {
         pub warp: crate::game::Warp;
         /// Historical lane-creep spawn tier. Normal is represented by an absent row.
         pub creep_tier: CreepTier;
+        /// Expanding item waves, with independent per-cast hit history.
+        pub area_wave: crate::game::AreaWave;
     }
 
     derived {
@@ -551,9 +553,21 @@ impl World {
     /// stat changes. False when the handle named nobody live. Its other
     /// components stay in their tables under the old generation.
     pub fn despawn(&mut self, entity: Entity) -> bool {
+        let mut changes = super::systems::restoration::Changes::of(self.modifiers.get(entity));
+        if let Some(on_it) = self.modifiers.get(entity) {
+            for held in on_it.active() {
+                changes.note(held.kind);
+            }
+        }
+        // A freed source must no longer satisfy a live receiver's active-state predicate.
+        if changes.source {
+            self.modifiers.remove(entity);
+        }
         self.visibility.remove(entity);
         self.applied.remove(entity);
-        self.entities.free(entity)
+        let freed = self.entities.free(entity);
+        self.refresh_restoration(entity, changes);
+        freed
     }
 
     /// A world with a map's buildings standing and their pools full.
@@ -807,6 +821,7 @@ impl World {
         self.tick_hooks();
         self.tick_requiem_lines();
         self.tick_grenades();
+        self.tick_area_waves();
         self.tick_feasts();
         self.tick_forest();
         self.tick_backdoor();
@@ -976,6 +991,7 @@ impl World {
             &self.stats,
             &mut self.health,
             &mut self.mana,
+            &mut self.modifiers,
         );
         self.run_actions();
         let mut orphans = Vec::new();

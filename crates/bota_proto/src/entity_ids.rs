@@ -46,7 +46,8 @@ impl EventKind {
             | EventKind::StructureDestroyed { unit, .. }
             | EventKind::RuneActivated { unit, .. }
             | EventKind::RuneBottled { unit, .. }
-            | EventKind::RuneDenied { unit, .. } => visit(unit),
+            | EventKind::RuneDenied { unit, .. }
+            | EventKind::RetiredItemState { unit, .. } => visit(unit),
             EventKind::LotusGrown { pool, .. } => visit(pool),
             EventKind::LotusPlucked { pool, unit, .. } => {
                 visit(pool);

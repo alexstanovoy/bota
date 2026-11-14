@@ -29,7 +29,7 @@ fn bubble_of(ability: NeutralAbility) -> Option<(Lv, i32, i32)> {
 
 /// Takes magical damage `taken` off the bubbles on a unit, the first put on
 /// first, and answers what is left of it for the unit's health.
-pub fn soak(on_it: &mut Modifiers, mut taken: i32) -> i32 {
+pub fn soak(on_it: &mut Modifiers, mut taken: i32, kind: bota_proto::DamageKind) -> i32 {
     for held in on_it.0.iter_mut() {
         if taken == 0 {
             break;
@@ -37,18 +37,32 @@ pub fn soak(on_it: &mut Modifiers, mut taken: i32) -> i32 {
         if held.ticks_left == Some(0) {
             continue;
         }
-        let ModifierKind::Spell {
-            ability, amount, ..
-        } = &mut held.kind
-        else {
-            continue;
-        };
-        if bubble_of(*ability).is_none() {
-            continue;
+        match &mut held.kind {
+            ModifierKind::Spell {
+                ability, amount, ..
+            } if kind == bota_proto::DamageKind::Magical && bubble_of(*ability).is_some() => {
+                let soaked = taken.min(i32::from(*amount));
+                *amount -= soaked as u16;
+                taken -= soaked;
+            }
+            ModifierKind::ItemBuff {
+                item,
+                index,
+                amount,
+                ..
+            } => {
+                let template = bota_core::ITEMS[item.0 as usize].modifiers[usize::from(*index)];
+                if template.barrier.is_some_and(|barrier| barrier.kind == kind) {
+                    let soaked = taken.min((*amount).max(0));
+                    *amount -= soaked;
+                    taken -= soaked;
+                    if *amount == 0 {
+                        held.ticks_left = Some(0);
+                    }
+                }
+            }
+            _ => {}
         }
-        let soaked = taken.min(i32::from(*amount));
-        *amount -= soaked as u16;
-        taken -= soaked;
     }
     taken
 }
@@ -129,13 +143,14 @@ impl World {
     /// Mends a unit by `amount`, a fraction of a point included, up to its
     /// maximum: the share its Health Restoration lets through.
     pub(crate) fn mend_part(&mut self, entity: Entity, amount: Fixed) {
-        let Some(stats) = self.stats.get(entity) else {
-            return;
-        };
-        let (max, amount) = (stats.max_hp, restored(amount, stats.restoration_bp));
-        if let Some(health) = self.health.get_mut(entity) {
-            health.hp = (health.hp + amount).min(max);
-        }
+        super::restoration::heal(
+            entity,
+            amount,
+            None,
+            &self.stats,
+            &mut self.health,
+            &mut self.modifiers,
+        );
     }
 }
 

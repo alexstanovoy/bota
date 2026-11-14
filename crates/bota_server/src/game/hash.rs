@@ -306,6 +306,19 @@ impl StateHash for ModifierKind {
                 hp_per_tick,
                 mana_per_tick,
             } => hash_tagged(fnv, 49, &[hp_per_tick, mana_per_tick]),
+            ModifierKind::SpellImmunity => fnv.u8(66),
+            ModifierKind::ItemBuff {
+                item,
+                index,
+                amount,
+                since,
+            } => {
+                fnv.u8(64);
+                item.0.state_hash(fnv);
+                index.state_hash(fnv);
+                amount.state_hash(fnv);
+                since.state_hash(fnv);
+            }
             ModifierKind::TwinGateActive => fnv.u8(57),
             ModifierKind::HookFollowthrough => fnv.u8(56),
         }

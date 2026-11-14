@@ -2,7 +2,6 @@
 
 use bota_core::{
     ModifierKind, Ms, Stat, breaks_regen, dismember_bite_tick, item_def, kind_def, rules,
-    spell_buff,
 };
 use bota_proto::{AbilityId, DamageKind, Fixed, Inflictor, ItemId, Team};
 
@@ -34,9 +33,9 @@ use crate::engine::Entity;
 fn shortened_by_resistance(kind: ModifierKind) -> bool {
     match kind {
         ModifierKind::Control { .. } => true,
-        ModifierKind::Spell { ability, level, .. } => {
-            spell_buff(ability).is_some_and(|buff| buff.get(Stat::MovePct, level) < 0)
-        }
+        ModifierKind::Spell { .. } | ModifierKind::ItemBuff { .. } => kind
+            .stat_buff()
+            .is_some_and(|(buff, level)| buff.get(Stat::MovePct, level) < 0),
         ModifierKind::Laid { item, .. } => item_def(item)
             .and_then(|def| def.on_attack)
             .is_some_and(|laid| laid.slow_pct > 0 || laid.ranged_slow_pct > 0),
@@ -92,15 +91,21 @@ impl World {
         polarity: crate::game::Dispel,
         power: crate::game::DispelPower,
     ) {
+        let mut changes = super::restoration::Changes::of(self.modifiers.get(on));
         if let Some(mods) = self.modifiers.get_mut(on) {
             mods.0.retain(|m| {
-                !bota_core::effect_def(m.kind.effect_id()).is_some_and(|d| {
+                let remove = bota_core::effect_def(m.kind.effect_id()).is_some_and(|d| {
                     d.harmful == matches!(polarity, crate::game::Dispel::Debuffs)
                         && (d.dispellable
                             || (power == crate::game::DispelPower::Strong && d.strong_dispellable))
-                })
+                });
+                if remove {
+                    changes.note(m.kind);
+                }
+                !remove
             });
         }
+        self.refresh_restoration(on, changes);
     }
 
     pub fn controlled(&self, entity: Entity, control: bota_core::Control) -> bool {
@@ -225,21 +230,125 @@ impl World {
 
     /// Stores an already resisted modifier, recording effective harmful participation.
     /// Auras pass here too without resisting their linger a second time.
-    pub(super) fn store_modifier(&mut self, on: Entity, modifier: Modifier) {
+    pub(super) fn store_modifier(&mut self, on: Entity, mut modifier: Modifier) {
         if self.modifiers.get(on).is_none() {
             return;
+        }
+        if let Some(steal) =
+            bota_core::item_modifier(modifier.kind).and_then(|template| template.movement_steal)
+        {
+            modifier.cached_radius = Some(
+                self.widened_of(modifier.source.unwrap_or(on), steal.radius)
+                    .to_int(),
+            );
         }
         if hostile(modifier.kind) && !disabled_in(&self.modifiers, &modifier) {
             self.note_hurt_by(modifier.source, on);
         }
+        let mut changes = super::restoration::Changes::of(self.modifiers.get(on));
+        changes.note(modifier.kind);
         if let Some(on_it) = self.modifiers.get_mut(on) {
             on_it.put(modifier);
         }
+        self.refresh_restoration(on, changes);
     }
 
     pub fn take_modifier(&mut self, on: Entity, like: ModifierKind, source: Option<Entity>) {
+        let mut changes = super::restoration::Changes::of(self.modifiers.get(on));
+        changes.note(like);
         if let Some(on_it) = self.modifiers.get_mut(on) {
             on_it.take(like, source);
+        }
+        self.refresh_restoration(on, changes);
+    }
+
+    /// New item callbacks due at natural expiry run before their records are removed.
+    pub(crate) fn tick_expiring_item_intervals(&mut self, entity: Entity) {
+        let mut held = std::mem::take(&mut self.modifier_scratch);
+        held.clear();
+        if let Some(on_it) = self.modifiers.get(entity) {
+            held.extend(
+                on_it
+                    .active()
+                    .filter(|modifier| {
+                        modifier.ticks_left == Some(1)
+                            && matches!(modifier.kind, ModifierKind::ItemBuff { .. })
+                    })
+                    .copied(),
+            );
+        }
+        for modifier in held.drain(..) {
+            self.tick_item_interval(entity, modifier);
+        }
+        self.modifier_scratch = held;
+    }
+
+    fn tick_item_interval(&mut self, entity: Entity, modifier: crate::game::Modifier) {
+        let ModifierKind::ItemBuff {
+            item,
+            index,
+            amount,
+            since,
+        } = modifier.kind
+        else {
+            return;
+        };
+        let template = bota_core::ITEMS[item.0 as usize].modifiers[usize::from(index)];
+        let elapsed = self.tick.saturating_sub(since);
+        if elapsed == 0 {
+            return;
+        }
+        if let Some(period) = template.collection_period
+            && elapsed.is_multiple_of(period)
+            && amount > 0
+        {
+            if let Some(on_it) = self.modifiers.get_mut(entity) {
+                for held in &mut on_it.0 {
+                    if let ModifierKind::ItemBuff {
+                        item: held_item,
+                        index: held_index,
+                        amount,
+                        ..
+                    } = &mut held.kind
+                        && *held_item == item
+                        && *held_index == index
+                    {
+                        *amount = 0;
+                    }
+                }
+            }
+            self.collect_restoration(entity, item, amount);
+        }
+        if let Some(steal) = template.movement_steal
+            && elapsed.is_multiple_of(steal.period)
+        {
+            self.steal_movement(
+                entity,
+                item,
+                steal,
+                modifier
+                    .cached_radius
+                    .expect("a timed movement effect captures its radius"),
+            );
+        }
+        if let Some(pulse) = template.pulse
+            && elapsed.is_multiple_of(pulse.period)
+        {
+            let immune = self
+                .stats
+                .get(entity)
+                .is_some_and(|stats| stats.spell_immune);
+            if super::support::item_works(modifier.kind, immune) {
+                let damage = i64::from(amount) * i64::from(pulse.period)
+                    / i64::from(rules::TICKS_PER_SECOND);
+                self.push_hit(
+                    modifier.source,
+                    entity,
+                    damage as i32,
+                    pulse.kind,
+                    modifier.inflictor,
+                );
+            }
         }
     }
 
@@ -263,6 +372,7 @@ impl World {
             held.extend(on_it.active().copied());
             for modifier in held.drain(..) {
                 match modifier.kind {
+                    ModifierKind::ItemBuff { .. } => self.tick_item_interval(entity, modifier),
                     ModifierKind::Burning {
                         amount,
                         kind,
@@ -475,11 +585,42 @@ impl World {
             .is_some_and(|health| health.hp.to_int() > 1)
     }
 
+    /// A landed attack breaks only passives in the working inventory.
+    fn break_attack_passives(&mut self, unit: Entity) {
+        let rate = self
+            .stats
+            .get(unit)
+            .map_or(rules::NOMINAL_BP, |stats| stats.cooldown_rate_bp);
+        if let Some(bag) = self.inventory.get_mut(unit) {
+            for stack in bag
+                .slots
+                .iter_mut()
+                .take(rules::INVENTORY_SLOTS)
+                .flatten()
+                .filter(|stack| stack.mute == 0)
+            {
+                if let Some(passive) = item_def(stack.id).and_then(|def| def.attack_break) {
+                    let recovery = cooldown_after(passive.ticks, rate);
+                    stack.passive_wait = stack.passive_wait.max(recovery);
+                    stack.cooldown = stack.cooldown.max(recovery);
+                }
+            }
+        }
+    }
+
     /// Puts out every drink a blow is enough to break, and sets back every
     /// item that answers to one: the blows [`breaks_regen`] names. A drink
     /// that does not break and an item with no break cooldown are left alone.
     pub fn break_on_blows(&mut self, felt: &[Landed]) {
         for blow in felt.iter().filter(|blow| !blow.removal) {
+            if blow.attack {
+                self.break_attack_passives(blow.target);
+                if self.kind.get(blow.target) == Some(&bota_proto::UnitKind::Hero)
+                    && let Some(source) = blow.source
+                {
+                    self.break_attack_passives(source);
+                }
+            }
             if blow.amount > 0
                 && blow.source.is_some_and(|source| {
                     source != blow.target

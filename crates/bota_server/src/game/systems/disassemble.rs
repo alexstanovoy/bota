@@ -78,9 +78,18 @@ impl World {
             return false;
         }
         self.track_backpack(unit);
-        let Some(built) = self.stack_at(unit, &self.seats[seat], at) else {
+        let Some(mut built) = self.stack_at(unit, &self.seats[seat], at) else {
             return false;
         };
+        if let Some(passive) = item_def(built.id).and_then(|def| def.attack_break) {
+            let rate = self
+                .stats
+                .get(unit)
+                .map_or(bota_core::rules::NOMINAL_BP, |stats| stats.cooldown_rate_bp);
+            built.passive_wait = built
+                .passive_wait
+                .max(bota_core::cooldown_after(passive.ticks, rate));
+        }
         let mut parts = self.parts_of_build(&built).into_iter();
         let (Some(first), Some(bag)) = (parts.next(), self.bag_in(seat, unit, at)) else {
             return false;
@@ -135,6 +144,8 @@ impl World {
         built: &ItemStack,
     ) -> ItemStack {
         ItemStack {
+            active: true,
+            passive_wait: built.passive_wait,
             level: 1,
             id,
             charges,

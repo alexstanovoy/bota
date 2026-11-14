@@ -114,6 +114,10 @@ pub struct ItemStack {
     /// The rune a Bottle holds. None for any other item.
     pub rune: Option<crate::game::HeldRune>,
     pub backpack: BackpackHistory,
+    /// Whether the physical item's toggled effects are enabled.
+    pub active: bool,
+    /// Physical recovery of a breakable passive; cooldown refresh does not repair it.
+    pub passive_wait: u32,
 }
 
 impl ItemStack {
@@ -140,6 +144,8 @@ impl ItemStack {
             life: def.lifetime,
             rune: None,
             backpack: BackpackHistory::default(),
+            active: true,
+            passive_wait: 0,
         })
     }
 
@@ -174,6 +180,8 @@ impl ItemStack {
             life: item_def(id).map_or(0, |def| def.lifetime.max(def.pickup_lifetime)),
             rune: None,
             backpack: BackpackHistory::default(),
+            active: true,
+            passive_wait: 0,
         }
     }
 
@@ -567,6 +575,12 @@ impl Inventory {
 
     pub fn lapse_with(&mut self, mut expired: impl FnMut(ItemStack)) {
         let mut run = |slot: &mut Option<ItemStack>| {
+            if let Some(stack) = slot {
+                stack.passive_wait = stack.passive_wait.saturating_sub(1);
+                if item_def(stack.id).is_some_and(|def| def.attack_break.is_some()) {
+                    stack.cooldown = stack.cooldown.min(stack.passive_wait);
+                }
+            }
             if let Some(stack) = slot
                 && stack.life > 0
             {
@@ -638,8 +652,8 @@ state_hash!(ItemStack {
     disassemble_until,
     life,
     rune,
-    backpack
-});
+    backpack,
+}; 0xB4 => { active: true, passive_wait: 0 });
 state_hash!(Inventory {
     slots,
     town_portal,

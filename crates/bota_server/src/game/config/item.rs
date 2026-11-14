@@ -36,12 +36,18 @@ impl World {
     ) {
         let side = self.team.get(user).copied().unwrap_or(Team::Neutral);
         let after = self.pos(user);
+        let preserves_invisibility = item_def(item)
+            .is_some_and(|def| def.behavior.has(bota_core::Behavior::IGNORE_INVISIBLE));
         let told = |team| {
             side == team
-                || [before, after]
-                    .into_iter()
-                    .flatten()
-                    .any(|spot| self.can_see_point(team, spot))
+                || if preserves_invisibility {
+                    self.sees_now(team, user)
+                } else {
+                    [before, after]
+                        .into_iter()
+                        .flatten()
+                        .any(|spot| self.can_see_point(team, spot))
+                }
         };
         let at = match target {
             Target::None => None,
@@ -92,6 +98,21 @@ impl World {
         // the walk in.
         let reach = self.reach_of(user, def.cast_range);
         match def.effect {
+            UseSpec::Toggle => {
+                if let Some(stack) = self
+                    .inventory
+                    .get_mut(user)
+                    .and_then(|bag| bag.slot_mut(slot))
+                    .and_then(Option::as_mut)
+                {
+                    stack.active = !stack.active;
+                    true
+                } else {
+                    false
+                }
+            }
+            UseSpec::Wave(_) => self.begin_area_wave(user, item),
+            UseSpec::Support(support) => self.support_allies(user, item, def, support),
             UseSpec::Refresh { items } => self.refresh_cooldowns(user, items),
             UseSpec::None => false,
             UseSpec::Mend(drink) => {

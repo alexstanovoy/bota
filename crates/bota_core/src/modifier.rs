@@ -355,12 +355,25 @@ pub enum ModifierKind {
         ability: NeutralAbility,
         level: u8,
     },
+    /// An item effect, resolved through its data row just as a neutral spell is.
+    ItemBuff {
+        item: ItemId,
+        index: u8,
+        amount: i32,
+        since: u32,
+    },
+    /// A timed form of the simulator's spell-immunity predicate.
+    SpellImmunity,
 }
 
 impl ModifierKind {
     /// The number the wire names this kind of modifier with.
     pub const fn effect_id(self) -> EffectId {
         match self {
+            ModifierKind::SpellImmunity => EffectId(122),
+            ModifierKind::ItemBuff { item, index, .. } => {
+                crate::ITEMS[item.0 as usize].modifiers[index as usize].effect
+            }
             ModifierKind::Journey { ability, .. } => match crate::migration_of(ability) {
                 Some(policy) => policy.effect,
                 None => panic!("journey without movement policy"),
@@ -501,7 +514,7 @@ impl ModifierKind {
                 control: Control::Stun,
                 ..
             } => StatusFlags::STUNNED,
-            ModifierKind::Shielded => StatusFlags::MAGIC_IMMUNE,
+            ModifierKind::Shielded | ModifierKind::SpellImmunity => StatusFlags::MAGIC_IMMUNE,
             ModifierKind::Slowed { .. } => StatusFlags::SLOWED,
             ModifierKind::Burning { .. }
             | ModifierKind::Dismembered { .. }
@@ -517,6 +530,15 @@ impl ModifierKind {
                 }
                 None => 0,
             },
+            ModifierKind::ItemBuff { .. } => {
+                let slow = self
+                    .stat_buff()
+                    .is_some_and(|(buff, level)| buff.get(crate::Stat::MovePct, level) < 0);
+                let burns =
+                    crate::item_modifier(self).is_some_and(|template| template.pulse.is_some());
+                (if slow { StatusFlags::SLOWED } else { 0 })
+                    | (if burns { StatusFlags::DOT } else { 0 })
+            }
             ModifierKind::Spell {
                 ability,
                 level,
@@ -529,6 +551,18 @@ impl ModifierKind {
     /// The count the wire shows beside it, for a kind that keeps one.
     pub const fn stacks(self) -> Option<u32> {
         match self {
+            ModifierKind::ItemBuff {
+                item,
+                index,
+                amount,
+                ..
+            } if crate::ITEMS[item.0 as usize].modifiers[index as usize]
+                .barrier
+                .is_some()
+                || crate::ITEMS[item.0 as usize].modifiers[index as usize].stacking =>
+            {
+                Some(if amount > 0 { amount as u32 } else { 0 })
+            }
             ModifierKind::Journey { stops, .. } => Some(stops as u32),
             ModifierKind::Shadowraze { stacks } => Some(stacks as u32),
             ModifierKind::MeatShield { amount } => Some(amount as u32),
@@ -561,6 +595,25 @@ impl ModifierKind {
     /// equal ones neither is the stronger.
     pub fn outranks(self, other: ModifierKind) -> bool {
         match (self, other) {
+            (
+                ModifierKind::ItemBuff {
+                    item,
+                    index,
+                    amount,
+                    ..
+                },
+                ModifierKind::ItemBuff {
+                    item: theirs,
+                    index: their_index,
+                    amount: their_amount,
+                    ..
+                },
+            ) => {
+                let ours = crate::ITEMS[item.0 as usize].modifiers[index as usize];
+                let their = crate::ITEMS[theirs.0 as usize].modifiers[their_index as usize];
+                ours.effect == their.effect
+                    && (amount > their_amount || ours.priority > their.priority)
+            }
             (
                 ModifierKind::BonusArmor { armor, effect },
                 ModifierKind::BonusArmor {
@@ -607,6 +660,31 @@ impl ModifierKind {
                 },
             ) => ability == theirs && level > their_level,
             _ => false,
+        }
+    }
+
+    /// The same stat representation for spells and item grants.
+    pub const fn stat_buff(self) -> Option<(crate::Buff, u8)> {
+        match self {
+            Self::ItemBuff {
+                item,
+                index,
+                amount,
+                ..
+            } => {
+                let template = crate::ITEMS[item.0 as usize].modifiers[index as usize];
+                let buff = if template.stacking {
+                    template.buff.scaled(amount)
+                } else {
+                    template.buff
+                };
+                Some((buff, 1))
+            }
+            Self::Spell { ability, level, .. } => match spell_buff(ability) {
+                Some(buff) => Some((buff, level)),
+                None => None,
+            },
+            _ => None,
         }
     }
 

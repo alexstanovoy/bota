@@ -19,6 +19,8 @@ pub struct Stats {
     pub max_mana: Fixed,
     /// Health mended each tick.
     pub hp_regen: Fixed,
+    /// Candidate restoration diverted from one regeneration tick, before the HP cap.
+    pub hp_regen_redirect: Fixed,
     /// Mana mended each tick.
     pub mana_regen: Fixed,
     /// The least damage one attack deals.
@@ -66,6 +68,8 @@ pub struct Stats {
     /// Scale on pure damage it deals, in basis points where 10_000 is
     /// nominal.
     pub pure_amp_bp: i32,
+    /// A spell's amplification before an illusion's attack share, in physical/magical/pure order.
+    pub illusion_spell_amp_bp: Option<[i32; 3]>,
     /// Scale on every cooldown set on it, in basis points where 10_000 is
     /// nominal.
     pub cooldown_rate_bp: i32,
@@ -106,6 +110,8 @@ pub struct Stats {
     /// through, in basis points where 10_000 is all of it: Dota's Health
     /// Restoration.
     pub restoration_bp: i32,
+    /// The before/after restoration-factor difference attributable to redirection.
+    pub restoration_redirect_bp: i32,
     pub illusion_attack_taken_bp: i32,
     pub slow_resist_bp: i32,
     /// Chance an attack of its goes through evasion: every source of it
@@ -156,6 +162,24 @@ pub struct Stats {
 }
 
 impl Stats {
+    /// An illusion's explicit spell damage is independent of its attack share.
+    pub fn spell_damage_amp_bp(&self, kind: DamageKind) -> i32 {
+        let base = match self.illusion_spell_amp_bp {
+            Some([physical, magical, pure]) => match kind {
+                DamageKind::Physical => physical,
+                DamageKind::Magical => magical,
+                DamageKind::Pure => pure,
+            },
+            None => self.damage_amp_bp(kind),
+        };
+        self.with_spell_amp(base)
+    }
+
+    /// Magic riding an attack keeps its attack share and adds spell amplification once.
+    pub fn attack_rider_amp_bp(&self, kind: DamageKind) -> i32 {
+        self.with_spell_amp(self.damage_amp_bp(kind))
+    }
+
     /// Outgoing damage amplification of one kind, in basis points.
     pub fn damage_amp_bp(&self, kind: DamageKind) -> i32 {
         match kind {
@@ -165,13 +189,8 @@ impl Stats {
         }
     }
 
-    /// Its outgoing amplification of a kind of damage a spell of its deals, or magic riding with
-    /// its attacks: the kind's with its spell amplification added (Dota's spell amplifications
-    /// stack additively: an Amplify Damage Rune's 15% and a Kaya's 10% amplify by 25%), in basis
-    /// points.
-    pub fn spell_damage_amp_bp(&self, kind: DamageKind) -> i32 {
-        self.damage_amp_bp(kind)
-            .saturating_add(self.spell_amp_pct.saturating_mul(100))
+    fn with_spell_amp(&self, base: i32) -> i32 {
+        base.saturating_add(self.spell_amp_pct.saturating_mul(100))
             .max(0)
     }
 }

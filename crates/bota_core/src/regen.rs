@@ -3,7 +3,7 @@
 
 use bota_proto::{Attributes, Fixed, Team, UnitKind};
 
-use crate::{ModifierKind, Stat, hundredths_per_second, kind_def, rules, spell_buff};
+use crate::{ModifierKind, Stat, hundredths_per_second, kind_def, rules};
 
 /// What a unit regenerates each tick.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -79,8 +79,8 @@ fn from_modifier(kind: ModifierKind, max: Regen) -> Regen {
         | ModifierKind::Inspired { hp_per_second, .. } => {
             (hundredths_per_second(hp_per_second), Fixed::ZERO)
         }
-        ModifierKind::Spell { ability, level, .. } => match spell_buff(ability) {
-            Some(buff) => (
+        ModifierKind::Spell { .. } | ModifierKind::ItemBuff { .. } => match kind.stat_buff() {
+            Some((buff, level)) => (
                 hundredths_per_second(10 * buff.get(Stat::HpRegen, level)),
                 hundredths_per_second(buff.get(Stat::ManaRegen, level)),
             ),
@@ -120,9 +120,7 @@ pub fn regen(
         let added = from_modifier(kind, max);
         total.hp += added.hp;
         total.mana += added.mana;
-        if let ModifierKind::Spell { ability, level, .. } = kind
-            && let Some(buff) = spell_buff(ability)
-        {
+        if let Some((buff, level)) = kind.stat_buff() {
             cut_pct = cut_pct.max(buff.get(Stat::RegenCutPct, level));
         }
     }

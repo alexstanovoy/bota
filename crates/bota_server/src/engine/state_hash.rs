@@ -33,6 +33,24 @@ pub trait Specimen: Sized {
 /// for a tuple struct of one field as `Name(0)`, or for an enum of unit variants as `Name as u8:`
 /// followed by two of its variants.
 macro_rules! state_hash {
+    ($ty:ident { $($field:ident),+ $(,)? }; $tag:expr => { $($extra:ident: $default:expr),+ $(,)? }) => {
+        impl $crate::engine::StateHash for $ty {
+            fn state_hash(&self, fnv: &mut $crate::engine::Fnv) {
+                let $ty { $($field,)+ $($extra,)+ } = self;
+                $($crate::engine::StateHash::state_hash($field, fnv);)+
+                // Default extension state contributes no bytes to an earlier catalogue's hash.
+                if ($(*$extra,)+) != ($($default,)+) {
+                    fnv.u8($tag);
+                    $($crate::engine::StateHash::state_hash($extra, fnv);)+
+                }
+            }
+        }
+        #[cfg(test)]
+        impl $crate::engine::Specimen for $ty {
+            fn low() -> Self { $ty { $($field: $crate::engine::Specimen::low(),)+ $($extra: $crate::engine::Specimen::low(),)+ } }
+            fn high() -> Self { $ty { $($field: $crate::engine::Specimen::high(),)+ $($extra: $crate::engine::Specimen::high(),)+ } }
+        }
+    };
     ($ty:ident { $($field:ident),+ $(,)? }) => {
         impl $crate::engine::StateHash for $ty {
             fn state_hash(&self, fnv: &mut $crate::engine::Fnv) {
@@ -159,6 +177,15 @@ impl<T: StateHash> StateHash for Vec<T> {
     }
 }
 
+impl<T: StateHash + Ord> StateHash for std::collections::BTreeSet<T> {
+    fn state_hash(&self, fnv: &mut Fnv) {
+        self.len().state_hash(fnv);
+        for value in self {
+            value.state_hash(fnv);
+        }
+    }
+}
+
 impl<T: StateHash> StateHash for VecDeque<T> {
     fn state_hash(&self, fnv: &mut Fnv) {
         fnv.u64(self.len() as u64);
@@ -271,6 +298,15 @@ mod specimens {
 
         fn high() -> Self {
             vec![T::high()]
+        }
+    }
+
+    impl<T: Specimen + Ord> Specimen for std::collections::BTreeSet<T> {
+        fn low() -> Self {
+            Self::new()
+        }
+        fn high() -> Self {
+            Self::from([T::high()])
         }
     }
 

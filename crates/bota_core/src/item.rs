@@ -298,6 +298,12 @@ pub enum UseSpec {
     None,
     /// Mends a pool over time.
     Mend(Mend),
+    /// Recovers nearby allies and grants timed effects from this item's templates.
+    Support(crate::AreaSupport),
+    /// A circular damage wave whose centre follows the caster.
+    Wave(crate::AreaWaveSpec),
+    /// Switches this physical item's emitted effects on or off.
+    Toggle,
     /// Plants a tree that lasts `ticks`.
     PlantTree {
         /// How long the tree stands.
@@ -450,6 +456,11 @@ pub enum PickupEligibility {
 /// One entry of the catalog.
 #[derive(Clone, Copy, Debug)]
 pub struct ItemDef {
+    pub attack_break: Option<crate::AttackBreak>,
+    /// Stat auras emitted by each active copy through the ordinary aura system.
+    pub auras: &'static [crate::ItemAura],
+    /// The templates referenced by its auras and active grants.
+    pub modifiers: &'static [crate::ItemModifier],
     /// Rules declared by this row for carrying and destroying the item.
     pub limits: crate::ItemLimits,
     pub pickup: PickupEligibility,
@@ -697,6 +708,24 @@ impl ItemDef {
     pub const fn radius(&self) -> Option<i32> {
         match self.effect {
             UseSpec::Grenade(grenade) => Some(grenade.radius),
+            UseSpec::Support(support) => {
+                let mut radius = support.radius;
+                let mut at = 0;
+                while at < support.grants.len() {
+                    if let Some(steal) = self.modifiers[support.grants[at] as usize].movement_steal
+                        && steal.radius > radius
+                    {
+                        radius = steal.radius;
+                    }
+                    at += 1;
+                }
+                Some(radius)
+            }
+            UseSpec::Wave(wave) => Some(wave.radius),
+            UseSpec::Toggle => match self.auras.first() {
+                Some(aura) => Some(aura.radius),
+                None => None,
+            },
             _ => None,
         }
     }
@@ -817,6 +846,9 @@ impl ItemDef {
 /// An item that costs nothing, carries nothing and does nothing, so an entry
 /// names only what sets it apart.
 pub(crate) const PLAIN: ItemDef = ItemDef {
+    attack_break: None,
+    auras: &[],
+    modifiers: &[],
     limits: crate::ItemLimits::UNRESTRICTED,
     pickup: PickupEligibility::InventoryCarrier,
     public_loot: false,
@@ -912,6 +944,8 @@ pub struct CarriedItem {
     pub id: ItemId,
     /// Charges it holds.
     pub charges: u8,
+    /// Whether a breakable passive is intact.
+    pub passive: bool,
     /// The attribute it is set to, for an item with a mode.
     pub mode: Option<Attribute>,
 }
@@ -997,7 +1031,10 @@ pub fn carried_bonus(items: impl Iterator<Item = CarriedItem>, ranged: bool) -> 
         let Some(def) = item_def(stack.id) else {
             continue;
         };
-        let carried = def.carried_by(ranged);
+        let carried = match &def.attack_break {
+            Some(passive) if !stack.passive => &passive.broken,
+            _ => def.carried_by(ranged),
+        };
         total.attributes += carried.attributes;
         total.move_speed = total.move_speed.max(carried.move_speed);
         total.lace_speed = total.lace_speed.max(carried.lace_speed);

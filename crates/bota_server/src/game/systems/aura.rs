@@ -6,7 +6,7 @@ use bota_core::{
     Aura, AuraModifier, NeutralAbility, Reach, Spell, Whom, ability_def, isqrt64, kind_def, rules,
     ticks_of_ms,
 };
-use bota_proto::{AbilityId, DamageKind, Inflictor, Team, UnitKind};
+use bota_proto::{DamageKind, Inflictor, Team, UnitKind};
 
 use crate::game::{Def, Entity, Modifier, Spots, Upgrades, World, disabled_in};
 
@@ -16,9 +16,9 @@ use super::modifiers::resisted_ticks;
 #[derive(Clone, Copy)]
 struct Source {
     carrier: Entity,
-    aura: &'static Aura,
+    aura: Aura,
     /// The ability whose passive it is. Absent for the unit's own.
-    ability: Option<AbilityId>,
+    inflictor: Option<Inflictor>,
     /// The level the carrier holds that ability at; one for its own.
     level: u8,
 }
@@ -82,13 +82,30 @@ impl World {
         for aura in own {
             into.push(Source {
                 carrier,
-                aura,
-                ability: None,
+                aura: *aura,
+                inflictor: None,
                 level: 1,
             });
         }
         if let Some(mods) = self.modifiers.get(carrier) {
             for held in mods.active() {
+                if let bota_core::ModifierKind::ItemBuff { item, .. } = held.kind
+                    && let Some(template) = bota_core::item_modifier(held.kind)
+                {
+                    let def = bota_core::item_def(item).expect("an emitter's item is registered");
+                    for emitter in template.emitters {
+                        let modifier = def.modifiers[usize::from(emitter.index)];
+                        into.push(Source {
+                            carrier,
+                            aura: emitter.emitter(
+                                modifier.kind(item, emitter.index, self.tick, false),
+                                modifier.ticks,
+                            ),
+                            inflictor: Some(Inflictor::Item(item)),
+                            level: 1,
+                        });
+                    }
+                }
                 if let bota_core::ModifierKind::AuraEmitter { ability, level } = held.kind
                     && let Spell::Cast {
                         act: bota_core::Act::Roar(spec),
@@ -97,13 +114,14 @@ impl World {
                 {
                     into.push(Source {
                         carrier,
-                        aura: &spec.aura,
-                        ability: Some(ability.id()),
+                        aura: spec.aura,
+                        inflictor: Some(Inflictor::Ability(ability.id())),
                         level,
                     });
                 }
             }
         }
+        self.gather_item_auras(carrier, into);
         let Some(book) = self.abilities.get(carrier) else {
             return;
         };
@@ -113,10 +131,61 @@ impl World {
             };
             into.push(Source {
                 carrier,
-                aura,
-                ability: Some(slot.id),
+                aura: *aura,
+                inflictor: Some(Inflictor::Ability(slot.id)),
                 level: slot.level,
             });
+        }
+    }
+
+    fn gather_item_auras(&self, carrier: Entity, into: &mut Vec<Source>) {
+        if !self.alive(carrier) || self.def.get(carrier).is_some_and(|Def(def)| def.porter) {
+            return;
+        }
+        let Some(bag) = self.inventory.get(carrier) else {
+            return;
+        };
+        for stack in bag
+            .slots
+            .iter()
+            .take(rules::INVENTORY_SLOTS)
+            .flatten()
+            .filter(|stack| stack.mute == 0)
+        {
+            let Some(def) = bota_core::item_def(stack.id) else {
+                continue;
+            };
+            if matches!(def.effect, bota_core::UseSpec::Toggle) && !stack.active {
+                continue;
+            }
+            for spec in def.auras {
+                if let Some(threshold) = spec.health_below_pct {
+                    let (Some(health), Some(stats)) =
+                        (self.health.get(carrier), self.stats.get(carrier))
+                    else {
+                        continue;
+                    };
+                    if i64::from(health.hp.raw) * 100
+                        >= i64::from(stats.max_hp.raw) * i64::from(threshold)
+                    {
+                        continue;
+                    }
+                }
+                into.push(Source {
+                    carrier,
+                    aura: spec.emitter(
+                        def.modifiers[usize::from(spec.index)].kind(
+                            stack.id,
+                            spec.index,
+                            self.tick,
+                            self.illusion.get(carrier).is_some(),
+                        ),
+                        def.modifiers[usize::from(spec.index)].ticks,
+                    ),
+                    inflictor: Some(Inflictor::Item(stack.id)),
+                    level: 1,
+                });
+            }
         }
     }
 
@@ -127,7 +196,7 @@ impl World {
         let Source {
             carrier,
             aura,
-            ability,
+            inflictor,
             level,
         } = source;
         let (Some(from), Some(side)) = (self.pos(carrier), self.team.get(carrier).copied()) else {
@@ -154,15 +223,15 @@ impl World {
         let kind = aura
             .modifier
             .modifier(level, |talent| self.has_talent(carrier, talent), steps);
-        let with = ability.map(Inflictor::Ability);
-        let storm = storm_of(aura).filter(|_| !(aura.breakable && self.broken(carrier)));
+        let with = inflictor;
+        let storm = storm_of(&aura).filter(|_| !(aura.breakable && self.broken(carrier)));
         near.clear();
         near.extend(spots.around(from, i64::from(reach.raw).abs()));
         for target in near.iter().copied() {
             let Some(there) = self.pos(target).filter(|at| at.within(from, reach)) else {
                 continue;
             };
-            if !self.reaches(aura, side, target) {
+            if !self.reaches(&aura, side, carrier, target) {
                 continue;
             }
             let ticks = resisted_ticks(&self.stats, target, kind, aura.linger);
@@ -190,7 +259,7 @@ impl World {
     /// Whether an aura of a carrier of a side reaches a unit standing within
     /// its radius: one of the side it is for, of the units it reaches, not
     /// invulnerable unless the aura reaches the invulnerable too.
-    fn reaches(&self, aura: &Aura, side: Team, target: Entity) -> bool {
+    fn reaches(&self, aura: &Aura, side: Team, carrier: Entity, target: Entity) -> bool {
         let Some(theirs) = self.team.get(target).copied() else {
             return false;
         };
@@ -202,14 +271,23 @@ impl World {
             .stats
             .get(target)
             .is_some_and(|stats| stats.invulnerable);
-        sided && self.reach_takes(aura.reaches, target) && (aura.invulnerable || !invulnerable)
+        sided
+            && (aura.reaches != Reach::Bearer || target == carrier)
+            && self.reach_takes(aura.reaches, target)
+            && (aura.invulnerable || !invulnerable)
     }
 
     /// Whether a unit is of those an aura's [`Reach`] takes.
-    fn reach_takes(&self, reach: Reach, target: Entity) -> bool {
+    pub(crate) fn reach_takes(&self, reach: Reach, target: Entity) -> bool {
         let kind = self.kind.get(target).copied();
         match reach {
-            Reach::All => true,
+            Reach::All | Reach::Bearer => true,
+            Reach::Combatants => {
+                kind.is_some_and(|kind| kind == UnitKind::Hero || kind_def(kind).creep)
+            }
+            Reach::CombatantsAndBuildings => kind.is_some_and(|kind| {
+                kind == UnitKind::Hero || kind_def(kind).creep || kind_def(kind).structure
+            }),
             Reach::LaneCreeps => kind.is_some_and(|kind| kind_def(kind).lane_creep),
             Reach::Heroes => kind == Some(UnitKind::Hero),
             Reach::Units => {

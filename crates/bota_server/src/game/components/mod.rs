@@ -1,3 +1,5 @@
+mod area_wave;
+pub use area_wave::*;
 mod contacts;
 pub use contacts::*;
 mod abilities;

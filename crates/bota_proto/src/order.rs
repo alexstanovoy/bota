@@ -264,6 +264,19 @@ pub enum Cheat {
     /// The seat's buyback cooldown ends now (Dota's `-resetbuyback`). The
     /// respawn time a buyback owes on the next death stays owed.
     ResetBuyback,
+    /// A simulator extension: sets the addressed unit's pools to percentages of their current maxima.
+    /// Health is 1..=100 and mana is 0..=100, so this never kills a unit.
+    SetPools { health: u8, mana: u8 },
+    /// A simulator extension: unattributed damage before mitigation, through the normal
+    /// damage pipeline. Amount is 1..=1000; nothing aimed means the addressed unit.
+    Damage {
+        target: Target,
+        amount: u16,
+        kind: crate::DamageKind,
+    },
+    /// A simulator extension: applies the existing spell-immunity predicate for a bounded
+    /// duration, through a timed modifier. Nothing aimed means the addressed unit.
+    SpellImmunity { target: Target, ticks: u32 },
 }
 
 /// Whose creeps a [`Cheat::KillCreeps`] takes away.
@@ -494,7 +507,11 @@ impl Order {
             | Order::Put { target, .. }
             | Order::Take { target }
             | Order::Cheat {
-                cheat: Cheat::ApplyModifier { target, .. } | Cheat::ClearModifiers { target },
+                cheat:
+                    Cheat::ApplyModifier { target, .. }
+                    | Cheat::ClearModifiers { target }
+                    | Cheat::Damage { target, .. }
+                    | Cheat::SpellImmunity { target, .. },
             } => target,
             Order::MoveDirection { toward: spot }
             | Order::Cheat {
@@ -526,7 +543,8 @@ impl Order {
                     | Cheat::ResetHero
                     | Cheat::TimeOfDay { .. }
                     | Cheat::Suicide
-                    | Cheat::ResetBuyback,
+                    | Cheat::ResetBuyback
+                    | Cheat::SetPools { .. },
             }
             | Order::Buy { .. }
             | Order::Sell { .. }
@@ -557,7 +575,11 @@ impl Order {
             | Order::Put { target, .. }
             | Order::Take { target }
             | Order::Cheat {
-                cheat: Cheat::ApplyModifier { target, .. } | Cheat::ClearModifiers { target },
+                cheat:
+                    Cheat::ApplyModifier { target, .. }
+                    | Cheat::ClearModifiers { target }
+                    | Cheat::Damage { target, .. }
+                    | Cheat::SpellImmunity { target, .. },
             } => target,
             Order::Cheat {
                 cheat:
@@ -582,7 +604,8 @@ impl Order {
                     | Cheat::CreateCreeps { .. }
                     | Cheat::SpawnRune { .. }
                     | Cheat::Suicide
-                    | Cheat::ResetBuyback,
+                    | Cheat::ResetBuyback
+                    | Cheat::SetPools { .. },
             }
             | Order::Buy { .. }
             | Order::Sell { .. }

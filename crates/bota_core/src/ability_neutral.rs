@@ -209,29 +209,55 @@ pub enum Stat {
     /// Reduction of incoming illusion attacks, leaving spells unaffected.
     IllusionAttackReductionPct,
     IncomingDamagePct,
+    /// World units added to movement speed before percentage changes.
+    MoveFlat,
+    /// Percent taken off all health restoration, including incoming healing.
+    RestorationCutPct,
 }
 
-/// What a spell's own modifier does to the stats of whatever wears it: up
-/// to two stats, each changed by its value at the spell's level, a gain
-/// above zero and a loss below.
+/// The stat changes of an ability or item modifier, a gain above zero and a loss below.
+/// Ability values are selected by level; item values repeat across levels.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Buff {
-    pub stats: [(Stat, Lv); 2],
+    pub stats: [(Stat, Lv); 8],
 }
 
 impl Buff {
     /// One stat changed.
     pub const fn of(stat: Stat, values: Lv) -> Buff {
-        Buff {
-            stats: [(stat, values), (stat, all(0))],
-        }
+        Self::many(&[(stat, values)])
     }
 
     /// Two stats changed.
     pub const fn two(first: Stat, firsts: Lv, second: Stat, seconds: Lv) -> Buff {
-        Buff {
-            stats: [(first, firsts), (second, seconds)],
+        Self::many(&[(first, firsts), (second, seconds)])
+    }
+
+    /// A bounded set of stat changes, shared by ability and item effects.
+    pub const fn many(stats: &[(Stat, Lv)]) -> Buff {
+        let mut buff = Buff {
+            stats: [(Stat::MovePct, all(0)); 8],
+        };
+        assert!(stats.len() <= buff.stats.len(), "too many stats in a buff");
+        let mut at = 0;
+        while at < stats.len() {
+            buff.stats[at] = stats[at];
+            at += 1;
         }
+        buff
+    }
+
+    pub const fn scaled(mut self, stacks: i32) -> Buff {
+        let mut stat = 0;
+        while stat < self.stats.len() {
+            let mut level = 0;
+            while level < self.stats[stat].1.len() {
+                self.stats[stat].1[level] = self.stats[stat].1[level].saturating_mul(stacks);
+                level += 1;
+            }
+            stat += 1;
+        }
+        self
     }
 
     /// How much it changes `stat` by at `level`.

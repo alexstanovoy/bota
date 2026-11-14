@@ -232,10 +232,15 @@ impl World {
     /// pools are empty. Its book, its bag, its level and what it gathered stay
     /// on it; the modifiers Dota removes on death go.
     fn leave_the_map(&mut self, unit: Entity) {
+        let mut changes = super::restoration::Changes::of(self.modifiers.get(unit));
         if let Some(on_it) = self.modifiers.get_mut(unit) {
             on_it.0.retain(|held| {
-                held.ticks_left != Some(0)
-                    && effect_def(held.kind.effect_id()).is_some_and(|def| def.kept_through_death)
+                let keep = held.ticks_left != Some(0)
+                    && effect_def(held.kind.effect_id()).is_some_and(|def| def.kept_through_death);
+                if !keep {
+                    changes.note(held.kind);
+                }
+                keep
             });
         }
         self.push.remove(unit);
@@ -260,6 +265,7 @@ impl World {
         if let Some(mana) = self.mana.get_mut(unit) {
             mana.mana = Fixed::ZERO;
         }
+        self.refresh_restoration(unit, changes);
     }
 
     /// Puts a unit taken off the map back on it at `at`, as `body` stands:

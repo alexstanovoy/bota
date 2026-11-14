@@ -276,7 +276,15 @@ fn assemble_once(
         for (_, part) in held.iter().filter(|(at, _)| spent.contains(*at)) {
             backpack.inherit_build(part.backpack);
         }
+        let passive_wait = held
+            .iter()
+            .filter(|(at, _)| spent.contains(*at))
+            .map(|(_, part)| part.passive_wait)
+            .max()
+            .unwrap_or(0);
         let built = ItemStack {
+            active: true,
+            passive_wait,
             level: 1,
             id: ItemId(index as u16),
             charges: if def.cast_charges > 0 {
@@ -284,7 +292,11 @@ fn assemble_once(
             } else {
                 def.charges
             },
-            cooldown: 0,
+            cooldown: if def.attack_break.is_some() {
+                passive_wait
+            } else {
+                0
+            },
             mute: 0,
             mode,
             bought_tick: tick,
@@ -337,6 +349,11 @@ pub fn hero_kit(hero: HeroId) -> AbilityBook {
 /// fastest counts, and of the laces only the fastest, the two added up. A
 /// `ranged` carrier wears what an item adds to one.
 pub fn carried_bonus(inventory: &Inventory, ranged: bool) -> Carried {
+    carried_bonus_for(inventory, ranged, false)
+}
+
+/// Illusions keep breakable passives dormant.
+pub fn carried_bonus_for(inventory: &Inventory, ranged: bool, illusion: bool) -> Carried {
     bota_core::carried_bonus(
         inventory
             .slots
@@ -347,6 +364,7 @@ pub fn carried_bonus(inventory: &Inventory, ranged: bool) -> Carried {
             .map(|stack| CarriedItem {
                 id: stack.id,
                 charges: stack.charges,
+                passive: stack.passive_wait == 0 && !illusion,
                 mode: stack.mode,
             }),
         ranged,
@@ -389,7 +407,9 @@ impl World {
         self.lapse_loot();
         let mut expired = Vec::new();
         let mut delayed = Vec::new();
-        for entity in self.entities.iter() {
+        let entities = self.take_entity_snapshot();
+        for entity in entities.iter().copied() {
+            self.tick_expiring_item_intervals(entity);
             let at_shop = self.at_any_shop(entity);
             if let Some(book) = self.abilities.get_mut(entity) {
                 for slot in book.slots.iter_mut() {
@@ -420,11 +440,15 @@ impl World {
                 }
                 bag.lapse_with(|stack| expired.push((entity, stack)));
             }
+            let mut changes = super::restoration::Changes::of(self.modifiers.get(entity));
             if let Some(on_it) = self.modifiers.get_mut(entity) {
                 let mut lapsed = false;
                 on_it.0.retain_mut(|held| {
                     held.ticks_left = held.ticks_left.map(|left| left.saturating_sub(1));
                     let over = held.ticks_left == Some(0);
+                    if over {
+                        changes.note(held.kind);
+                    }
                     if over
                         && let bota_core::ModifierKind::DelayedSpell { ability, level } = held.kind
                     {
@@ -438,7 +462,9 @@ impl World {
                     self.lapsed_lives.push(entity);
                 }
             }
+            self.refresh_restoration(entity, changes);
         }
+        self.recycle_entity_snapshot(entities);
         for (entity, ability, level) in delayed {
             self.finish_delayed_spell(entity, ability, level);
         }
@@ -453,10 +479,18 @@ impl World {
         let lying: Vec<Entity> = self
             .entities
             .iter()
-            .filter(|entity| self.loot.get(*entity).is_some_and(|loot| loot.0.life > 0))
+            .filter(|entity| {
+                self.loot
+                    .get(*entity)
+                    .is_some_and(|loot| loot.0.life > 0 || loot.0.passive_wait > 0)
+            })
             .collect();
         for entity in lying {
             let gone = self.loot.get_mut(entity).is_some_and(|loot| {
+                loot.0.passive_wait = loot.0.passive_wait.saturating_sub(1);
+                if loot.0.life == 0 {
+                    return false;
+                }
                 loot.0.life -= 1;
                 loot.0.life == 0
             });
@@ -959,15 +993,15 @@ impl World {
     /// their maxima. Answers what each pool took.
     pub(crate) fn refill_pools(&mut self, on: Entity, hp: i32, mana: i32) -> (i32, i32) {
         let ceiling = self.stats.get(on).copied();
-        let mut restored = 0;
-        if let Some(pool) = self.health.get_mut(on)
-            && let Some(stats) = ceiling
-        {
-            let before = pool.hp;
-            let hp = super::bubble::restored(Fixed::from_int(hp), stats.restoration_bp);
-            pool.hp = (pool.hp + hp).min(stats.max_hp);
-            restored = (pool.hp - before).to_int();
-        }
+        let restored = super::restoration::heal(
+            on,
+            Fixed::from_int(hp),
+            None,
+            &self.stats,
+            &mut self.health,
+            &mut self.modifiers,
+        )
+        .to_int();
         let mut refilled = 0;
         if let Some(pool) = self.mana.get_mut(on)
             && let Some(most) = ceiling.map(|stats| stats.max_mana)
@@ -1122,13 +1156,16 @@ impl World {
 
     /// Tells who may know that `source` mended `on` with `inflictor` by
     /// `amount` health and `mana` mana.
-    fn tell_healed(
+    pub(crate) fn tell_healed(
         &mut self,
         (source, inflictor): (Entity, Inflictor),
         on: Entity,
         amount: i32,
         mana: i32,
     ) {
+        if amount == 0 && mana == 0 {
+            return;
+        }
         self.events.push(Event::Fact {
             kind: EventKind::Healed {
                 source: Some(wire_id(source)),
