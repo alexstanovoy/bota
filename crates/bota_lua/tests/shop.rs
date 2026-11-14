@@ -461,3 +461,40 @@ fn respawning_without_a_shop_does_not_allow_secret_shop_purchases() {
     assert!(turn.failures.is_empty(), "{:?}", turn.failures);
     assert!(turn.bots[0].orders.is_empty());
 }
+
+#[test]
+fn an_item_no_shop_sells_returns_the_disallowed_item_id_and_issues_no_order() {
+    let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let unsold = (0..bota_core::ITEM_COUNT as u16)
+        .map(bota_proto::ItemId)
+        .filter(|item| bota_core::Catalogue::FULL.sold(*item).is_none())
+        .find_map(bota_core::item_def)
+        .expect("a registered item no shop sells");
+    let mut lua = LuaTeam::new(
+        Team::Radiant,
+        &[BotSeat {
+            slot: SlotId(0),
+            hero: HeroId::SHADOW_FIEND,
+        }],
+        Limits::DEFAULT,
+        Keys {
+            hash: [17, 19],
+            random: 23,
+        },
+    )
+    .expect("team");
+    let source = format!(
+        "function Think() assert(GetBot():ActionImmediate_PurchaseItem('{}')==PURCHASE_ITEM_DISALLOWED_ITEM) end",
+        unsold.key
+    );
+    lua.add_script(
+        SlotId(0),
+        ScriptKind::Takeover,
+        "unsold_purchase",
+        source.as_bytes(),
+    )
+    .expect("script");
+    let turn = lua.think(&sessions[0]).expect("think");
+    assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+    assert!(turn.bots[0].orders.is_empty(), "{:?}", turn.bots[0].orders);
+}

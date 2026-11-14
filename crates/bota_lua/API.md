@@ -245,6 +245,20 @@ reservations; subsequent snapshots replace projections with received facts. The
 legacy `Action_PurchaseItem` and `Action_LevelAbility` names share the immediate
 callbacks. Orders remain ordinary scheduler outbox entries.
 
+`ActionImmediate_PurchaseItem(name)` and `Action_PurchaseItem(name)` return the value of one `PURCHASE_ITEM_*`
+global and issue a buy order only on success:
+`PURCHASE_ITEM_SUCCESS` (-1) when the purchase is reserved;
+`PURCHASE_ITEM_INVALID_ITEM_NAME` (33) for a name that is not a registered item;
+`PURCHASE_ITEM_DISALLOWED_ITEM` (78) for an item no shop sells, a part of a recipe no shop sells, or a receiver
+without an inventory in the received view;
+`PURCHASE_ITEM_OUT_OF_STOCK` (82) when the team's received stock of the item is 0, or the inventory, stash and
+courier have no room for it;
+`PURCHASE_ITEM_NOT_AT_SECRET_SHOP` (62) for an item only a secret shop sells while the bot is at none;
+`PURCHASE_ITEM_INSUFFICIENT_GOLD` (63) when the cost (parts you lack, summed) is above the gold left after the
+turn's earlier purchases.
+`PURCHASE_ITEM_NOT_AT_HOME_SHOP` (67) and `PURCHASE_ITEM_NOT_AT_SIDE_SHOP` (66) are defined but never returned:
+ordinary items go to the stash, and the current maps have no side shop.
+
 `GetBuybackCost()`, `GetBuybackCooldown()` and `HasBuyback()` read what the bot's own
 side is told of a teammate hero's buyback, as Dota's getters do. The cost is
 `200 + net worth / 13`. `GetBuybackCooldown()` is the game time (on `GameTime()`'s
