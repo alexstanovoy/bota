@@ -15,6 +15,7 @@ mod fuel_tests;
 pub(crate) mod abilities;
 mod activities;
 mod buyback;
+mod chat;
 pub(crate) mod context;
 mod distances;
 mod estimates;
@@ -152,6 +153,7 @@ pub(crate) fn install(lua: &mut Lua, state: Shared, vectors: Vectors) -> Result<
     };
     patterns::install(lua, &context)?;
     environment::install(lua, &context)?;
+    chat::install(lua, &context)?;
     trees::install(lua, &context)?;
     distances::install(lua, &context)?;
     estimates::install(lua, &context)?;

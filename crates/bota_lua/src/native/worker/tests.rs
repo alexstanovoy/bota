@@ -276,6 +276,7 @@ fn marker_turn(tick: u32) -> TeamTurn {
     TeamTurn {
         statistics: None,
         bots: vec![crate::BotTurn {
+            chat: Vec::new(),
             slot: bota_proto::SlotId(0),
             orders: vec![bota_client_core::IssuedOrder::hero(
                 bota_proto::Order::Move {

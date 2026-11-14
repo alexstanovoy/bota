@@ -442,6 +442,16 @@ work in remembered felled indices, each planted tree scanned, each retained iden
 and each result, plus interpreter table/write charges. The scan and retained storage are bounded.
 
 
+`ActionImmediate_Chat(text, allChat)` sends ordinary checked chat, established from the installed
+game, build 6975. `Action_Chat` is a documented host alias; it is not claimed as a current native
+export. `allChat=true` selects all players, false the team. The transport's UTF-8, control/bidi,
+byte and grapheme limits apply before enqueueing; malformed text errors rather than reaching any
+receiver. The host permits one line per bot every 30 simulation ticks and at most one per turn.
+A failed or discarded bot turn publishes no chat and restores that allowance. Chat does not
+replace or interrupt the bot's body order. Cost: receiver, 8, checked string, and 2 per input byte
+for bounded UTF-8/text-policy work. No raw text is inserted into protocol diagnostics.
+
+
 `GetLaneFrontAmount(team, lane, ignoreTowers)` returns progress in the viewer's orientation:
 allied fronts advance upward from 0, enemy fronts downward from 1. It considers observed living
 lane creeps within 1000 units of their lane and, unless ignored, observed towers of that team.

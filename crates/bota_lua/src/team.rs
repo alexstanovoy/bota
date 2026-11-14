@@ -48,6 +48,7 @@ struct Script {
 pub struct BotTurn {
     pub slot: SlotId,
     pub orders: Vec<IssuedOrder>,
+    pub chat: Vec<bota_proto::Line>,
 }
 
 #[derive(Debug)]
@@ -474,6 +475,7 @@ impl LuaTeam {
         let seats = self.state.borrow().seats.clone();
         self.state.borrow_mut().current_slot = seats[0].slot;
         self.state.borrow_mut().orders.clear();
+        self.state.borrow_mut().chat.clear();
         let _ = self.complete_once(0);
         let first_host = self.state.borrow().bots[0].checkpoint();
         let first_purchases = self.state.borrow().purchases.clone();
@@ -483,6 +485,7 @@ impl LuaTeam {
             self.state.borrow_mut().current_slot = seat.slot;
             if index != 0 {
                 self.state.borrow_mut().orders.clear();
+        self.state.borrow_mut().chat.clear();
             }
             let host_before = if index == 0 {
                 first_host
@@ -504,6 +507,7 @@ impl LuaTeam {
             };
             let orders = if let Err(error) = ended {
                 self.state.borrow_mut().orders.clear();
+        self.state.borrow_mut().chat.clear();
                 self.state.borrow_mut().bots[index].restore(host_before);
                 self.state.borrow_mut().purchases = purchases_before;
                 result
@@ -520,8 +524,10 @@ impl LuaTeam {
                 }
                 std::mem::take(&mut state.orders)
             };
+            let chat=std::mem::take(&mut self.state.borrow_mut().chat);
             result.bots.push(BotTurn {
                 slot: seat.slot,
+                chat,
                 orders,
             });
         }

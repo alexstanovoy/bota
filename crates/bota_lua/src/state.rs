@@ -337,6 +337,7 @@ fn attack_facts(session: &ClientSession, view: &bota_proto::WorldView) -> Vec<At
 
 #[derive(Default)]
 pub(crate) struct BotState {
+    pub last_chat: Option<u32>,
     pub target: Option<EntityId>,
     pub next_purchase: i32,
     pub mode: u8,
@@ -356,6 +357,7 @@ pub(crate) struct NativeCourierCommand {
 /// Host action continuations rewind when their outbox was not accepted; Lua-visible state does not.
 #[derive(Clone, Copy)]
 pub(crate) struct HostCheckpoint {
+    last_chat: Option<u32>,
     pending_once: Option<PendingOnce>,
     native_courier: Option<NativeCourierCommand>,
     native_laning: Option<crate::default_bot::LaningMovement>,
@@ -363,12 +365,14 @@ pub(crate) struct HostCheckpoint {
 impl BotState {
     pub fn checkpoint(&self) -> HostCheckpoint {
         HostCheckpoint {
+            last_chat:self.last_chat,
             pending_once: self.pending_once,
             native_courier: self.native_courier,
             native_laning: self.native_laning,
         }
     }
     pub fn restore(&mut self, checkpoint: HostCheckpoint) {
+        self.last_chat=checkpoint.last_chat;
         self.pending_once = checkpoint.pending_once;
         self.native_courier = checkpoint.native_courier;
         self.native_laning = checkpoint.native_laning;
@@ -436,6 +440,7 @@ pub(crate) struct State {
     pub current_slot: SlotId,
     pub snapshot: Option<Snapshot>,
     pub orders: Vec<IssuedOrder>,
+    pub chat: Vec<bota_proto::Line>,
     pub units: Vec<(EntityId, TableId)>,
     unit_identities: crate::handles::Identities<EntityId>,
     pub unit_methods: Option<TableId>,
@@ -461,6 +466,7 @@ impl State {
             current_slot: seats[0].slot,
             snapshot: None,
             orders: Vec::with_capacity(MAX_ORDERS),
+            chat: Vec::new(),
             units: Vec::new(),
             unit_identities: crate::handles::Identities::new(),
             unit_methods: None,

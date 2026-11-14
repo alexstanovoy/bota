@@ -189,6 +189,7 @@ fn send_turn<T: Transport>(
             .iter()
             .find(|bot| bot.slot == connection.seated.slot)
     }) {
+        for line in &bot.chat {connection.transport.send(&ClientMsg::Say(line.clone()))?;}
         for &order in &bot.orders {
             if session.own_hero().is_none()
                 && order.unit.is_none()
