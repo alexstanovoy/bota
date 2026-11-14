@@ -366,7 +366,8 @@ pub fn ability_value(id: AbilityId, level: u8, key: &str) -> Option<Dec> {
         "AbilityCooldown" | "cooldown" => Some(ticks(bota_core::ability_cooldown(id, level))),
         "AbilityCastRange" | "cast_range" => Some(integer(def.range)),
         "AbilityCastPoint" | "cast_point" => Some(Dec(def.point.min(i32::MAX as u32) as i32)),
-        "AbilityChannelTime" | "channel_time" => Some(ticks(def.duration)),
+        "AbilityChannelTime" | "channel_time" => bota_core::ability_channel_time(id, level)
+            .map(|time| Dec(time.0.min(i32::MAX as u32) as i32)),
         _ => None,
     };
     common
@@ -801,6 +802,19 @@ fn hero_value(id: AbilityId, key: &str, level: u8) -> Option<Dec> {
             _ => None,
         },
         _ => None,
+    }
+}
+
+/// Whether a named spell is the observed cast point. O(1); an item cast is known not to be it.
+pub fn spell_in_cast_point(unit: &UnitView, id: AbilityId) -> bool {
+    unit.cast.is_some_and(|cast| cast.ability == Some(id))
+}
+/// No cast point is false. An observed item cast does not identify which item was used.
+pub fn item_in_cast_point(unit: &UnitView) -> Option<bool> {
+    match unit.cast {
+        None => Some(false),
+        Some(cast) if cast.ability.is_some() => Some(false),
+        Some(_) => None,
     }
 }
 

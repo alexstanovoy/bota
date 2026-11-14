@@ -33,3 +33,11 @@ pub const fn time_of_day(tick: u32, schedule: rules::Schedule) -> TimeOfDay {
         ticks_left: rules::HALF_DAY_TICKS - since_horn % rules::HALF_DAY_TICKS,
     }
 }
+
+/// Normalized clock phase as a numerator/denominator: sunrise is one quarter,
+/// sunset three quarters. O(1), using the same day/night schedule as the simulation.
+pub fn day_phase(tick: u32, schedule: rules::Schedule) -> (u32, u32) {
+    let cycle = 2 * rules::HALF_DAY_TICKS;
+    let shifted = i64::from(tick) - i64::from(schedule.horn) + i64::from(cycle / 4);
+    (shifted.rem_euclid(i64::from(cycle)) as u32, cycle)
+}

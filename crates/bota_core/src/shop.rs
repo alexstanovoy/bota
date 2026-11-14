@@ -160,6 +160,23 @@ pub fn at_any_shop(map: &MapDef, pos: Vec2, bound: Fixed) -> bool {
         || at_secret_shop(map, pos, bound)
 }
 
+/// Distance to the nearest secret shopkeeper, zero while the carrier touches a shop.
+/// O(secret shops × zone corners), bounded by the map tables. No client state is read.
+pub fn distance_from_secret_shop(map: &MapDef, position: Vec2, bound: Fixed) -> Option<i32> {
+    if map
+        .secret_shops
+        .iter()
+        .any(|shop| shop_zone_touches(shop.corners, position, bound))
+    {
+        return Some(0);
+    }
+    map.secret_shops
+        .iter()
+        .map(|shop| crate::isqrt64(position.distance_squared(shop.pos)) / 65536)
+        .min()
+        .map(|distance| distance.min(i64::from(i32::MAX)) as i32)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
