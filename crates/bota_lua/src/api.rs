@@ -47,7 +47,7 @@ fn global(
     name: &'static str,
     function: luagee::HostFunction,
 ) -> Result<(), BindingError> {
-    let function = lua.function(name, function)?;
+    let function = lua.function(name, crate::statistics::instrument(name, function))?;
     lua.set_global(name, function)?;
     Ok(())
 }
@@ -58,7 +58,7 @@ fn method(
     name: &'static str,
     function: luagee::HostFunction,
 ) -> Result<(), BindingError> {
-    let function = lua.function(name, function)?;
+    let function = lua.function(name, crate::statistics::instrument(name, function))?;
     let key = lua.string(name.as_bytes())?;
     lua.vm().raw_set(methods, key, function)?;
     Ok(())

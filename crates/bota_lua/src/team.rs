@@ -95,6 +95,7 @@ impl HookActivity {
 
 #[derive(Debug, Default)]
 pub struct TeamTurn {
+    pub statistics: Option<crate::statistics::TurnStatistics>,
     pub hook_activity: HookActivity,
     pub bots: Vec<BotTurn>,
     pub failures: Vec<ScriptFailure>,
@@ -199,6 +200,17 @@ impl LuaTeam {
         limits: Limits,
         keys: Keys,
     ) -> Result<Self, BindingError> {
+        Self::new_measured(team, seats, limits, keys, false)
+    }
+
+    /// Enables bounded embedding measurements; never exposes them to scripts.
+    pub fn new_measured(
+        team: Team,
+        seats: &[BotSeat],
+        limits: Limits,
+        keys: Keys,
+        measured: bool,
+    ) -> Result<Self, BindingError> {
         validate_seats(team, seats)?;
         let mut lua = Lua::new(limits, keys)?;
         let state = Rc::new(RefCell::new(State::new(team, seats)));
@@ -206,14 +218,19 @@ impl LuaTeam {
             .vm()
             .userdata(state.clone(), None, crate::state::HOST_STORAGE_BYTES)?;
         lua.pin(storage)?;
-        let vectors = vector::install(&mut lua)?;
+        let statistics = measured.then(crate::statistics::collector);
+        state.borrow_mut().statistics = statistics.clone();
+        let vectors =
+            crate::statistics::registering(statistics.clone(), || vector::install(&mut lua))?;
         for (index, name) in BOT_MODES.iter().enumerate() {
             lua.set_global(
                 &format!("BOT_MODE_{}", name.to_ascii_uppercase()),
                 Value::Number((index + 1) as f64),
             )?;
         }
-        api::install(&mut lua, state.clone(), vectors)?;
+        crate::statistics::registering(statistics, || {
+            api::install(&mut lua, state.clone(), vectors)
+        })?;
         let default_mode = crate::default_bot::install(&mut lua, state.clone())?;
         lua.pin(default_mode)?;
         let default_auxiliary = crate::default_bot::install_auxiliary(&mut lua, state.clone())?;
@@ -401,6 +418,30 @@ impl LuaTeam {
     }
 
     pub(crate) fn think_snapshot(&mut self, snapshot: Snapshot) -> Result<TeamTurn, BindingError> {
+        let statistics = self.state.borrow().statistics.clone();
+        if let Some(stats) = &statistics {
+            let mut data = stats.borrow_mut();
+            data.tick = snapshot.tick;
+            data.handles_ns = 0;
+            for entry in &mut data.api {
+                entry.calls = 0;
+                entry.cpu_ns = 0;
+            }
+        }
+        let began = statistics.as_ref().map(|_| crate::statistics::cpu_now());
+        let mut result = self.think_snapshot_inner(snapshot)?;
+        if let (Some(stats), Some(began)) = (statistics, began) {
+            let mut data = stats.borrow_mut();
+            data.cpu_ns = crate::statistics::cpu_now().saturating_sub(began);
+            data.fuel = self
+                .limits
+                .fuel_per_tick
+                .saturating_sub(self.lua.tick_fuel_left());
+            result.statistics = Some(data.clone());
+        }
+        Ok(result)
+    }
+    fn think_snapshot_inner(&mut self, snapshot: Snapshot) -> Result<TeamTurn, BindingError> {
         if snapshot.team != self.state.borrow().team
             || self.last_tick.is_some_and(|last| snapshot.tick <= last)
         {

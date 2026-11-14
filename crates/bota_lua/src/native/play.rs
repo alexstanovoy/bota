@@ -27,6 +27,23 @@ pub fn play_team<T: Transport>(
     connections: Vec<(T, Seated)>,
     worker: &mut NativeTeam,
 ) -> io::Result<TeamOutcome> {
+    play_team_recorded(connections, worker, None)
+}
+
+/// Optionally records the first seat's already-filtered stream in the existing replay framing.
+pub fn play_team_recorded<T: Transport>(
+    connections: Vec<(T, Seated)>,
+    worker: &mut NativeTeam,
+    mut recording: Option<&mut dyn io::Write>,
+) -> io::Result<TeamOutcome> {
+    if let Some(writer) = recording.as_deref_mut() {
+        record(
+            writer,
+            &bota_proto::ReplayRecord::Header(bota_proto::ReplayHeader::new(
+                bota_core::WIRE_FINGERPRINT,
+            )),
+        )?;
+    }
     let mut connections = prepare_connections(connections, worker)?;
     let mut result = TeamOutcome {
         hook_activity: HookActivity::default(),
@@ -38,9 +55,13 @@ pub fn play_team<T: Transport>(
     let mut last = None;
     let mut warned = false;
     for _ in 0..u32::MAX {
-        for connection in &mut connections {
+        for (index, connection) in connections.iter_mut().enumerate() {
             if connection.outcome.is_none() {
-                collect_tick(connection)?;
+                if index == 0 {
+                    collect_tick(connection, &mut recording)?;
+                } else {
+                    collect_tick(connection, &mut None)?;
+                }
             }
         }
         if connections
@@ -194,12 +215,20 @@ fn send_turn<T: Transport>(
     Ok(())
 }
 
-fn collect_tick<T: Transport>(connection: &mut Connection<T>) -> io::Result<()> {
+fn collect_tick<T: Transport>(
+    connection: &mut Connection<T>,
+    recording: &mut Option<&mut dyn io::Write>,
+) -> io::Result<()> {
     for _ in 0..65536 {
         let message = connection
             .transport
             .recv()?
             .ok_or_else(|| io::Error::other("server closed before match end"))?;
+        if (connection.seat.session().is_some() || matches!(message, ServerMsg::MatchStart { .. }))
+            && let Some(writer) = recording.as_deref_mut()
+        {
+            record(writer, &bota_proto::ReplayRecord::Msg(message.clone()))?;
+        }
         match connection
             .seat
             .ingest(message, &mut ())
@@ -261,4 +290,9 @@ fn stand(
         result.orders_sent += 1;
     }
     Ok(())
+}
+
+fn record(writer: &mut dyn io::Write, record: &bota_proto::ReplayRecord) -> io::Result<()> {
+    let frame = bota_proto::encode_frame_to_vec(record).map_err(io::Error::other)?;
+    writer.write_all(&frame)
 }

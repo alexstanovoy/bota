@@ -73,7 +73,7 @@ fn field(
     name: &'static str,
     function: luagee::HostFunction,
 ) -> Result<(), BindingError> {
-    let function = lua.function(name, function)?;
+    let function = lua.function(name, crate::statistics::instrument(name, function))?;
     let key = lua.string(name.as_bytes())?;
     lua.vm().raw_set(table, key, function)?;
     Ok(())
@@ -87,19 +87,22 @@ pub(crate) fn install(lua: &mut Lua) -> Result<Vectors, BindingError> {
     lua.pin(Value::Table(methods))?;
     let constructor = lua.function(
         "Vector",
-        Rc::new(move |vm, args| {
-            let value = [
-                number(vm, args, 0)?,
-                number(vm, args, 1)?,
-                if vm.arg(args, 2) == Value::Nil {
-                    0.0
-                } else {
-                    number(vm, args, 2)?
-                },
-            ];
-            let value = vectors.value(vm, value)?;
-            vm.results(&[value])
-        }),
+        crate::statistics::instrument(
+            "Vector",
+            Rc::new(move |vm, args| {
+                let value = [
+                    number(vm, args, 0)?,
+                    number(vm, args, 1)?,
+                    if vm.arg(args, 2) == Value::Nil {
+                        0.0
+                    } else {
+                        number(vm, args, 2)?
+                    },
+                ];
+                let value = vectors.value(vm, value)?;
+                vm.results(&[value])
+            }),
+        ),
     )?;
     lua.set_global("Vector", constructor)?;
     field(

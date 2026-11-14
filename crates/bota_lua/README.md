@@ -157,3 +157,25 @@ Tests pin these choices; passing a pin does not promote an inference to a source
 
 The inferred contracts and unsourced policy choices require verification or an
 explicit decision to retain an own-design policy before claiming engine parity.
+
+
+Embedding measurements and recorded runs
+---------------------------------------
+`bota_botscript --hash-keys A,B --rng-seed N` fixes both interpreter streams; the used
+keys and seed are always printed before connection or source loading. Supplying both enables
+fuel-bounded deterministic execution without wall deadlines. Without both, live play retains
+its wall-time guard (and therefore can discard turns differently under different machine load).
+`--summary-json PATH` opts into bounded per-turn fuel and per-thread CPU histograms and
+catalogue API counters. Histograms report exact min/max and base-two bucket upper bounds for
+median/p99. No timing measurements or API wrappers are installed for ordinary play.
+CPU splitting distinguishes snapshot capture, unit/ability handle construction, API work
+(excluding that construction), and other script execution. Fuel includes interpreter and host
+charges; it is not a count of bytecodes. On Linux CPU samples use the monotonic thread CPU clock.
+`--record-views PATH` records the first joined seat's filtered message stream using the existing
+replay framing. `--replay-in PATH --seat N --hash-keys A,B --rng-seed N` re-feeds it synchronously
+without a server, networking or wall deadlines. Use the same selection policy, source and binary.
+Fogless server recordings are refused: they do not retain the original seat observations.
+Both modes can write the same summary. Tick lists retain their first 256 entries with a total;
+API names are limited to 512 installed names including one other bucket. The first error retains
+at most 1024 Unicode characters and JSON encoding escapes control characters. Summary output is
+written beside its requested destination then atomically renamed; paths never come from scripts.

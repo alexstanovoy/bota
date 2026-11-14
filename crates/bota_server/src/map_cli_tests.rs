@@ -190,3 +190,15 @@ fn a_local_matchmaker_address_is_replaced_by_explicit_no_matchmaker_provenance()
         assert_eq!(context.account(0), None);
     }
 }
+
+#[test]
+fn rules_identity_option_does_not_require_a_match_configuration() {
+    let args = <crate::Args as clap::Parser>::try_parse_from(["bota_server", "--rules-identity"])
+        .expect("identity probe");
+    assert!(args.rules_identity);
+    assert!(!args.wire_fingerprint);
+    assert_eq!(
+        bota_proto::fingerprint_to_hex(bota_core::RULES_IDENTITY).len(),
+        16
+    );
+}

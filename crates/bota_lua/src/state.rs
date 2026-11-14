@@ -418,6 +418,8 @@ pub(crate) struct TeamDesires {
 pub(crate) struct State {
     pub activity_profiles:
         std::sync::Arc<std::collections::BTreeMap<String, bota_client_core::ActivityProfile>>,
+    pub statistics: Option<crate::statistics::SharedStatistics>,
+
     pub team: Team,
     pub seats: Vec<BotSeat>,
     pub declared_bots: [bool; 10],
@@ -442,6 +444,7 @@ impl State {
         Self {
             activity_profiles: std::sync::Arc::new(std::collections::BTreeMap::new()),
             team,
+            statistics: None,
             seats: seats.to_vec(),
             declared_bots: [false; 10],
             team_desires: TeamDesires::default(),
@@ -544,6 +547,7 @@ impl State {
     }
 
     pub fn handle(&mut self, vm: &mut Vm, id: Option<EntityId>) -> Result<Value, LuaError> {
+        let _timer = crate::statistics::HandleTimer::new(&self.statistics);
         let Some(id) = id else { return Ok(Value::Nil) };
         vm.charge_fuel(1 + self.units.len() as u64 / 8)?;
         if let Some((_, table)) = self.units.iter().find(|(unit, _)| *unit == id) {

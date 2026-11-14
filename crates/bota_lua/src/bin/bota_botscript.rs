@@ -1,7 +1,9 @@
 use bota_client_core::{Link, Transport, greet};
 use bota_lua::{
     BotSeat, SCRIPT_LIMITS,
-    native::{HeroSelection, NativeConfig, NativeTeam, load_modules, play_team, random_keys},
+    native::{
+        HeroSelection, NativeConfig, NativeTeam, load_modules, play_team_recorded, random_keys,
+    },
 };
 use bota_proto::{ClientMsg, HeroId, Role, SeatKey, Team};
 use std::{path::PathBuf, process::ExitCode, time::Duration};
@@ -18,6 +20,12 @@ struct Options {
     hero: HeroId,
     think_ms: u64,
     hero_selection: HeroSelection,
+    hash_keys: Option<[u64; 2]>,
+    rng_seed: Option<u64>,
+    summary: Option<PathBuf>,
+    replay: Option<PathBuf>,
+    recording: Option<PathBuf>,
+    seat: u8,
 }
 fn main() -> ExitCode {
     match run() {
@@ -41,6 +49,51 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     let options = options()?;
+    let mut keys = if let (Some(hash), Some(random)) = (options.hash_keys, options.rng_seed) {
+        bota_lua::Keys { hash, random }
+    } else {
+        random_keys()?
+    };
+    if let Some(hash) = options.hash_keys {
+        keys.hash = hash;
+    }
+    if let Some(random) = options.rng_seed {
+        keys.random = random;
+    }
+    println!(
+        "script_keys hash_keys={},{} rng_seed={}",
+        keys.hash[0], keys.hash[1], keys.random
+    );
+    let result = run_match(&options, keys);
+    if let Err(error) = &result
+        && let Some(path) = &options.summary
+    {
+        let mut stats = bota_lua::statistics::RunStatistics::default();
+        stats.failure(&error.to_string());
+        stats.write_atomic(path, keys, serde_json::json!({"error":stats.first_error}))?;
+    }
+    result
+}
+fn run_match(options: &Options, keys: bota_lua::Keys) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(path) = &options.replay {
+        let modules = load_modules(&options.scripts, options.runtime.as_deref(), SCRIPT_LIMITS)?;
+        let result = bota_lua::native::refeed(
+            bota_client_core::ReplayPlayer::load(path)?,
+            bota_proto::SlotId(options.seat),
+            modules,
+            keys,
+            options.hero_selection,
+            |_, _| {},
+        )?;
+        if let Some(path) = &options.summary {
+            result.statistics.write_atomic(path,keys,serde_json::json!({"winner":format!("{:?}",result.winner),"ticks":result.ticks,"orders":result.orders,"offline":true}))?;
+        }
+        println!(
+            "refeed_result ticks={} orders={} script_failures={}",
+            result.ticks, result.orders, result.statistics.script_failures
+        );
+        return Ok(());
+    }
     let credentials = credentials(options.team)?;
     let modules = load_modules(&options.scripts, options.runtime.as_deref(), SCRIPT_LIMITS)?;
     let mut joined = Vec::new();
@@ -56,8 +109,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             hero: options.hero,
         })
         .collect();
-    let mut config = NativeConfig::new(options.team, seats, random_keys()?);
+    let mut config = NativeConfig::new(options.team, seats, keys);
     config.hero_selection = options.hero_selection;
+    config.statistics = options.summary.is_some();
+    config.deterministic = options.hash_keys.is_some() && options.rng_seed.is_some();
     config.think_timeout = Duration::from_millis(options.think_ms);
     let mut worker = NativeTeam::new(config, modules)?;
     for (link, seated) in &mut joined {
@@ -71,7 +126,24 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         link.send(&ClientMsg::SetReady(true))?;
         seated.hero = Some(hero);
     }
-    let result = play_team(joined, &mut worker)?;
+    let mut recording = options
+        .recording
+        .as_ref()
+        .map(|path| std::fs::File::create(path).map(std::io::BufWriter::new))
+        .transpose()?;
+    let result = play_team_recorded(
+        joined,
+        &mut worker,
+        recording
+            .as_mut()
+            .map(|writer| writer as &mut dyn std::io::Write),
+    )?;
+    if let Some(writer) = &mut recording {
+        std::io::Write::flush(writer)?;
+    }
+    if let (Some(path), Some(stats)) = (&options.summary, worker.statistics()) {
+        stats.write_atomic(path,keys,serde_json::json!({"retired":result.retired,"orders":result.orders_sent,"seats":result.outcomes.iter().map(|outcome| serde_json::json!({"slot":outcome.slot.0,"winner":format!("{:?}",outcome.winner),"ticks":outcome.ticks})).collect::<Vec<_>>()}))?;
+    }
     println!(
         "match_result seats={} orders={} script_failures={} retired={} script_initializations={} script_hooks={} native_hooks={} suppressed_team_errors={} deadline_ticks={}",
         result.outcomes.len(),
@@ -87,8 +159,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 fn options() -> Result<Options, Box<dyn std::error::Error>> {
-    let args: Vec<_> = std::env::args_os().skip(1).take(33).collect();
-    if args.len() > 32 || args.len() % 2 != 0 {
+    options_from(std::env::args_os().skip(1).take(33).collect())
+}
+fn options_from(args: Vec<std::ffi::OsString>) -> Result<Options, Box<dyn std::error::Error>> {
+    if args.len() > 32 || !args.len().is_multiple_of(2) {
         return Err("usage: bota_botscript --scripts DIR [--runtime-scripts DIR] [--address HOST:PORT] [--team radiant|dire] [--hero KEY] [--selection pack|fixed] [--think-ms N]".into());
     }
     let mut options = Options {
@@ -99,9 +173,32 @@ fn options() -> Result<Options, Box<dyn std::error::Error>> {
         hero: HeroId::SHADOW_FIEND,
         think_ms: 33,
         hero_selection: HeroSelection::Pack,
+        hash_keys: None,
+        rng_seed: None,
+        summary: None,
+        replay: None,
+        recording: None,
+        seat: 0,
     };
     for pair in args.as_chunks::<2>().0 {
         match pair[0].to_str().ok_or("invalid option")? {
+            "--hash-keys" => {
+                let text = pair[1].to_str().ok_or("invalid hash keys")?;
+                let (a, b) = text.split_once(',').ok_or("hash keys must be A,B")?;
+                options.hash_keys = Some([a.parse()?, b.parse()?]);
+            }
+            "--rng-seed" => {
+                options.rng_seed = Some(pair[1].to_str().ok_or("invalid RNG seed")?.parse()?)
+            }
+            "--summary-json" => options.summary = Some(PathBuf::from(&pair[1])),
+            "--record-views" => options.recording = Some(PathBuf::from(&pair[1])),
+            "--replay-in" => options.replay = Some(PathBuf::from(&pair[1])),
+            "--seat" => {
+                options.seat = pair[1].to_str().ok_or("invalid seat")?.parse()?;
+                if options.seat >= 10 {
+                    return Err("invalid seat".into());
+                }
+            }
             "--selection" => {
                 options.hero_selection = match pair[1].to_str() {
                     Some("fixed") => HeroSelection::Fixed,
@@ -128,6 +225,12 @@ fn options() -> Result<Options, Box<dyn std::error::Error>> {
             "--think-ms" => options.think_ms = pair[1].to_str().ok_or("invalid budget")?.parse()?,
             _ => return Err("unknown option".into()),
         }
+    }
+    if options.replay.is_some() && (options.hash_keys.is_none() || options.rng_seed.is_none()) {
+        return Err("--replay-in requires --hash-keys and --rng-seed".into());
+    }
+    if options.replay.is_some() && options.summary.is_none() {
+        return Err("--replay-in requires --summary-json".into());
     }
     if options.scripts.as_os_str().is_empty() {
         return Err("--scripts is required".into());
@@ -198,6 +301,42 @@ mod tests {
     use super::*;
     use bota_lua::{Keys, ModuleBank, native::NativeError};
 
+    #[test]
+    fn replay_options_preserve_exact_keys_seed_and_output_path() {
+        let options = options_from(
+            [
+                "--scripts",
+                "pack",
+                "--hash-keys",
+                "18446744073709551615,0",
+                "--rng-seed",
+                "17",
+                "--summary-json",
+                "out.json",
+                "--replay-in",
+                "match.brp",
+                "--seat",
+                "1",
+            ]
+            .into_iter()
+            .map(Into::into)
+            .collect(),
+        )
+        .unwrap();
+        assert_eq!(options.hash_keys, Some([u64::MAX, 0]));
+        assert_eq!(options.rng_seed, Some(17));
+        assert_eq!(options.seat, 1);
+        assert_eq!(options.summary, Some(PathBuf::from("out.json")));
+        assert!(
+            options_from(
+                ["--scripts", "pack", "--replay-in", "match.brp"]
+                    .into_iter()
+                    .map(Into::into)
+                    .collect()
+            )
+            .is_err()
+        );
+    }
     #[test]
     fn startup_diagnostics_escape_script_control_characters() {
         let mut modules = ModuleBank::new(SCRIPT_LIMITS);

@@ -26,7 +26,7 @@ fn a_discarded_courier_turn_retries_its_unpublished_request() {
         .stack_size(16 << 20)
         .spawn(move || {
             let (mut lua, _) =
-                build(config, support::courier_modules(false), &input).expect("setup");
+                build(config, support::courier_modules(false), Some(&input)).expect("setup");
             ready.send(()).expect("ready");
             let mut held = false;
             run_with_reply_hook(&mut lua, input, output, |reply| {
@@ -53,12 +53,14 @@ fn a_discarded_courier_turn_retries_its_unpublished_request() {
         worker: Some(worker),
         team: Team::Radiant,
         seats: Vec::new(),
+        deterministic: false,
         timeout: Duration::from_millis(33),
         last_tick: None,
         in_flight: false,
         late_ticks: 0,
         deadline_ticks: 0,
         discard_previous: false,
+        statistics: None,
     };
     assert!(matches!(
         native.think(&sessions[0]),
@@ -114,12 +116,14 @@ fn lifecycle_drop_returns_before_an_inflight_worker_is_released() {
         worker: Some(worker),
         team: Team::Radiant,
         seats: Vec::new(),
+        deterministic: false,
         timeout: Duration::ZERO,
         last_tick: None,
         in_flight: false,
         late_ticks: 0,
         deadline_ticks: 0,
         discard_previous: false,
+        statistics: None,
     };
     let (returned, dropped) = mpsc::channel();
     let caller = thread::spawn(move || {
@@ -221,12 +225,14 @@ fn one_late_reply_is_discarded_without_retiring_the_worker() {
         worker: Some(worker),
         team: Team::Radiant,
         seats: Vec::new(),
+        deterministic: false,
         timeout: Duration::from_millis(33),
         last_tick: None,
         in_flight: false,
         late_ticks: 0,
         deadline_ticks: 0,
         discard_previous: false,
+        statistics: None,
     };
     let first = native.think(&sessions[0]);
     let active = !native.retired();
@@ -268,6 +274,7 @@ fn one_late_reply_is_discarded_without_retiring_the_worker() {
 
 fn marker_turn(tick: u32) -> TeamTurn {
     TeamTurn {
+        statistics: None,
         bots: vec![crate::BotTurn {
             slot: bota_proto::SlotId(0),
             orders: vec![bota_client_core::IssuedOrder::hero(
@@ -302,12 +309,14 @@ fn consecutive_late_ticks_retire_a_still_busy_worker_without_queueing_more_work(
         worker: Some(worker),
         team: Team::Radiant,
         seats: Vec::new(),
+        deterministic: false,
         timeout: Duration::from_millis(33),
         last_tick: None,
         in_flight: false,
         late_ticks: 0,
         deadline_ticks: 0,
         discard_previous: false,
+        statistics: None,
     };
     let mut retired = Vec::new();
     for _ in 0..3 {
@@ -365,7 +374,7 @@ fn a_discarded_completion_turn_requeues_stop_until_a_turn_is_accepted() {
     let worker = thread::Builder::new()
         .stack_size(16 << 20)
         .spawn(move || {
-            let (mut lua, _) = build(config, modules, &input).expect("worker setup");
+            let (mut lua, _) = build(config, modules, Some(&input)).expect("worker setup");
             ready.send(()).expect("ready");
             let mut held = false;
             run_with_reply_hook(&mut lua, input, output, |reply| {
@@ -397,12 +406,14 @@ fn a_discarded_completion_turn_requeues_stop_until_a_turn_is_accepted() {
         worker: Some(worker),
         team: Team::Radiant,
         seats: Vec::new(),
+        deterministic: false,
         timeout: Duration::from_millis(33),
         last_tick: None,
         in_flight: false,
         late_ticks: 0,
         deadline_ticks: 0,
         discard_previous: false,
+        statistics: None,
     };
     let mut late_completion = false;
     let mut stops = 0;

@@ -13,6 +13,7 @@ mod modules;
 pub mod native;
 mod numeric;
 mod state;
+pub mod statistics;
 mod team;
 mod vector;
 

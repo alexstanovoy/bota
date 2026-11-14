@@ -186,6 +186,7 @@ pub(super) fn handle(
     state: &mut State,
     identity: Option<Identity>,
 ) -> Result<Value, LuaError> {
+    let _timer = crate::statistics::HandleTimer::new(&state.statistics);
     let Some(identity) = identity else {
         return Ok(Value::Nil);
     };

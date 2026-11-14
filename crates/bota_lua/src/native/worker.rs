@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 const MAX_CONSECUTIVE_LATE_TICKS: u8 = 3;
 // At the measured ~13ns/fuel, 600k leaves over four times the execution margin
 // inside 33ms, including snapshot copying, collection, and scheduling jitter.
-const NATIVE_LIMITS: Limits = SCRIPT_LIMITS
+pub(super) const NATIVE_LIMITS: Limits = SCRIPT_LIMITS
     .with_fuel_per_call(125_000)
     .with_fuel_per_tick(600_000);
 
@@ -25,6 +25,9 @@ pub struct NativeConfig {
     pub hero_selection: HeroSelection,
     /// Trusted wire-seat declarations. Undeclared foreign seats are treated as human.
     pub declared_bot_slots: Vec<SlotId>,
+    pub statistics: bool,
+    /// Use bounded fuel without a wall deadline for reproducible local runs.
+    pub deterministic: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -45,6 +48,8 @@ impl NativeConfig {
             startup_timeout: Duration::from_secs(30),
             hero_selection: HeroSelection::Pack,
             declared_bot_slots: Vec::new(),
+            statistics: false,
+            deterministic: false,
         }
     }
 }
@@ -71,7 +76,8 @@ impl std::fmt::Display for NativeError {
 }
 impl std::error::Error for NativeError {}
 type Reply = Result<TeamTurn, NativeError>;
-struct Request {
+pub(super) struct Request {
+    capture_ns: u64,
     snapshot: Snapshot,
     previous_discarded: bool,
 }
@@ -87,11 +93,13 @@ pub struct NativeTeam {
     team: Team,
     seats: Vec<BotSeat>,
     timeout: Duration,
+    deterministic: bool,
     last_tick: Option<u32>,
     in_flight: bool,
     late_ticks: u8,
     deadline_ticks: u64,
     discard_previous: bool,
+    statistics: Option<crate::statistics::RunStatistics>,
 }
 impl NativeTeam {
     pub fn new(config: NativeConfig, modules: ModuleBank) -> Result<Self, NativeError> {
@@ -117,6 +125,8 @@ impl NativeTeam {
                 "native limits may only reduce the script host limits".to_owned(),
             ));
         }
+        let measured = config.statistics;
+        let deterministic = config.deterministic;
         let permit = WorkerPermit::acquire()?;
         let (requests, input) = mpsc::sync_channel(1);
         let (output, replies) = mpsc::sync_channel(1);
@@ -130,7 +140,7 @@ impl NativeTeam {
                 let _permit = permit;
                 match catch_unwind(AssertUnwindSafe(|| {
                     before_start();
-                    build(config, modules, &input)
+                    build(config, modules, Some(&input))
                 })) {
                     Ok(Ok((mut lua, seats))) => {
                         if ready.send(Ok(seats)).is_ok() {
@@ -154,11 +164,13 @@ impl NativeTeam {
                 team,
                 seats,
                 timeout,
+                deterministic,
                 last_tick: None,
                 in_flight: false,
                 late_ticks: 0,
                 deadline_ticks: 0,
                 discard_previous: false,
+                statistics: measured.then(Default::default),
             }),
             result => {
                 drop(requests);
@@ -181,14 +193,24 @@ impl NativeTeam {
         if self.retired() {
             return Err(NativeError::Retired);
         }
+        if self.deterministic {
+            return self.think_deterministic(session);
+        }
         let began = Instant::now();
         if session.team() != self.team {
             return Err(NativeError::Input(
                 "worker needs its team's filtered session".to_owned(),
             ));
         }
+        let capture_start = self
+            .statistics
+            .as_ref()
+            .map(|_| crate::statistics::cpu_now());
         let snapshot =
             Snapshot::capture(session).map_err(|error| NativeError::Input(error.to_string()))?;
+        let capture_ns = capture_start.map_or(0, |start| {
+            crate::statistics::cpu_now().saturating_sub(start)
+        });
         if self.last_tick.is_some_and(|last| snapshot.tick <= last) {
             return Err(NativeError::Input("worker tick must increase".to_owned()));
         }
@@ -204,6 +226,7 @@ impl NativeTeam {
             return self.late();
         }
         let request = Request {
+            capture_ns,
             snapshot,
             previous_discarded: self.discard_previous,
         };
@@ -232,6 +255,53 @@ impl NativeTeam {
         }
     }
 
+    fn think_deterministic(&mut self, session: &ClientSession) -> Reply {
+        if session.team() != self.team {
+            return Err(NativeError::Input(
+                "worker needs its team's filtered session".to_owned(),
+            ));
+        }
+        let start = self
+            .statistics
+            .as_ref()
+            .map(|_| crate::statistics::cpu_now());
+        let snapshot =
+            Snapshot::capture(session).map_err(|error| NativeError::Input(error.to_string()))?;
+        if self.last_tick.is_some_and(|tick| snapshot.tick <= tick) {
+            return Err(NativeError::Input("worker tick must increase".to_owned()));
+        }
+        self.last_tick = Some(snapshot.tick);
+        let capture_ns = start.map_or(0, |start| {
+            crate::statistics::cpu_now().saturating_sub(start)
+        });
+        self.requests
+            .as_ref()
+            .expect("active worker")
+            .send(Request {
+                capture_ns,
+                snapshot,
+                previous_discarded: false,
+            })
+            .map_err(|_| NativeError::Closed)?;
+        let reply = self
+            .replies
+            .as_ref()
+            .expect("active worker")
+            .recv()
+            .map_err(|_| NativeError::Closed)?;
+        if let (Some(summary), Ok(turn)) = (&mut self.statistics, &reply) {
+            record_turn(summary, turn);
+        }
+        if reply.is_err() {
+            self.retire();
+        }
+        reply
+    }
+
+    pub fn statistics(&self) -> Option<&crate::statistics::RunStatistics> {
+        self.statistics.as_ref()
+    }
+
     fn remaining(&self, began: Instant) -> Option<Duration> {
         self.timeout
             .checked_sub(began.elapsed())
@@ -250,6 +320,9 @@ impl NativeTeam {
         {
             Ok(result) => {
                 self.in_flight = false;
+                if let (Some(summary), Ok(turn)) = (&mut self.statistics, &result) {
+                    record_turn(summary, turn);
+                }
                 if result.is_err() {
                     self.retire();
                 }
@@ -269,6 +342,10 @@ impl NativeTeam {
     }
 
     fn late(&mut self) -> Reply {
+        if let (Some(summary), Some(tick)) = (&mut self.statistics, self.last_tick) {
+            summary.late.record(tick);
+            summary.discarded.record(tick);
+        }
         self.deadline_ticks = self.deadline_ticks.saturating_add(1);
         self.late_ticks = self.late_ticks.saturating_add(1);
         if self.late_ticks >= MAX_CONSECUTIVE_LATE_TICKS {
@@ -287,20 +364,28 @@ impl Drop for NativeTeam {
         self.worker.take();
     }
 }
-fn build(
+pub(super) fn build(
     config: NativeConfig,
     modules: ModuleBank,
-    input: &Receiver<Request>,
+    input: Option<&Receiver<Request>>,
 ) -> Result<(LuaTeam, Vec<BotSeat>), NativeError> {
-    let mut lua =
-        LuaTeam::new(config.team, &config.seats, config.limits, config.keys).map_err(setup)?;
+    let mut lua = LuaTeam::new_measured(
+        config.team,
+        &config.seats,
+        config.limits,
+        config.keys,
+        config.statistics,
+    )
+    .map_err(setup)?;
     lua.set_bot_declarations(&config.declared_bot_slots)
         .map_err(setup)?;
     lua.set_modules(modules).map_err(setup)?;
     if config.hero_selection == HeroSelection::Pack {
         lua.prepare_selection().map_err(setup)?;
         for tick in 0..900 {
-            if matches!(input.try_recv(), Err(mpsc::TryRecvError::Disconnected)) {
+            if input.is_some_and(|input| {
+                matches!(input.try_recv(), Err(mpsc::TryRecvError::Disconnected))
+            }) {
                 return Err(NativeError::Closed);
             }
             let turn = lua.select_heroes(tick).map_err(setup)?;
@@ -333,7 +418,7 @@ fn run_with_reply_hook(
             lua.restore_host(checkpoint);
         }
         let checkpoint = lua.host_checkpoint();
-        let (reply, panicked) =
+        let (mut reply, panicked) =
             match catch_unwind(AssertUnwindSafe(|| lua.think_snapshot(request.snapshot))) {
                 Ok(result) => (
                     result.map_err(|error| NativeError::Input(error.to_string())),
@@ -341,6 +426,11 @@ fn run_with_reply_hook(
                 ),
                 Err(_) => (Err(NativeError::Panicked), true),
             };
+        if let Ok(turn) = &mut reply
+            && let Some(data) = &mut turn.statistics
+        {
+            data.capture_ns = request.capture_ns;
+        }
         previous = Some(checkpoint);
         before_reply(&reply);
         if output.send(reply).is_err() || panicked {
@@ -395,3 +485,21 @@ fn bounded_limits(limits: Limits) -> bool {
 
 #[cfg(test)]
 mod tests;
+
+pub(super) fn record_turn(summary: &mut crate::statistics::RunStatistics, turn: &TeamTurn) {
+    if let Some(data) = &turn.statistics {
+        summary.record(data);
+        summary.script_failures = summary
+            .script_failures
+            .saturating_add(turn.hook_activity.suppressed_team_errors);
+        for failure in &turn.failures {
+            summary.failure(&failure.error.to_string());
+            if matches!(
+                failure.error,
+                luagee::Error::Limit(luagee::Limit::FuelPerCall | luagee::Limit::FuelPerTick)
+            ) {
+                summary.fuel_exhaustions.record(data.tick);
+            }
+        }
+    }
+}

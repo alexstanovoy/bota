@@ -2,8 +2,10 @@
 
 use std::path::Path;
 mod play;
+mod refeed;
+pub use refeed::{RefeedOutcome, refeed};
 mod worker;
-pub use play::{TeamOutcome, play_team};
+pub use play::{TeamOutcome, play_team, play_team_recorded};
 pub use worker::{HeroSelection, NativeConfig, NativeError, NativeTeam};
 
 use crate::{BindingError, Limits, ModuleBank};

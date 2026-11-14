@@ -198,6 +198,9 @@ struct Args {
     /// client sends its own in its Hello, and one that differs is refused.
     #[arg(long)]
     wire_fingerprint: bool,
+    /// Print the deterministic game rules identity and exit.
+    #[arg(long)]
+    rules_identity: bool,
     /// Lockstep: tick-lengths to wait for a straggler before moving on.
     #[arg(long, default_value_t = 150)]
     ack_timeout_ticks: u32,
@@ -270,6 +273,13 @@ struct Args {
 fn main() -> ExitCode {
     survive_file_size_limit();
     let mut args = Args::parse();
+    if args.rules_identity {
+        println!(
+            "{}",
+            bota_proto::fingerprint_to_hex(bota_core::RULES_IDENTITY)
+        );
+        return ExitCode::SUCCESS;
+    }
     if args.wire_fingerprint {
         println!(
             "{}",

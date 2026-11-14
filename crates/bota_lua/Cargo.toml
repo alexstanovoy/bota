@@ -10,9 +10,11 @@ bota_client_core.workspace = true
 bota_core.workspace = true
 bota_proto.workspace = true
 luagee.workspace = true
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-rustix = { workspace = true, features = ["fs", "std"], optional = true }
+rustix = { workspace = true, features = ["fs", "std", "time"], optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 getrandom = { workspace = true, optional = true }
@@ -23,7 +25,7 @@ bota_server.workspace = true
 
 [features]
 default = []
-native = ["dep:rustix", "dep:getrandom", "dep:heatel"]
+native = ["dep:rustix", "dep:getrandom", "dep:heatel", "bota_client_core/ui"]
 
 [lints]
 workspace = true
