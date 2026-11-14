@@ -77,7 +77,7 @@ fn exhausted_clear_space_reports_failure_and_removes_the_arc_controller() {
     }
     assert!(
         !world.push.contains(unit),
-        "native exhaustion does not retain the controller"
+        "an exhausted clear-space search does not retain the controller (established from the installed game)"
     );
     assert_eq!(at(&world, unit), centre);
 }

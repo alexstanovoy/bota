@@ -338,6 +338,29 @@ fn base_field_sight_is_grounded_700_for_its_side_day_and_night_in_server_and_cli
             let ground = SightGround::lay(&statics, Some(&view)).expect("client sight");
             let mut lit = vec![false; rules::GRID_CELLS * rules::GRID_CELLS];
             ground.lit(&view, owner, &mut lit);
+            let enemy = if owner == Team::Radiant {
+                Team::Dire
+            } else {
+                Team::Radiant
+            };
+            let enemy_view = world.view(enemy);
+            for heading in 0..16 {
+                let point = point_ahead(
+                    centre,
+                    Angle {
+                        brads: heading * 4096,
+                    },
+                    rules::units(100),
+                );
+                assert!(
+                    !world.can_see_point(enemy, point),
+                    "{enemy:?} must not see {point:?} through the gate of {owner:?}, night={night}"
+                );
+                assert!(
+                    !ground.sees(&enemy_view, enemy, point),
+                    "{enemy:?} client sight must not include the gate of {owner:?}, night={night}"
+                );
+            }
             let mut clear_inside = 0;
             for heading in 0..16 {
                 let point = point_ahead(

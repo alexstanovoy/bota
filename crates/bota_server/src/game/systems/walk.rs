@@ -798,11 +798,7 @@ impl World {
             }
             return;
         }
-        if !self
-            .walking_obstacles(entity, &[])
-            .map_clear(from, target, leg.collision)
-            || (!self.phased(entity) && self.body_in_the_way(entity, from, target).is_some())
-        {
+        if !self.phased(entity) && self.body_in_the_way(entity, from, target).is_some() {
             self.walk_into(leg, target);
             return;
         }
