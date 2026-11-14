@@ -142,6 +142,7 @@ pub(crate) fn install(lua: &mut Lua, state: Shared, vectors: Vectors) -> Result<
     let methods = lua.vm().new_table()?;
     lua.pin(Value::Table(methods))?;
     state.borrow_mut().unit_methods = Some(methods);
+    lua.set_global("CDOTA_Bot_Script", Value::Table(methods))?;
     let context = context::ApiContext {
         state: state.clone(),
         vectors,

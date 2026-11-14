@@ -225,6 +225,7 @@ pub(super) fn install(lua: &mut Lua, units: TableId, state: Shared) -> Result<()
     let methods = lua.vm().new_table()?;
     lua.pin(Value::Table(methods))?;
     state.borrow_mut().ability_methods = Some(methods);
+    lua.set_global("CDOTABaseAbility_BotScript", Value::Table(methods))?;
     for name in [
         "IsNull",
         "GetName",

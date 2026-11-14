@@ -407,3 +407,13 @@ Illusion attack progress is projected at its worn hero sheet's rate for both
 wind-up and backswing; the real hero's current action is never copied. Cast
 progress already uses the same unscaled timebase on both bodies. Turning has no
 phase/progress field on this wire.
+
+
+`CDOTA_Bot_Script` and `CDOTABaseAbility_BotScript` expose the shared unit and
+ability/item method tables. Existing handles look up missing fields through those same tables:
+patching a class method changes subsequent calls, while an instance field takes precedence.
+These class names are established from the installed game, build 6975. Handles retain their
+host-maintained identity checks; a class table or copied method is not a unit/ability identity.
+Class access and script overrides spend normal interpreter table/instruction fuel; native calls
+retain their existing explicit charges.
+
