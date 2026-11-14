@@ -104,9 +104,8 @@ fn a_direct_human_cannot_state_a_bot_version() {
 
 #[test]
 fn a_seat_version_reaches_late_spectators_and_the_recorded_message() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target")
-        .join(format!("seat_version_{}.brp", std::process::id()));
+    // In the temporary directory, like the other net tests: a checkout built with CARGO_TARGET_DIR has no `target/`.
+    let path = std::env::temp_dir().join(format!("bota-seat-version-{}.brp", std::process::id()));
     let mut opts = realtime(3405);
     // Lockstep: the match moves only when its seats acknowledge a tick, which this bot never does,
     // so no clock, no stream of ticks to a client that is not reading and no catching up of a
