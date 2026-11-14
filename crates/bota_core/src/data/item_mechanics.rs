@@ -7,10 +7,11 @@ use bota_proto::{Aim, Attribute, Attributes, DamageKind, EffectId, Fixed, ItemId
 
 use super::items::*;
 use crate::{
-    Affects, AllyUse, AreaSupport, Buff, Carried, DamageBlock, Dec, DisassembleRule, Dispel, Drink,
-    Grenade, Immunity, ItemAura, ItemBarrier, ItemData, ItemDef, ItemModifier, LOTUS_TAKE_RANGE,
-    MagicBlock, Mend, NOTHING, Odds, OnAttack, PLAIN, Pool, ProcTargets, Reach, Recipe, Scroll,
-    Spends, Stat, Stock, Strike, UseSpec, hundredths_per_second, points, points_with, rules,
+    Affects, AllyUse, AreaSupport, AreaWaveSpec, Buff, Carried, DamageBlock, DamagePulse, Dec,
+    DisassembleRule, Dispel, Drink, Grenade, Immunity, ItemAura, ItemBarrier, ItemData, ItemDef,
+    ItemModifier, LOTUS_TAKE_RANGE, MagicBlock, Mend, NOTHING, Odds, OnAttack, PLAIN, Pool,
+    ProcTargets, Reach, Recipe, Scroll, Spends, Stat, Stock, Strike, UseSpec,
+    hundredths_per_second, points, points_with, rules,
 };
 
 /// The row of an item as its script gives it; a row of the catalog adds what bota does with it.
@@ -1633,6 +1634,74 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         )],
         auras: &[ItemAura::allies(0, int(&ITEM_VLADMIR, "aura_radius"))],
         ..from(&ITEM_VLADMIR)
+    },
+    ItemDef {
+        disassemble: DisassembleRule::Always,
+        carried: Carried {
+            damage: int(&ITEM_RADIANCE, "bonus_damage"),
+            evasion: odds(&ITEM_RADIANCE, "evasion"),
+            ..NOTHING
+        },
+        modifiers: &[ItemModifier {
+            pulse: Some(DamagePulse {
+                damage: int(&ITEM_RADIANCE, "aura_damage"),
+                illusion_damage: int(&ITEM_RADIANCE, "aura_damage_illusions"),
+                kind: DamageKind::Magical,
+                period: rules::TICKS_PER_SECOND,
+            }),
+            ..ItemModifier::buff(EffectId(116), Buff::many(&[]))
+        }],
+        auras: &[ItemAura::enemies(0, int(&ITEM_RADIANCE, "aura_radius"))],
+        aim: Some(Aim::Own),
+        immediate: true,
+        ignores_channel: true,
+        effect: UseSpec::Toggle,
+        ..from(&ITEM_RADIANCE)
+    },
+    ItemDef {
+        carried: Carried {
+            armor: armor(&ITEM_SHIVAS_GUARD, "bonus_armor"),
+            aoe_bonus: int(&ITEM_SHIVAS_GUARD, "bonus_aoe"),
+            ..NOTHING
+        },
+        modifiers: &[
+            // 7.41: Freezing Aura pierces debuff immunity, with no restoration reduction.
+            ItemModifier {
+                pierces_immunity: true,
+                ..ItemModifier::buff(
+                    EffectId(117),
+                    Buff::of(
+                        Stat::AttackSpeed,
+                        [int(&ITEM_SHIVAS_GUARD, "aura_attack_speed"); 4],
+                    ),
+                )
+            },
+            ItemModifier {
+                ticks: ticks(&ITEM_SHIVAS_GUARD, "blast_debuff_duration"),
+                ..ItemModifier::buff(
+                    EffectId(118),
+                    Buff::of(
+                        Stat::MovePct,
+                        [int(&ITEM_SHIVAS_GUARD, "blast_movement_speed"); 4],
+                    ),
+                )
+            },
+        ],
+        auras: &[ItemAura::enemies(0, int(&ITEM_SHIVAS_GUARD, "aura_radius"))],
+        aim: Some(Aim::Own),
+        immediate: true,
+        ignores_channel: true,
+        effect: UseSpec::Wave(AreaWaveSpec {
+            pierces_immunity: pierces_immunity(&ITEM_SHIVAS_GUARD),
+            radius: int(&ITEM_SHIVAS_GUARD, "blast_radius"),
+            speed: int(&ITEM_SHIVAS_GUARD, "blast_speed"),
+            damage: int(&ITEM_SHIVAS_GUARD, "blast_damage"),
+            debuff: 1,
+        }),
+        ..from(&ITEM_SHIVAS_GUARD)
+    },
+    ItemDef {
+        ..from(&ITEM_RECIPE_SHIVAS_GUARD)
     },
 ];
 
