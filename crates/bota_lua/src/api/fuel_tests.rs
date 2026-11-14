@@ -605,3 +605,104 @@ fn forgotten_tree_receivers_raise_the_unknown_unit_error() {
         .unwrap_err();
     assert!(error.to_string().contains("unit is no longer known"));
 }
+
+#[test]
+fn courier_count_pins_scan_fuel_in_a_populated_server_world() {
+    let (mut local, mut sessions) =
+        support::local_with_cheats(&[Team::Radiant, Team::Dire], bota_core::MAP2_ID);
+    let position = sessions[0].own_hero().unwrap().pos;
+    let command = sessions[0]
+        .issue(bota_client_core::IssuedOrder::hero(Order::Cheat {
+            cheat: bota_proto::Cheat::CreateCreeps {
+                enemy: false,
+                at: position,
+            },
+        }))
+        .unwrap();
+    for (session, stream) in sessions
+        .iter_mut()
+        .zip(local.step(&[&[command], &[]]).unwrap())
+    {
+        support::fold(session, stream);
+    }
+    let snapshot = Snapshot::capture(&sessions[0]).unwrap();
+    let count = snapshot.units.len() as u64;
+    assert!(count > 2);
+    for fuel in [
+        support::bare_native_call_fuel() + 8 + count,
+        support::bare_native_call_fuel() + 7 + count,
+    ] {
+        let state = Rc::new(RefCell::new(State::new(
+            Team::Radiant,
+            &[crate::BotSeat {
+                slot: SlotId(0),
+                hero: HeroId::SHADOW_FIEND,
+            }],
+        )));
+        state.borrow_mut().snapshot = Some(Snapshot::capture(&sessions[0]).unwrap());
+        let mut lua = Lua::new(
+            Limits::DEFAULT.with_fuel_per_tick(fuel),
+            Keys {
+                hash: [1, 2],
+                random: 3,
+            },
+        )
+        .unwrap();
+        let vectors = vector::install(&mut lua).unwrap();
+        install(&mut lua, state, vectors).unwrap();
+        let function = lua.global("GetNumCouriers").unwrap();
+        lua.begin_tick();
+        let result = lua.call(function, &[]);
+        if fuel == support::bare_native_call_fuel() + 8 + count {
+            assert_eq!(result.unwrap(), vec![Value::Number(1.0)]);
+        } else {
+            assert!(matches!(
+                result,
+                Err(luagee::Error::Limit(luagee::Limit::FuelPerTick))
+            ));
+        }
+    }
+}
+#[test]
+fn game_state_reports_init_selection_strategy_and_abort_from_host_facts() {
+    let state = Rc::new(RefCell::new(State::new(
+        Team::Radiant,
+        &[crate::BotSeat {
+            slot: SlotId(0),
+            hero: HeroId::SHADOW_FIEND,
+        }],
+    )));
+    let mut lua = Lua::new(
+        Limits::DEFAULT,
+        Keys {
+            hash: [1, 2],
+            random: 3,
+        },
+    )
+    .unwrap();
+    let vectors = vector::install(&mut lua).unwrap();
+    install(&mut lua, state.clone(), vectors).unwrap();
+    let function = lua.global("GetGameState").unwrap();
+    let query = |lua: &mut Lua| {
+        lua.begin_tick();
+        lua.call(function, &[]).unwrap()
+    };
+    assert_eq!(query(&mut lua), vec![Value::Number(0.0)]);
+    state.borrow_mut().selecting = true;
+    assert_eq!(query(&mut lua), vec![Value::Number(2.0)]);
+    state.borrow_mut().selecting = false;
+    state.borrow_mut().selection_finished = true;
+    assert_eq!(query(&mut lua), vec![Value::Number(3.0)]);
+    let (_, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    sessions[0]
+        .ingest(
+            bota_proto::ServerMsg::MatchAborted {
+                reason: bota_proto::AbortReason::Stopped,
+                stats: None,
+            },
+            &mut (),
+        )
+        .unwrap();
+    state.borrow_mut().snapshot = Some(Snapshot::capture(&sessions[0]).unwrap());
+    assert_eq!(query(&mut lua), vec![Value::Number(7.0)]);
+}

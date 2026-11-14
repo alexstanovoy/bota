@@ -95,6 +95,7 @@ pub struct NativeTeam {
     timeout: Duration,
     deterministic: bool,
     last_tick: Option<u32>,
+    last_ended: bool,
     in_flight: bool,
     late_ticks: u8,
     deadline_ticks: u64,
@@ -166,6 +167,7 @@ impl NativeTeam {
                 timeout,
                 deterministic,
                 last_tick: None,
+                last_ended: false,
                 in_flight: false,
                 late_ticks: 0,
                 deadline_ticks: 0,
@@ -211,9 +213,13 @@ impl NativeTeam {
         let capture_ns = capture_start.map_or(0, |start| {
             crate::statistics::cpu_now().saturating_sub(start)
         });
-        if self.last_tick.is_some_and(|last| snapshot.tick <= last) {
+        if self.last_tick.is_some_and(|last| {
+            snapshot.tick < last
+                || snapshot.tick == last && !(snapshot.ended.is_some() && !self.last_ended)
+        }) {
             return Err(NativeError::Input("worker tick must increase".to_owned()));
         }
+        self.last_ended = snapshot.ended.is_some();
         self.last_tick = Some(snapshot.tick);
         if self.in_flight {
             match self.receive(began) {
@@ -267,9 +273,13 @@ impl NativeTeam {
             .map(|_| crate::statistics::cpu_now());
         let snapshot =
             Snapshot::capture(session).map_err(|error| NativeError::Input(error.to_string()))?;
-        if self.last_tick.is_some_and(|tick| snapshot.tick <= tick) {
+        if self.last_tick.is_some_and(|tick| {
+            snapshot.tick < tick
+                || snapshot.tick == tick && !(snapshot.ended.is_some() && !self.last_ended)
+        }) {
             return Err(NativeError::Input("worker tick must increase".to_owned()));
         }
+        self.last_ended = snapshot.ended.is_some();
         self.last_tick = Some(snapshot.tick);
         let capture_ns = start.map_or(0, |start| {
             crate::statistics::cpu_now().saturating_sub(start)

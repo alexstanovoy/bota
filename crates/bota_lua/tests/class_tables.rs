@@ -48,3 +48,78 @@ function Think()
  assert(not pcall(base,{})); CDOTABaseAbility_BotScript.GetLevel=base
 end"#);
 }
+
+#[test]
+fn class_overrides_are_team_wide_but_never_cross_vm_boundaries() {
+    let (_, sessions) = support::local(&[Team::Radiant, Team::Radiant, Team::Dire]);
+    let keys = Keys {
+        hash: [1, 2],
+        random: 3,
+    };
+    let seats = [
+        BotSeat {
+            slot: SlotId(0),
+            hero: HeroId::SHADOW_FIEND,
+        },
+        BotSeat {
+            slot: SlotId(1),
+            hero: HeroId::SHADOW_FIEND,
+        },
+    ];
+    let mut team = LuaTeam::new(Team::Radiant, &seats, Limits::DEFAULT, keys).unwrap();
+    team.add_script(SlotId(0),ScriptKind::Takeover,"writer",b"function Think() CDOTA_Bot_Script.GetTeam=function() return 99 end; CDOTABaseAbility_BotScript.GetLevel=function() return 77 end end").unwrap();
+    team.add_script(SlotId(1),ScriptKind::Takeover,"reader",b"function Think() assert(GetBot():GetTeam()==99); assert(GetBot():GetAbilityByName('nevermore_shadowraze1'):GetLevel()==77) end").unwrap();
+    let turn = team.think(&sessions[0]).unwrap();
+    assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+    for (session, slot) in [(&sessions[0], SlotId(0)), (&sessions[2], SlotId(2))] {
+        let mut separate = LuaTeam::new(
+            session.team(),
+            &[BotSeat {
+                slot,
+                hero: HeroId::SHADOW_FIEND,
+            }],
+            Limits::DEFAULT,
+            keys,
+        )
+        .unwrap();
+        separate.add_script(slot,ScriptKind::Takeover,"separate_pack",b"function Think() assert(GetBot():GetTeam()==GetTeam()); assert(GetBot():GetAbilityByName('nevermore_shadowraze1'):GetLevel()~=77) end").unwrap();
+        assert!(separate.think(session).unwrap().failures.is_empty());
+    }
+}
+#[test]
+fn replacing_every_script_method_cannot_replace_host_fallback_dispatch() {
+    let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let execute = |overrides| {
+        let mut lua = LuaTeam::new(
+            Team::Radiant,
+            &[BotSeat {
+                slot: SlotId(0),
+                hero: HeroId::SHADOW_FIEND,
+            }],
+            Limits::DEFAULT,
+            Keys {
+                hash: [1, 2],
+                random: 3,
+            },
+        )
+        .unwrap();
+        if overrides {
+            lua.add_script(SlotId(0),ScriptKind::TeamDesires,"patch_classes",b"function TeamThink() for _,class in ipairs({CDOTA_Bot_Script,CDOTABaseAbility_BotScript}) do for key,value in pairs(class) do if type(value)=='function' then class[key]=function() error('script override reached by host') end end end end end").unwrap();
+        }
+        lua.think(&sessions[0]).unwrap()
+    };
+    let plain = execute(false);
+    let patched = execute(true);
+    assert!(plain.failures.is_empty());
+    assert!(patched.failures.is_empty(), "{:?}", patched.failures);
+    assert!(!plain.bots[0].orders.is_empty());
+    assert_eq!(plain.bots[0].orders, patched.bots[0].orders);
+}
+#[test]
+fn host_identity_metatables_remain_locked_for_units_and_abilities() {
+    run(br#"function Think()
+      local bot=GetBot(); local ability=bot:GetAbilityByName('nevermore_shadowraze1')
+      assert(getmetatable(bot)==false and getmetatable(ability)==false)
+      assert(not pcall(setmetatable,bot,{})); assert(not pcall(setmetatable,ability,{}))
+    end"#);
+}

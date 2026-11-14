@@ -4,7 +4,7 @@ use super::{
     globals::string,
 };
 use crate::BindingError;
-use bota_proto::{Audience, ClientMsg};
+use bota_proto::{Audience, Body, Line};
 use luagee::{Args, Lua, LuaError, Value, Vm};
 const CHAT_INTERVAL_TICKS: u32 = 30;
 pub(super) fn install(lua: &mut Lua, context: &ApiContext) -> Result<(), BindingError> {
@@ -24,17 +24,18 @@ fn chat(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaError
         Err(_) => return Err(vm.error("chat text must be UTF-8")),
     };
     vm.charge_fuel(length * 2)?;
-    if text.chars().any(char::is_control) {
-        return Err(vm.error("chat text contains control characters"));
-    }
     let all = match vm.arg(args, 2) {
         Value::Boolean(all) => all,
         _ => return Err(vm.arg_error(args, 2, "boolean expected")),
     };
-    let message = bota_client_core::say(if all { Audience::All } else { Audience::Team }, &text)
-        .map_err(|_| vm.error("chat text does not meet transport limits"))?;
-    let ClientMsg::Say(line) = message else {
-        unreachable!("say produces a line")
+    // Normalize printable padding only; the shared policy rejects control padding too.
+    let text = text.trim_matches(|ch: char| ch.is_whitespace() && !ch.is_control());
+    if bota_core::chat_text_fault(text).is_some() {
+        return Err(vm.error("chat text does not meet transport limits"));
+    }
+    let line = Line {
+        to: if all { Audience::All } else { Audience::Team },
+        body: Body::Text(text.to_owned()),
     };
     let mut state = context.state.borrow_mut();
     if state.own_id() != Some(id) {

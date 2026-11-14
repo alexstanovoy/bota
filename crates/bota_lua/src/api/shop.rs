@@ -38,7 +38,17 @@ pub(super) fn install(lua: &mut Lua, context: &ApiContext) -> Result<(), Binding
         lua.set_global(name, Value::Number(f64::from(value)))?;
     }
     register_unit(lua, context, "ActionImmediate_PurchaseItem", purchase)?;
-    register_unit(lua, context, "Action_PurchaseItem", purchase)
+    register_unit(lua, context, "Action_PurchaseItem", purchase)?;
+    let methods = context
+        .state
+        .borrow()
+        .unit_methods
+        .expect("installed unit methods");
+    let key = lua.string(b"ActionImmediate_PurchaseItem")?;
+    let callback = lua.vm().raw_get(methods, key)?;
+    lua.pin(callback)?;
+    context.state.borrow_mut().host_purchase = Some(callback);
+    Ok(())
 }
 
 fn purchase(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaError> {

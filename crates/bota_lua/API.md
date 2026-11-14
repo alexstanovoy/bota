@@ -465,3 +465,19 @@ foreign/non-active receivers return -1. A publicly dead owned hero has no queued
 This queue distinction and sentinel were established from the installed game, build 6975.
 Cost: checked receiver plus 8; no scan over the returned queue length.
 
+
+
+Class scope is VM-wide, not script-wide: the installed game's class registrations are VM
+globals shared while the active bot context changes (build 6975). All bots and scripts of one
+team/pack therefore see its class overrides. Another team or pack uses an independent `LuaTeam`
+and VM, so no override crosses that boundary. Host fallback dispatch captures and pins original
+bindings at installation; it never resolves host calls through a script-writable class table.
+A script override changes script lookups only. Fixed host dispatch retains its existing fuel price.
+
+
+`GetGameState` reports init0, active selection2, completed-selection/strategy3, pregame4,
+playing5, post-game6; an explicitly aborted session reports disconnect7. These API enum values
+are established from the installed game, build6975. End state comes from the client's received
+MatchOver/MatchAborted fact, not a server-side counter. An embedding may query one terminal
+transition at the last snapshot's tick; ordinary duplicate thinks still error. The live driver
+finishes on its end message and does not submit actions after the match.

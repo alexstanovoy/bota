@@ -97,6 +97,7 @@ pub(crate) struct PendingOnce {
 }
 
 pub(crate) struct Snapshot {
+    pub ended: Option<bota_client_core::SessionEnd>,
     pub statics: std::sync::Arc<bota_client_core::MatchStatic>,
     pub felled_trees: Vec<u32>,
     pub planted_trees: Vec<bota_proto::Vec2>,
@@ -238,6 +239,7 @@ impl Snapshot {
             ));
         }
         Ok(Self {
+            ended: session.ended(),
             statics: session.statics().clone(),
             felled_trees: view.felled_trees.clone(),
             planted_trees: view.planted_trees.clone(),
@@ -456,11 +458,13 @@ pub(crate) struct State {
     pub units: Vec<(EntityId, TableId)>,
     unit_identities: crate::handles::Identities<EntityId>,
     pub unit_methods: Option<TableId>,
+    pub host_purchase: Option<Value>,
     pub ability_methods: Option<TableId>,
     pub abilities: Vec<(super::api::abilities::Identity, TableId)>,
     pub ability_identities: crate::handles::Identities<super::api::abilities::Identity>,
     pub bots: Vec<BotState>,
     pub selecting: bool,
+    pub selection_finished: bool,
     pub picks: Vec<Option<HeroId>>,
     pub purchases: Option<super::api::shop::Projection>,
 }
@@ -482,11 +486,13 @@ impl State {
             units: Vec::new(),
             unit_identities: crate::handles::Identities::new(),
             unit_methods: None,
+            host_purchase: None,
             ability_methods: None,
             abilities: Vec::new(),
             ability_identities: crate::handles::Identities::new(),
             bots: (0..seats.len()).map(|_| BotState::default()).collect(),
             selecting: false,
+            selection_finished: false,
             picks: vec![None; seats.len()],
             purchases: None,
         }

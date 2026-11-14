@@ -104,14 +104,22 @@ fn courier(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaEr
 fn game_state(context: &ApiContext, vm: &mut Vm, _args: Args) -> Result<usize, LuaError> {
     vm.charge_fuel(super::CALL_FUEL)?;
     let state = context.state.borrow();
-    let value = if state.selecting {
-        2
-    } else if let Some(snapshot) = &state.snapshot {
-        if snapshot.game_tick < snapshot.horn {
-            4
-        } else {
-            5
+    let value = if let Some(snapshot) = &state.snapshot {
+        match snapshot.ended {
+            Some(bota_client_core::SessionEnd::Completed) => 6,
+            Some(bota_client_core::SessionEnd::Aborted) => 7,
+            None => {
+                if snapshot.game_tick < snapshot.horn {
+                    4
+                } else {
+                    5
+                }
+            }
         }
+    } else if state.selecting {
+        2
+    } else if state.selection_finished {
+        3
     } else {
         0
     };

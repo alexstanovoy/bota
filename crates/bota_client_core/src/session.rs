@@ -132,6 +132,13 @@ struct StreamState {
     unacked: Option<u32>,
 }
 
+/// The terminal fact received for this local session; no simulation state is inferred.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SessionEnd {
+    Completed,
+    Aborted,
+}
+
 /// The state of one client's match.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClientSession {
@@ -153,6 +160,7 @@ pub struct ClientSession {
     next_seq: u32,
     confirmations: confirmations::Confirmations,
     stream: StreamState,
+    ended: Option<SessionEnd>,
 }
 
 impl ClientSession {
@@ -217,6 +225,7 @@ impl ClientSession {
             next_seq: 0,
             confirmations: confirmations::Confirmations::default(),
             stream: StreamState::default(),
+            ended: None,
         }
     }
 
@@ -253,6 +262,7 @@ impl ClientSession {
                     )
                     .into());
                 }
+                self.ended = Some(SessionEnd::Completed);
                 Ok(Ingested::Over { winner, stats })
             }
             ServerMsg::MatchAborted { reason, stats } => {
@@ -262,6 +272,7 @@ impl ClientSession {
                     )
                     .into());
                 }
+                self.ended = Some(SessionEnd::Aborted);
                 Ok(Ingested::Aborted { reason, stats })
             }
             ServerMsg::MatchStart { .. } => {
@@ -607,6 +618,12 @@ impl ClientSession {
             Some(owner) => Some(owner.team),
             None => self.current.as_ref()?.viewer,
         }
+    }
+
+    /// The observed end message, absent before one was received.
+    #[inline]
+    pub fn ended(&self) -> Option<SessionEnd> {
+        self.ended
     }
 
     /// The latest folded snapshot.

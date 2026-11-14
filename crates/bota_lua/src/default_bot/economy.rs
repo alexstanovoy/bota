@@ -44,11 +44,11 @@ pub(super) fn purchase(vm: &mut Vm, shared: &Shared) -> Result<usize, LuaError> 
         let name = bota_core::item_def(item)
             .ok_or_else(|| vm.error("equipment goal is not registered"))?
             .key;
-        let table = state
-            .unit_methods
+        // Fixed dispatch work keeps the existing price; scripts cannot replace this binding.
+        vm.charge_fuel(5)?;
+        let function = state
+            .host_purchase
             .ok_or_else(|| vm.error("purchase binding is unavailable"))?;
-        let key = vm.new_string(b"ActionImmediate_PurchaseItem")?;
-        let function = vm.raw_get(table, key)?;
         let receiver = state.handle(vm, Some(unit))?;
         let argument = vm.new_string(name.as_bytes())?;
         (function, receiver, argument)

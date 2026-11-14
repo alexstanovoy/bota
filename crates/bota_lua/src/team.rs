@@ -455,8 +455,17 @@ impl LuaTeam {
         Ok(result)
     }
     fn think_snapshot_inner(&mut self, snapshot: Snapshot) -> Result<TeamTurn, BindingError> {
+        let terminal_transition = snapshot.ended.is_some()
+            && self
+                .state
+                .borrow()
+                .snapshot
+                .as_ref()
+                .is_some_and(|previous| previous.ended.is_none());
         if snapshot.team != self.state.borrow().team
-            || self.last_tick.is_some_and(|last| snapshot.tick <= last)
+            || self.last_tick.is_some_and(|last| {
+                snapshot.tick < last || snapshot.tick == last && !terminal_transition
+            })
         {
             return Err(BindingError::Configuration(
                 "think requires an increasing tick for this team",
@@ -616,6 +625,7 @@ impl LuaTeam {
     #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
     pub(crate) fn finish_selection(&mut self) -> Vec<BotSeat> {
         let mut state = self.state.borrow_mut();
+        state.selection_finished = true;
         for index in 0..state.seats.len() {
             state.seats[index].hero = state.picks[index].unwrap_or(state.seats[index].hero);
         }
