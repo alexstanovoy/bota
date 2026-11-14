@@ -467,6 +467,8 @@ checksum = "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
 [[package]]
 name = "luagee"
 version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d908746c4cc8c196be836521fc9dcc84cfb1f1c549b2dafed1b3f659c8bffb7e"
 
 [[package]]
 name = "memchr"

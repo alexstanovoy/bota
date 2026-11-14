@@ -17,7 +17,7 @@ bota_client_core = { path = "../../bota_client_core" }
 bota_core = { path = "../../bota_core" }
 bota_proto = { path = "../../bota_proto" }
 bota_server = { path = "../../bota_server" }
-luagee = { version = "0.1.0", default-features = false }
+luagee = { version = "0.1.1", default-features = false }
 libfuzzer-sys = "0.4"
 
 [workspace]

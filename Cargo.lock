@@ -902,6 +902,8 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 [[package]]
 name = "luagee"
 version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d908746c4cc8c196be836521fc9dcc84cfb1f1c549b2dafed1b3f659c8bffb7e"
 
 [[package]]
 name = "lz4_flex"
