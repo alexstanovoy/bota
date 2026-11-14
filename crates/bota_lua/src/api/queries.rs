@@ -108,7 +108,10 @@ fn install_nearby(lua: &mut Lua, methods: TableId, state: Shared) -> Result<(), 
                                 .and_then(|slot| {
                                     state.seats.iter().position(|seat| seat.slot == slot)
                                 })
-                                .is_some_and(|index| i64::from(state.bots[index].mode) == mode);
+                                .is_some_and(|index| {
+                                    i64::from(crate::team::engine_mode(state.bots[index].mode))
+                                        == mode
+                                });
                         known.visible
                             && other.id != own
                             && other.hp > 0

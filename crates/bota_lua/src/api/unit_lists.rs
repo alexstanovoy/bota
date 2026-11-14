@@ -8,25 +8,7 @@ use crate::BindingError;
 use bota_proto::{Team, UnitKind, UnitView};
 use luagee::{Args, Lua, LuaError, Value, Vm};
 
-const CATEGORIES: [(&str, i32); 12] = [
-    ("UNIT_LIST_ALL", 0),
-    ("UNIT_LIST_ALLIES", 1),
-    ("UNIT_LIST_ALLIED_HEROES", 2),
-    ("UNIT_LIST_ALLIED_CREEPS", 3),
-    ("UNIT_LIST_ALLIED_WARDS", 4),
-    ("UNIT_LIST_ALLIED_BUILDINGS", 5),
-    ("UNIT_LIST_ENEMIES", 6),
-    ("UNIT_LIST_ENEMY_HEROES", 7),
-    ("UNIT_LIST_ENEMY_CREEPS", 8),
-    ("UNIT_LIST_ENEMY_WARDS", 9),
-    ("UNIT_LIST_ENEMY_BUILDINGS", 10),
-    ("UNIT_LIST_NEUTRAL_CREEPS", 11),
-];
-
 pub(super) fn install(lua: &mut Lua, context: &ApiContext) -> Result<(), BindingError> {
-    for (name, value) in CATEGORIES {
-        lua.set_global(name, Value::Number(f64::from(value)))?;
-    }
     register_global(lua, context, "GetUnitList", unit_list)
 }
 
@@ -41,18 +23,30 @@ fn matches(category: i32, unit: &UnitView, side: Team) -> bool {
         3 => allied && definition.creep,
         4 => allied && unit.kind == UnitKind::Ward,
         5 => allied && definition.structure,
-        6 => enemy,
-        7 => enemy && unit.kind == UnitKind::Hero,
-        8 => enemy && definition.creep,
-        9 => enemy && unit.kind == UnitKind::Ward,
-        10 => enemy && definition.structure,
-        11 => unit.team == Team::Neutral && definition.creep,
+        6 => {
+            allied
+                && !definition.creep
+                && !definition.structure
+                && !matches!(unit.kind, UnitKind::Hero | UnitKind::Ward)
+        }
+        7 => enemy,
+        8 => enemy && unit.kind == UnitKind::Hero,
+        9 => enemy && definition.creep,
+        10 => enemy && unit.kind == UnitKind::Ward,
+        11 => enemy && definition.structure,
+        12 => {
+            enemy
+                && !definition.creep
+                && !definition.structure
+                && !matches!(unit.kind, UnitKind::Hero | UnitKind::Ward)
+        }
+        13 => unit.team == Team::Neutral && definition.creep,
         _ => false,
     }
 }
 
 fn unit_list(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaError> {
-    let category = bounded_integer(vm, args, 0, 0, 11)?;
+    let category = bounded_integer(vm, args, 0, 0, 14)?;
     let mut state = context.state.borrow_mut();
     let snapshot = state
         .snapshot

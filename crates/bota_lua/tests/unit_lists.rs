@@ -274,7 +274,7 @@ fn global_unit_lists_reject_invalid_categories_and_return_independent_tables() {
         br#"
         function Think()
             assert(type(GetUnitList) == 'function')
-            for _, value in ipairs({-1,12,0.5,1e300,-1e300,0/0,math.huge,-math.huge,{}}) do
+            for _, value in ipairs({-1,15,0.5,1e300,-1e300,0/0,math.huge,-math.huge,{}}) do
                 assert(not pcall(GetUnitList, value))
             end
             local first = GetUnitList(UNIT_LIST_ALLIED_HEROES)
@@ -283,6 +283,9 @@ fn global_unit_lists_reject_invalid_categories_and_return_independent_tables() {
             local second = GetUnitList(UNIT_LIST_ALLIED_HEROES)
             assert(second ~= first and second[1] == GetBot())
             assert(#GetUnitList(UNIT_LIST_NEUTRAL_CREEPS) == 0)
+            assert(type(GetUnitList(UNIT_LIST_ALLIED_OTHER)) == 'table')
+            assert(type(GetUnitList(UNIT_LIST_ENEMY_OTHER)) == 'table')
+            assert(#GetUnitList(UNIT_LIST_THINKERS) == 0)
             GetBot():Action_MoveToLocation(Vector(123,456,0))
         end
     "#,

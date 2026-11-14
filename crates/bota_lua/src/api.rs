@@ -16,6 +16,7 @@ pub(crate) mod abilities;
 mod activities;
 mod buyback;
 mod chat;
+mod constants;
 pub(crate) mod context;
 mod distances;
 mod environment;
@@ -83,48 +84,7 @@ fn identity(vm: &mut Vm, state: &State, args: Args) -> Result<bota_proto::Entity
 }
 
 pub(crate) fn install(lua: &mut Lua, state: Shared, vectors: Vectors) -> Result<(), BindingError> {
-    for (name, value) in [
-        ("TEAM_RADIANT", 2),
-        ("TEAM_DIRE", 3),
-        ("TEAM_NEUTRAL", 4),
-        ("BOT_MODE_NONE", 0),
-        ("BOT_MODE_ATTACK", 2),
-        ("LANE_TOP", 1),
-        ("LANE_MID", 2),
-        ("LANE_BOT", 3),
-    ] {
-        lua.set_global(name, Value::Number(f64::from(value)))?;
-    }
-    for (name, value) in [
-        ("DAMAGE_TYPE_PHYSICAL", 1),
-        ("DAMAGE_TYPE_MAGICAL", 2),
-        ("DAMAGE_TYPE_PURE", 4),
-        ("DAMAGE_TYPE_ALL", 7),
-        ("TOWER_TOP_1", 0),
-        ("TOWER_TOP_2", 1),
-        ("TOWER_TOP_3", 2),
-        ("TOWER_MID_1", 3),
-        ("TOWER_MID_2", 4),
-        ("TOWER_MID_3", 5),
-        ("TOWER_BOT_1", 6),
-        ("TOWER_BOT_2", 7),
-        ("TOWER_BOT_3", 8),
-        ("TOWER_BASE_1", 9),
-        ("TOWER_BASE_2", 10),
-    ] {
-        lua.set_global(name, Value::Number(f64::from(value)))?;
-    }
-    for (name, value) in [
-        ("BOT_MODE_DESIRE_NONE", 0.0),
-        ("BOT_MODE_DESIRE_VERYLOW", 0.1),
-        ("BOT_MODE_DESIRE_LOW", 0.25),
-        ("BOT_MODE_DESIRE_MODERATE", 0.5),
-        ("BOT_MODE_DESIRE_HIGH", 0.75),
-        ("BOT_MODE_DESIRE_VERYHIGH", 0.9),
-        ("BOT_MODE_DESIRE_ABSOLUTE", 1.0),
-    ] {
-        lua.set_global(name, Value::Number(value))?;
-    }
+    lua.set_global("BOT_MODE_NONE", Value::Number(0.0))?;
     let capture = state.clone();
     global(
         lua,
@@ -178,6 +138,7 @@ pub(crate) fn install(lua: &mut Lua, state: Shared, vectors: Vectors) -> Result<
     install_unit_reads(lua, methods, state.clone())?;
     install_bot_state(lua, methods, state.clone())?;
     install_actions(lua, methods, state, vectors)?;
+    constants::install(lua)?;
     Ok(())
 }
 
@@ -456,9 +417,9 @@ fn install_bot_state(lua: &mut Lua, methods: TableId, state: Shared) -> Result<(
                             }
                         }))
                     }
-                    "GetActiveMode" => {
-                        Value::Number(index.map_or(0.0, |index| f64::from(state.bots[index].mode)))
-                    }
+                    "GetActiveMode" => Value::Number(index.map_or(0.0, |index| {
+                        f64::from(crate::team::engine_mode(state.bots[index].mode))
+                    })),
                     "GetActiveModeDesire" => {
                         Value::Number(index.map_or(0.0, |index| state.bots[index].desire))
                     }

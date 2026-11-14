@@ -424,7 +424,7 @@ retain their existing explicit charges.
 | `GetShopLocation(team, shop)` | Public configured map geometry. `SHOP_HOME=0`, `SHOP_SIDE=1`, `SHOP_SECRET=2`, second side/secret ids 4/5; absent shop returns `Vector(0,0,0)`. Secret ids select the two neutral shops, independently of team. Home selects the team's fountain. 8 fuel. |
 | `DistanceFromSideShop()` | Current maps have no side shop: the installed integer-distance sentinel is -2147483648. A forgotten identity errors. Checked receiver plus 8 fuel. |
 | `GetNumCouriers()` / `GetCourier(index)` | Own side only; zero-based current courier roster, including fallen bodies. Out-of-range index returns nil; stable ordinary unit handles. 8 plus one per received/remembered body scanned, plus handle construction for a result. |
-| `GetGameState()` | Selection=2, pregame=4, game in progress=5; uses the observed game clock, including clock cheats. The post-game constant is 6; no think runs after match end. 8 fuel. |
+| `GetGameState()` | Init=0, selection=2, strategy=3, pregame=4, playing=5, completed=6, aborted=7. Uses received lifecycle facts and clock; the terminal snapshot may be processed once at the final tick. 8 fuel. |
 | `IsItemPurchasedFromSideShop(name)` | The current installed item data has no active SideShop flags, so false, including unknown names. 8 plus checked-string work. |
 
 These enum values and absent-shop behavior were established from the installed game, build 6975;
@@ -482,3 +482,16 @@ are established from the installed game, build6975. End state comes from the cli
 MatchOver/MatchAborted fact, not a server-side counter. An embedding may query one terminal
 transition at the last snapshot's tick; ordinary duplicate thinks still error. The live driver
 finishes on its end message and does not submit actions after the match.
+
+Numeric bot API constants follow the installed game (build 6975), including action desires,
+mode ids, ability behavior/target flags, courier states, activities, selection states and unit-list
+categories. The reference table test enumerates all 356 numeric registrations in that source.
+Mode ids are translated at the scheduler boundary; private scheduling indices are not public ids.
+Unit lists include the allied/enemy other and thinker categories (the simulator has no thinker units).
+Pack-local constants, misspellings and names absent from that API are not aliases.
+
+Constants are ordinary writable Lua globals, established from the installed game (build 6975).
+Overwriting them changes script-visible values, not the host's independently bound facts.
+The unit-list corrections replace former host ids: ENEMIES 6→7, enemy subcategories 7..10→8..11,
+and NEUTRAL_CREEPS 11→13. ALLIED_OTHER=6, ENEMY_OTHER=12 and THINKERS=14 are now defined;
+the previous numbers are not aliases.

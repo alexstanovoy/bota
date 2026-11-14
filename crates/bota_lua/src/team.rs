@@ -1203,6 +1203,17 @@ fn callback_error(error: luagee::LuaError) -> Error {
     }
 }
 
+/// Translate private scheduler indices to the installed game's public mode ids.
+pub(crate) const fn engine_mode(mode: u8) -> u8 {
+    match mode {
+        7..=13 => mode + 1,
+        14..=20 => mode + 2,
+        21 => 7,
+        22 => 26,
+        _ => mode,
+    }
+}
+
 pub(crate) const BOT_MODES: &[&str] = &[
     "laning",
     "attack",
