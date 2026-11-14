@@ -18,11 +18,13 @@ mod buyback;
 pub(crate) mod context;
 mod distances;
 mod estimates;
+mod environment;
 mod geometry;
 mod globals;
 mod glyph;
 mod item_queries;
 mod lane_desires;
+mod lane_front;
 mod match_metadata;
 mod math_queries;
 mod modifiers;
@@ -148,12 +150,14 @@ pub(crate) fn install(lua: &mut Lua, state: Shared, vectors: Vectors) -> Result<
         vectors,
     };
     patterns::install(lua, &context)?;
+    environment::install(lua, &context)?;
     distances::install(lua, &context)?;
     estimates::install(lua, &context)?;
     activities::install(lua, &context)?;
     projectiles::install(lua, &context)?;
     globals::install(lua, state.clone(), vectors)?;
     lane_desires::install(lua, &context)?;
+    lane_front::install(lua, &context)?;
     match_metadata::install(lua, &context)?;
     math_queries::install(lua, &context)?;
     structures::install(lua, &context)?;

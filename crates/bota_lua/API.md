@@ -417,3 +417,29 @@ host-maintained identity checks; a class table or copied method is not a unit/ab
 Class access and script overrides spend normal interpreter table/instruction fuel; native calls
 retain their existing explicit charges.
 
+
+| Query | Observations and cost above the interpreter's native-call price |
+|---|---|
+| `GetShopLocation(team, shop)` | Public configured map geometry. `SHOP_HOME=0`, `SHOP_SIDE=1`, `SHOP_SECRET=2`, second side/secret ids 4/5; absent shop returns `Vector(0,0,0)`. Secret ids select the two neutral shops, independently of team. Home selects the team's fountain. 8 fuel. |
+| `DistanceFromSideShop()` | Current maps have no side shop: the installed integer-distance sentinel is -2147483648. A forgotten identity errors. Checked receiver plus 8 fuel. |
+| `GetNumCouriers()` / `GetCourier(index)` | Own side only; zero-based current courier roster, including fallen bodies. Out-of-range index returns nil; stable ordinary unit handles. 8 plus one per received/remembered body scanned, plus handle construction for a result. |
+| `GetGameState()` | Selection=2, pregame=4, game in progress=5; uses the observed game clock, including clock cheats. The post-game constant is 6; no think runs after match end. 8 fuel. |
+| `IsItemPurchasedFromSideShop(name)` | The current installed item data has no active SideShop flags, so false, including unknown names. 8 plus checked-string work. |
+
+These enum values and absent-shop behavior were established from the installed game, build 6975;
+locations and the current roster use the configured map and the receiving side's observations.
+
+
+`GetLaneFrontAmount(team, lane, ignoreTowers)` returns progress in the viewer's orientation:
+allied fronts advance upward from 0, enemy fronts downward from 1. It considers observed living
+lane creeps within 1000 units of their lane and, unless ignored, observed towers of that team.
+Those extrema, defaults, orientation and tower inclusion were established from the installed game,
+build 6975. This host supports the single-wave-lane maps: their creep lane is public from the
+configured wave lanes. Other maps error rather than infer a creep's unobserved assigned lane.
+Canonical configured lane geometry supplies the projection. Cost: 32 + 8 per lane segment, plus
+per received body 4 + 8 per segment + the team's map tower rows. Hidden units never supply a front.
+`NumQueuedActions()` counts the active bot's waiting queue, excluding its running action;
+foreign/non-active receivers return -1. A publicly dead owned hero has no queued actions.
+This queue distinction and sentinel were established from the installed game, build 6975.
+Cost: checked receiver plus 8; no scan over the returned queue length.
+

@@ -235,7 +235,7 @@ fn install_positions(
 }
 
 // Engine lane enums are TOP=1, MID=2, BOT=3; core geometry is indexed MID, TOP, BOT.
-fn lane_id(lane: i64) -> Option<u8> {
+pub(super) fn lane_id(lane: i64) -> Option<u8> {
     match lane {
         1 => Some(bota_core::rules::LANE_TOP),
         2 => Some(bota_core::rules::LANE_MID),

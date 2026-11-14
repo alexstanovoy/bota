@@ -332,3 +332,38 @@ fn populated_projectile_results_pay_their_exact_scan_row_and_allocation_budget()
     // Frozen luagee 0.1 allocation prices plus the documented host row charge.
     assert_budget("IncomingPopulated", 111);
 }
+
+#[test]
+fn environment_queries_pay_exact_native_and_host_prices() {
+    fn call(name:&str,fuel:u64)->Result<Vec<Value>,luagee::Error> {
+        let (_,sessions)=support::local(&[Team::Radiant,Team::Dire]);
+        let snapshot=Snapshot::capture(&sessions[0]).unwrap();
+        let own=sessions[0].own_hero().unwrap().id;
+        let state=Rc::new(RefCell::new(State::new(Team::Radiant,&[crate::BotSeat {slot:SlotId(0),hero:HeroId::SHADOW_FIEND}])));
+        state.borrow_mut().snapshot=Some(snapshot);
+        let mut lua=Lua::new(Limits::DEFAULT.with_fuel_per_tick(fuel),Keys{hash:[1,2],random:3})?;
+        let vectors=vector::install(&mut lua).unwrap();install(&mut lua,state.clone(),vectors).unwrap();
+        if name=="GetCourier" {
+            let id=state.borrow().snapshot.as_ref().unwrap().units.iter().find(|known|known.unit.kind==bota_proto::UnitKind::Courier && known.unit.team==Team::Radiant).unwrap().unit.id;
+            state.borrow_mut().handle(lua.vm(),Some(id)).unwrap();
+        }
+        let (function,args)=if matches!(name,"DistanceFromSideShop"|"ActionImmediate_Chat"|"Action_Chat"|"GetNearbyTrees"|"NumQueuedActions") {
+            let receiver=state.borrow_mut().handle(lua.vm(),Some(own)).unwrap();let key=lua.string(name.as_bytes())?;
+            { let mut args=vec![receiver];if name=="GetNearbyTrees" {args.push(Value::Number(0.0));}else if !matches!(name,"DistanceFromSideShop"|"NumQueuedActions") {args.push(lua.string(b"hi")?);args.push(Value::Boolean(false));} (lua.vm().raw_get(state.borrow().unit_methods.unwrap(),key).unwrap(),args) }
+        }else{
+            let args=match name {"GetLaneFrontAmount"=>vec![Value::Number(2.0),Value::Number(2.0),Value::Boolean(true)],"GetShopLocation"=>vec![Value::Number(2.0),Value::Number(1.0)],"GetCourier"=>vec![Value::Number(0.0)],"IsItemPurchasedFromSideShop"=>vec![lua.string(b"item_boots")?],_=>vec![]};
+            (lua.global(name)?,args)
+        };
+        lua.begin_tick();lua.call(function,&args)
+    }
+    let (_,sessions)=support::local(&[Team::Radiant,Team::Dire]);
+    let units=sessions[0].entities().len() as u64;
+    let segments=bota_core::lane_polyline(sessions[0].map(),bota_core::rules::LANE_MID).len()-1;
+    let towers=sessions[0].map().radiant_towers.len();
+    let front_price=32+8*segments as u64+units*(4+8*segments as u64+towers as u64);
+    for (name,work) in [("GetShopLocation",12),("GetGameState",8),("IsItemPurchasedFromSideShop",9),("GetNumCouriers",8+units),("GetCourier",9+units),("DistanceFromSideShop",9+units/8),("NumQueuedActions",9+units/8),("GetLaneFrontAmount",front_price)] {
+        let minimum=support::bare_native_call_fuel()+work;
+        assert!(call(name,minimum).is_ok(),"{name} minimum {minimum}");
+        assert!(matches!(call(name,minimum-1),Err(luagee::Error::Limit(luagee::Limit::FuelPerTick))),"{name} minimum-1");
+    }
+}
