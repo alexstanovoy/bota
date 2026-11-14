@@ -13,16 +13,7 @@ pub(super) fn project(
     velocity: Option<bota_client_core::VelocityEstimate>,
     delay: f64,
 ) -> Option<Vec2> {
-    let Some(velocity) = velocity else {
-        return Some(position);
-    };
-    if velocity.elapsed_ticks == 0 {
-        return None;
-    }
-    let ratio = delay * 30.0 / f64::from(velocity.elapsed_ticks);
-    let origin = point(position);
-    let delta = point(velocity.delta);
-    fixed([origin[0] + delta[0] * ratio, origin[1] + delta[1] * ratio])
+    bota_client_core::project_observed_position(position, velocity, delay)
 }
 
 type Point = [f64; 2];

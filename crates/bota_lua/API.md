@@ -534,3 +534,33 @@ There is no additional instruction or fuel charge, even at exhaustion boundaries
 is installed when measurement is off. Callback work is bounded by 128 retained names and 64-byte
 identifier checks; telemetry pays CPU overhead outside the script's fuel. Cumulative snapshots
 preserve initialization counts and run aggregation does not double count them.
+
+## Shared observation and movement queries
+
+The following extensions use the installed game's bot API conventions (build 6975).
+Their substance is shared with other clients; Lua performs identity checks, argument conversion and fuel accounting.
+
+| API | Shared query or data |
+|---|---|
+| `GetAbilityPoints` | Client skill-book accounting; shared rank groups count once and talents use separate points. Foreign skill points return `-1`. |
+| `GetAttackProjectileSpeed`, `GetBaseDamageVariance` | Core body definitions. Variance is **half** the base max-minus-min interval and may be fractional. Both getters return `-1` for an unobserved foreign body. |
+| `GetStashValue`, `GetItemStockCount` | Received storage and stock. Stash stacks contribute their catalogue cost regardless of remaining charges; unlimited stock is `-1`. |
+| `GetChannelTime` | Core catalogue channel time; imported milliseconds retain sub-tick precision. |
+| `IsInAbilityPhase`, `GetPowerTreadsStat` | Received cast points and item modes. Spell identity must match; an unidentified item cast cannot identify its item and returns `nil`. Treads map Strength/Agility/Intelligence to `0/1/2`, other items to `-1`. |
+| `GetAttackTarget`, `GetExtrapolatedLocation` | Client aggro memory and displacement between visible snapshots. Hidden bodies do not yield current targets or predictions. |
+| `WasRecentlyDamagedByCreep`, `WasRecentlyDamagedByHero` | Client last-positive-damage ticks by source class and attacking hero seat. A strict time window is used; unobserved damage cannot alter this memory. No amount log or server timer is added. |
+| `GetNearbyLaneCreeps`, `GetNearbyNeutralCreeps` | Client query over currently visible living units, sorted by distance then identity; radius is capped at 1600. |
+| `GetHeightLevel`, `GetTimeOfDay`, `GetItemSlotType`, `DistanceFromSecretShop` | Published terrain and core time, storage and shop geometry. Dedicated slot 15 has the legacy invalid slot class. |
+| `IsLocationVisible` | Shared client `SightGround`; the received forest is cached, with the same terrain, tree and vision-grant rules used by other clients. |
+| `GetTreeLocation` | Host tree identities resolve public static trees or received planted-tree coordinates. An invalid id yields the zero vector. |
+| `IsBot` | The explicit bot declarations already used by `IsPlayerBot`. |
+| `ActionImmediate_SwapItems`, `Action_UseAbilityOnTree` | Ordinary inventory and item/ability orders; tree ids resolve to received map coordinates. |
+| `ActionQueue_MoveToLocation`, `Action_MovePath` | Ordinary ordered movement. A path's first waypoint interrupts and its tail queues; at most `MAX_QUEUED_ORDERS` waypoints are accepted. |
+
+Query cost bounds are documented beside the shared functions. Scalar callbacks charge bounded view/table scans;
+nearby queries charge their scan and sort, handles charge construction separately, and visibility charges both its
+forest rebuild and bounded sight rays. These prices are independent of summary collection.
+
+No alias is provided for the non-API global `Glyph`; the supported action is `ActionImmediate_Glyph`.
+The host does not substitute animation ids for bot-controller action types, approximate movement-direction
+stability with a constant, or infer silence/courier controller state absent from the received facts.

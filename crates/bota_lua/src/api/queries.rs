@@ -23,34 +23,6 @@ pub(super) fn install(
 ) -> Result<(), BindingError> {
     install_nearby(lua, methods, state.clone())?;
     install_positions(lua, methods, state.clone(), vectors)?;
-    let capture = state.clone();
-    method(
-        lua,
-        methods,
-        "WasRecentlyDamagedByHero",
-        Rc::new(move |vm, args| {
-            let state = capture.borrow();
-            let id = identity(vm, &state, args)?;
-            let attacker = state
-                .id(vm.arg(args, 1))
-                .ok_or_else(|| vm.error("unit handle expected"))?;
-            let seconds = vector::number(vm, args, 2)?;
-            let snapshot = state
-                .snapshot
-                .as_ref()
-                .ok_or_else(|| vm.error("a current view is required"))?;
-            vm.charge_fuel(1 + snapshot.damage.len() as u64 / 8)?;
-            let result = state
-                .unit(attacker)
-                .is_some_and(|unit| unit.kind == UnitKind::Hero)
-                && snapshot.damage.iter().any(|&(tick, source, target)| {
-                    source == attacker
-                        && target == id
-                        && f64::from(snapshot.tick.saturating_sub(tick)) <= seconds * 30.0
-                });
-            vm.results(&[Value::Boolean(result)])
-        }),
-    )?;
     method(
         lua,
         methods,

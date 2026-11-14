@@ -10,14 +10,20 @@ use crate::{
 };
 
 #[cfg(test)]
+mod added_fuel_tests;
+#[cfg(test)]
 mod fuel_tests;
 
 pub(crate) mod abilities;
+mod ability_extras;
 mod activities;
+mod additional_actions;
 mod buyback;
+mod catalogue_queries;
 mod chat;
 mod constants;
 pub(crate) mod context;
+mod damage_history;
 mod distances;
 mod environment;
 mod estimates;
@@ -41,6 +47,7 @@ pub(crate) mod undefined_reads;
 mod unit_data;
 mod unit_lists;
 mod unit_names;
+mod unit_queries;
 mod unit_statistics;
 
 pub(crate) type Shared = Rc<RefCell<State>>;
@@ -113,9 +120,12 @@ pub(crate) fn install(lua: &mut Lua, state: Shared, vectors: Vectors) -> Result<
     };
     patterns::install(lua, &context)?;
     environment::install(lua, &context)?;
+    catalogue_queries::install(lua, &context)?;
     chat::install(lua, &context)?;
+    additional_actions::install(lua, &context)?;
     trees::install(lua, &context)?;
     distances::install(lua, &context)?;
+    damage_history::install(lua, &context)?;
     estimates::install(lua, &context)?;
     activities::install(lua, &context)?;
     projectiles::install(lua, &context)?;
@@ -128,9 +138,11 @@ pub(crate) fn install(lua: &mut Lua, state: Shared, vectors: Vectors) -> Result<
     players::install(lua, &context)?;
     unit_lists::install(lua, &context)?;
     unit_statistics::install(lua, &context)?;
+    unit_queries::install(lua, &context)?;
     modifiers::install(lua, &context)?;
     queries::install(lua, methods, state.clone(), vectors)?;
     abilities::install(lua, methods, state.clone())?;
+    ability_extras::install(lua, &context)?;
     shop::install(lua, &context)?;
     item_queries::install(lua, &context)?;
     glyph::install(lua, &context)?;
@@ -246,6 +258,7 @@ fn install_actions(
         "Action_UseAbility",
         "Action_UseAbilityOnEntity",
         "Action_UseAbilityOnLocation",
+        "Action_UseAbilityOnTree",
     ] {
         let capture = state.clone();
         method(
@@ -270,7 +283,8 @@ fn install_actions(
                 let order = match name {
                     "Action_UseAbility"
                     | "Action_UseAbilityOnEntity"
-                    | "Action_UseAbilityOnLocation" => {
+                    | "Action_UseAbilityOnLocation"
+                    | "Action_UseAbilityOnTree" => {
                         vm.charge_fuel(1 + state.abilities.len() as u64 / 8)?;
                         let ability = abilities::identity(&state, vm.arg(args, 1))
                             .ok_or_else(|| vm.error("ability handle expected"))?;
@@ -286,6 +300,14 @@ fn install_actions(
                                     .id(vm.arg(args, 2))
                                     .ok_or_else(|| vm.error("unit handle expected"))?,
                             ),
+                            "Action_UseAbilityOnTree" => {
+                                let tree = super::api::globals::integer(vm, args, 2)?;
+                                let point = usize::try_from(tree)
+                                    .ok()
+                                    .and_then(|tree| trees::position(&state, tree))
+                                    .ok_or_else(|| vm.error("unknown tree identity"))?;
+                                Target::Pos(point)
+                            }
                             "Action_UseAbilityOnLocation" => {
                                 Target::Pos(vector::position(vm, vm.arg(args, 2))?)
                             }

@@ -107,6 +107,7 @@ pub(super) fn install(lua: &mut Lua, context: &ApiContext) -> Result<(), Binding
     register_global(lua, context, "GetOpposingTeam", opposing_team)?;
     register_global(lua, context, "GetHeroLastSeenInfo", last_seen)?;
     register_unit(lua, context, "GetPlayerID", player_id)?;
+    register_unit(lua, context, "IsBot", unit_is_bot)?;
     for name in [
         "GetTeamForPlayer",
         "IsPlayerBot",
@@ -184,14 +185,7 @@ fn player_read(
         "GetHeroLevel" => Value::Number(f64::from(player.level)),
         "GetHeroDeaths" => Value::Number(f64::from(player.deaths)),
         "IsHeroAlive" => Value::Boolean(player.respawn_left == 0),
-        "IsPlayerBot" => Value::Boolean(
-            state.seats.iter().any(|seat| seat.slot == player.slot)
-                || state
-                    .declared_bots
-                    .get(usize::from(player.slot.0))
-                    .copied()
-                    .unwrap_or(false),
-        ),
+        "IsPlayerBot" => Value::Boolean(declared_bot(&state, player.slot)),
         _ => return Err(vm.error("unknown player query")),
     };
     vm.results(&[value])
@@ -253,4 +247,32 @@ fn last_seen(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, Lua
         )?;
     }
     vm.results(&[Value::Table(table)])
+}
+
+fn unit_is_bot(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaError> {
+    let id = context.receiver(vm, args)?;
+    let state = context.state.borrow();
+    vm.charge_fuel(
+        16 + state
+            .snapshot
+            .as_ref()
+            .map_or(0, |snapshot| snapshot.units.len() + snapshot.players.len())
+            as u64
+            + state.seats.len() as u64,
+    )?;
+    let slot = state
+        .player(id)
+        .map(|player| player.slot)
+        .or_else(|| state.unit(id).and_then(|unit| unit.owner));
+    let bot = slot.is_some_and(|slot| declared_bot(&state, slot));
+    vm.results(&[Value::Boolean(bot)])
+}
+
+fn declared_bot(state: &State, slot: SlotId) -> bool {
+    state.seats.iter().any(|seat| seat.slot == slot)
+        || state
+            .declared_bots
+            .get(usize::from(slot.0))
+            .copied()
+            .unwrap_or(false)
 }

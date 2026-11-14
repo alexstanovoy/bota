@@ -78,6 +78,8 @@ pub(crate) struct KnownUnit {
     pub last_visible: (u32, bota_proto::Vec2),
     pub velocity: Option<VelocityEstimate>,
     pub activity: bota_client_core::ActivityClock,
+    pub recent_damage: bota_client_core::RecentDamage,
+    pub attack_target: Option<EntityId>,
 }
 
 pub(crate) struct AttackFact {
@@ -104,11 +106,11 @@ pub(crate) struct Snapshot {
     pub team: Team,
     pub tick: u32,
     pub game_tick: u32,
+    pub day_tick: u32,
     pub horn: u32,
     pub map: &'static bota_core::MapDef,
     pub players: Vec<Player>,
     pub units: Vec<KnownUnit>,
-    pub damage: Vec<(u32, EntityId, EntityId)>,
     pub talents: Vec<TalentView>,
     pub stock: Vec<StockView>,
     pub catalogue: bota_core::Catalogue,
@@ -246,6 +248,7 @@ impl Snapshot {
             team: session.team(),
             tick: view.tick,
             game_tick: view.game_tick(),
+            day_tick: view.day_tick(),
             horn: session.map().pregame_ticks,
             map: session.map(),
             players: view
@@ -274,18 +277,6 @@ impl Snapshot {
                         respawn_left: player.respawn_left,
                         buyback: own.then_some(player.buyback).flatten(),
                     }
-                })
-                .collect(),
-            damage: session
-                .recent_events()
-                .iter()
-                .filter_map(|event| match event.kind {
-                    bota_proto::EventKind::Damaged {
-                        source: Some(source),
-                        target,
-                        ..
-                    } => Some((event.tick, source, target)),
-                    _ => None,
                 })
                 .collect(),
             talents: view
@@ -319,6 +310,8 @@ impl Snapshot {
                     last_visible: (track.last_seen_tick, track.unit.pos),
                     velocity: track.velocity,
                     activity: track.activity,
+                    recent_damage: track.recent_damage,
+                    attack_target: track.attack_target(),
                 })
                 .collect(),
         })
@@ -453,6 +446,7 @@ pub(crate) struct State {
     pub team_desires: TeamDesires,
     pub current_slot: SlotId,
     pub snapshot: Option<Snapshot>,
+    pub sight: Option<bota_client_core::SightGround>,
     pub orders: Vec<IssuedOrder>,
     pub chat: Vec<bota_proto::Line>,
     pub units: Vec<(EntityId, TableId)>,
@@ -481,6 +475,7 @@ impl State {
             team_desires: TeamDesires::default(),
             current_slot: seats[0].slot,
             snapshot: None,
+            sight: None,
             orders: Vec::with_capacity(MAX_ORDERS),
             chat: Vec::new(),
             units: Vec::new(),

@@ -1,6 +1,6 @@
 //! Tree identities refer only to the forest the receiving client has been told about.
 use super::{
-    context::{ApiContext, register_unit},
+    context::{ApiContext, register_global, register_unit},
     globals::bounded_integer,
 };
 use crate::BindingError;
@@ -8,7 +8,8 @@ use bota_proto::Fixed;
 use luagee::{Args, Lua, LuaError, Value, Vm};
 const MAX_PLANTED_IDENTITIES: usize = 8192;
 pub(super) fn install(lua: &mut Lua, context: &ApiContext) -> Result<(), BindingError> {
-    register_unit(lua, context, "GetNearbyTrees", nearby)
+    register_unit(lua, context, "GetNearbyTrees", nearby)?;
+    register_global(lua, context, "GetTreeLocation", location)
 }
 fn nearby(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaError> {
     let id = context.receiver(vm, args)?;
@@ -91,4 +92,25 @@ fn planted_id(
     }
     state.planted_tree_ids.push(tree);
     Ok((state.planted_tree_ids.len() - 1) as u32)
+}
+
+/// O(1): ids are host-owned indices into public static trees or observed planted coordinates.
+pub(super) fn position(state: &crate::state::State, id: usize) -> Option<bota_proto::Vec2> {
+    let originals = state.snapshot.as_ref()?.statics.trees();
+    if id < originals.len() {
+        originals.get(id).copied()
+    } else {
+        state.planted_tree_ids.get(id - originals.len()).copied()
+    }
+}
+fn location(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaError> {
+    let id = super::globals::integer(vm, args, 0)?;
+    vm.charge_fuel(8)?;
+    let state = context.state.borrow();
+    let point = usize::try_from(id).ok().and_then(|id| position(&state, id));
+    let value = match point {
+        Some(point) => context.vectors.location(vm, point)?,
+        None => context.vectors.value(vm, [0.0; 3])?,
+    };
+    vm.results(&[value])
 }

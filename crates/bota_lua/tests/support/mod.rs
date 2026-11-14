@@ -381,3 +381,18 @@ pub fn local_with_cheats(teams: &[Team], map: MapId) -> (LocalMatch, Vec<ClientS
         sessions(opening, &vec![HeroId::SHADOW_FIEND; teams.len()]),
     )
 }
+
+#[allow(
+    dead_code,
+    reason = "the observed damage contract needs another hero's self-damage ability"
+)]
+pub fn local_for_heroes_with_cheats(heroes: &[(Team, HeroId)]) -> (LocalMatch, Vec<ClientSession>) {
+    let (local, opening) = opening_match(heroes, Vec::new(), MAP2_ID, true);
+    (
+        local,
+        sessions(
+            opening,
+            &heroes.iter().map(|(_, hero)| *hero).collect::<Vec<_>>(),
+        ),
+    )
+}
