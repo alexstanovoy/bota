@@ -3,7 +3,7 @@
 use std::io::Result;
 
 use bota_client_core::{
-    DEFAULT_IO_TIMEOUT, Endpoint, Link, Net, Redial, Seated, greet_on, join_on,
+    DEFAULT_IO_TIMEOUT, Endpoint, Link, Net, Redial, Seated, greet_on, join_on_with_version,
 };
 use bota_proto::{HeroId, Role};
 use radovid_client::proto::Handoff;
@@ -41,10 +41,15 @@ pub fn connect_net(handoff: &Handoff, tls: &Tls) -> Result<Net> {
 /// reconnect: the server gives the seat back to the ticket's holder.
 pub fn take_seat(handoff: &Handoff, hero: HeroId, tls: &Tls) -> Result<(Link, Seated)> {
     let mut link = connect(handoff, tls)?;
-    let seated = join_on(
+    let seated = join_on_with_version(
         &mut link,
         handoff.game_fingerprint,
         &seat_name(handoff)?,
+        handoff
+            .seats
+            .iter()
+            .find(|seat| seat.slot == handoff.slot)
+            .and_then(|seat| seat.version.as_deref()),
         hero,
         Some(seat_key(handoff)),
     )?;

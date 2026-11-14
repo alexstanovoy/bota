@@ -16,8 +16,8 @@ const META: &str = include_str!("../registry/meta.txt");
 
 #[test]
 fn the_meta_layout_only_grows() {
+    // The validating deserializers need real samples: a public URI and account, a valid version.
     let mut tracer = Tracer::new(TracerConfig::default());
-    // The validating deserializer needs a real public URI and account sample.
     tracer
         .trace_value(
             &mut serde_reflection::Samples::new(),
@@ -27,6 +27,17 @@ fn the_meta_layout_only_grows() {
             },
         )
         .expect("traces public provenance");
+    tracer
+        .trace_value(
+            &mut serde_reflection::Samples::new(),
+            &MetaRecord::SeatIdentity(bota_proto::SeatIdentity {
+                slot: bota_proto::SlotId(0),
+                name: "engine".into(),
+                bot: true,
+                version: Some("v1".into()),
+            }),
+        )
+        .expect("traces a seat identity");
     tracer.trace_simple_type::<MetaRecord>().expect("traces");
     tracer.trace_simple_type::<MetaHeader>().expect("traces");
     tracer

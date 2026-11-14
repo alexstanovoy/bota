@@ -606,3 +606,25 @@ fn read_only_ability_projection_does_not_change_the_simulation_identity() {
         "actual core rule declarations remain protected"
     );
 }
+
+#[test]
+fn seat_identity_facts_never_change_the_simulation_identity() {
+    let sources = Sources::new();
+    let initial = sources.identity();
+    sources.write(
+        "crates/bota_proto/src/lib.rs",
+        "mod ids; mod identity; pub use identity::SeatIdentity;",
+    );
+    for fact in [
+        "pub struct SeatIdentity;",
+        "pub struct SeatIdentity { pub version: Option<String> }",
+        "pub struct SeatIdentity { pub name: String, pub version: Option<String> } pub fn valid_version(s: &str) -> bool { s.len() <= 32 }",
+    ] {
+        sources.write("crates/bota_proto/src/identity.rs", fact);
+        assert_eq!(
+            sources.identity(),
+            initial,
+            "public identity is transport data"
+        );
+    }
+}

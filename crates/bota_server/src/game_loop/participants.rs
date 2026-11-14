@@ -57,17 +57,27 @@ impl Told {
 
 impl Server {
     /// Keeps only the public identities of held seats, not the observer roster or credentials.
-    pub(super) fn record_seat_names(&self, replay: &mut crate::replay::ReplayWriter) {
+    pub(super) fn record_identities(&self, replay: &mut crate::replay::ReplayWriter) {
         for seat in &self.roster.seats {
             if seat.player.is_some()
                 && !seat.name.is_empty()
-                && let Some(role @ (Role::Player | Role::Bot)) = seat.role
+                && let Some(Role::Player | Role::Bot) = seat.role
             {
-                replay.record(&ReplayRecord::SeatName {
-                    slot: seat.slot,
-                    name: seat.name.clone(),
-                    bot: role == Role::Bot,
-                });
+                replay.record(&ReplayRecord::Msg(ServerMsg::SeatIdentity(seat.identity())));
+            }
+        }
+    }
+
+    pub(super) fn tell_seat_identities(&self, id: PlayerId, held: Option<SlotId>) {
+        for seat in &self.roster.seats {
+            if seat.name.is_empty() {
+                continue;
+            }
+            let message = ServerMsg::SeatIdentity(seat.identity());
+            if held == Some(seat.slot) {
+                self.broadcast(&message);
+            } else if let Some(connection) = self.conn(id) {
+                connection.send(&message);
             }
         }
     }

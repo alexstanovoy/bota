@@ -279,6 +279,8 @@ pub enum RejectReason {
     /// A [`Buyback`](crate::Order::Buyback) naming a unit of the seat that is
     /// not its hero: Dota's `CANT_BUYBACK_UNIT_NOT_A_HERO`.
     NotAHero,
+    BadVersion,
+    VersionNotAllowed,
 }
 
 /// Final numbers for one seat.
@@ -399,6 +401,24 @@ impl ClientMsg {
             wire_fingerprint,
         }
     }
+    pub fn hello_with_version(
+        role: Role,
+        name: impl Into<String>,
+        key: Option<SeatKey>,
+        wire_fingerprint: u64,
+        version: Option<String>,
+    ) -> ClientMsg {
+        match version {
+            Some(version) => Self::HelloVersion {
+                role,
+                name: name.into(),
+                key,
+                wire_fingerprint,
+                version: Some(version),
+            },
+            None => Self::hello(role, name, key, wire_fingerprint),
+        }
+    }
 }
 
 /// Anything a participant can say to the server.
@@ -501,6 +521,14 @@ pub enum ClientMsg {
     /// items differ from its own with [`RejectReason::CatalogueMismatch`]. A
     /// client that says nothing is taken to hold the server's own.
     Catalogue(CataloguePrefix),
+    /// A hello with an optional opaque bot version. The original hello remains frozen.
+    HelloVersion {
+        role: Role,
+        name: String,
+        key: Option<SeatKey>,
+        wire_fingerprint: u64,
+        version: Option<String>,
+    },
 }
 
 /// The first `items` item ids of a build's catalogue and a digest of what
@@ -705,6 +733,8 @@ pub enum ServerMsg {
         /// Seconds left until the match is ended by [`AbortReason::TimeLimit`].
         remaining_secs: u32,
     },
+    /// The public identity of one seat, also sent to late spectators.
+    SeatIdentity(crate::SeatIdentity),
 }
 
 /// Who ended a match that was not played to its end ([`ServerMsg::MatchAborted`]).

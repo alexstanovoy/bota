@@ -69,10 +69,46 @@ pub fn seat_name(handoff: &Handoff) -> std::io::Result<String> {
 /// (`bota_client_core::catalogue_after`).
 pub fn seat_hello(handoff: &Handoff, role: Role) -> std::io::Result<ClientMsg> {
     check_handoff(handoff)?;
-    Ok(ClientMsg::hello(
+    Ok(ClientMsg::hello_with_version(
         role,
         seat_name(handoff)?,
         Some(seat_key(handoff)),
         handoff.game_fingerprint,
+        (role == Role::Bot)
+            .then(|| {
+                handoff
+                    .seats
+                    .iter()
+                    .find(|seat| seat.slot == handoff.slot)
+                    .and_then(|seat| seat.version.clone())
+            })
+            .flatten(),
     ))
+}
+
+#[cfg(test)]
+mod version_tests {
+    #[test]
+    fn version_names_have_the_same_bound_and_validation_on_both_wires() {
+        assert_eq!(
+            bota_proto::MAX_VERSION_LEN,
+            radovid_client::proto::MAX_VERSION_LEN
+        );
+        let check = |value: &str| {
+            assert_eq!(
+                bota_proto::valid_version(value),
+                radovid_client::proto::valid_version(value),
+                "{value:?}"
+            )
+        };
+        for byte in 0..=255u8 {
+            check(&format!("a{}b", char::from(byte)));
+        }
+        for length in 0..=bota_proto::MAX_VERSION_LEN + 1 {
+            check(&"x".repeat(length));
+        }
+        for value in [" leading", "trailing ", "v1, (x:y)", "v1\u{200b}", "v1\n"] {
+            check(value);
+        }
+    }
 }

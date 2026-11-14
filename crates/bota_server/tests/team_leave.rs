@@ -97,6 +97,7 @@ impl Transport for Leaving {
 
 fn seat(key: u8, name: &str, team: Team) -> ReservedSeat {
     ReservedSeat {
+        version: bota_server::lobby::VersionSource::Client,
         key: SeatKey([key; 32]),
         name: name.to_owned(),
         team,

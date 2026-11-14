@@ -797,3 +797,159 @@ fn named_versions_cross_the_shared_client_authentication_and_profile_contract() 
     assert_eq!(account.version, me.version);
     assert!(account.ratings.is_empty());
 }
+
+#[test]
+fn a_service_launched_game_keeps_the_authenticated_version_over_a_client_claim() {
+    let env = start();
+    let mut alpha = Account {
+        client: bota_radovid::Client::open(&env.url, &env.tls).unwrap(),
+        log: Vec::new(),
+    };
+    let seq = alpha
+        .client
+        .register(
+            "engine",
+            PASSWORD,
+            AccountKind::Bot,
+            Some("v1, (x:y)".into()),
+        )
+        .unwrap();
+    alpha.reply(seq).unwrap();
+    let mut beta = env.bot("opponent");
+    alpha.queue();
+    beta.queue();
+    let mut handoffs = found(&mut [&mut alpha, &mut beta]);
+    let slot = handoffs[0].slot;
+    assert_eq!(
+        handoffs[0]
+            .seats
+            .iter()
+            .find(|seat| seat.slot == slot)
+            .unwrap()
+            .version
+            .as_deref(),
+        Some("v1, (x:y)")
+    );
+    handoffs[0]
+        .seats
+        .iter_mut()
+        .find(|seat| seat.slot == slot)
+        .unwrap()
+        .version = Some("bad\nclaim".into());
+    let (mut link, _) = take_seat(&handoffs[0], HeroId::SHADOW_FIEND, &env.tls).unwrap();
+    let mut actual = None;
+    for _ in 0..64 {
+        if let Some(ServerMsg::SeatIdentity(identity)) = link.recv().unwrap()
+            && identity.slot.0 == slot
+        {
+            actual = Some(identity);
+            break;
+        }
+    }
+    let actual = actual.expect("the launcher hands off the structured identity");
+    assert_eq!(actual.name, "engine");
+    assert_eq!(actual.version.as_deref(), Some("v1, (x:y)"));
+    assert!(
+        matches!(
+            bota_radovid::seat_hello(&handoffs[0], bota_proto::Role::Player).unwrap(),
+            ClientMsg::Hello {
+                role: bota_proto::Role::Player,
+                ..
+            }
+        ),
+        "the human UI hello never states a version"
+    );
+}
+
+/// What a service-launched game server tells of its two seats once both greeted it, the bot
+/// claiming `bot_claim` and the human `human_claim` in their hellos.
+fn seat_identities_after_claims(
+    env: &Env,
+    bot_claim: &str,
+    human_claim: &str,
+) -> Vec<bota_proto::SeatIdentity> {
+    let mut human = env.account("person", AccountKind::Human);
+    let mut bot = Account {
+        client: bota_radovid::Client::open(&env.url, &env.tls).unwrap(),
+        log: Vec::new(),
+    };
+    let seq = bot
+        .client
+        .register(
+            "engine",
+            PASSWORD,
+            AccountKind::Bot,
+            Some("v1, (x:y)".into()),
+        )
+        .unwrap();
+    bot.reply(seq).unwrap();
+    human.client.set_auto_accept(true);
+    queue_audiences(&mut human, &[Audience::Everyone]);
+    bot.queue();
+    let handoffs = found(&mut [&mut human, &mut bot]);
+    let (human_handoff, mut bot_handoff) = (handoffs[0].clone(), handoffs[1].clone());
+    let slot = bot_handoff.slot;
+    bot_handoff
+        .seats
+        .iter_mut()
+        .find(|seat| seat.slot == slot)
+        .unwrap()
+        .version = Some(bot_claim.into());
+    let (mut bot_link, _) = take_seat(&bot_handoff, HeroId::SHADOW_FIEND, &env.tls).unwrap();
+    // A human client states no version of its own: a hostile one sends a claim anyway.
+    let mut human_link = bota_radovid::connect(&human_handoff, &env.tls).unwrap();
+    bota_client_core::greet_on_with_version(
+        &mut human_link,
+        human_handoff.game_fingerprint,
+        bota_proto::Role::Player,
+        &bota_radovid::seat_name(&human_handoff).unwrap(),
+        Some(human_claim),
+        Some(bota_radovid::seat_key(&human_handoff)),
+    )
+    .expect("a claim at a reserved seat is not a reason to refuse it");
+    let mut told: Vec<bota_proto::SeatIdentity> = Vec::new();
+    for _ in 0..64 {
+        if told.len() == 2 {
+            break;
+        }
+        if let Some(ServerMsg::SeatIdentity(identity)) = bot_link.recv().unwrap() {
+            told.retain(|old| old.slot != identity.slot);
+            told.push(identity);
+        }
+    }
+    told.sort_by_key(|identity| identity.slot);
+    told
+}
+
+#[test]
+fn a_launched_game_tells_the_services_seat_versions_whatever_its_clients_claim() {
+    let env = start();
+    let told = seat_identities_after_claims(&env, "bot claim", "human claim");
+    let by_name = |name: &str| told.iter().find(|identity| identity.name == name).unwrap();
+    assert_eq!(
+        (by_name("engine").bot, by_name("engine").version.as_deref()),
+        (true, Some("v1, (x:y)")),
+        "the bot plays as the version it authenticated"
+    );
+    assert_eq!(
+        (by_name("person").bot, by_name("person").version.as_deref()),
+        (false, None),
+        "a human has no version, whatever it claims"
+    );
+}
+
+#[test]
+fn a_launched_game_with_untagged_seats_trusts_no_client_claim() {
+    let env = start_configured(false, |config| {
+        config.rulesets[0]
+            .launcher
+            .env
+            .insert("BOTA_SEATS".to_owned(), "{seats}".to_owned());
+    });
+    let told = seat_identities_after_claims(&env, "bot claim", "human claim");
+    assert_eq!(told.len(), 2);
+    assert!(
+        told.iter().all(|identity| identity.version.is_none()),
+        "an operator template without versions fixes every seat to none: {told:?}"
+    );
+}

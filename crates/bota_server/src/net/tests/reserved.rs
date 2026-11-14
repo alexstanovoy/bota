@@ -19,12 +19,14 @@ fn reserved(seed: u64) -> ServerOpts {
     let mut opts = realtime(seed);
     opts.reserved = vec![
         ReservedSeat {
+            version: crate::lobby::VersionSource::Client,
             kind: None,
             key: KEYS[0],
             name: "zero".to_owned(),
             team: Team::Radiant,
         },
         ReservedSeat {
+            version: crate::lobby::VersionSource::Client,
             kind: None,
             key: KEYS[1],
             name: "one".to_owned(),
@@ -140,6 +142,7 @@ fn three_seat_opts(reserved_seats: bool) -> ServerOpts {
     opts.players = 3;
     opts.order_delays = vec![OrderDelay::NONE; 3];
     opts.reserved.push(ReservedSeat {
+        version: crate::lobby::VersionSource::Client,
         kind: None,
         key: SeatKey([3; 32]),
         name: "two".to_owned(),

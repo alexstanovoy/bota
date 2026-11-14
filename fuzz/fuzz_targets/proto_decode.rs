@@ -35,6 +35,13 @@ fuzz_target!(|data: &[u8]| {
     round_trip::<ClientMsg>(data);
     round_trip::<ServerMsg>(data);
     round_trip::<ReplayRecord>(data);
+    round_trip::<bota_proto::SeatIdentity>(data);
+    if let Ok(identity) = decode_payload::<bota_proto::SeatIdentity>(data) {
+        assert!(identity.name.len() <= bota_proto::MAX_SHOWN_NAME_BYTES);
+        if let Some(version) = identity.version {
+            assert!(bota_proto::valid_version(&version));
+        }
+    }
     round_trip_report(data);
     // Exercise arbitrary report bodies without requiring mutations to discover the magic.
     if let Some(size) = data

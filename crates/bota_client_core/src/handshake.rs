@@ -151,7 +151,18 @@ pub fn join_on(
     hero: HeroId,
     key: Option<SeatKey>,
 ) -> std::io::Result<Seated> {
-    let lobby = greet_on(transport, wire, Role::Bot, name, key)?;
+    join_on_with_version(transport, wire, name, None, hero, key)
+}
+
+pub fn join_on_with_version(
+    transport: &mut impl Transport,
+    wire: u64,
+    name: &str,
+    version: Option<&str>,
+    hero: HeroId,
+    key: Option<SeatKey>,
+) -> std::io::Result<Seated> {
+    let lobby = greet_on_with_version(transport, wire, Role::Bot, name, version, key)?;
     let seated = lobby.seated().ok_or_else(|| {
         std::io::Error::other("server accepted the client without assigning a seat")
     })?;
@@ -185,8 +196,19 @@ pub fn greet_on(
     name: &str,
     key: Option<SeatKey>,
 ) -> std::io::Result<Lobby> {
+    greet_on_with_version(transport, wire, role, name, None, key)
+}
+
+pub fn greet_on_with_version(
+    transport: &mut impl Transport,
+    wire: u64,
+    role: Role,
+    name: &str,
+    version: Option<&str>,
+    key: Option<SeatKey>,
+) -> std::io::Result<Lobby> {
     validate_name(name)?;
-    let hello = ClientMsg::hello(role, name, key, wire);
+    let hello = ClientMsg::hello_with_version(role, name, key, wire, version.map(str::to_owned));
     transport.send(&hello)?;
     transport.send(&catalogue_after(&hello))?;
     let mut lobby = Lobby::default();
@@ -230,6 +252,9 @@ pub fn catalogue() -> ClientMsg {
 pub fn catalogue_after(hello: &ClientMsg) -> ClientMsg {
     let items = match hello {
         ClientMsg::Hello {
+            wire_fingerprint, ..
+        }
+        | ClientMsg::HelloVersion {
             wire_fingerprint, ..
         } => bota_core::spoken_items(*wire_fingerprint),
         _ => None,

@@ -413,6 +413,16 @@ pub fn check_opts(opts: &ServerOpts) -> Result<(), String> {
     if opts.reserved.len() > usize::from(u8::MAX) {
         return Err("at most 255 reserved seats".to_owned());
     }
+    for seat in &opts.reserved {
+        if let crate::lobby::VersionSource::Fixed(Some(version)) = &seat.version {
+            if !bota_proto::valid_version(version) {
+                return Err("invalid reserved version".to_owned());
+            }
+            if seat.kind != Some(Role::Bot) {
+                return Err("only a bot reservation may have a version".to_owned());
+            }
+        }
+    }
     let sides = match opts.reserved.len() {
         // Unreserved seats alternate, Radiant first.
         0 => {
@@ -559,6 +569,14 @@ enum Admission {
     /// A spectator.
     Watch(Watch),
     Referee,
+}
+
+struct Greeting {
+    role: Role,
+    name: String,
+    key: Option<SeatKey>,
+    wire_fingerprint: u64,
+    version: Option<String>,
 }
 
 struct Server {
@@ -766,7 +784,11 @@ impl Server {
             let slot = self.roster.seat_of(id).map(|s| s.slot);
             let stranger = !self.greeted(id);
             let told = self.told.take(id);
-            self.roster.release(id);
+            if in_match {
+                self.roster.disconnect(id);
+            } else {
+                self.roster.release(id);
+            }
             if broken {
                 self.lose_conn(id);
             } else {
@@ -1007,37 +1029,15 @@ impl Server {
     /// Returns whether the peer was accepted; one that was not is told why
     /// ([`ServerMsg::Refused`]) and closed. `info` carries the running match
     /// to a connection joining after the start.
-    fn greet(
-        &mut self,
-        id: PlayerId,
-        role: Role,
-        name: String,
-        key: Option<SeatKey>,
-        wire_fingerprint: u64,
-        info: Option<&MatchConfig>,
-    ) -> bool {
+    fn greet(&mut self, id: PlayerId, hello: Greeting, info: Option<&MatchConfig>) -> bool {
         if self.greeted(id) {
             return true; // a second Hello changes nothing
         }
-        if !bota_core::admits_wire(wire_fingerprint) {
-            self.refuse_wire(id, wire_fingerprint);
+        if !bota_core::admits_wire(hello.wire_fingerprint) {
+            self.refuse_wire(id, hello.wire_fingerprint);
             return false;
         }
-        let admitted = match self.admit(role, key.as_ref()) {
-            None => Err(RejectReason::NotAdmitted),
-            Some(Admission::AnySeat) => {
-                self.any_seat(id, role, name, key, info.is_some()).map(Some)
-            }
-            Some(Admission::Seat(slot)) => {
-                let name = self.opts.reserved[usize::from(slot.0)].name.clone();
-                self.take_seat(id, role, slot, name).map(|()| Some(slot))
-            }
-            Some(Admission::Watch(watch)) => self.watch(id, watch, &name).map(|()| None),
-            Some(Admission::Referee) => {
-                self.referees.push(id);
-                Ok(None)
-            }
-        };
+        let admitted = self.admit_greeting(id, hello, info.is_some());
         let slot = match admitted {
             Ok(slot) => slot,
             Err(reason) => {
@@ -1077,7 +1077,66 @@ impl Server {
                 });
             }
         }
+        self.tell_seat_identities(id, slot);
         true
+    }
+
+    fn admit_greeting(
+        &mut self,
+        id: PlayerId,
+        hello: Greeting,
+        started: bool,
+    ) -> Result<Option<SlotId>, RejectReason> {
+        let Greeting {
+            role,
+            name,
+            key,
+            version,
+            ..
+        } = hello;
+        match self.admit(role, key.as_ref()) {
+            None => Err(RejectReason::NotAdmitted),
+            Some(Admission::AnySeat) => self
+                .client_version(role, version)
+                .and_then(|version| self.any_seat(id, role, name, version, key, started))
+                .map(Some),
+            Some(Admission::Seat(slot)) => {
+                let reserved = &self.opts.reserved[usize::from(slot.0)];
+                let name = reserved.name.clone();
+                let version = match &reserved.version {
+                    crate::lobby::VersionSource::Fixed(version) => Ok(version.clone()),
+                    crate::lobby::VersionSource::Client => self.client_version(role, version),
+                };
+                version
+                    .and_then(|version| self.take_seat(id, role, slot, name, version))
+                    .map(|()| Some(slot))
+            }
+            Some(Admission::Watch(watch)) => self
+                .client_version(role, version)
+                .and_then(|_| self.watch(id, watch, &name))
+                .map(|()| None),
+            Some(Admission::Referee) => self.client_version(role, version).map(|_| {
+                self.referees.push(id);
+                None
+            }),
+        }
+    }
+
+    fn client_version(
+        &self,
+        role: Role,
+        version: Option<String>,
+    ) -> Result<Option<String>, RejectReason> {
+        if version.is_some() && role != Role::Bot {
+            return Err(RejectReason::VersionNotAllowed);
+        }
+        if version
+            .as_deref()
+            .is_some_and(|version| !bota_proto::valid_version(version))
+        {
+            return Err(RejectReason::BadVersion);
+        }
+        Ok(version)
     }
 
     /// An unreserved seat: the one the key claimed before, else in the lobby
@@ -1088,11 +1147,12 @@ impl Server {
         id: PlayerId,
         role: Role,
         name: String,
+        version: Option<String>,
         key: Option<SeatKey>,
         started: bool,
     ) -> Result<SlotId, RejectReason> {
         if let Some(slot) = key.as_ref().and_then(|key| self.roster.seat_for_claim(key)) {
-            return self.take_seat(id, role, slot, name).map(|()| slot);
+            return self.take_seat(id, role, slot, name, version).map(|()| slot);
         }
         if started {
             return Err(RejectReason::NotAdmitted);
@@ -1102,7 +1162,7 @@ impl Server {
             .roster
             .free_seat_mut()
             .ok_or(RejectReason::NotAdmitted)?;
-        seat.hold(id, name, role);
+        seat.hold(id, name, role, version);
         seat.claim = key;
         seat.force(forced);
         Ok(seat.slot)
@@ -1172,6 +1232,7 @@ impl Server {
         role: Role,
         slot: SlotId,
         name: String,
+        version: Option<String>,
     ) -> Result<(), RejectReason> {
         if self.has_left(slot) {
             return Err(RejectReason::NotAdmitted);
@@ -1181,7 +1242,7 @@ impl Server {
         if seat.player.is_some() {
             return Err(RejectReason::SeatHeld);
         }
-        seat.hold(id, name, role);
+        seat.hold(id, name, role, version);
         seat.force(forced);
         Ok(())
     }
@@ -1367,7 +1428,38 @@ impl Server {
                 key,
                 wire_fingerprint,
             } => {
-                if self.greet(id, role, name, key, wire_fingerprint, None) {
+                if self.greet(
+                    id,
+                    Greeting {
+                        role,
+                        name,
+                        key,
+                        wire_fingerprint,
+                        version: None,
+                    },
+                    None,
+                ) {
+                    self.lobby_after_hello(id);
+                }
+            }
+            ClientMsg::HelloVersion {
+                role,
+                name,
+                key,
+                wire_fingerprint,
+                version,
+            } => {
+                if self.greet(
+                    id,
+                    Greeting {
+                        role,
+                        name,
+                        key,
+                        wire_fingerprint,
+                        version,
+                    },
+                    None,
+                ) {
                     self.lobby_after_hello(id);
                 }
             }
@@ -1601,7 +1693,7 @@ impl Server {
         let start = ServerMsg::MatchStart { info: cfg.info() };
         self.broadcast(&start);
         replay.record(&ReplayRecord::Msg(start));
-        self.record_seat_names(&mut replay);
+        self.record_identities(&mut replay);
         let period = Duration::from_nanos(1_000_000_000 / u64::from(self.opts.tick_rate.max(1)));
         let pace = Pace {
             started: Instant::now(),
@@ -1624,7 +1716,7 @@ impl Server {
         let mut empty_since = None;
         let mut recorded_leaves = 0;
         let end = loop {
-            if let Some(reason) = self.gather_input(&world, &cfg, &mut inbox, &pace) {
+            if let Some(reason) = self.gather_input(&world, &cfg, &mut inbox, &pace, &mut replay) {
                 break self.abort_match(reason, &world, &cfg, &mut replay);
             }
             self.record_heard(&mut replay);
@@ -1981,6 +2073,7 @@ impl Server {
         cfg: &MatchConfig,
         inbox: &mut Inbox,
         pace: &Pace,
+        replay: &mut ReplayWriter,
     ) -> Option<AbortReason> {
         self.drop_strangers();
         let deadline = match self.opts.mode {
@@ -2002,7 +2095,7 @@ impl Server {
             match self.rx.recv_timeout(wake.saturating_duration_since(now)) {
                 Ok(event) => {
                     if let Some((id, msg)) = self.hear(event, true) {
-                        self.receive_in_match(id, msg, world, cfg, inbox);
+                        self.receive_in_match(id, msg, world, cfg, inbox, replay);
                     }
                 }
                 Err(RecvTimeoutError::Timeout) => {}
@@ -2042,6 +2135,7 @@ impl Server {
         world: &World,
         cfg: &MatchConfig,
         inbox: &mut Inbox,
+        replay: &mut ReplayWriter,
     ) {
         if self
             .roster
@@ -2049,7 +2143,10 @@ impl Server {
             .is_some_and(|seat| self.has_left(seat.slot))
             && matches!(
                 &msg,
-                ClientMsg::Order { .. } | ClientMsg::Ack { .. } | ClientMsg::Hello { .. }
+                ClientMsg::Order { .. }
+                    | ClientMsg::Ack { .. }
+                    | ClientMsg::Hello { .. }
+                    | ClientMsg::HelloVersion { .. }
             )
         {
             return;
@@ -2063,11 +2160,45 @@ impl Server {
             } => {
                 // A seat taken mid-match was never shown the tick the match
                 // stands on: lockstep waits for it from the next one.
-                if self.greet(id, role, name, key, wire_fingerprint, Some(cfg))
-                    && let Some(seat) = self.roster.seat_of(id)
+                if self.greet(
+                    id,
+                    Greeting {
+                        role,
+                        name,
+                        key,
+                        wire_fingerprint,
+                        version: None,
+                    },
+                    Some(cfg),
+                ) && let Some(seat) = self.roster.seat_of(id)
                 {
                     let at = usize::from(seat.slot.0);
                     inbox.acked[at] = inbox.acked[at].max(world.tick);
+                    replay.record(&ReplayRecord::Msg(ServerMsg::SeatIdentity(seat.identity())));
+                }
+            }
+            ClientMsg::HelloVersion {
+                role,
+                name,
+                key,
+                wire_fingerprint,
+                version,
+            } => {
+                if self.greet(
+                    id,
+                    Greeting {
+                        role,
+                        name,
+                        key,
+                        wire_fingerprint,
+                        version,
+                    },
+                    Some(cfg),
+                ) && let Some(seat) = self.roster.seat_of(id)
+                {
+                    let at = usize::from(seat.slot.0);
+                    inbox.acked[at] = inbox.acked[at].max(world.tick);
+                    replay.record(&ReplayRecord::Msg(ServerMsg::SeatIdentity(seat.identity())));
                 }
             }
             ClientMsg::Order {

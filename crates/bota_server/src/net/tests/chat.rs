@@ -58,6 +58,7 @@ fn refusals(messages: &[ServerMsg]) -> Vec<SayRefusal> {
 fn chat_match(seed: u64, replay: PathBuf) -> ServerOpts {
     let mut opts = realtime(seed);
     let seat = |key, name: &str, team| ReservedSeat {
+        version: crate::lobby::VersionSource::Client,
         kind: None,
         key,
         name: name.to_owned(),

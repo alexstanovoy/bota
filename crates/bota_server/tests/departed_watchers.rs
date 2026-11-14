@@ -14,6 +14,7 @@ use bota_server::spectators::Spectators;
 
 fn seat(key: u8, name: &str, team: Team) -> ReservedSeat {
     ReservedSeat {
+        version: bota_server::lobby::VersionSource::Client,
         key: SeatKey([key; 32]),
         name: name.to_owned(),
         team,

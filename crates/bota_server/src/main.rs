@@ -52,7 +52,7 @@ const REFEREE_VAR: &str = "BOTA_REFEREE_KEY";
 #[derive(Parser, Debug)]
 #[command(
     after_help = "Keys come from the environment only (an argument shows in process lists):
-  BOTA_SEATS        reserve the seats, in slot order: key_hex:team:name[:kind] or key_hex:name,
+  BOTA_SEATS        reserve the seats, in slot order: key_hex:team:name[:kind[:v=HEX]] or key_hex:name,
                     comma separated (team 0 Radiant, 1 Dire; key_hex is 64 hex digits; kind bot
                     or human admits only that kind of player to the seat). A Hello must then
                     carry a key, and a key may take its seat again after a disconnect.
@@ -748,6 +748,40 @@ fn reservations(entries: &[String]) -> Result<Vec<ReservedSeat>, String> {
     Ok(seats)
 }
 
+/// The fifth reservation field is tagged and hex encoded; display names stay untouched. Without
+/// the tag the seat is fixed to no version.
+fn reservation_version(fields: &str) -> Result<(bota_server::lobby::VersionSource, &str), String> {
+    use bota_server::lobby::VersionSource;
+    // An entry without the tag states no version: the client's claim is never trusted by default.
+    let Some((rest, encoded)) = fields.rsplit_once(":v=") else {
+        return Ok((VersionSource::Fixed(None), fields));
+    };
+    if !matches!(rest.rsplit_once(':'), Some((_, "bot" | "human"))) {
+        return Ok((VersionSource::Fixed(None), fields));
+    }
+    if encoded == "-" {
+        return Ok((VersionSource::Fixed(None), rest));
+    }
+    if encoded.len() > bota_proto::MAX_VERSION_LEN * 2 || !encoded.len().is_multiple_of(2) {
+        return Err("invalid reserved version".to_owned());
+    }
+    let bytes: Result<Vec<_>, _> = encoded
+        .as_bytes()
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|pair| {
+            let pair = std::str::from_utf8(pair).map_err(|_| "invalid reserved version")?;
+            u8::from_str_radix(pair, 16).map_err(|_| "invalid reserved version")
+        })
+        .collect();
+    let version = String::from_utf8(bytes?).map_err(|_| "invalid reserved version")?;
+    if !bota_proto::valid_version(&version) {
+        return Err("invalid reserved version".to_owned());
+    }
+    Ok((VersionSource::Fixed(Some(version)), rest))
+}
+
 fn reservation(slot: usize, entry: &str) -> Result<ReservedSeat, String> {
     let (key, rest) = entry
         .split_once(':')
@@ -757,11 +791,20 @@ fn reservation(slot: usize, entry: &str) -> Result<ReservedSeat, String> {
         Some(("1", name)) => (Some(Team::Dire), name),
         _ => (None, rest),
     };
+    let (version, identity) = if team.is_some() {
+        reservation_version(name)?
+    } else {
+        (bota_server::lobby::VersionSource::Fixed(None), name)
+    };
+    let name = identity;
     let (kind, name) = match name.rsplit_once(':') {
         Some((name, "bot")) if team.is_some() => (Some(Role::Bot), name),
         Some((name, "human")) if team.is_some() => (Some(Role::Player), name),
         _ => (None, name),
     };
+    if matches!(version, bota_server::lobby::VersionSource::Fixed(Some(_))) && kind.is_none() {
+        return Err("a version field needs an explicit reservation kind".to_owned());
+    }
     let team = team.unwrap_or(if slot.is_multiple_of(2) {
         Team::Radiant
     } else {
@@ -774,6 +817,7 @@ fn reservation(slot: usize, entry: &str) -> Result<ReservedSeat, String> {
         ));
     }
     Ok(ReservedSeat {
+        version,
         key: SeatKey::from_hex(key).ok_or("a key is 64 hex digits")?,
         name: name.to_owned(),
         team,

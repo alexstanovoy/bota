@@ -140,7 +140,8 @@ impl Rejoin {
     /// The message as it goes out, noted for a later connection.
     pub fn outgoing(&mut self, msg: &ClientMsg) -> ClientMsg {
         let mut msg = msg.clone();
-        if let ClientMsg::Hello { role, key, .. } = &mut msg
+        if let ClientMsg::Hello { role, key, .. } | ClientMsg::HelloVersion { role, key, .. } =
+            &mut msg
             && matches!(role, Role::Player | Role::Bot)
         {
             if key.is_none() {
@@ -149,7 +150,7 @@ impl Rejoin {
             self.rejoining = true;
         }
         let kept = match msg {
-            ClientMsg::Hello { .. } => &mut self.hello,
+            ClientMsg::Hello { .. } | ClientMsg::HelloVersion { .. } => &mut self.hello,
             ClientMsg::Catalogue(_) => &mut self.catalogue,
             ClientMsg::PickHero { .. } => &mut self.pick,
             ClientMsg::SetReady(_) => &mut self.ready,
@@ -243,9 +244,14 @@ impl Rejoin {
     /// The wire the kept hello speaks; this build's own before any hello.
     fn spoken_wire(&self) -> u64 {
         match &self.hello {
-            Some(ClientMsg::Hello {
-                wire_fingerprint, ..
-            }) => *wire_fingerprint,
+            Some(
+                ClientMsg::Hello {
+                    wire_fingerprint, ..
+                }
+                | ClientMsg::HelloVersion {
+                    wire_fingerprint, ..
+                },
+            ) => *wire_fingerprint,
             _ => bota_core::WIRE_FINGERPRINT,
         }
     }
@@ -256,9 +262,14 @@ impl Rejoin {
         let Some(items) = bota_core::spoken_items(wire) else {
             return false;
         };
-        let Some(ClientMsg::Hello {
-            wire_fingerprint, ..
-        }) = self.hello.as_mut()
+        let Some(
+            ClientMsg::Hello {
+                wire_fingerprint, ..
+            }
+            | ClientMsg::HelloVersion {
+                wire_fingerprint, ..
+            },
+        ) = self.hello.as_mut()
         else {
             return false;
         };

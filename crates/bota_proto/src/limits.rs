@@ -129,6 +129,8 @@ limits! {
     MAX_DEATH_GOLD_AWARDS: usize = crate::game_limits::MAX_DEATH_GOLD_AWARDS;
     /// Most enabled boss lairs in one snapshot.
     MAX_LAIRS: usize = crate::game_limits::MAX_LAIRS;
+    /// Opaque bot version bytes, independent of the displayed seat name.
+    MAX_VERSION_LEN: usize = 32;
 }
 
 pub use crate::game_limits::{COURIER_ITEM_SLOTS, HERO_ITEM_SLOTS};

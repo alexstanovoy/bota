@@ -56,6 +56,7 @@ pub struct Recorder {
     structure_records: u32,
     recorded_leaves: [bool; bota_proto::limits::MAX_SEATS],
     recorded_names: [bool; bota_proto::limits::MAX_SEATS],
+    identities: [Option<bota_proto::SeatIdentity>; bota_proto::limits::MAX_SEATS],
     tick: u32,
     next_minute: u32,
     started: bool,
@@ -75,6 +76,7 @@ impl Default for Recorder {
             structure_records: 0,
             recorded_leaves: [false; bota_proto::limits::MAX_SEATS],
             recorded_names: [false; bota_proto::limits::MAX_SEATS],
+            identities: std::array::from_fn(|_| None),
             tick: 0,
             next_minute: 0,
             started: false,
@@ -109,6 +111,7 @@ impl Recorder {
             }) => self.aborted(stats),
             ReplayRecord::Leave { tick, slot } => self.leave(*tick, slot.0),
             ReplayRecord::SeatName { slot, name, bot } => self.name(slot.0, name, *bot),
+            ReplayRecord::Msg(ServerMsg::SeatIdentity(identity)) => self.identity(identity),
             _ => {}
         }
     }
@@ -121,6 +124,21 @@ impl Recorder {
             // A permanent departure must survive a full normal budget, including in an
             // abandoned match with no result. At most MAX_SEATS facts use the end reserve.
             *recorded = self.out.push(&MetaRecord::Leave { tick, slot }, true);
+        }
+    }
+
+    fn identity(&mut self, identity: &bota_proto::SeatIdentity) {
+        let Some(previous) = self.identities.get_mut(usize::from(identity.slot.0)) else {
+            return;
+        };
+        if self.started
+            && !self.ended
+            && previous.as_ref() != Some(identity)
+            && self
+                .out
+                .push(&MetaRecord::SeatIdentity(identity.clone()), false)
+        {
+            *previous = Some(identity.clone());
         }
     }
 

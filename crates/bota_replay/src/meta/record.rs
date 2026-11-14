@@ -140,11 +140,13 @@ pub enum MetaRecord {
         #[serde(deserialize_with = "super::profiles::read_seats")]
         seats: Vec<(u8, Option<u64>)>,
     },
+    /// The same public seat fact stored in the game recording.
+    SeatIdentity(bota_proto::SeatIdentity),
 }
 
 impl MetaRecord {
     /// Kept in step with the append-only registry by the layout contract.
-    pub(crate) const LAST_KIND: u32 = 13;
+    pub(crate) const LAST_KIND: u32 = 14;
 }
 
 /// The ids of the values of a [`MetaRecord::Sample`]. Append-only: a retired id stays reserved.

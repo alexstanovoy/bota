@@ -202,3 +202,39 @@ fn rules_identity_option_does_not_require_a_match_configuration() {
         16
     );
 }
+
+#[test]
+fn reservation_versions_are_separate_bounded_fields() {
+    use bota_server::lobby::VersionSource;
+    let key = bota_proto::SeatKey([1; 32]).to_hex();
+    let seat = crate::reservation(0, &format!("{key}:0:engine:bot:v=76312c2028783a7929")).unwrap();
+    assert_eq!(seat.name, "engine");
+    assert_eq!(seat.version, VersionSource::Fixed(Some("v1, (x:y)".into())));
+    let literal = crate::reservation(0, &format!("{key}:0:literal:v=build")).unwrap();
+    assert_eq!(literal.name, "literal:v=build");
+    assert_eq!(literal.version, VersionSource::Fixed(None));
+    for untagged in [
+        format!("{key}:name"),
+        format!("{key}:0:name"),
+        format!("{key}:1:name:bot"),
+    ] {
+        assert_eq!(
+            crate::reservation(0, &untagged).unwrap().version,
+            VersionSource::Fixed(None),
+            "{untagged}: an untagged entry never trusts the client's claim"
+        );
+    }
+    let human = crate::reservation(0, &format!("{key}:0:person:human:v=-")).unwrap();
+    assert_eq!(human.version, VersionSource::Fixed(None));
+    for invalid in ["", "0a", "207631", "xyz"] {
+        assert_eq!(
+            crate::reservation(0, &format!("{key}:0:engine:bot:v={invalid}")).unwrap_err(),
+            "invalid reserved version"
+        );
+    }
+    let excessive = "78".repeat(33);
+    assert_eq!(
+        crate::reservation(0, &format!("{key}:0:engine:bot:v={excessive}")).unwrap_err(),
+        "invalid reserved version"
+    );
+}

@@ -534,8 +534,8 @@ pub struct App {
     pub lobby: Lobby,
     /// Seat names from the lobby.
     pub names: Vec<(SlotId, String)>,
-    /// Optional bot identity metadata supplied by the matchmaking client.
-    player_versions: Vec<(SlotId, String)>,
+    /// Public identities from the game stream, shared by live play and standalone replay.
+    pub identities: Vec<bota_proto::SeatIdentity>,
     /// The stream from the lobby on, and what this client knows of the
     /// match from its start.
     seat: Seat,
@@ -632,7 +632,7 @@ impl App {
             held_item: None,
             lobby: Lobby::default(),
             names: Vec::new(),
-            player_versions: Vec::new(),
+            identities: Vec::new(),
             seat: Seat::watching(SESSION_OPTIONS),
             attack_move_armed: false,
             queueing: false,
@@ -831,34 +831,28 @@ impl App {
         self.view()?.glyphs.iter().find(|g| g.team == team).copied()
     }
 
+    pub fn seat_identity(&self, slot: SlotId) -> Option<&bota_proto::SeatIdentity> {
+        self.identities
+            .iter()
+            .find(|identity| identity.slot == slot)
+    }
+
     /// The name the player of a seat gave in the lobby, if any.
     pub fn player_name(&self, slot: SlotId) -> Option<&str> {
         self.names
             .iter()
             .find(|(s, _)| *s == slot)
             .map(|(_, name)| name.as_str())
-    }
-
-    /// Records bounded display metadata for a seat, independently of the game wire.
-    pub fn set_player_version(&mut self, slot: SlotId, version: Option<&str>) {
-        self.player_versions.retain(|(current, _)| *current != slot);
-        if usize::from(slot.0) >= bota_proto::limits::MAX_SEATS {
-            return;
-        }
-        if let Some(version) = version.filter(|name| {
-            !name.is_empty()
-                && name.len() <= 32
-                && name.bytes().all(|byte| (32..=126).contains(&byte))
-        }) {
-            self.player_versions.push((slot, version.to_owned()));
-        }
+            .or_else(|| {
+                self.seat_identity(slot)
+                    .map(|identity| identity.name.as_str())
+            })
     }
 
     pub fn player_version(&self, slot: SlotId) -> Option<&str> {
-        self.player_versions
-            .iter()
-            .find(|(current, _)| *current == slot)
-            .map(|(_, name)| name.as_str())
+        self.seat_identity(slot)
+            .filter(|identity| identity.bot)
+            .and_then(|identity| identity.version.as_deref())
     }
 
     /// What is known of a unit: its live state, or the last one seen of it
@@ -1165,11 +1159,34 @@ impl App {
                 });
             }
             ServerMsg::LobbyState { slots, .. } => {
+                // The lobby names who holds what; the version is told by the seat's identity.
                 self.names = slots
                     .iter()
                     .filter(|s| !s.name.is_empty())
                     .map(|s| (s.slot, s.name.clone()))
                     .collect();
+                let told = std::mem::take(&mut self.identities);
+                self.identities = slots
+                    .iter()
+                    .filter(|seat| !seat.name.is_empty())
+                    .map(|seat| bota_proto::SeatIdentity {
+                        slot: seat.slot,
+                        name: seat.name.clone(),
+                        bot: seat.role == Some(bota_proto::Role::Bot),
+                        version: told
+                            .iter()
+                            .find(|old| old.slot == seat.slot && old.name == seat.name)
+                            .and_then(|old| old.version.clone()),
+                    })
+                    .collect();
+            }
+            ServerMsg::SeatIdentity(identity) => {
+                if usize::from(identity.slot.0) >= bota_proto::limits::MAX_SEATS {
+                    return;
+                }
+                self.identities
+                    .retain(|current| current.slot != identity.slot);
+                self.identities.push(identity.clone());
             }
             ServerMsg::Orders { tick, orders } => {
                 for given in orders {

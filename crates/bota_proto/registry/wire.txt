@@ -827,3 +827,17 @@ field EventKind::RetiredItemState 0 unit: EntityId
 field EventKind::RetiredItemState 1 slot: ItemSlot
 field EventKind::RetiredItemState 2 item: ItemId
 field EventKind::RetiredItemState 3 active: bool
+# Structured public seat identities.
+variant ClientMsg 12 HelloVersion {}
+field ClientMsg::HelloVersion 0 role: Role
+field ClientMsg::HelloVersion 1 name: String
+field ClientMsg::HelloVersion 2 key: Option<SeatKey>
+field ClientMsg::HelloVersion 3 wire_fingerprint: u64
+field ClientMsg::HelloVersion 4 version: Option<String>
+variant ServerMsg 20 SeatIdentity(SeatIdentity)
+field SeatIdentity 0 slot: SlotId
+field SeatIdentity 1 name: String
+field SeatIdentity 2 bot: bool
+field SeatIdentity 3 version: Option<String>
+variant RejectReason 35 BadVersion
+variant RejectReason 36 VersionNotAllowed

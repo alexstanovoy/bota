@@ -28,6 +28,7 @@ fn running_three(
             .iter()
             .enumerate()
             .map(|(i, key)| ReservedSeat {
+                version: crate::lobby::VersionSource::Client,
                 key: *key,
                 name: format!("seat{i}"),
                 team: if i == 1 { Team::Dire } else { Team::Radiant },

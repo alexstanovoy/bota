@@ -96,6 +96,7 @@ fn heroes_given(map: MapId, seed: u64, allowed: Vec<HeroId>) -> Vec<HeroId> {
         .iter()
         .zip([Team::Radiant, Team::Dire])
         .map(|(key, team)| ReservedSeat {
+            version: crate::lobby::VersionSource::Client,
             kind: None,
             key: *key,
             name: "absent".to_owned(),

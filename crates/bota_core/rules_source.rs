@@ -28,6 +28,7 @@ const PROTO_SIM_MODULES: &[&str] = &[
     "talents",
 ];
 const PROTO_WIRE_MODULES: &[&str] = &[
+    "identity",
     "bounded",
     "chat",
     "codec",

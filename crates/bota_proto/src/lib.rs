@@ -14,6 +14,7 @@ mod entity_ids;
 mod event;
 mod fingerprint;
 pub mod game_limits;
+mod identity;
 mod ids;
 pub mod limits;
 mod match_rule;
@@ -38,10 +39,12 @@ pub use codec::*;
 pub use event::*;
 pub use fingerprint::*;
 pub use game_limits::*;
+pub use identity::{SeatIdentity, valid_version};
 pub use ids::*;
 pub use limits::{
     MAX_ANNOUNCED_NAME_BYTES, MAX_CHAT_BYTES, MAX_CHAT_GRAPHEMES, MAX_CLIENT_PAYLOAD_LEN,
     MAX_DECODED_BYTES, MAX_EVENTS_PER_BATCH, MAX_PAYLOAD_LEN, MAX_SHOWN_NAME_BYTES,
+    MAX_VERSION_LEN,
 };
 pub use match_rule::*;
 pub use math::*;

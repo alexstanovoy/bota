@@ -49,3 +49,5 @@ pub use search::{Offer, Search, Searches, SlotWait};
 pub use tls::Tls;
 #[cfg(all(target_arch = "wasm32", feature = "web"))]
 pub use web::web_link;
+
+const _: () = assert!(proto::MAX_VERSION_LEN == bota_proto::MAX_VERSION_LEN);

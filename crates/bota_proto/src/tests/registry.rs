@@ -152,7 +152,12 @@ fn what_builds_of_other_wires_read_of_each_other_never_grows() {
 /// launcher reads among them, each enum traced on its own so that no variant
 /// goes unseen.
 fn trace_wire() -> Registry {
-    let mut tracer = Tracer::new(TracerConfig::default());
+    // The validated version visitor needs a valid non-empty string sample.
+    let mut tracer = Tracer::new(
+        TracerConfig::default()
+            .default_borrowed_str_value("v1")
+            .default_string_value("v1".to_owned()),
+    );
     let mut enums = HashSet::new();
     trace::<ClientMsg>(&mut tracer, &mut enums);
     trace::<ServerMsg>(&mut tracer, &mut enums);

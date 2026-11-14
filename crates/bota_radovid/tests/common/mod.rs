@@ -130,7 +130,7 @@ args = ["--map", "2", "--mode", "lockstep", "--ack-timeout-ticks", "900",
         "--match-id", "{{match_id}}", "--bind", "127.0.0.1", "--port", "0",
         "--ws-port", "{{port}}", "--start-after-secs", "30", "--abandon-unjoined",
         "--empty-after-secs", "60"]
-env = {{ BOTA_SEATS = "{{seats}}" }}
+env = {{ BOTA_SEATS = "{{seats_with_versions}}" }}
 artifact = "{artifacts}/replay-{{match_id}}.brp"
 artifact_args = ["--replay", "{{artifact}}"]
 "#,

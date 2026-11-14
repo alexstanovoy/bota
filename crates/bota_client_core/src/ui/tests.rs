@@ -678,7 +678,7 @@ fn a_lobby_past_its_bounds_breaks_the_stream_and_is_not_kept() {
         let mut app = a_silent_app();
         app.handle(state(slots));
         assert!(app.lost, "the client stops listening");
-        assert!(app.lobby.slots.is_empty() && app.names.is_empty());
+        assert!(app.lobby.slots.is_empty() && app.identities.is_empty());
     }
 }
 

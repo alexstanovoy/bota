@@ -295,6 +295,7 @@ impl ClientSession {
                 Ok(Ingested::Passed(Box::new(msg)))
             }
             other @ (ServerMsg::Welcome { .. }
+            | ServerMsg::SeatIdentity(_)
             | ServerMsg::Orders { .. }
             | ServerMsg::ParticipantLeft { .. }
             | ServerMsg::SayRefused { .. }

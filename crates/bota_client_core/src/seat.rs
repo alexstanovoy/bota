@@ -152,7 +152,8 @@ impl Seat {
             ServerMsg::Heard(_) | ServerMsg::SayRefused { .. } => {
                 unreachable!("chat was passed on above")
             }
-            other @ (ServerMsg::Orders { .. }
+            other @ (ServerMsg::SeatIdentity(_)
+            | ServerMsg::Orders { .. }
             | ServerMsg::ParticipantLeft { .. }
             | ServerMsg::Echo { .. }
             | ServerMsg::OrderReceived { .. }

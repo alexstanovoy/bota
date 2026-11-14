@@ -238,14 +238,26 @@ fn metadata_keeps_the_seated_player_name_for_a_standalone_replay() {
         .records
         .iter()
         .filter_map(|record| match record {
-            MetaRecord::SeatName { slot, name, bot } => Some((*slot, name.as_str(), *bot)),
+            MetaRecord::SeatIdentity(identity) => Some((
+                identity.slot.0,
+                identity.name.as_str(),
+                identity.bot,
+                identity.version.as_deref(),
+            )),
             _ => None,
         })
         .collect();
     assert_eq!(
         names,
-        [(0, "meta", true)],
+        [(0, "meta", true, None)],
         "only the held seat, not the observer"
+    );
+    assert!(
+        !meta
+            .records
+            .iter()
+            .any(|record| matches!(record, MetaRecord::SeatName { .. })),
+        "the identity is the one record of who sat"
     );
     let rebuilt =
         bota_client_core::meta_of_replay(std::fs::File::open(&files.replay).expect("replay"))

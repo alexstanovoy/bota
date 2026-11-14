@@ -35,7 +35,7 @@ version_probe = ["--wire-fingerprint"]
 args = ["--map", "0", "--match-id", "{match_id}", "--bind", "0.0.0.0", "--ws-port", "4456",
         "--tls-cert", "/certs/fullchain.pem", "--tls-key", "/certs/privkey.pem",
         "--start-after-secs", "60", "--abandon-unjoined", "--empty-after-secs", "300"]
-env = { BOTA_SEATS = "{seats}" }
+env = { BOTA_SEATS = "{seats_with_versions}" }
 artifact = "/var/lib/radovid/replays/replay-{match_id}.brp"
 artifact_args = ["--replay", "{artifact}"]
 cheats_args = ["--lobby-cheats"]           # a lobby's owner may turn the game's cheats on (never in a queued match)
@@ -64,7 +64,7 @@ version_probe = ["--wire-fingerprint"]
 args = ["--map", "2", "--match-id", "{match_id}", "--bind", "0.0.0.0", "--ws-port", "4456",
         "--tls-cert", "/certs/fullchain.pem", "--tls-key", "/certs/privkey.pem",
         "--heroes", "1", "--start-after-secs", "60", "--abandon-unjoined", "--empty-after-secs", "300"]
-env = { BOTA_SEATS = "{seats}" }           # tickets go into the environment only; each seat is ticket:team:name:kind (bot|human, the account's own)
+env = { BOTA_SEATS = "{seats_with_versions}" }           # tickets go into the environment only; each seat is ticket:team:name:kind:v=<hex> (v=- for humans)
 
 # The replay of each match, kept for its seats when `[artifacts] save_replays = true` (off unless set): radovid
 # makes the file and mounts just that one writable at /artifact in the container, and adds `artifact_args` and
@@ -126,7 +126,7 @@ version_probe = ["--wire-fingerprint"]
 args = ["--map", "0", "--match-id", "{match_id}", "--bind", "0.0.0.0", "--ws-port", "4456",
         "--tls-cert", "/certs/fullchain.pem", "--tls-key", "/certs/privkey.pem",
         "--cheats", "--tactical-secs", "0", "--abandon-unjoined", "--empty-after-secs", "60"]
-env = { BOTA_SEATS = "{seats}" }
+env = { BOTA_SEATS = "{seats_with_versions}" }
 
 # Unranked counterparts use the same mode's ladder for skill matching only.
 # All window values are rating points. Each member must accept the group's full spread.
@@ -148,7 +148,7 @@ version_probe = ["--wire-fingerprint"]
 args = ["--map", "0", "--match-id", "{match_id}", "--bind", "0.0.0.0", "--ws-port", "4456",
         "--tls-cert", "/certs/fullchain.pem", "--tls-key", "/certs/privkey.pem",
         "--start-after-secs", "60", "--abandon-unjoined", "--empty-after-secs", "300"]
-env = { BOTA_SEATS = "{seats}" }
+env = { BOTA_SEATS = "{seats_with_versions}" }
 cheats_args = ["--lobby-cheats"]
 artifact = "/var/lib/radovid/replays/replay-{match_id}.brp"
 artifact_args = ["--replay", "{artifact}"]
@@ -176,6 +176,6 @@ version_probe = ["--wire-fingerprint"]
 args = ["--map", "2", "--match-id", "{match_id}", "--bind", "0.0.0.0", "--ws-port", "4456",
         "--tls-cert", "/certs/fullchain.pem", "--tls-key", "/certs/privkey.pem",
         "--heroes", "1", "--start-after-secs", "60", "--abandon-unjoined", "--empty-after-secs", "300"]
-env = { BOTA_SEATS = "{seats}" }
+env = { BOTA_SEATS = "{seats_with_versions}" }
 artifact = "/var/lib/radovid/replays/replay-{match_id}.brp"
 artifact_args = ["--replay", "{artifact}"]

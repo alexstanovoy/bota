@@ -777,6 +777,13 @@ pub fn all_events() -> Vec<EventKind> {
 /// Every [`ClientMsg`] variant.
 pub fn all_client_msgs() -> Vec<ClientMsg> {
     vec![
+        ClientMsg::hello_with_version(
+            Role::Bot,
+            "engine",
+            None,
+            REGISTRY_DIGEST,
+            Some("v1 (sample)".into()),
+        ),
         ClientMsg::Hello {
             role: Role::Player,
             name: "player-one".to_string(),
@@ -835,6 +842,12 @@ pub fn slot_order(slot: u8) -> SlotOrder {
 /// Every [`ServerMsg`] variant.
 pub fn all_server_msgs() -> Vec<ServerMsg> {
     vec![
+        ServerMsg::SeatIdentity(SeatIdentity {
+            slot: SlotId(0),
+            name: "engine".into(),
+            bot: true,
+            version: Some("v1 (sample)".into()),
+        }),
         ServerMsg::Welcome {
             player_id: PlayerId(3),
             slot: Some(SlotId(0)),
@@ -982,6 +995,7 @@ pub fn all_replay_records() -> Vec<ReplayRecord> {
 pub fn client_msg_name(msg: &ClientMsg) -> &'static str {
     match msg {
         ClientMsg::Hello { .. } => "Hello",
+        ClientMsg::HelloVersion { .. } => "HelloVersion",
         ClientMsg::PickHero { .. } => "PickHero",
         ClientMsg::SetReady(_) => "SetReady",
         ClientMsg::Order { .. } => "Order",
@@ -1020,5 +1034,6 @@ pub fn server_msg_name(msg: &ServerMsg) -> &'static str {
         ServerMsg::Scenery { .. } => "Scenery",
         ServerMsg::MatchAborted { .. } => "MatchAborted",
         ServerMsg::TimeLimitNear { .. } => "TimeLimitNear",
+        ServerMsg::SeatIdentity(_) => "SeatIdentity",
     }
 }

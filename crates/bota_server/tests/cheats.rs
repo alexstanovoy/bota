@@ -399,6 +399,7 @@ fn several_reserved_seats_cheat_only_in_a_lobby_that_turned_them_on() {
     reserved.players = 2;
     reserved.reserved = (0..2)
         .map(|seat| ReservedSeat {
+            version: bota_server::lobby::VersionSource::Client,
             key: bota_proto::SeatKey([seat; 32]),
             name: format!("p{seat}"),
             team: if seat == 0 {

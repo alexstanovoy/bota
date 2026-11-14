@@ -14,6 +14,7 @@ pub struct RosterSeat {
     pub player: Option<PlayerId>,
     /// Display name of the holder. Empty while open.
     pub name: String,
+    pub version: Option<String>,
     /// Absent while open.
     pub role: Option<Role>,
     /// Absent until picked.
@@ -41,16 +42,25 @@ impl RosterSeat {
     /// Hands the seat to a connection, not yet ready; its pick stays. The
     /// name is cleaned and cut to [`bota_core::rules::MAX_SHOWN_NAME_BYTES`]
     /// ([`bota_core::clean_name`]).
-    pub fn hold(&mut self, player: PlayerId, name: String, role: Role) {
+    pub fn hold(&mut self, player: PlayerId, name: String, role: Role, version: Option<String>) {
         self.player = Some(player);
         self.name = bota_core::clean_name(&name);
         self.role = Some(role);
+        self.version = version;
         self.ready = false;
         self.catalogue = bota_core::Catalogue::FULL;
     }
 }
 
 impl RosterSeat {
+    pub fn identity(&self) -> bota_proto::SeatIdentity {
+        bota_proto::SeatIdentity {
+            slot: self.slot,
+            name: self.name.clone(),
+            bot: self.role == Some(Role::Bot),
+            version: self.version.clone(),
+        }
+    }
     /// Gives the seat the hero a forced pick names, final and ready: nothing is left to choose.
     pub fn force(&mut self, hero: Option<HeroId>) {
         if let Some(hero) = hero {
@@ -58,6 +68,20 @@ impl RosterSeat {
             self.pick_locked = true;
             self.ready = true;
         }
+    }
+}
+
+/// Whether a connecting client may supply the display version.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum VersionSource {
+    Client,
+    Fixed(Option<String>),
+}
+
+impl Default for VersionSource {
+    /// Nothing is trusted unless a reservation says so.
+    fn default() -> Self {
+        Self::Fixed(None)
     }
 }
 
@@ -73,6 +97,7 @@ pub struct ReservedSeat {
     /// The kind of player the seat is for: [`Role::Bot`] or [`Role::Player`]
     /// (a human). A `Hello` of the other role is refused. Absent admits both.
     pub kind: Option<Role>,
+    pub version: VersionSource,
 }
 
 /// All seats, and the `PlayerId` to `SlotId` mapping.
@@ -102,6 +127,7 @@ impl Roster {
                     },
                     player: None,
                     name: String::new(),
+                    version: None,
                     role: None,
                     hero: None,
                     ready: false,
@@ -180,11 +206,19 @@ impl Roster {
             .find(|s| s.player.is_none() && !s.dummy)
     }
 
+    /// A connection can leave a running game while its seat identity remains public.
+    pub fn disconnect(&mut self, player: PlayerId) {
+        if let Some(seat) = self.seat_of_mut(player) {
+            seat.player = None;
+        }
+    }
+
     /// Opens whatever seat a connection held; its pick stays.
     pub fn release(&mut self, player: PlayerId) {
         if let Some(seat) = self.seat_of_mut(player) {
             seat.player = None;
             seat.name.clear();
+            seat.version = None;
             seat.role = None;
             seat.ready = false;
         }

@@ -242,6 +242,7 @@ fn a_reserved_kind_refuses_the_other_kind_of_player() {
         .iter()
         .enumerate()
         .map(|(at, team)| ReservedSeat {
+            version: crate::lobby::VersionSource::Client,
             key: SeatKey([3 + at as u8; 32]),
             name: "seat".to_owned(),
             team: *team,

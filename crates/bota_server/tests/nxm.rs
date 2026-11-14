@@ -141,6 +141,7 @@ fn play_lineup(radiant: u8, dire: u8) {
         .zip(&keys)
         .enumerate()
         .map(|(i, (team, key))| ReservedSeat {
+            version: bota_server::lobby::VersionSource::Client,
             key: *key,
             name: format!("seat{i}"),
             team: *team,
@@ -490,6 +491,7 @@ fn a_side_holds_at_most_five_seats() {
         teams
             .enumerate()
             .map(|(i, team)| ReservedSeat {
+                version: bota_server::lobby::VersionSource::Client,
                 key: SeatKey([i as u8 + 1; 32]),
                 name: format!("seat{i}"),
                 team,
