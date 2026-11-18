@@ -6,6 +6,29 @@ use heatel::keyvalues::{Kv, parse_kv, text};
 use heatel::vpk::Vpk;
 use heatel::{DirSource, find_game_dir};
 
+/// The `game/dota` folder of the install the tool reads. A folder that is named (`--dota` or
+/// `BOTA_DOTA_PATH`) is that install or an error naming what it lacks: falling back on another
+/// install would read another client build without a word. Only when none is named is the first
+/// Steam library's taken.
+pub fn game_dir(dota: Option<&Path>) -> Result<std::path::PathBuf, String> {
+    let Some(dota) = dota else {
+        return find_game_dir(None)
+            .ok_or_else(|| "no Dota 2 install found in a Steam library; pass --dota".to_owned());
+    };
+    if !dota.is_absolute() {
+        return Err(format!(
+            "the install {dota:?} is not an absolute path: name the \"dota 2 beta\" folder in full"
+        ));
+    }
+    let game = dota.join("game/dota");
+    for file in ["pak01_dir.vpk", "steam.inf"] {
+        if !game.join(file).is_file() {
+            return Err(format!("the install {dota:?} has no game/dota/{file}"));
+        }
+    }
+    Ok(game)
+}
+
 /// The item scripts of one client build.
 pub struct Source {
     /// The client build, as `steam.inf` names it: `ClientVersion` and `VersionDate`.
@@ -157,7 +180,7 @@ struct Package {
 impl Package {
     /// The package of the install under `dota`, else the first Steam library's.
     fn open(dota: Option<&Path>) -> Result<Package, String> {
-        let game = find_game_dir(dota).ok_or("no Dota 2 install found; pass --dota")?;
+        let game = crate::install::game_dir(dota)?;
         let build = build(&game.join("steam.inf"))?;
         let source = DirSource::new(&game);
         let vpk = Vpk::open(&source, "pak01_dir.vpk").map_err(|e| format!("pak01_dir.vpk: {e}"))?;
@@ -178,7 +201,7 @@ impl Package {
 /// library's): `scripts/npc/heroes/npc_dota_hero_<hero>.txt`, parsed.
 #[cfg(test)]
 pub fn hero_script(dota: Option<&Path>, hero: &str) -> Result<Kv, String> {
-    let game = find_game_dir(dota).ok_or("no Dota 2 install found; pass --dota")?;
+    let game = crate::install::game_dir(dota)?;
     let source = DirSource::new(&game);
     let vpk = Vpk::open(&source, "pak01_dir.vpk").map_err(|e| format!("pak01_dir.vpk: {e}"))?;
     let path = format!("scripts/npc/heroes/npc_dota_hero_{hero}.txt");
@@ -211,4 +234,29 @@ pub(crate) fn build(path: &Path) -> Result<String, String> {
         field("ClientVersion")?,
         field("VersionDate")?
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    /// A named install is read or refused by name: one that lacks a file, or is named by a
+    /// relative path, is an error naming it, never a fall back on Steam's install.
+    #[test]
+    fn a_named_install_without_its_files_is_refused_by_name() {
+        let named =
+            std::env::temp_dir().join(format!("import-items-install-{}", std::process::id()));
+        std::fs::create_dir_all(named.join("game/dota")).expect("a scratch install");
+        let why = super::game_dir(Some(&named)).expect_err("no packages");
+        assert!(why.contains("has no game/dota/pak01_dir.vpk"), "{why}");
+        assert!(why.contains(&named.display().to_string()), "{why}");
+        std::fs::write(named.join("game/dota/pak01_dir.vpk"), b"").expect("a package");
+        let why = super::game_dir(Some(&named)).expect_err("no version file");
+        assert!(why.contains("has no game/dota/steam.inf"), "{why}");
+        std::fs::write(named.join("game/dota/steam.inf"), b"").expect("a version file");
+        assert_eq!(super::game_dir(Some(&named)), Ok(named.join("game/dota")));
+        let why = super::game_dir(Some(Path::new("dota 2 beta"))).expect_err("relative");
+        assert!(why.contains("not an absolute path"), "{why}");
+        std::fs::remove_dir_all(&named).expect("scratch removed");
+    }
 }

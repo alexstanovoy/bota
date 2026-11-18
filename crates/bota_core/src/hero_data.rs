@@ -186,8 +186,8 @@ pub enum Bonus {
     /// `+15%`: so many percent more.
     Percent(Dec),
     /// `hero_levelup` with `levelup_interval`: `add` more for every `every` levels of the hero
-    /// that holds the ability, kept under the key `hero_levelup`. Not a learned bonus:
-    /// [`AbilityValue::at_hero_level`] reads it.
+    /// that holds the ability, kept under the key [`HERO_LEVELUP`]. Not a learned bonus: the
+    /// hero's own formula reads it (Shadow Fiend's soul worth).
     HeroLevels { add: Dec, every: u8 },
 }
 
@@ -244,30 +244,6 @@ impl AbilityValue {
             })
     }
 
-    /// The number at ability level `level` (from zero) for a hero at `hero_level` (from one):
-    /// [`at`](Self::at) and its [`Bonus::HeroLevels`] growth for every whole interval reached.
-    pub const fn at_hero_level(&self, level: usize, hero_level: u8) -> Dec {
-        let base = self.at(level);
-        match self.bonus_of(HERO_LEVELUP) {
-            Some(Bonus::HeroLevels { add, every }) => {
-                Dec(base.0 + add.0 * (hero_level / every) as i32)
-            }
-            _ => base,
-        }
-    }
-
-    /// What the bonus `key` makes of it, if it has one.
-    const fn bonus_of(&self, key: &str) -> Option<Bonus> {
-        let mut at = 0;
-        while at < self.bonuses.len() {
-            if str_eq(self.bonuses[at].0, key) {
-                return Some(self.bonuses[at].1);
-            }
-            at += 1;
-        }
-        None
-    }
-
     /// The first level's number.
     pub const fn first(&self) -> Dec {
         self.at(0)
@@ -320,6 +296,21 @@ impl AbilityValue {
     }
 }
 
+/// Whether the script says Break suspends an ability; one that says nothing fails the build, so
+/// a script that drops the key is looked at rather than read as unbreakable.
+pub const fn stated_breakable(ability: &AbilityData) -> bool {
+    match ability.breakable {
+        Some(breakable) => breakable,
+        None => panic!("the script says nothing of whether Break suspends the ability"),
+    }
+}
+
+/// A number of a script in tenths. Fails the build for one finer than that.
+pub const fn tenths(value: Dec) -> i32 {
+    assert!(value.0 % 100 == 0, "finer than tenths");
+    value.0 / 100
+}
+
 impl Bonus {
     /// What it makes of `value` at `level`, counted from zero.
     pub const fn applied(self, value: Dec, level: usize) -> Dec {
@@ -328,7 +319,7 @@ impl Bonus {
             Bonus::Times(factor) => Dec((value.0 as i64 * factor.0 as i64 / 1000) as i32),
             Bonus::Set(levels) => level_of(levels, level),
             Bonus::Percent(pct) => Dec(value.0 + (value.0 as i64 * pct.0 as i64 / 100_000) as i32),
-            // The hero's level, not a learned bonus, grows it: `at_hero_level` reads it.
+            // The hero's level, not a learned bonus, grows it: the hero's formula reads it.
             Bonus::HeroLevels { .. } => value,
         }
     }

@@ -14,7 +14,7 @@ use crate::item_data::str_eq;
 use crate::unit::NO_GROWTH;
 use crate::{
     AbilityDef, Aura, AuraModifier, Growth, HERO, HeroDef, Pierces, Reach, Talent, TalentTree,
-    UnitDef, Whom, fixed, per_tick_of, rules, turn_rate_brads,
+    UnitDef, Whom, fixed, per_tick_of, rules, stated_breakable, turn_rate_brads,
 };
 
 /// Shadow Fiend: fragile and long-ranged, at his script's numbers. His backswing the script
@@ -169,7 +169,7 @@ pub const PRESENCE: AbilityDef = AbilityDef {
         reaches: Reach::Living,
         radius: PRESENCE_RADIUS,
         linger: PRESENCE_LINGER_TICKS,
-        breakable: matches!(NEVERMORE_DARK_LORD.breakable, Some(true)),
+        breakable: stated_breakable(&NEVERMORE_DARK_LORD),
         invulnerable: false,
         water: false,
         modifier: AuraModifier::ArmorBroken,

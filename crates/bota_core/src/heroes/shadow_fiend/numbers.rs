@@ -10,7 +10,7 @@ use crate::heroes_data::{
     NEVERMORE_SHADOWRAZE1, NEVERMORE_SHADOWRAZE2, NEVERMORE_SHADOWRAZE3,
 };
 use crate::rules::TICKS_PER_SECOND;
-use crate::{Bonus, Dec, HERO_LEVELUP, Ms, fixed, ints_of, ticks_of};
+use crate::{Bonus, Dec, HERO_LEVELUP, Ms, fixed, ints_of, tenths, ticks_of};
 
 /// How far in front of the caster a raze lands, in world units, from the
 /// nearest reach to the farthest: each raze's `shadowraze_range`.
@@ -81,7 +81,6 @@ const fn option_key(linked: Option<&'static str>) -> &'static str {
 
 const _: () = {
     assert!(RAZE_STACK_DAMAGE.len() == RAZE_DAMAGE.len());
-    assert!(RAZE_DEBUFF_TICKS == 180);
     assert!(RAZE_MAX_STACKS == u8::MAX);
     assert!(
         RAZE_DAMAGE[3]
@@ -110,11 +109,11 @@ pub const NECRO_SOUL_CAP: u32 = NEVERMORE_NECROMASTERY
     .int() as u32;
 /// Tenths of attack damage one soul is worth at hero levels 1 to 5:
 /// `necromastery_damage_per_soul`.
-pub const SOUL_DAMAGE_TENTHS: i32 = NEVERMORE_NECROMASTERY
-    .value("necromastery_damage_per_soul")
-    .first()
-    .0
-    / 100;
+pub const SOUL_DAMAGE_TENTHS: i32 = tenths(
+    NEVERMORE_NECROMASTERY
+        .value("necromastery_damage_per_soul")
+        .first(),
+);
 /// Tenths of attack damage one soul gains every [`SOUL_DAMAGE_LEVELS`]
 /// hero levels, and that interval: the value's `hero_levelup` and `levelup_interval`.
 const SOUL_DAMAGE_GROWTH: (Dec, u8) = match NEVERMORE_NECROMASTERY
@@ -124,7 +123,7 @@ const SOUL_DAMAGE_GROWTH: (Dec, u8) = match NEVERMORE_NECROMASTERY
     Bonus::HeroLevels { add, every } => (add, every),
     _ => panic!("the soul's worth grows with the hero's level"),
 };
-pub const SOUL_DAMAGE_TENTHS_GAIN: i32 = SOUL_DAMAGE_GROWTH.0.0 / 100;
+pub const SOUL_DAMAGE_TENTHS_GAIN: i32 = tenths(SOUL_DAMAGE_GROWTH.0);
 /// Hero levels between two gains of what a soul is worth.
 pub const SOUL_DAMAGE_LEVELS: i32 = SOUL_DAMAGE_GROWTH.1 as i32;
 /// Percent of the souls held that a death lets go, rounded down: what

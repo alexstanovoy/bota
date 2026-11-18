@@ -77,6 +77,8 @@ pub enum Bonus {
 
 /// The key a value's growth with its hero's level is kept under among its bonuses.
 pub const HERO_LEVELUP: &str = "hero_levelup";
+/// The highest hero level: a `levelup_interval` is between one level and this many.
+const MAX_HERO_LEVEL: i64 = 30;
 
 /// The `AbilityBehavior` flags an ability may carry.
 pub const BEHAVIORS: [&str; 18] = [
@@ -358,11 +360,17 @@ fn read_value(name: &str, value: &Kv, dropped_facets: &[String]) -> Result<Value
                 })
                 .ok_or_else(|| fail(format!("{HERO_LEVELUP} without levelup_interval")))?;
             let add = text.trim().strip_prefix('+').unwrap_or(text.trim());
+            let every = dec::whole(every).map_err(fail)?;
+            if !(1..=MAX_HERO_LEVEL).contains(&every) {
+                return Err(fail(format!(
+                    "levelup_interval {every} is no number of hero levels (1 to {MAX_HERO_LEVEL})"
+                )));
+            }
             bonuses.push((
                 HERO_LEVELUP.to_owned(),
                 Bonus::HeroLevels {
                     add: dec::milli(add).map_err(fail)?,
-                    every: dec::whole(every).map_err(fail)?,
+                    every,
                 },
             ));
         } else if key == "levelup_interval" {
@@ -517,6 +525,7 @@ mod tests {
         for refused in [
             r#""AbilityValues" { "x" { "value" "1" "levelup_interval" "6" } }"#,
             r#""AbilityValues" { "x" { "value" "1" "hero_levelup" "+1" } }"#,
+            r#""AbilityValues" { "x" { "value" "1" "hero_levelup" "+1" "levelup_interval" "0" } }"#,
             r#""IsBreakable" "2""#,
             r#""AbilityDamage" "5" "AbilityValues" { "AbilityDamage" "5" }"#,
         ] {

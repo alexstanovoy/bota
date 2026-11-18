@@ -1,10 +1,10 @@
 //! Lane creep numeric rows from the same installed scripts as the item catalogue.
 use heatel::keyvalues::{parse_kv, text};
-use heatel::{DirSource, Vpk, find_game_dir};
+use heatel::{DirSource, Vpk};
 use std::path::Path;
 
 pub fn table(dota: Option<&Path>) -> Result<String, String> {
-    let game = find_game_dir(dota).ok_or("no Dota 2 install")?;
+    let game = crate::install::game_dir(dota)?;
     let build = crate::install::build(&game.join("steam.inf"))?;
     let source = DirSource::new(&game);
     let package = Vpk::open(&source, "pak01_dir.vpk").map_err(|e| e.to_string())?;

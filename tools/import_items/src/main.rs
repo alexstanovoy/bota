@@ -92,19 +92,35 @@ fn args() -> Result<Args, String> {
     Ok(parsed)
 }
 
+/// Why a committed table differs from what the install gives: both client builds named, the
+/// one the table was read from and the install's.
+fn stale(path: &Path, committed: &str, build: &str) -> String {
+    let table_build = committed
+        .lines()
+        .find_map(|line| line.strip_prefix(emit::BUILD_LINE))
+        .map_or("no build named".to_owned(), |b| {
+            b.trim_end_matches('.').to_owned()
+        });
+    format!(
+        "{path:?} differs from what the install gives: the table was read from {table_build}, \
+         the install is {build}; run import_items"
+    )
+}
+
 fn run() -> Result<(), String> {
     let args = args()?;
     if args.creeps_only && !args.add.is_empty() {
         return Err("--creeps-only and --add exclude each other".into());
     }
+    let game = install::game_dir(args.dota.as_deref())?;
+    let build = install::build(&game.join("steam.inf"))?;
+    println!("import_items: reading {} ({build})", game.display());
     let creeps = rustfmt(&creeps::table(args.dota.as_deref())?)?;
     let path = repo().join("crates/bota_core/src/creep_data.rs");
     if args.check {
-        if !emit::same_items(
-            &std::fs::read_to_string(&path).map_err(|e| e.to_string())?,
-            &creeps,
-        ) {
-            return Err("lane creep script data is stale".into());
+        let committed = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        if !emit::same_items(&committed, &creeps) {
+            return Err(stale(&path, &committed, &build));
         }
     } else {
         std::fs::write(&path, creeps).map_err(|e| e.to_string())?;
@@ -118,7 +134,7 @@ fn run() -> Result<(), String> {
         let committed =
             std::fs::read_to_string(&boss_path).map_err(|e| format!("{boss_path:?}: {e}"))?;
         if !emit::same_items(&committed, &boss) {
-            return Err("Roshan script data is stale".into());
+            return Err(stale(&boss_path, &committed, &build));
         }
     } else {
         std::fs::write(&boss_path, boss).map_err(|e| format!("{boss_path:?}: {e}"))?;
@@ -126,8 +142,9 @@ fn run() -> Result<(), String> {
     let zones = rustfmt(&zones::table(args.dota.as_deref())?)?;
     let zones_path = repo().join("crates/bota_core/src/placement_data.rs");
     if args.check {
-        if std::fs::read_to_string(&zones_path).map_err(|e| e.to_string())? != zones {
-            return Err("map placement data is stale".into());
+        let committed = std::fs::read_to_string(&zones_path).map_err(|e| e.to_string())?;
+        if committed != zones {
+            return Err(stale(&zones_path, &committed, &build));
         }
     } else {
         std::fs::write(&zones_path, zones).map_err(|e| e.to_string())?;
@@ -152,9 +169,7 @@ fn run() -> Result<(), String> {
         if args.check {
             let committed = std::fs::read_to_string(&path).map_err(|e| format!("{path:?}: {e}"))?;
             if !emit::same_items(&committed, &made) {
-                return Err(format!(
-                    "{path:?} differs from what the install gives: run import_items"
-                ));
+                return Err(stale(&path, &committed, &build));
             }
             continue;
         }

@@ -21,7 +21,7 @@
 #   GATE_AGAIN=1             run although this tree already passed
 #   GATE_SKIP="deny test"    steps left out (to iterate on one; the gate fails with them left out)
 #   GATE_LOGS=DIR            where each step's output goes (default: temp/gate under the repository)
-#   BOTA_DOTA_PATH=DIR       the Dota 2 install (a "dota 2 beta" folder) the item importer's checks read, else Steam's
+#   BOTA_DOTA_PATH=DIR       the Dota 2 install (a "dota 2 beta" folder, absolute) the item importer's checks read, else Steam's
 # Prints GATE-OK when every step ran and passed, GATE-FAIL <step> (with the tail of its output) otherwise.
 set -uo pipefail
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
@@ -74,7 +74,11 @@ skipped=0
 installs() { # the Dota 2 installs the importer would find: BOTA_DOTA_PATH's, else as heatel looks for them
     local library
     if [ -n "${BOTA_DOTA_PATH:-}" ]; then
-        [ -f "$BOTA_DOTA_PATH/game/dota/pak01_dir.vpk" ] && echo "$BOTA_DOTA_PATH"
+        case $BOTA_DOTA_PATH in
+            /*) ;;
+            *) echo "gate: BOTA_DOTA_PATH must be an absolute path, not $BOTA_DOTA_PATH" >&2; return 0 ;;
+        esac
+        [ -f "$BOTA_DOTA_PATH/game/dota/pak01_dir.vpk" ] && [ -f "$BOTA_DOTA_PATH/game/dota/steam.inf" ] && echo "$BOTA_DOTA_PATH"
         return 0
     fi
     for library in "$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam" "$HOME/.steam/steam" \

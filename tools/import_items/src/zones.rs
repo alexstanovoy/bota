@@ -1,5 +1,5 @@
 //! Convex placement volumes from the installed map's entity physics.
-use heatel::{DirSource, Resource, Vpk, find_game_dir, kv3::Value};
+use heatel::{DirSource, Resource, Vpk, kv3::Value};
 use std::{fmt::Write, path::Path};
 
 type Point = (i32, i32);
@@ -13,7 +13,7 @@ struct Budget {
 }
 
 pub fn table(dota: Option<&Path>) -> Result<String, String> {
-    let game = find_game_dir(dota).ok_or("no Dota 2 install")?;
+    let game = crate::install::game_dir(dota)?;
     let source = DirSource::new(game.join("maps"));
     let package = Vpk::open(&source, "dota.vpk").map_err(|e| e.to_string())?;
     let bytes = package
