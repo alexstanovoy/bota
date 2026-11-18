@@ -959,8 +959,9 @@ impl World {
         self.judge_what_moved();
         let sight = &self.sight_scratch;
         let (ground, sight_block) = (&self.ground, &self.sight_block);
+        let lifted = self.fog_lifted();
         for team in [Team::Radiant, Team::Dire] {
-            let sees = |cell| sight.sees_cell(team, cell, ground, sight_block);
+            let sees = |cell| lifted || sight.sees_cell(team, cell, ground, sight_block);
             self.trees.learn(
                 team,
                 |at| bota_core::tree_cells(at).any(sees),

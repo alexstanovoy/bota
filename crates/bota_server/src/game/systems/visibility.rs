@@ -525,6 +525,9 @@ impl World {
     /// viewers' ordinary sight and the circles strikes showed it; with
     /// `-allvision` on, either side's.
     pub fn can_see_point(&self, team: Team, at: Vec2) -> bool {
+        if self.fog_lifted() && team != Team::Neutral {
+            return true;
+        }
         if self.all_vision && team != Team::Neutral {
             return self.side_sees_point(Team::Radiant, at) || self.side_sees_point(Team::Dire, at);
         }
@@ -612,6 +615,9 @@ impl World {
         let Some(seen) = self.visibility.get(entity) else {
             return false;
         };
+        if self.fog_lifted() && team != Team::Neutral {
+            return true;
+        }
         let at = self.pos(entity);
         let side = self.team.get(entity).copied();
         let sight = &self.sight_scratch;
@@ -696,7 +702,13 @@ impl World {
     pub fn can_see(&self, team: Team, entity: Entity) -> bool {
         self.visibility
             .get(entity)
-            .is_some_and(|seen| seen.by(team))
+            .is_some_and(|seen| seen.by(team) || (self.fog_lifted() && team != Team::Neutral))
+    }
+
+    /// Whether the match's end has lifted the fog: once a side has won, both sides see
+    /// everything, as Dota's end shows every player the whole map. A draw lifts nothing.
+    pub fn fog_lifted(&self) -> bool {
+        matches!(self.winner, Some(Team::Radiant | Team::Dire))
     }
 
     /// Whether a side sees a unit as something befalls it: what its view

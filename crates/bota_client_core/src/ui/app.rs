@@ -1231,6 +1231,12 @@ impl App {
         self.view()?.viewer
     }
 
+    /// Whether the match's end has lifted the fog, as the server lifts it: once a side has won,
+    /// every side sees the whole map (Dota's end shows it to every player).
+    pub fn fog_lifted(&self) -> bool {
+        matches!(self.over, Some((Team::Radiant | Team::Dire, _)))
+    }
+
     /// Boss information through the same eyes as the current fog, including replay POV.
     pub fn lair_status(&self, index: u8) -> Option<crate::LairStatus> {
         self.session()?.lair_status(index, self.fog_team())

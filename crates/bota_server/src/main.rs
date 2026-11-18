@@ -418,7 +418,7 @@ fn aborted_line(
         ""
     };
     format!(
-        "RESULT winner=draw duration_ms={duration_ms} report={hex}{truncated} aborted={} v=3",
+        "RESULT winner=draw duration_ms={duration_ms} report={hex}{truncated}{CLOSED} aborted={} v=3",
         aborted_word(reason)
     )
 }
@@ -568,13 +568,28 @@ fn result_line(
     };
     let (duration_ms, hex) = report_fields(report);
     let left = left.map_or_else(String::new, |slot| format!(" left={slot}"));
-    let truncated = if replay_truncated && result_version >= 2 {
-        " replay=truncated"
+    let (truncated, closed) = if result_version >= 2 {
+        (
+            if replay_truncated {
+                " replay=truncated"
+            } else {
+                ""
+            },
+            CLOSED,
+        )
     } else {
-        ""
+        ("", "")
     };
-    format!("RESULT winner={winner} duration_ms={duration_ms} report={hex}{left}{truncated}")
+    format!(
+        "RESULT winner={winner} duration_ms={duration_ms} report={hex}{left}{truncated}{closed}"
+    )
 }
+
+/// What a result line says of the server's files: the replay and the metadata are closed before
+/// the end is told (`serve`), so the launcher may serve them, and report the match, while the
+/// server goes on showing its players the end. A launcher that reads keys it does not know as
+/// nothing (result version 2 or later) is told.
+const CLOSED: &str = " artifacts=closed";
 
 /// The replay's size cap in bytes: the smaller of `--replay-max-mib` (0: none) and the process's
 /// own file size limit, so the replay is closed whole before the kernel refuses a write.

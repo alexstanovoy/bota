@@ -254,8 +254,12 @@ fn truncated_replay_under_limit(version: &str) {
         assert!(!result.contains("replay="), "{result}");
     } else {
         assert!(
-            result.ends_with(" replay=truncated"),
+            result.contains(" replay=truncated"),
             "the result says the replay was cut short: {result}"
+        );
+        assert!(
+            result.ends_with(" artifacts=closed"),
+            "and that it is closed, whole as far as it goes: {result}"
         );
     }
     assert!(server.exit(WAIT).success());

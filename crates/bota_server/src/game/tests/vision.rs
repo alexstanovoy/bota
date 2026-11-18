@@ -1574,3 +1574,65 @@ fn pit_client_fog_matches_server_point_and_grid_sight_across_each_boundary_in_bo
         }
     }
 }
+
+/// The end of a match lifts the fog, as Dota's does: on the tick the loser's Ancient falls, each
+/// side's view holds what its sight did not reach a tick before, and every point of the map is
+/// seen. On the full map (the Ancient falls to a blow) and in solo mid (its tower decides it, and
+/// its Ancient is destroyed on that tick).
+#[test]
+fn the_fall_of_an_ancient_lifts_the_fog_for_both_sides_on_the_full_map_and_in_solo_mid() {
+    for (map, kind) in [(MapId(0), UnitKind::Ancient), (MapId(2), UnitKind::Tower)] {
+        let cfg = crate::game::MatchConfig {
+            cheats: true,
+            map,
+            objectives: map_of(map).default_objectives,
+            runes: map_of(map).default_runes,
+            ..config()
+        };
+        let mut world = World::for_match(&cfg, cfg.rng());
+        let hidden = world.spawn_unit(&MELEE_CREEP, Team::Dire, map_of(map).fountains[1]);
+        run(&mut world, 1);
+        let shown = |world: &World| {
+            world
+                .view(Team::Radiant)
+                .units
+                .iter()
+                .any(|u| u.id == wire_id(hidden))
+        };
+        let far = map_of(map).fountains[1];
+        assert!(
+            !shown(&world),
+            "{map:?}: the Dire creep is kept from Radiant"
+        );
+        assert!(!world.can_see_point(Team::Radiant, far), "{map:?}: fog");
+        let target = world
+            .entities
+            .iter()
+            .find(|&entity| {
+                world.kind.get(entity) == Some(&kind) && world.team.get(entity) == Some(&Team::Dire)
+            })
+            .expect("a Dire building to fell");
+        seat_order(
+            &mut world,
+            bota_proto::Order::Cheat {
+                cheat: bota_proto::Cheat::Destroy {
+                    target: Target::Unit(wire_id(target)),
+                },
+            },
+        );
+        assert_eq!(world.victor(), Some(Team::Radiant), "{map:?}: decided");
+        assert!(
+            shown(&world),
+            "{map:?}: the end shows Radiant the Dire creep"
+        );
+        assert!(world.can_see_point(Team::Radiant, far), "{map:?}: no fog");
+        assert!(
+            world
+                .view(Team::Dire)
+                .units
+                .iter()
+                .any(|u| u.team == Team::Radiant && u.kind == UnitKind::Hero),
+            "{map:?}: and Dire the Radiant hero"
+        );
+    }
+}

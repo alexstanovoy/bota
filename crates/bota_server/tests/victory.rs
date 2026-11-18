@@ -381,7 +381,7 @@ impl Binary {
         let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_bota_server"))
             .args(["--bind", "127.0.0.1", "--port", "0", "--map", "2"])
             .args(["--players", "1", "--cheats", "--mode", "lockstep"])
-            .args(["--end-linger-secs", linger_secs])
+            .args(["--end-linger-secs", linger_secs, "--result-version", "3"])
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
@@ -424,6 +424,10 @@ fn the_binary_prints_its_result_at_the_decision_and_exits_0_once_its_player_has_
         .expect("the match is played to its end");
     let result = binary.line();
     assert!(result.starts_with("RESULT winner=0 "), "{result}");
+    assert!(
+        result.ends_with(" artifacts=closed"),
+        "the files are closed before the line, for the service to act on it at once: {result}"
+    );
     assert!(
         answers(&mut link),
         "the player is kept after the result was printed"
