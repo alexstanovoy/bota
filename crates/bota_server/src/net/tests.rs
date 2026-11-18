@@ -226,7 +226,10 @@ fn start_hooked_server(
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
     let addr = listener.local_addr().expect("addr");
     thread::spawn(move || {
-        let _ = crate::game_loop::run_hooked(listener, opts, hooks);
+        if let Err(error) = crate::game_loop::run_hooked(listener, opts, hooks) {
+            // Its clients only see a reset connection: the reason is shown with the test's output.
+            eprintln!("test server did not run: {error}");
+        }
     });
     addr
 }
@@ -237,7 +240,12 @@ fn start_ending_server(opts: ServerOpts) -> RunningServer {
     let addr = listener.local_addr().expect("addr");
     let (done, ended) = mpsc::channel();
     thread::spawn(move || {
-        let _ = done.send(run(listener, opts));
+        let result = run(listener, opts);
+        if let Err(error) = &result {
+            // A test that does not wait for the end only sees a reset connection.
+            eprintln!("test server did not run: {error}");
+        }
+        let _ = done.send(result);
     });
     RunningServer { addr, ended }
 }
@@ -456,6 +464,33 @@ fn a_long_name_is_shown_cut_at_a_whole_character() {
     });
     assert_eq!(bota_core::rules::MAX_SHOWN_NAME_BYTES, 32);
     assert_eq!(shown, "\u{20ac}".repeat(10));
+}
+
+/// A caller that bound its listeners first has clients waiting in them: a server that goes on
+/// without the recording, or drops them without a word, leaves them a reset connection and
+/// nothing to read. The error must come back from `run`, naming the file and the OS's reason.
+#[test]
+fn a_server_that_cannot_create_its_replay_or_meta_file_returns_the_error_naming_the_path() {
+    let missing =
+        std::env::temp_dir().join(format!("bota-net-test-missing-{}", std::process::id()));
+    let file = missing.join("match.file");
+    let reason = std::fs::File::create(&file)
+        .expect_err("the directory is not there")
+        .to_string();
+    for (what, replay, meta) in [
+        ("replay", Some(file.clone()), None),
+        ("meta", None, Some(file.clone())),
+    ] {
+        let mut opts = realtime(5);
+        opts.replay = replay;
+        opts.meta = meta;
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let error = run(listener, opts).expect_err("a server without its file does not run");
+        assert_eq!(
+            error.to_string(),
+            format!("{what} {}: {reason}", file.display())
+        );
+    }
 }
 
 #[test]
@@ -795,7 +830,10 @@ fn a_refused_peer_that_talks_on_is_cut_short_for_a_newcomer() {
         ..Default::default()
     };
     thread::spawn(move || {
-        let _ = crate::game_loop::run_hooked(listener, opts, hooks);
+        if let Err(error) = crate::game_loop::run_hooked(listener, opts, hooks) {
+            // Its clients only see a reset connection: the reason is shown with the test's output.
+            eprintln!("test server did not run: {error}");
+        }
     });
     let addr: std::net::SocketAddr = format!("127.0.0.1:{port}").parse().expect("an address");
     let elsewhere: std::net::SocketAddr = format!("[::1]:{port}").parse().expect("an address");

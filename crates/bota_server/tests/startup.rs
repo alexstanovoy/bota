@@ -72,6 +72,26 @@ fn start(args: &[&str], env: &[(&str, &str)]) -> Start {
     }
 }
 
+/// A file the server is asked to leave fails the start with the file's path and the OS's reason
+/// on stderr, for a launcher's log: nothing is printed on stdout and no port is announced.
+#[test]
+fn a_file_the_server_cannot_create_fails_the_start_naming_the_path_and_the_reason() {
+    let missing = std::env::temp_dir().join(format!("bota-startup-missing-{}", std::process::id()));
+    let file = missing.join("match.file");
+    let reason = std::fs::File::create(&file)
+        .expect_err("the directory is not there")
+        .to_string();
+    for (what, flag) in [("replay", "--replay"), ("meta", "--meta")] {
+        let started = start(&[flag, file.to_str().expect("a text path")], &[]);
+        assert!(!started.ready, "{what}: {:?}", started.stdout);
+        assert!(started.stdout.is_empty(), "{what}: {:?}", started.stdout);
+        assert_eq!(
+            started.stderr,
+            format!("bota_server: {what} {}: {reason}\n", file.display())
+        );
+    }
+}
+
 #[test]
 fn without_a_bind_address_the_server_listens_on_loopback_only() {
     let start = start(&[], &[]);
