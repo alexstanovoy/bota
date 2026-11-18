@@ -562,7 +562,7 @@ documented answer and a counted decline.
 | `GetAttackTarget` | The target of a body in view, from the aggro the seat is told; `nil` for a body out of view (it has no current aggro here). A receiver that is neither the seat's team's nor in view is also counted (`GetAttackTarget_target_not_seen`). The host adds no check on the target: a target the seat is not told about is simply not in the aggro it receives (the server tells a seat only a target its view carries), as the reference makes no check on the target either. | Reference (teammate-or-seen gate on the receiver), seat. |
 | `GetExtrapolatedLocation` | Linear projection from observed displacement; `nil` out of view. | Seat. |
 | `WasRecentlyDamagedByCreep`, `WasRecentlyDamagedByHero` | See below. | Reference. |
-| `GetNearbyLaneCreeps`, `GetNearbyNeutralCreeps` (*bot*) | Visible living units, sorted by distance then identity; radius capped at 1600 (inclusive). A receiver the seat may not ask about answers the reference's empty table, counted `..._not_seen`; a receiver that is not a declared bot hero (an ally's creep, an enemy, a neutral) answers the empty table too, counted `..._not_a_bot`. The reference gates the lane and the neutral variant alike. | Reference (both gates, empty table), seat. |
+| `GetNearbyLaneCreeps`, `GetNearbyNeutralCreeps` (*bot*) | Visible living units, sorted by distance then identity; radius capped at 1600 (inclusive). A receiver the seat may not ask about answers the reference's empty table, counted `..._not_seen`; a receiver that is not a declared bot hero (an ally's creep, an enemy, a neutral) answers the empty table too, counted `..._not_a_bot`. Both gates and the empty table are as in the reference, established for the lane and for the neutral variant separately. | Reference (both variants), seat. |
 | `GetHeightLevel`, `GetTimeOfDay`, `GetItemSlotType`, `DistanceFromSecretShop` | Published terrain tier; day fraction of the shared clock; storage class (dedicated slot 15 is `-1`); shop geometry (`nil` out of view). | Published map and rules. |
 | `IsLocationVisible` | The seat's own vision (bodies in view, grants, base vision) over its received forest; remembered bodies out of view see nothing. | Seat; the server's sight rule. |
 | `GetTreeLocation` | Public static tree or received planted-tree position. An id that names no tree answers the zero vector, as the reference does. | Reference. |
@@ -590,7 +590,7 @@ sentinel) or that the seat could not answer from what it was told. The keys the 
 | `GetStashValue_stash_not_received` | `nil` |
 | `WasRecentlyDamagedByCreep_not_a_bot_teammate`, `WasRecentlyDamagedByHero_not_a_bot_teammate` | `false` |
 
-Each declined branch pays the same fuel as the answering branch of its call.
+Each declined branch pays the same up-front charge as the answering branch of its call (the answering branch may pay more afterwards, for example to build result handles).
 
 ### Damage history
 
