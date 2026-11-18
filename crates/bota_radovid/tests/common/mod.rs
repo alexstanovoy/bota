@@ -198,17 +198,18 @@ impl Env {
                 .create_match(ruleset.clone(), true, seats.clone())
                 .await
                 .expect("match");
-            db.finish_match(radovid::db::Finish {
-                match_id,
-                ruleset,
-                rate: true,
-                outcome: Outcome::Winner { team: 0 },
-                reason: EndReason::Decided,
-                duration_ms: 1000,
-                report: vec![],
-                seats,
-                finished_at: radovid::db::now_ms(),
-            })
+            // The tests that seed this read avatars, ranks and boards, never a bot's exact rating:
+            // the plain algorithm keeps their numbers independent of the service's bot share.
+            db.finish_match(
+                radovid::db::Finish::rated(
+                    match_id,
+                    ruleset,
+                    Outcome::Winner { team: 0 },
+                    seats,
+                    radovid::db::now_ms(),
+                )
+                .with_bot_share(radovid::rating::RatingShare::FULL),
+            )
             .await
             .expect("rated result");
         });
