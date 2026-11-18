@@ -138,9 +138,12 @@ class RulesIdentityBuildTests(unittest.TestCase):
         # admitting none, which is a valid build.
         fingerprint = tree / "crates/bota_core/src/fingerprint.rs"
         source = fingerprint.read_text()
-        start = source.index("pub const ADMITTED_WIRES: &[AdmittedWire] = &[")
-        end = source.index("\n];", start)
-        fingerprint.write_text(source[:start] + "pub const ADMITTED_WIRES: &[AdmittedWire] = &[" + source[end:])
+        opening = "pub const ADMITTED_WIRES: &[AdmittedWire] = &["
+        start = source.index(opening) + len(opening)
+        # One line when the list is empty, one entry per line with the closing bracket on a line of its own otherwise.
+        if not source.startswith("];", start):
+            source = source[:start] + source[source.index("\n];", start):]
+        fingerprint.write_text(source)
         map_source = tree / "crates/bota_core/src/map.rs"
         with map_source.open("a") as output:
             output.write(
