@@ -544,23 +544,25 @@ an error and answers a sentinel), the host answers the same sentinel and counts 
 (statistics; keyed `<API>_<reason>`) so that a script's misuse stays visible. A fact the seat was never told is `nil`
 or a counted gap, never an invented value.
 
-Receiver rules of the reference: a unit method needs the receiver to be a teammate or a unit the bot's team can see;
-the methods marked *bot* additionally need the receiver to be a bot-controlled hero.
+Receiver rules of the reference: a unit method needs the receiver to be a teammate or a unit the bot's team can see
+(this host: a body or player of the seat's own team, or any body in view); the methods marked *bot* additionally need the
+receiver to be a bot-controlled hero (a declared bot, the host's own seats included). A receiver that fails a gate gets the
+documented answer and a counted decline.
 
 | API | Answer | Basis |
 |---|---|---|
 | `GetAbilityPoints` | Unspent ordinary points (shared rank groups count once; talents use separate points). Foreign bodies `-1`. A hero out of view is read from its player record, not from its retained last body. | Seat; the simulation's learn groups. |
-| `GetAttackProjectileSpeed`, `GetBaseDamageVariance` | Core body definition; variance is **half** the base max-minus-min interval and may be fractional (`0.5` multiplier). `-1` for a foreign body that is not in view; a handle that is no longer known raises "unit is no longer known". | Reference (multiplier), seat. |
-| `GetActualIncomingDamage` | Damage after the receiver's armor or magic resistance, for physical (1), magical (2) or pure (4) type; any other type raises. A receiver the team cannot see answers `-1` and is counted (`GetActualIncomingDamage_target_not_seen`). | Reference (seen gate, `-1`), seat. |
+| `GetAttackProjectileSpeed`, `GetBaseDamageVariance` | Core body definition; variance is **half** the base max-minus-min interval and may be fractional (`0.5` multiplier). `-1` for a body that is neither the seat's own team's nor in view (not counted); a handle that is no longer known raises "unit is no longer known". | Reference (multiplier), seat. |
+| `GetActualIncomingDamage` | Damage after the receiver's armor or magic resistance, for physical (1), magical (2) or pure (4) type; any other type raises. A receiver that is neither the seat's team's nor in view answers `-1` and is counted (`GetActualIncomingDamage_target_not_seen`). | Reference (teammate-or-seen gate, `-1`), seat. |
 | `GetStashValue` | Sum of catalogue costs of the stash (charges ignored) of a teammate bot. Anyone else answers `-1` and is counted (`GetStashValue_not_a_bot_teammate`). A stash the seat was never told is `nil` (`GetStashValue_stash_not_received`). | Reference (*bot* gate, `-1`), seat. |
 | `GetItemStockCount` | Remaining public stock for the receiving team; unlimited `-1`. | Seat. |
 | `GetChannelTime` | Catalogue channel time; imported milliseconds keep sub-tick precision. This replaces the buff-duration read behind the existing `AbilityChannelTime` key. | Catalogue. |
 | `IsInAbilityPhase` | The identified spell is in its cast point; an item cast cannot identify its item, so `nil`; a body out of view `nil`. | Seat. |
-| `GetPowerTreadsStat` | Selected attribute as `0/1/2` (Strength/Agility/Intelligence); other items `-1`. An enemy's mode is shown while the carrier is in view; out of view it is `-1`, counted (`GetPowerTreadsStat_item_not_seen`). A mode the seat was not told is `nil`. | Reference (visible-carrier gate, `-1`); the server sends the bag of every body in view. |
-| `GetAttackTarget` | The target of a body in view, from the aggro the seat is told; `nil` when the body is out of view or its target is not in view to the seat. | Reference (a visible unit's target is readable); the target-in-view limit is the seat's fog. |
+| `GetPowerTreadsStat` | Selected attribute as `0/1/2` (Strength/Agility/Intelligence); other items `-1`. An enemy's mode is shown while the carrier is in view; a carrier that is neither the seat's team's nor in view answers `-1`, counted (`GetPowerTreadsStat_item_not_seen`). A mode the seat was not told is `nil`, counted (`GetPowerTreadsStat_mode_not_received`). | Reference (seen gate, `-1`); the server sends the bag of every body in view. |
+| `GetAttackTarget` | The target of a body in view, from the aggro the seat is told; `nil` for a body out of view (it has no current aggro here). A receiver that is neither the seat's team's nor in view is also counted (`GetAttackTarget_target_not_seen`). The host adds no check on the target: a target the seat is not told about is simply not in the aggro it receives (the server tells a seat only a target its view carries), as the reference makes no check on the target either. | Reference (teammate-or-seen gate on the receiver), seat. |
 | `GetExtrapolatedLocation` | Linear projection from observed displacement; `nil` out of view. | Seat. |
 | `WasRecentlyDamagedByCreep`, `WasRecentlyDamagedByHero` | See below. | Reference. |
-| `GetNearbyLaneCreeps`, `GetNearbyNeutralCreeps` | Visible living units, sorted by distance then identity; radius capped at 1600 (inclusive); `nil` for a receiver that is out of view. A neutral receiver counts both sides' lane creeps as enemies. | Seat. |
+| `GetNearbyLaneCreeps`, `GetNearbyNeutralCreeps` (*bot*) | Visible living units, sorted by distance then identity; radius capped at 1600 (inclusive). A receiver the seat may not ask about answers the reference's empty table, counted `..._not_seen`; a receiver that is not a declared bot hero (an ally's creep, an enemy, a neutral) answers the empty table too, counted `..._not_a_bot`. The reference gates the lane and the neutral variant alike. | Reference (both gates, empty table), seat. |
 | `GetHeightLevel`, `GetTimeOfDay`, `GetItemSlotType`, `DistanceFromSecretShop` | Published terrain tier; day fraction of the shared clock; storage class (dedicated slot 15 is `-1`); shop geometry (`nil` out of view). | Published map and rules. |
 | `IsLocationVisible` | The seat's own vision (bodies in view, grants, base vision) over its received forest; remembered bodies out of view see nothing. | Seat; the server's sight rule. |
 | `GetTreeLocation` | Public static tree or received planted-tree position. An id that names no tree answers the zero vector, as the reference does. | Reference. |
@@ -570,6 +572,25 @@ the methods marked *bot* additionally need the receiver to be a bot-controlled h
 
 Integer arguments (damage type, slot, tree id) must be whole numbers; a fraction raises the argument error `integer expected`
 (the reference truncates, as the other id arguments of this host used to).
+
+### Declined calls
+
+`declined_api_calls` counts, per key, calls the reference rejects with a logged error (the host answers the same
+sentinel) or that the seat could not answer from what it was told. The keys the host can count are exactly these:
+
+| Key | Answer |
+|---|---|
+| `GetActualIncomingDamage_target_not_seen` | `-1` |
+| `GetAttackTarget_target_not_seen` | `nil` |
+| `GetNearbyLaneCreeps_not_seen`, `GetNearbyNeutralCreeps_not_seen` | empty table |
+| `GetNearbyLaneCreeps_not_a_bot`, `GetNearbyNeutralCreeps_not_a_bot` | empty table |
+| `GetPowerTreadsStat_item_not_seen` | `-1` |
+| `GetPowerTreadsStat_mode_not_received` | `nil` |
+| `GetStashValue_not_a_bot_teammate` | `-1` |
+| `GetStashValue_stash_not_received` | `nil` |
+| `WasRecentlyDamagedByCreep_not_a_bot_teammate`, `WasRecentlyDamagedByHero_not_a_bot_teammate` | `false` |
+
+Each declined branch pays the same fuel as the answering branch of its call.
 
 ### Damage history
 
