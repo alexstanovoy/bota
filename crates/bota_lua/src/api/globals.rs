@@ -9,6 +9,15 @@ pub(super) fn integer(vm: &mut Vm, args: Args, index: usize) -> Result<i64, LuaE
     Ok(vector::number(vm, args, index)?.trunc() as i64)
 }
 
+/// An integer-valued argument: finite (checked by `number`) and without a fractional part.
+pub(super) fn exact_integer(vm: &mut Vm, args: Args, index: usize) -> Result<i64, LuaError> {
+    let value = vector::number(vm, args, index)?;
+    if value != value.trunc() {
+        return Err(vm.arg_error(args, index, "integer expected"));
+    }
+    Ok(value as i64)
+}
+
 pub(crate) fn bounded_integer(
     vm: &mut Vm,
     args: Args,

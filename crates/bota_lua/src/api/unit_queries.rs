@@ -50,10 +50,7 @@ fn read(context: &ApiContext, vm: &mut Vm, args: Args, name: &str) -> Result<usi
     let own = player.is_some_and(|player| player.team == state.team);
     let value = match name {
         "GetAbilityPoints" => points(&state, snapshot, id, known, player),
-        "GetStashValue" => player
-            .filter(|_| own)
-            .and_then(|player| bota_client_core::stash_value(player.stash.as_deref()))
-            .or(Some(-1)),
+        "GetStashValue" => stash(&state, player),
         "GetAttackProjectileSpeed" => {
             if own || known.is_some_and(|known| known.visible) {
                 unit_data::base_definition(&state, id).map(|def| def.projectile_speed.unwrap_or(0))
@@ -65,6 +62,22 @@ fn read(context: &ApiContext, vm: &mut Vm, args: Args, name: &str) -> Result<usi
     };
     let value = value.map_or(Value::Nil, |value| Value::Number(f64::from(value)));
     vm.results(&[value])
+}
+
+/// The reference sums a teammate bot's stash and answers `-1` (with a logged error) for anyone
+/// else. A stash the seat was never told has no value: that is nil, not `-1` or zero.
+fn stash(state: &State, player: Option<&crate::state::Player>) -> Option<i32> {
+    let Some(player) = player.filter(|player| {
+        player.team == state.team && super::players::declared_bot(state, player.slot)
+    }) else {
+        state.decline("GetStashValue_not_a_bot_teammate");
+        return Some(-1);
+    };
+    let value = bota_client_core::stash_value(player.stash.as_deref());
+    if value.is_none() {
+        state.decline("GetStashValue_stash_not_received");
+    }
+    value
 }
 
 fn attack_target(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaError> {
@@ -209,7 +222,7 @@ fn incoming_damage(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usiz
     let id = context.receiver(vm, args)?;
     let amount =
         vector::number(vm, args, 1)?.clamp(f64::from(i32::MIN), f64::from(i32::MAX)) as i32;
-    let kind = match super::globals::integer(vm, args, 2)? {
+    let kind = match super::globals::exact_integer(vm, args, 2)? {
         1 => bota_proto::DamageKind::Physical,
         2 => bota_proto::DamageKind::Magical,
         4 => bota_proto::DamageKind::Pure,
@@ -228,7 +241,10 @@ fn incoming_damage(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usiz
     {
         Some(known) => bota_client_core::observed_incoming_damage(&known.unit, amount, kind)
             .ok_or_else(|| vm.error("received damage statistics exceed projection range"))?,
-        None => -1,
+        None => {
+            state.decline("GetActualIncomingDamage_target_not_seen");
+            -1
+        }
     };
     vm.results(&[Value::Number(f64::from(value))])
 }
@@ -250,6 +266,9 @@ fn variance(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaE
             + snapshot.talents.len() as u64
             + 64,
     )?;
+    if state.player(id).is_none() && !snapshot.units.iter().any(|known| known.unit.id == id) {
+        return Err(vm.error("unit is no longer known"));
+    }
     let owned = state
         .player(id)
         .is_some_and(|player| player.team == state.team);
@@ -288,7 +307,8 @@ fn points(
         .talents
         .iter()
         .find(|talent| talent.slot == player.slot);
-    if let Some(known) = known {
+    // A retained body that is out of view (a dead hero's) is frozen; the player record is live.
+    if let Some(known) = known.filter(|known| known.visible) {
         return bota_client_core::ability_points(&known.unit, talent, state.team).map(i32::from);
     }
     state

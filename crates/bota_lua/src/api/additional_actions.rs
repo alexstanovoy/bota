@@ -51,10 +51,15 @@ fn path(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaError
     let bound = bota_core::rules::MAX_QUEUED_ORDERS;
     vm.charge_fuel(16 + bound as u64 * 8)?;
     let mut points = Vec::with_capacity(bound);
+    let mut ended = false;
     for at in 1..=bound + 1 {
         let value = vm.raw_get(table, Value::Number(at as f64))?;
         if value == Value::Nil {
-            break;
+            ended = true;
+            continue;
+        }
+        if ended {
+            return Err(vm.arg_error(args, 1, "waypoint table has a hole"));
         }
         if at > bound {
             return Err(vm.error("movement path exceeds the waypoint limit"));

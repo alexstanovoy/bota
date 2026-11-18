@@ -268,7 +268,7 @@ fn unit_is_bot(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, L
     vm.results(&[Value::Boolean(bot)])
 }
 
-fn declared_bot(state: &State, slot: SlotId) -> bool {
+pub(super) fn declared_bot(state: &State, slot: SlotId) -> bool {
     state.seats.iter().any(|seat| seat.slot == slot)
         || state
             .declared_bots

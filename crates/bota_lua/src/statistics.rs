@@ -119,6 +119,10 @@ pub struct TurnStatistics {
     pub(crate) api_depth: u32,
     pub api: Vec<ApiCounter>,
     pub undefined_api_reads: UndefinedApiReads,
+    /// Calls answered with the reference's rejection value (it logs an error and returns a
+    /// sentinel) or left unanswered because the seat never observed the fact. Keyed
+    /// `<API name>_<reason>`; the bounded name counter of `undefined_api_reads` is reused.
+    pub declined_api_calls: UndefinedApiReads,
 }
 pub(crate) type SharedStatistics = Rc<RefCell<TurnStatistics>>;
 thread_local! {
@@ -264,6 +268,7 @@ pub struct RunStatistics {
     pub script_ns: Histogram,
     pub api: Vec<ApiCounter>,
     pub undefined_api_reads: UndefinedApiReads,
+    pub declined_api_calls: UndefinedApiReads,
     pub late: TickList,
     pub discarded: TickList,
     pub fuel_exhaustions: TickList,
@@ -280,6 +285,7 @@ impl RunStatistics {
     pub fn record(&mut self, data: &TurnStatistics) {
         self.turns = self.turns.saturating_add(1);
         self.undefined_api_reads = data.undefined_api_reads.clone();
+        self.declined_api_calls = data.declined_api_calls.clone();
         let api = data.api_cpu_ns.saturating_sub(data.api_handles_ns);
         self.fuel.record(data.fuel);
         self.cpu_ns

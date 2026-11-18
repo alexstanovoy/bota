@@ -104,7 +104,7 @@ pub(super) fn position(state: &crate::state::State, id: usize) -> Option<bota_pr
     }
 }
 fn location(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaError> {
-    let id = super::globals::integer(vm, args, 0)?;
+    let id = super::globals::exact_integer(vm, args, 0)?;
     vm.charge_fuel(8)?;
     let state = context.state.borrow();
     let point = usize::try_from(id).ok().and_then(|id| position(&state, id));

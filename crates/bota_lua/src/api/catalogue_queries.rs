@@ -1,7 +1,7 @@
 //! Names and numeric conventions over public catalogue and clock queries.
 use super::{
     context::{ApiContext, register_global, register_unit},
-    globals::{integer, string},
+    globals::{exact_integer, string},
     *,
 };
 use bota_core::StorageClass;
@@ -54,7 +54,7 @@ fn slot_type(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, Lua
     )?;
     let inventory =
         state.unit(id).is_some_and(|unit| !unit.items.is_empty()) || state.player(id).is_some();
-    let slot = integer(vm, args, 1)?;
+    let slot = exact_integer(vm, args, 1)?;
     let value = i32::try_from(slot)
         .ok()
         .and_then(bota_core::storage_class)
@@ -92,16 +92,16 @@ fn visible(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaEr
         .snapshot
         .as_ref()
         .ok_or_else(|| vm.error("a current view is required"))?;
-    let build = state
-        .sight
-        .as_ref()
-        .is_none_or(|ground| !ground.fits_forest(&snapshot.felled_trees, &snapshot.planted_trees));
     let grid = bota_core::rules::GRID_CELLS as u64;
     vm.charge_fuel(
         16 + snapshot.felled_trees.len() as u64
             + snapshot.planted_trees.len() as u64
             + (snapshot.units.len() + snapshot.map.base_blockers.len()) as u64 * (grid + 1),
     )?;
+    let build = state
+        .sight
+        .as_ref()
+        .is_none_or(|ground| !ground.fits_forest(&snapshot.felled_trees, &snapshot.planted_trees));
     if build {
         vm.charge_fuel(
             3 * grid * grid

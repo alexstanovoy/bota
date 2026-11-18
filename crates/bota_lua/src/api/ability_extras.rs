@@ -98,17 +98,20 @@ fn treads(state: &State, snapshot: &crate::state::Snapshot, identity: Identity) 
             .iter()
             .any(|known| known.unit.id == unit && known.visible);
     if !observed {
-        return Value::Nil;
+        state.decline("GetPowerTreadsStat_item_not_seen");
+        return Value::Number(-1.0);
     }
-    state
+    let mode = state
         .item(unit, slot)
         .filter(|item| item.id == id)
-        .and_then(|item| item.mode)
-        .map_or(Value::Nil, |mode| {
-            Value::Number(f64::from(match mode {
-                Attribute::Strength => 0,
-                Attribute::Agility => 1,
-                Attribute::Intelligence => 2,
-            }))
-        })
+        .and_then(|item| item.mode);
+    let Some(mode) = mode else {
+        state.decline("GetPowerTreadsStat_mode_not_received");
+        return Value::Nil;
+    };
+    Value::Number(f64::from(match mode {
+        Attribute::Strength => 0,
+        Attribute::Agility => 1,
+        Attribute::Intelligence => 2,
+    }))
 }

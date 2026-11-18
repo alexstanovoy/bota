@@ -13,6 +13,8 @@ use crate::{
 mod added_fuel_tests;
 #[cfg(test)]
 mod fuel_tests;
+#[cfg(test)]
+mod guard_tests;
 
 pub(crate) mod abilities;
 mod ability_extras;
@@ -301,7 +303,7 @@ fn install_actions(
                                     .ok_or_else(|| vm.error("unit handle expected"))?,
                             ),
                             "Action_UseAbilityOnTree" => {
-                                let tree = super::api::globals::integer(vm, args, 2)?;
+                                let tree = super::api::globals::exact_integer(vm, args, 2)?;
                                 let point = usize::try_from(tree)
                                     .ok()
                                     .and_then(|tree| trees::position(&state, tree))

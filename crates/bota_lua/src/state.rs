@@ -526,6 +526,17 @@ impl State {
             .find(|player| player.unit == Some(id))
     }
 
+    /// Counts a call the reference rejects with a logged error, or one the seat cannot answer.
+    /// `name` is `<API name>_<reason>`; unmeasured runs keep no statistics.
+    pub fn decline(&self, name: &'static str) {
+        if let Some(statistics) = &self.statistics {
+            statistics
+                .borrow_mut()
+                .declined_api_calls
+                .record(name.as_bytes());
+        }
+    }
+
     /// Last received own-hero body position survives respawn waits; foreign memory does not.
     pub fn position(&self, id: EntityId) -> Option<bota_proto::Vec2> {
         self.unit(id).map(|unit| unit.pos).or_else(|| {
