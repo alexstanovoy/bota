@@ -382,6 +382,9 @@ impl World {
                 // This death pays what a buyback left owed; a reincarnation
                 // is no death and never comes here.
                 let penalty = std::mem::take(&mut self.seats[index].buyback.respawn_penalty);
+                // A map with a fixed respawn time (the Hero Demo) keeps it whatever a buyback
+                // left owing: buyback is there as anywhere, a bought-back hero rises where any
+                // respawn raises it, and its penalty is paid and forgotten.
                 let wait = self
                     .map
                     .fixed_respawn_ticks

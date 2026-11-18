@@ -30,8 +30,9 @@ impl World {
     }
 
     /// Buys a seat's hero back, if it may: the seat pays, the hero stands up
-    /// at its fountain as at a respawn, the cooldown starts and the hero's
-    /// next death owes its penalty. Everyone is told.
+    /// where a respawn stands it (its fountain, or where it fell on a map that
+    /// raises heroes so), the cooldown starts and the hero's next death owes
+    /// its penalty. Everyone is told.
     pub(crate) fn buy_back(
         &mut self,
         slot: SlotId,

@@ -172,6 +172,24 @@ impl World {
         resolved.cleared.then_some(resolved.at)
     }
 
+    /// [`World::open_landing_as`] kept clear of the bodies already standing as well: where a
+    /// hero rising among others is put, as the game's clear-space search keeps off the units
+    /// there.
+    pub(crate) fn open_landing_among_bodies(&self, body: LandingBody, aim: Vec2) -> Option<Vec2> {
+        let standing: Vec<(Vec2, Fixed)> = self
+            .entities
+            .iter()
+            .filter_map(|unit| Some((self.pos(unit)?, self.hull.get(unit)?.collision)))
+            .filter(|(_, collision)| collision.raw > 0)
+            .collect();
+        self.search_landing(aim, |at| {
+            self.landing_clear_as(body, at)
+                && standing
+                    .iter()
+                    .all(|&(centre, theirs)| !at.within(centre, theirs + body.radius))
+        })
+    }
+
     pub(crate) fn resolve_landing_for(&self, unit: Entity, aim: Vec2) -> LandingResolution {
         self.resolve_landing_as(self.landing_body(unit), aim)
     }

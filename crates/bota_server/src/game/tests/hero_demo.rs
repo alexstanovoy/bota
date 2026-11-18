@@ -4,8 +4,8 @@
 
 use bota_core::{DEMO_ID, HERO_DEMO_ID, attackable_from, map_of, rules};
 use bota_proto::{
-    Cheat, DamageKind, MapId, Order, OutgoingOrder, PlayerView, RejectReason, ServerMsg, SlotId,
-    Team, UnitKind, UnitView, Vec2, WorldView,
+    Cheat, DamageKind, EntityId, HeroId, MapId, Order, OutgoingOrder, PlayerView, RejectReason,
+    ServerMsg, SlotId, Team, UnitKind, UnitView, Vec2, WorldView,
 };
 
 use super::support::config;
@@ -97,6 +97,10 @@ impl Demo {
 
     fn hero(&self) -> Option<&UnitView> {
         self.view().unit(self.me().unit?)
+    }
+
+    fn unit(&self, id: EntityId) -> &UnitView {
+        self.view().unit(id).expect("the unit is seen")
     }
 
     fn units(&self, kind: UnitKind) -> impl Iterator<Item = &UnitView> {
@@ -271,8 +275,10 @@ fn a_hero_of_the_hero_demo_rises_where_it_fell_each_time_at_any_level() {
         let fell = demo.kill_hero();
         demo.run(DEMO_WAIT - 1);
         let risen = demo.hero().expect("the hero stands again").pos;
+        // The waves fight along the lane: where one stands on the spot, the hero rises a
+        // landing step or two beside it.
         assert!(
-            near(risen, fell, 100),
+            near(risen, fell, 300),
             "fell at {fell:?}, rose at {risen:?}"
         );
     }
@@ -340,4 +346,110 @@ fn nothing_the_player_does_ends_the_hero_demo() {
     demo.run(2 * 60 * rules::TICKS_PER_SECOND);
     assert!(!demo.over, "the hero demo ended");
     assert!(demo.hero().is_some(), "the hero stands");
+}
+
+/// The demo map's Radiant tower, whose footprint nothing may stand in.
+fn radiant_tower() -> Vec2 {
+    rules::DEMO_RADIANT_TOWERS[0].2
+}
+
+#[test]
+fn a_hero_whose_spot_is_taken_by_a_structure_rises_on_clear_ground_beside_it() {
+    let mut demo = Demo::on(HERO_DEMO_ID);
+    demo.cheat(Cheat::Teleport {
+        at: radiant_tower() + Vec2::from_ints(0, 300),
+    });
+    demo.kill_hero();
+    // As where a hero thrown through the air falls: the spot it is remembered at lies in the
+    // tower's footprint.
+    let world = demo.local.world_mut();
+    world.seats[0].respawn_spot.0 = Some(radiant_tower());
+    demo.run(DEMO_WAIT - 1);
+    let risen = demo.hero().expect("the hero stands again").pos;
+    let world = demo.local.world_mut();
+    assert!(
+        world.clearance.stands_clear(risen),
+        "it rose in the tower at {risen:?}"
+    );
+    assert!(
+        near(risen, radiant_tower(), 600),
+        "it rose far off, at {risen:?}"
+    );
+}
+
+#[test]
+fn a_hero_whose_spot_another_hero_holds_rises_beside_it() {
+    let mut demo = Demo::on(HERO_DEMO_ID);
+    let spot = rules::DEMO_LANE_CORNERS[0];
+    demo.cheat(Cheat::Teleport { at: spot });
+    let fell = demo.kill_hero();
+    // An allied hero the panel spawns stands idle on the very spot.
+    demo.cheat(Cheat::CreateHero {
+        hero: HeroId::PUDGE,
+        enemy: false,
+        at: fell,
+    });
+    let ally = demo
+        .view()
+        .players
+        .last()
+        .and_then(|row| row.unit)
+        .expect("the ally");
+    let held = demo.unit(ally).pos;
+    assert!(near(held, fell, 50), "the ally stands at {held:?}");
+    demo.run(DEMO_WAIT - 2);
+    let risen = demo.hero().expect("the hero stands again").pos;
+    let held = demo.unit(ally).pos;
+    let apart = rules::units(
+        bota_core::hero_def(HeroId::PUDGE)
+            .expect("Pudge")
+            .unit
+            .collision,
+    );
+    assert!(
+        !risen.within(held, apart),
+        "the hero rose on the ally at {held:?}"
+    );
+    assert!(near(risen, fell, 400), "it rose far off, at {risen:?}");
+}
+
+#[test]
+fn a_hero_that_fell_under_the_enemy_fountain_rises_protected_at_its_own() {
+    let mut demo = Demo::on(HERO_DEMO_ID);
+    let enemy_fountain = map_of(HERO_DEMO_ID).fountains[1];
+    demo.cheat(Cheat::Teleport {
+        at: enemy_fountain + Vec2::from_ints(-600, -600),
+    });
+    demo.kill_hero();
+    demo.run(DEMO_WAIT - 1);
+    let hero = demo.hero().expect("the hero stands again");
+    let home = bota_core::hero_spawn_pos(map_of(HERO_DEMO_ID), Team::Radiant);
+    assert!(near(hero.pos, home, 300), "it rose at {:?}", hero.pos);
+    assert!(
+        hero.statuses.bits & bota_proto::StatusFlags::INVULNERABLE != 0,
+        "risen at its fountain, it is untouchable as any respawn there"
+    );
+}
+
+#[test]
+fn a_bought_back_hero_of_the_hero_demo_rises_where_it_fell_and_owes_no_longer_wait() {
+    let mut demo = Demo::on(HERO_DEMO_ID);
+    demo.cheat(Cheat::Gold { amount: 10_000 });
+    let spot = rules::DEMO_LANE_CORNERS[1];
+    demo.cheat(Cheat::Teleport { at: spot });
+    let fell = demo.kill_hero();
+    demo.step(&[Order::Buyback]);
+    assert_eq!(demo.rejected, [], "buyback is there as anywhere");
+    let risen = demo.hero().expect("bought back at once").pos;
+    assert!(
+        near(risen, fell, 150),
+        "fell at {fell:?}, rose at {risen:?}"
+    );
+    // The next death lies the fixed four seconds, the buyback's penalty forgotten.
+    demo.kill_hero();
+    demo.run(DEMO_WAIT - 1);
+    assert!(
+        demo.hero().is_some(),
+        "the death after a buyback lasted longer"
+    );
 }

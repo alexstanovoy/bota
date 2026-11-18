@@ -371,8 +371,9 @@ impl World {
         });
     }
 
-    /// Dota's `-respawn`: a fallen hero stands up at its fountain now; a
-    /// standing one is moved there with its pools full. What a buyback left
+    /// Dota's `-respawn`: a fallen hero stands up now where a respawn stands
+    /// it (its fountain, or where it fell on a map that raises heroes so); a
+    /// standing one is moved to its fountain with its pools full. What a buyback left
     /// its next death owing is owed no more: Dota's respawn clears it.
     fn respawn_now(&mut self, seat: usize) {
         self.seats[seat].buyback.respawn_penalty = 0;

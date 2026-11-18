@@ -188,8 +188,9 @@ pub struct MapDef {
     /// Where the heroes of a side come in at the start, Radiant then Dire:
     /// the map's own player starts. Absent, beside their fountain.
     pub hero_starts: Option<[Vec2; 2]>,
-    /// Ticks every hero lies dead, whatever its level and whoever killed it
-    /// (Dota's `SetFixedRespawnTime`). Absent, the game's own respawn times.
+    /// Ticks every hero lies dead, whatever its level, whoever killed it and
+    /// whatever a buyback left owing (Dota's `SetFixedRespawnTime`). Absent,
+    /// the game's own respawn times.
     pub fixed_respawn_ticks: Option<u32>,
     /// Whether a fallen hero rises where it fell rather than at its fountain.
     pub respawn_where_fell: bool,

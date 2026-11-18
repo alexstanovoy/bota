@@ -1,14 +1,14 @@
 //! What a kill pays, what the clock pays, and getting a hero back on its feet.
 
 use bota_core::{
-    GoldRange, ModifierKind, assist_gold, denied_xp, hero_bounty, hero_kill_xp, hero_spawn_pos,
-    kind_def, passive_gold_by, rules,
+    GoldRange, HERO, ModifierKind, assist_gold, denied_xp, fountain_pos, hero_bounty, hero_def,
+    hero_kill_xp, hero_spawn_pos, kind_def, passive_gold_by, rules,
 };
 use bota_proto::{EventKind, GoldAward, GoldAwardKind, Team, UnitKind, Vec2};
 
 use crate::game::{
-    Bounty, Entity, Event, EventVisibility, KILL_CREDIT_WINDOW_TICKS, Landed, Level, Modifier,
-    Purpose, RespawnSpot, World, wire_id,
+    Bounty, Entity, Event, EventVisibility, KILL_CREDIT_WINDOW_TICKS, Landed, LandingBody, Level,
+    Modifier, Purpose, RespawnSpot, World, wire_id,
 };
 
 use super::fight::other_side;
@@ -644,15 +644,10 @@ impl World {
     }
 
     /// Stands a seat's fallen hero up now: where it fell on a map that
-    /// raises heroes so, else at its fountain.
+    /// raises heroes so (see [`World::rise_where_fell`]), else at its fountain.
     pub(crate) fn respawn(&mut self, index: usize) {
-        if let Some(at) = self.seats[index].respawn_spot.0 {
-            self.raise_fallen_hero(index, at);
-            // Ground taken there leaves the hero down a tick more, to try
-            // the same spot again.
-            if !self.seats[index].dead() {
-                self.seats[index].respawn_spot = RespawnSpot::default();
-            }
+        if let Some(fell) = self.seats[index].respawn_spot.0 {
+            self.rise_where_fell(index, fell);
             return;
         }
         let at = hero_spawn_pos(self.map, self.seats[index].team);
@@ -668,6 +663,36 @@ impl World {
             Modifier::new(ModifierKind::FountainInvulnerable, Some(hero), None, None),
         );
         self.settle();
+    }
+
+    /// A hero of a map that raises heroes where they fell stands up on the clear ground
+    /// nearest the spot, found as a scroll's landing is and clear of the units standing there
+    /// ([`World::open_landing_among_bodies`]): never inside a building, a tree or a cliff it
+    /// fell on in the air, nor on another body. A spot within the reach of the
+    /// enemy fountain's attacks raises it at its own fountain instead, as the game raises every
+    /// hero, with the protection a respawn there gives: rising there could only die again.
+    /// With no clear ground near the spot, the hero stays down a tick more and tries again.
+    fn rise_where_fell(&mut self, index: usize, fell: Vec2) {
+        let team = self.seats[index].team;
+        let enemy_fountain = fountain_pos(self.map, team.enemy());
+        let reach = rules::units(rules::FOUNTAIN_ATTACK_RANGE + rules::FOUNTAIN_SPLASH_RADIUS);
+        if fell.within(enemy_fountain, reach) {
+            self.seats[index].respawn_spot = RespawnSpot::default();
+            self.respawn(index);
+            return;
+        }
+        let body = LandingBody::of_def(
+            hero_def(self.seats[index].hero).map_or(&HERO, |def| def.unit),
+            team,
+        );
+        let Some(at) = self.open_landing_among_bodies(body, fell) else {
+            self.seats[index].respawn_left = 1;
+            return;
+        };
+        self.raise_fallen_hero(index, at);
+        if !self.seats[index].dead() {
+            self.seats[index].respawn_spot = RespawnSpot::default();
+        }
     }
 
     pub fn is_hero(&self, entity: Entity) -> bool {
