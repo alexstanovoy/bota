@@ -239,7 +239,9 @@ impl Client {
         self.request(ClientMsg::GetAvatar { account })
     }
 
-    /// Fetches changed images for up to 100 distinct accounts using one lookup token.
+    /// Fetches changed images for up to 100 distinct accounts using one lookup token. The reply
+    /// covers the first `answered` queries (images arrive in replies of a bounded size): ask
+    /// again about the rest.
     pub fn get_avatars(
         &mut self,
         accounts: &[radovid_client::proto::AvatarQuery],
@@ -252,7 +254,9 @@ impl Client {
         })
     }
 
-    /// Uploads a static 32x32 PNG. Full validation belongs to the service.
+    /// Uploads an avatar: a static 256x256 PNG of at most `MAX_AVATAR_BYTES`, as
+    /// `proto::encode_avatar_rgba` makes one from any picture. Full validation belongs to the
+    /// service.
     pub fn set_avatar(&mut self, png: &[u8]) -> Result<u32, ClientError> {
         if png.len() > radovid_client::proto::MAX_AVATAR_BYTES {
             return Err(ClientError::Refused(Error::BadAvatar));

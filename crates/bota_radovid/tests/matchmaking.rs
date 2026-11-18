@@ -83,7 +83,8 @@ fn avatars_cross_the_sdk_service_and_public_profile_and_board_contracts() {
             changes: vec![AvatarChange {
                 account: alpha_id,
                 avatar: Some(image.clone())
-            }]
+            }],
+            answered: 2
         })
     );
     let cached = [
@@ -100,7 +101,8 @@ fn avatars_cross_the_sdk_service_and_public_profile_and_board_contracts() {
     assert_eq!(
         viewer.reply(seq),
         Ok(Reply::Avatars {
-            changes: Vec::new()
+            changes: Vec::new(),
+            answered: 2
         })
     );
     assert!(matches!(
@@ -121,7 +123,7 @@ fn avatars_cross_the_sdk_service_and_public_profile_and_board_contracts() {
         })
     );
     assert!(matches!(
-        alpha.client.set_avatar(&[0; 513]),
+        alpha.client.set_avatar(&vec![0; MAX_AVATAR_BYTES + 1]),
         Err(bota_radovid::ClientError::Refused(Error::BadAvatar))
     ));
     let mut invalid = env.account("invalid", AccountKind::Human);
@@ -130,6 +132,11 @@ fn avatars_cross_the_sdk_service_and_public_profile_and_board_contracts() {
         .set_avatar(b"not a PNG")
         .expect("server validates");
     assert_eq!(invalid.reply(seq), Err(Error::BadAvatar));
+    // The 32x32 size avatars had before 256 is refused with the same exact error.
+    let mut old_size = env.account("old_size", AccountKind::Human);
+    let small = include_bytes!("fixtures/avatar_32.png");
+    let seq = old_size.client.set_avatar(small).expect("server validates");
+    assert_eq!(old_size.reply(seq), Err(Error::BadAvatar));
     let seq = invalid.client.remove_avatar().expect("another attempt");
     assert!(matches!(invalid.reply(seq), Err(Error::Throttled { .. })));
 }
