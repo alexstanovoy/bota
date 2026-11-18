@@ -370,7 +370,7 @@ fn run_inner(
         hold: hooks.hold,
     };
     match server.lobby_phase() {
-        Lobby::Match(cfg) => Ok(server.match_phase(*cfg)),
+        Lobby::Match(cfg) => server.match_phase(*cfg),
         Lobby::Abandoned => {
             server.close_all();
             Ok(MatchEnd::Abandoned {
@@ -468,7 +468,11 @@ pub fn check_opts(opts: &ServerOpts) -> Result<(), String> {
         opts.runes.unwrap_or(map.default_runes),
         opts.cheats,
     )
-    .map_err(|error| error.to_string())?;
+    .map_err(|error| match error {
+        // The command line's own flag for it.
+        crate::game::MatchConfigError::NeedsCheats { .. } => format!("{error} (--cheats)"),
+        error => error.to_string(),
+    })?;
     if opts.pick_time > MAX_PICK_TIME
         || opts.pick_penalty_time > MAX_PICK_TIME
         || opts.tactical_time > MAX_PICK_TIME
@@ -1687,8 +1691,12 @@ impl Server {
         }
     }
 
-    /// Runs the match to its end.
-    fn match_phase(&mut self, cfg: MatchConfig) -> MatchEnd {
+    /// Runs the match to its end; a setup the match rules refuse ends the server with that
+    /// refusal, before anything is told or recorded.
+    fn match_phase(&mut self, cfg: MatchConfig) -> std::io::Result<MatchEnd> {
+        cfg.validate().map_err(|error| {
+            std::io::Error::other(format!("the match setup was refused: {error}"))
+        })?;
         let mut replay = std::mem::replace(&mut self.replay, ReplayWriter::disabled());
         let mut world = World::for_match(&cfg, cfg.rng());
         let start = ServerMsg::MatchStart { info: cfg.info() };
@@ -1782,7 +1790,7 @@ impl Server {
         };
         let replay_truncated = replay.finish();
         self.close_all();
-        match end {
+        Ok(match end {
             MatchEnd::Over {
                 winner,
                 report,
@@ -1800,7 +1808,7 @@ impl Server {
                 replay_truncated,
             },
             abandoned @ MatchEnd::Abandoned { .. } => abandoned,
-        }
+        })
     }
 
     /// The service ends the match: everybody is told and shown the last tick, the replay gets

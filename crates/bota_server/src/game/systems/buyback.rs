@@ -16,7 +16,12 @@ impl World {
                 .driven_by(slot, Some(named))
                 .ok_or(RejectReason::NotYourUnit)?;
             if seat.unit != Some(unit) {
-                return Err(RejectReason::NotAHero);
+                // A hero the seat controls is still another seat's to buy back.
+                return Err(if self.controlled_seat(slot, named).is_some() {
+                    RejectReason::NotYourUnit
+                } else {
+                    RejectReason::NotAHero
+                });
             }
         }
         buyback_refusal(

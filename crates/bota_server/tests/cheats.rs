@@ -514,7 +514,7 @@ fn a_queued_launch_refuses_the_hero_demo_without_cheats() {
         .collect();
     assert_eq!(
         check_opts(&queued),
-        Err("map 3 is played with cheats on".to_owned())
+        Err("map 3 is played with cheats on (--cheats)".to_owned())
     );
     // A lobby whose owner turned cheats on may play it.
     queued.cheats = true;

@@ -524,7 +524,7 @@ fn a_player_buys_an_item_for_an_enemy_hero_and_it_lands_in_that_heros_bag() {
 }
 
 #[test]
-fn the_hero_demo_sells_everything_for_nothing() {
+fn a_purchase_in_the_hero_demo_costs_nothing() {
     let mut demo = Demo::on(HERO_DEMO_ID);
     demo.cheat(Cheat::Teleport {
         at: bota_core::hero_spawn_pos(map_of(HERO_DEMO_ID), Team::Radiant),
@@ -1092,6 +1092,7 @@ fn with_cheats_off_nobody_controls_a_created_hero_through_the_same_door() {
 fn an_order_naming_a_removed_hero_is_refused_even_after_its_place_is_taken_again() {
     let mut demo = Demo::on(HERO_DEMO_ID);
     let removed = demo.spawn_enemy(HeroId::PUDGE);
+    let place = demo.row_of(removed).slot;
     demo.cheat_at(removed, Cheat::RemoveHero);
     let still = Order::Move {
         target: Target::None,
@@ -1103,6 +1104,11 @@ fn an_order_naming_a_removed_hero_is_refused_even_after_its_place_is_taken_again
         "the removed hero took an order"
     );
     let next = demo.spawn_enemy(HeroId::SHADOW_FIEND);
+    assert_eq!(
+        demo.row_of(next).slot,
+        place,
+        "the new hero took the old one's place"
+    );
     assert_ne!(next, removed);
     demo.step_naming(&[(Some(removed), still)]);
     assert_eq!(
@@ -1130,4 +1136,83 @@ fn a_match_set_up_in_process_refuses_the_hero_demo_without_cheats() {
         refused.to_string(),
         "match setup was refused: map 3 is played with cheats on"
     );
+}
+
+#[test]
+fn a_controlled_heros_purchases_and_sales_are_its_own_seats_and_the_givers_gold_never_moves() {
+    // A cheat match on the sandbox map, whose purchases cost what the shop asks.
+    let mut pair = Pair::on(DEMO_ID, true);
+    let pudge = pair.dire_creates_an_ally();
+    let place = pair.view(1).players.last().expect("its row").slot;
+    let gold = |pair: &mut Pair, slot: SlotId| {
+        let world = pair.local.world_mut();
+        world.seat(slot).expect("the seat").gold
+    };
+    // Seat 0 gives the created hero gold (a cheat lands on the hero it is aimed at), takes it
+    // to its own fountain's shop, and buys and sells for it.
+    pair.give(
+        0,
+        Some(pudge),
+        Order::Cheat {
+            cheat: Cheat::Gold { amount: 5_000 },
+        },
+    );
+    assert_eq!(pair.rejected[0], []);
+    let home = bota_core::hero_spawn_pos(map_of(DEMO_ID), Team::Dire);
+    pair.give(
+        0,
+        Some(pudge),
+        Order::Cheat {
+            cheat: Cheat::Teleport { at: home },
+        },
+    );
+    assert_eq!(pair.rejected[0], []);
+    let (giver, hero) = (gold(&mut pair, SlotId(0)), gold(&mut pair, place));
+    assert_eq!(hero, 5_000);
+    pair.give(
+        0,
+        Some(pudge),
+        Order::Buy {
+            item: ItemId::BLINK_DAGGER,
+        },
+    );
+    assert_eq!(pair.rejected[0], []);
+    let cost = bota_core::item_def(ItemId::BLINK_DAGGER)
+        .expect("Blink")
+        .cost;
+    assert_eq!(gold(&mut pair, place), hero - cost, "the hero's seat paid");
+    assert_eq!(gold(&mut pair, SlotId(0)), giver, "the giver paid nothing");
+    pair.give(
+        0,
+        Some(pudge),
+        Order::Sell {
+            slot: bota_proto::ItemSlot(0),
+        },
+    );
+    assert_eq!(pair.rejected[0], []);
+    assert!(
+        gold(&mut pair, place) > hero - cost,
+        "the sale credited the hero's seat"
+    );
+    assert_eq!(
+        gold(&mut pair, SlotId(0)),
+        giver,
+        "the sale credited the giver nothing"
+    );
+}
+
+#[test]
+fn a_player_cannot_buy_back_a_hero_it_controls_for_it_is_another_seats() {
+    let mut pair = Pair::on(HERO_DEMO_ID, true);
+    let pudge = pair.dire_creates_an_ally();
+    pair.give(
+        0,
+        Some(pudge),
+        Order::Cheat {
+            cheat: Cheat::Suicide,
+        },
+    );
+    assert_eq!(pair.rejected[0], []);
+    pair.give(0, Some(pudge), Order::Buyback);
+    assert_eq!(pair.rejected[0], [RejectReason::NotYourUnit]);
 }

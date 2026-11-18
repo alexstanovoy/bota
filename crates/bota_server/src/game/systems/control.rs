@@ -3,7 +3,8 @@
 //! (`SetControllableByAllPlayers( true )`, `hero_demo/scripts/vscripts/events.lua`): a player
 //! selects it and orders it as its own. An order to it is the order its own seat would give: the
 //! hero's gold buys for it, its points learn for it. What belongs to a seat or a side (the
-//! Glyph, the Scan, a buyback, a cheat) stays the player's own, whatever it names.
+//! Glyph, the Scan, a buyback) stays the player's own, whatever it names; a cheat is the
+//! player's to give (its authority is the giver's seat) and lands on the hero it is aimed at.
 
 use bota_proto::{EntityId, Order, SlotId};
 
@@ -47,10 +48,13 @@ impl World {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Reach {
     /// What a hero does with its body, its book, its bag and its shop: carried out as the seat
-    /// of the hero it names.
+    /// of the hero it names. A controlled hero keeps its own economy, as its own player would:
+    /// its buying, selling and handing items about spend and credit its seat's gold and stash,
+    /// and the giver's gold never moves.
     Unit,
-    /// What belongs to a seat or a side (its Glyph, its Scan, its buyback, its cheats): always
-    /// the giver's own, whatever unit it names.
+    /// What belongs to a seat or a side (its Glyph, its Scan, its buyback): always the giver's
+    /// own, whatever unit it names. A cheat is allowed or refused by the giver's seat, and what
+    /// it does lands on the hero it is aimed at (`World::cheat`).
     Seat,
 }
 

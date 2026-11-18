@@ -258,7 +258,7 @@ fn the_hero_demo_map_starts_only_with_cheats_on() {
         match crate::check_opts(&opts) {
             Err(why) => {
                 assert!(refused, "{extra:?}: {why}");
-                assert_eq!(why, "map 3 is played with cheats on");
+                assert_eq!(why, "map 3 is played with cheats on (--cheats)");
             }
             Ok(()) => assert!(!refused, "{extra:?} started the hero demo"),
         }
