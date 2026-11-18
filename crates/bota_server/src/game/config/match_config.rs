@@ -28,6 +28,8 @@ pub enum MatchConfigError {
     TooManyEconomyEvents { count: usize },
     /// One economic event is not one a match may carry.
     EconomyEvent { at: usize, error: EconomyEventError },
+    /// A map played only with cheats on (the Hero Demo), set up without them.
+    NeedsCheats { map: MapId },
 }
 
 impl core::fmt::Display for MatchConfigError {
@@ -58,6 +60,9 @@ impl core::fmt::Display for MatchConfigError {
             ),
             MatchConfigError::EconomyEvent { at, error } => {
                 write!(f, "economic event {at} is refused: {error}")
+            }
+            MatchConfigError::NeedsCheats { map } => {
+                write!(f, "map {} is played with cheats on", map.0)
             }
         }
     }
@@ -156,7 +161,7 @@ impl MatchConfig {
             check_economy_event(event, &slots, self.catalogue)
                 .map_err(|error| MatchConfigError::EconomyEvent { at, error })?;
         }
-        check_match_rules(self.map, self.objectives, self.runes)?;
+        check_match_rules(self.map, self.objectives, self.runes, self.cheats)?;
         Ok(())
     }
 
@@ -198,8 +203,14 @@ pub fn check_match_rules(
     map: MapId,
     objectives: ObjectiveSet,
     runes: RuneSet,
+    cheats: bool,
 ) -> Result<(), MatchConfigError> {
     let def = bota_core::map_of(map);
+    // The Hero Demo is a sandbox, and what it gives (free purchases, control of the heroes a
+    // cheat creates) comes only with cheats: however a match is set up, it is not without them.
+    if def.needs_cheats && !cheats {
+        return Err(MatchConfigError::NeedsCheats { map });
+    }
     let refused = objectives.without(def.playable_objectives());
     if !refused.is_empty() {
         return Err(MatchConfigError::Objectives { refused, map });

@@ -668,7 +668,7 @@ fn solo_mid_asked_for_runes_skips_the_first_events_and_plays_the_rest_of_the_sch
     );
     assert_eq!(map_of(MapId(2)).default_runes, RuneSet::NONE);
     assert!(
-        crate::game::check_match_rules(MapId(2), ObjectiveSet::NONE, RuneSet::NONE).is_ok(),
+        crate::game::check_match_rules(MapId(2), ObjectiveSet::NONE, RuneSet::NONE, false).is_ok(),
         "solo mid spawns none unless its host asks"
     );
 }

@@ -491,3 +491,33 @@ fn several_reserved_seats_cheat_only_in_a_lobby_that_turned_them_on() {
         "a local match may cheat"
     );
 }
+
+#[test]
+fn a_queued_launch_refuses_the_hero_demo_without_cheats() {
+    // What a matchmaking service launches for people playing each other: several reserved
+    // seats and no cheats. The refusal is the one every way of setting up a match gives.
+    let mut queued = opts(false, None);
+    queued.map = bota_core::HERO_DEMO_ID;
+    queued.players = 2;
+    queued.reserved = (0..2)
+        .map(|seat| ReservedSeat {
+            version: bota_server::lobby::VersionSource::Client,
+            key: bota_proto::SeatKey([seat; 32]),
+            name: format!("p{seat}"),
+            team: if seat == 0 {
+                bota_proto::Team::Radiant
+            } else {
+                bota_proto::Team::Dire
+            },
+            kind: None,
+        })
+        .collect();
+    assert_eq!(
+        check_opts(&queued),
+        Err("map 3 is played with cheats on".to_owned())
+    );
+    // A lobby whose owner turned cheats on may play it.
+    queued.cheats = true;
+    queued.lobby_cheats = true;
+    assert_eq!(check_opts(&queued), Ok(()));
+}

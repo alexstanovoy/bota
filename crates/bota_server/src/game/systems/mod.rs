@@ -9,6 +9,7 @@ pub(crate) mod cast;
 mod cast_rule;
 mod cheats;
 mod control;
+pub use control::{Reach, order_reach};
 mod courier;
 mod disassemble;
 mod econ;

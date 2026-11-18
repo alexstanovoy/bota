@@ -871,3 +871,263 @@ fn a_hero_rises_at_its_fountain_only_when_it_fell_within_the_enemy_fountains_rea
         );
     }
 }
+
+/// Two players in one match with cheats on, Radiant in seat 0 and Dire in seat 1, as a lobby
+/// whose owner turned cheats on plays the Hero Demo.
+struct Pair {
+    local: LocalMatch,
+    seq: u32,
+    views: [Option<WorldView>; 2],
+    rejected: [Vec<RejectReason>; 2],
+}
+
+impl Pair {
+    fn on(map: MapId, cheats: bool) -> Pair {
+        let cfg = MatchConfig {
+            map,
+            cheats,
+            picks: super::support::fiend_against_fiend(),
+            objectives: map_of(map).default_objectives,
+            runes: map_of(map).default_runes,
+            ..config()
+        };
+        let (local, opening) =
+            LocalMatch::new(&cfg, &[OrderDelay::NONE, OrderDelay::NONE]).expect("a match");
+        let mut pair = Pair {
+            local,
+            seq: 0,
+            views: [None, None],
+            rejected: [Vec::new(), Vec::new()],
+        };
+        pair.take(opening);
+        pair
+    }
+
+    fn take(&mut self, streams: Vec<Vec<ServerMsg>>) {
+        for (seat, stream) in streams.into_iter().enumerate() {
+            self.rejected[seat].clear();
+            for msg in stream {
+                match msg {
+                    ServerMsg::Snapshot { view } => self.views[seat] = Some(view),
+                    ServerMsg::OrderRejected { reason, .. } => self.rejected[seat].push(reason),
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    /// One tick in which `seat` gives one order naming `unit`.
+    fn give(&mut self, seat: usize, unit: Option<EntityId>, order: Order) {
+        self.seq += 1;
+        let given = [OutgoingOrder {
+            seq: self.seq,
+            unit,
+            order,
+            seen: self.local.tick(),
+            queue: false,
+        }];
+        let mut orders: [&[OutgoingOrder]; 2] = [&[], &[]];
+        orders[seat] = &given;
+        let streams = self.local.step(&orders).expect("a step");
+        self.take(streams);
+    }
+
+    fn run(&mut self, ticks: u32) {
+        for _ in 0..ticks {
+            let streams = self.local.step(&[&[], &[]]).expect("a step");
+            self.take(streams);
+        }
+    }
+
+    fn view(&self, seat: usize) -> &WorldView {
+        self.views[seat].as_ref().expect("a snapshot")
+    }
+
+    /// The hero seat 1 stands up on its own side with the panel's ALLY, a created hero of Dire.
+    fn dire_creates_an_ally(&mut self) -> EntityId {
+        self.give(
+            1,
+            None,
+            Order::Cheat {
+                cheat: Cheat::CreateHero {
+                    hero: HeroId::PUDGE,
+                    enemy: false,
+                    at: rules::DEMO_LANE_CORNERS[2],
+                },
+            },
+        );
+        assert_eq!(self.rejected[1], []);
+        let row = self.view(1).players.last().expect("the created seat");
+        assert!(row.slot.0 >= 2 && row.team == Team::Dire, "{row:?}");
+        row.unit.expect("its hero")
+    }
+}
+
+#[test]
+fn a_player_who_did_not_create_a_hero_controls_it_too() {
+    let mut pair = Pair::on(HERO_DEMO_ID, true);
+    let pudge = pair.dire_creates_an_ally();
+    // Seat 0, of the other side, orders the hero seat 1 created.
+    let to = rules::DEMO_LANE_CORNERS[0];
+    pair.give(
+        0,
+        Some(pudge),
+        Order::Move {
+            target: Target::Pos(to),
+        },
+    );
+    assert_eq!(
+        pair.rejected[0],
+        [],
+        "the second player's order was turned down"
+    );
+    // Its own side sees it walk.
+    let at = |pair: &Pair| pair.view(1).unit(pudge).expect("its side sees it").pos;
+    let from = at(&pair);
+    pair.run(3 * rules::TICKS_PER_SECOND);
+    let now = at(&pair);
+    assert!(
+        now.distance_squared(to) < from.distance_squared(to),
+        "it stayed at {now:?}"
+    );
+}
+
+#[test]
+fn a_player_ordering_the_other_sides_created_hero_spends_only_its_own_sides_glyph_and_scan() {
+    let mut pair = Pair::on(HERO_DEMO_ID, true);
+    let pudge = pair.dire_creates_an_ally();
+    // Both sides' Glyphs ready and both sides' first Scan charges in.
+    pair.run(rules::GLYPH_FIRST_USE_AFTER_HORN);
+    let world = pair.local.world_mut();
+    let now = world.tick;
+    assert!(world.glyphs.iter().all(|glyph| glyph.ready_at <= now));
+    let charges =
+        |world: &crate::game::World| [world.scan_ledger(0).charges, world.scan_ledger(1).charges];
+    let before = charges(world);
+    assert!(before.iter().all(|held| *held > 0), "{before:?}");
+    // Seat 0 (Radiant) names Dire's created hero for the Glyph and the Scan.
+    pair.give(0, Some(pudge), Order::Glyph);
+    assert_eq!(pair.rejected[0], []);
+    pair.give(
+        0,
+        Some(pudge),
+        Order::Scan {
+            at: rules::DEMO_LANE_CORNERS[1],
+        },
+    );
+    assert_eq!(pair.rejected[0], []);
+    let world = pair.local.world_mut();
+    let now = world.tick;
+    assert!(
+        world.glyphs[0].ready_at > now,
+        "Radiant's Glyph was not the one used"
+    );
+    assert!(
+        world.glyphs[1].ready_at <= now,
+        "Dire's Glyph was spent by a Radiant player"
+    );
+    assert_eq!(
+        charges(world),
+        [before[0] - 1, before[1]],
+        "Dire's Scan was spent by a Radiant player"
+    );
+}
+
+#[test]
+fn every_order_names_whose_it_is_and_only_a_heros_doing_reaches_a_controlled_hero() {
+    use crate::game::systems::{Reach, order_reach};
+    let none = Target::None;
+    let unit = [
+        Order::Move { target: none },
+        Order::Attack { target: none },
+        Order::Cast {
+            slot: AbilitySlot(0),
+            target: none,
+        },
+        Order::Buy {
+            item: ItemId::BLINK_DAGGER,
+        },
+        Order::Learn {
+            slot: AbilitySlot(0),
+        },
+        Order::LearnAttributeBonus,
+    ];
+    let seat = [
+        Order::Glyph,
+        Order::Buyback,
+        Order::Scan { at: Vec2::ZERO },
+        Order::Cheat {
+            cheat: Cheat::Refresh,
+        },
+    ];
+    assert!(unit.iter().all(|order| order_reach(order) == Reach::Unit));
+    assert!(seat.iter().all(|order| order_reach(order) == Reach::Seat));
+}
+
+#[test]
+fn with_cheats_off_nobody_controls_a_created_hero_through_the_same_door() {
+    let mut pair = Pair::on(HERO_DEMO_ID, true);
+    let pudge = pair.dire_creates_an_ally();
+    // The same world with its cheats gone: the one gate closes control.
+    pair.local.world_mut().cheats = false;
+    pair.give(
+        0,
+        Some(pudge),
+        Order::Move {
+            target: Target::None,
+        },
+    );
+    assert_eq!(pair.rejected[0], [RejectReason::NotYourUnit]);
+    pair.give(
+        1,
+        Some(pudge),
+        Order::Move {
+            target: Target::None,
+        },
+    );
+    assert_eq!(pair.rejected[1], [RejectReason::NotYourUnit]);
+}
+
+#[test]
+fn an_order_naming_a_removed_hero_is_refused_even_after_its_place_is_taken_again() {
+    let mut demo = Demo::on(HERO_DEMO_ID);
+    let removed = demo.spawn_enemy(HeroId::PUDGE);
+    demo.cheat_at(removed, Cheat::RemoveHero);
+    let still = Order::Move {
+        target: Target::None,
+    };
+    demo.step_naming(&[(Some(removed), still)]);
+    assert_eq!(
+        demo.rejected,
+        [RejectReason::NotYourUnit],
+        "the removed hero took an order"
+    );
+    let next = demo.spawn_enemy(HeroId::SHADOW_FIEND);
+    assert_ne!(next, removed);
+    demo.step_naming(&[(Some(removed), still)]);
+    assert_eq!(
+        demo.rejected,
+        [RejectReason::NotYourUnit],
+        "the old handle reached the new hero"
+    );
+    demo.order(next, still);
+}
+
+#[test]
+fn a_match_set_up_in_process_refuses_the_hero_demo_without_cheats() {
+    // In process, as tests and environments build a match.
+    let cfg = MatchConfig {
+        map: HERO_DEMO_ID,
+        cheats: false,
+        objectives: map_of(HERO_DEMO_ID).default_objectives,
+        runes: map_of(HERO_DEMO_ID).default_runes,
+        ..config()
+    };
+    let refused = LocalMatch::new(&cfg, &[OrderDelay::NONE])
+        .err()
+        .expect("refused");
+    assert_eq!(
+        refused.to_string(),
+        "match setup was refused: map 3 is played with cheats on"
+    );
+}
