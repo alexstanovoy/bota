@@ -94,7 +94,7 @@ fn a_part_in_hand_comes_off_what_the_shop_asks() {
 }
 
 /// A hero body with every field named.
-fn a_unit() -> UnitView {
+pub(crate) fn a_unit() -> UnitView {
     UnitView {
         id: EntityId {
             idx: 3,

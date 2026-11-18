@@ -15,7 +15,7 @@ mod slots;
 mod smooth;
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 pub use app::*;
 pub use channel_stop::*;

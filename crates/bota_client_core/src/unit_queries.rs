@@ -198,3 +198,55 @@ pub fn observed_incoming_damage(
         )),
     }
 }
+
+#[cfg(all(test, feature = "ui"))]
+mod tests {
+    use super::*;
+    use crate::ui::tests::a_unit;
+    use bota_proto::{EntityId, Fixed, Vec2};
+
+    fn creep(idx: u32, team: Team, by: i32) -> UnitView {
+        let model = a_unit();
+        UnitView {
+            id: EntityId { idx, generation: 1 },
+            kind: UnitKind::CreepMelee,
+            team,
+            pos: model.pos + Vec2::from_ints(by, 0),
+            hero: None,
+            owner: None,
+            ..model
+        }
+    }
+
+    fn found(actor: &UnitView, around: &[UnitView], enemies: bool) -> Vec<u32> {
+        nearby_creeps(
+            actor,
+            around.iter(),
+            Fixed::from_int(1000),
+            NearbyCreeps::Lane,
+            enemies,
+        )
+        .into_iter()
+        .map(|id| id.idx)
+        .collect()
+    }
+
+    #[test]
+    fn a_neutral_actor_counts_the_lane_creeps_of_both_sides_as_enemies() {
+        let neutral = UnitView {
+            kind: UnitKind::CreepNeutral,
+            ..creep(1, Team::Neutral, 0)
+        };
+        let around = [creep(2, Team::Radiant, 100), creep(3, Team::Dire, 200)];
+        assert_eq!(found(&neutral, &around, true), [2, 3]);
+        assert_eq!(found(&neutral, &around, false), Vec::<u32>::new());
+    }
+
+    #[test]
+    fn a_sided_actor_separates_allies_from_enemies() {
+        let radiant = creep(1, Team::Radiant, 0);
+        let around = [creep(2, Team::Radiant, 100), creep(3, Team::Dire, 200)];
+        assert_eq!(found(&radiant, &around, true), [3]);
+        assert_eq!(found(&radiant, &around, false), [2]);
+    }
+}
