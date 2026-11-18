@@ -63,6 +63,8 @@ mod wave;
 
 pub use applied::*;
 pub use aura::*;
+#[cfg(test)]
+pub(crate) use econ::fountain_reach;
 pub use gear::*;
 pub use grenade::*;
 pub use hitting::*;

@@ -5,7 +5,8 @@ use bota_core::{MAP2_ID, MAP2_TICK_CAP, kind_def, respawn_wait, rules};
 use bota_proto::{EventKind, Fixed, Team, UnitKind, Vec2};
 
 use crate::game::{
-    Entity, Event, EventVisibility, ItemStack, Landed, Missed, UnitOrder, World, wire_id,
+    Entity, Event, EventVisibility, ItemStack, Landed, Missed, RespawnSpot, UnitOrder, World,
+    wire_id,
 };
 
 impl World {
@@ -390,7 +391,10 @@ impl World {
                     .fixed_respawn_ticks
                     .unwrap_or_else(|| respawn_wait(level, penalty, by_neutrals));
                 if self.map.respawn_where_fell {
-                    self.seats[index].respawn_spot.0 = self.pos(entity);
+                    self.seats[index].respawn_spot = RespawnSpot {
+                        at: self.pos(entity),
+                        waited: 0,
+                    };
                 }
                 self.lay_hero_down(index, wait);
                 fallen_hero_team = Some(self.seats[index].team);

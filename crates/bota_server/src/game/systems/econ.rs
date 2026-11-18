@@ -646,7 +646,7 @@ impl World {
     /// Stands a seat's fallen hero up now: where it fell on a map that
     /// raises heroes so (see [`World::rise_where_fell`]), else at its fountain.
     pub(crate) fn respawn(&mut self, index: usize) {
-        if let Some(fell) = self.seats[index].respawn_spot.0 {
+        if let Some(fell) = self.seats[index].respawn_spot.at {
             self.rise_where_fell(index, fell);
             return;
         }
@@ -671,22 +671,26 @@ impl World {
     /// fell on in the air, nor on another body. A spot within the reach of the
     /// enemy fountain's attacks raises it at its own fountain instead, as the game raises every
     /// hero, with the protection a respawn there gives: rising there could only die again.
-    /// With no clear ground near the spot, the hero stays down a tick more and tries again.
+    /// With no clear ground near the spot, the hero stays down a tick more and tries again,
+    /// for [`rules::DEMO_RISE_WAIT_TICKS`] at most, and then rises at its fountain.
     fn rise_where_fell(&mut self, index: usize, fell: Vec2) {
         let team = self.seats[index].team;
-        let enemy_fountain = fountain_pos(self.map, team.enemy());
-        let reach = rules::units(rules::FOUNTAIN_ATTACK_RANGE + rules::FOUNTAIN_SPLASH_RADIUS);
-        if fell.within(enemy_fountain, reach) {
+        let hero = hero_def(self.seats[index].hero).map_or(&HERO, |def| def.unit);
+        if fell.within(fountain_pos(self.map, team.enemy()), fountain_reach(hero)) {
             self.seats[index].respawn_spot = RespawnSpot::default();
             self.respawn(index);
             return;
         }
-        let body = LandingBody::of_def(
-            hero_def(self.seats[index].hero).map_or(&HERO, |def| def.unit),
-            team,
-        );
+        let body = LandingBody::of_def(hero, team);
         let Some(at) = self.open_landing_among_bodies(body, fell) else {
-            self.seats[index].respawn_left = 1;
+            let spot = &mut self.seats[index].respawn_spot;
+            if spot.waited >= rules::DEMO_RISE_WAIT_TICKS {
+                *spot = RespawnSpot::default();
+                self.respawn(index);
+            } else {
+                spot.waited += 1;
+                self.seats[index].respawn_left = 1;
+            }
             return;
         };
         self.raise_fallen_hero(index, at);
@@ -739,4 +743,15 @@ pub(crate) fn wears_illusion(on_it: &crate::game::Modifiers) -> bool {
     on_it
         .active()
         .any(|held| held.kind == bota_core::ModifierKind::Illusion)
+}
+
+/// How far from a fountain's centre its attacks hurt a body: its attack range, edge to edge
+/// of the two bodies' bounds, and the splash round what a shot lands on.
+pub(crate) fn fountain_reach(body: &bota_core::UnitDef) -> bota_proto::Fixed {
+    rules::units(
+        bota_core::FOUNTAIN.attack_range
+            + bota_core::FOUNTAIN.bound
+            + body.bound
+            + rules::FOUNTAIN_SPLASH_RADIUS,
+    )
 }

@@ -61,29 +61,37 @@ pub struct HeroContribution {
 const RESPAWN_SPOT_HASH_TAG: u8 = 0xB8;
 
 /// Where a seat's fallen hero rises, on a map whose heroes rise where they
-/// fell: the spot it fell on, until it rises. Empty on every other map, and
-/// the fingerprint of a match on one carries nothing of it.
+/// fell: the spot it fell on, until it rises, and the ticks it has waited past
+/// its time for clear ground there. Empty on every other map, and the
+/// fingerprint of a match on one carries nothing of it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct RespawnSpot(pub Option<Vec2>);
+pub struct RespawnSpot {
+    pub at: Option<Vec2>,
+    pub waited: u32,
+}
 
 impl StateHash for RespawnSpot {
     fn state_hash(&self, fnv: &mut Fnv) {
-        let Some(at) = self.0 else {
+        let Some(at) = self.at else {
             return;
         };
         fnv.u8(RESPAWN_SPOT_HASH_TAG);
         at.state_hash(fnv);
+        self.waited.state_hash(fnv);
     }
 }
 
 #[cfg(test)]
 impl crate::engine::Specimen for RespawnSpot {
     fn low() -> Self {
-        RespawnSpot(None)
+        RespawnSpot::default()
     }
 
     fn high() -> Self {
-        RespawnSpot(Some(Vec2::from_ints(1, 2)))
+        RespawnSpot {
+            at: Some(Vec2::from_ints(1, 2)),
+            waited: 3,
+        }
     }
 }
 

@@ -277,6 +277,9 @@ pub const DEMO_ROSHAN_PIT: Vec2 = Vec2::from_ints(5888, 9472);
 /// Hero Demo's `SetFixedRespawnTime( 4 )` (`hero_demo/scripts/vscripts/
 /// addon_game_mode.lua`).
 pub const DEMO_RESPAWN_SECONDS: u32 = 4;
+/// Ticks a hero of the demo game that is due to rise where it fell waits for clear
+/// ground there before it rises at its fountain instead: one second.
+pub const DEMO_RISE_WAIT_TICKS: u32 = TICKS_PER_SECOND;
 
 // Trees and the jungle.
 

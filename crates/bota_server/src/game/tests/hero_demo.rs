@@ -12,6 +12,11 @@ use super::support::config;
 use crate::game::{MatchConfig, OrderDelay};
 use crate::local::LocalMatch;
 
+/// How far from its aim the landing search looks: its rings out to the last.
+const LANDING_EXTENT: i32 = rules::SCROLL_LANDING_RINGS * rules::SCROLL_LANDING_STEP;
+/// Ground no body stands on anywhere near: far outside the demo map.
+const NO_GROUND: Vec2 = Vec2::from_ints(2000, 2000);
+
 /// The ticks a hero of the hero demo lies dead.
 const DEMO_WAIT: u32 = rules::DEMO_RESPAWN_SECONDS * rules::TICKS_PER_SECOND;
 
@@ -274,11 +279,15 @@ fn a_hero_of_the_hero_demo_rises_where_it_fell_each_time_at_any_level() {
         demo.cheat(Cheat::Teleport { at: spot });
         let fell = demo.kill_hero();
         demo.run(DEMO_WAIT - 1);
+        // The waves fight along the lane: where one stands on the spot, the hero rises on the
+        // clear ground the landing search finds beside it.
         let risen = demo.hero().expect("the hero stands again").pos;
-        // The waves fight along the lane: where one stands on the spot, the hero rises a
-        // landing step or two beside it.
         assert!(
-            near(risen, fell, 300),
+            demo.local.world_mut().clearance.stands_clear(risen),
+            "it rose on closed ground at {risen:?}"
+        );
+        assert!(
+            near(risen, fell, LANDING_EXTENT),
             "fell at {fell:?}, rose at {risen:?}"
         );
     }
@@ -363,7 +372,7 @@ fn a_hero_whose_spot_is_taken_by_a_structure_rises_on_clear_ground_beside_it() {
     // As where a hero thrown through the air falls: the spot it is remembered at lies in the
     // tower's footprint.
     let world = demo.local.world_mut();
-    world.seats[0].respawn_spot.0 = Some(radiant_tower());
+    world.seats[0].respawn_spot.at = Some(radiant_tower());
     demo.run(DEMO_WAIT - 1);
     let risen = demo.hero().expect("the hero stands again").pos;
     let world = demo.local.world_mut();
@@ -372,7 +381,7 @@ fn a_hero_whose_spot_is_taken_by_a_structure_rises_on_clear_ground_beside_it() {
         "it rose in the tower at {risen:?}"
     );
     assert!(
-        near(risen, radiant_tower(), 600),
+        near(risen, radiant_tower(), LANDING_EXTENT),
         "it rose far off, at {risen:?}"
     );
 }
@@ -452,4 +461,66 @@ fn a_bought_back_hero_of_the_hero_demo_rises_where_it_fell_and_owes_no_longer_wa
         demo.hero().is_some(),
         "the death after a buyback lasted longer"
     );
+}
+
+#[test]
+fn a_hero_with_no_clear_ground_near_its_spot_waits_a_second_and_then_rises_at_its_fountain() {
+    let mut demo = Demo::on(HERO_DEMO_ID);
+    demo.kill_hero();
+    demo.local.world_mut().seats[0].respawn_spot.at = Some(NO_GROUND);
+    demo.run(DEMO_WAIT - 1);
+    demo.run(rules::DEMO_RISE_WAIT_TICKS - 1);
+    assert!(
+        demo.me().respawn_left > 0,
+        "it rose with no ground to rise on"
+    );
+    demo.run(1);
+    let risen = demo.hero().expect("it rose at last").pos;
+    let home = bota_core::hero_spawn_pos(map_of(HERO_DEMO_ID), Team::Radiant);
+    assert!(near(risen, home, 300), "it rose at {risen:?}");
+}
+
+#[test]
+fn a_hero_whose_spot_clears_while_it_waits_rises_beside_the_spot() {
+    let mut demo = Demo::on(HERO_DEMO_ID);
+    demo.kill_hero();
+    demo.local.world_mut().seats[0].respawn_spot.at = Some(NO_GROUND);
+    demo.run(DEMO_WAIT - 1 + 5);
+    assert!(
+        demo.me().respawn_left > 0,
+        "it rose with no ground to rise on"
+    );
+    // The ground clears: its spot is open lane now.
+    let lane = rules::DEMO_LANE_CORNERS[0];
+    demo.local.world_mut().seats[0].respawn_spot.at = Some(lane);
+    demo.run(1);
+    let risen = demo.hero().expect("it rose").pos;
+    assert!(near(risen, lane, LANDING_EXTENT), "it rose at {risen:?}");
+}
+
+#[test]
+fn a_hero_rises_at_its_fountain_only_when_it_fell_within_the_enemy_fountains_reach() {
+    let hero = bota_core::hero_def(HeroId::SHADOW_FIEND)
+        .expect("Shadow Fiend")
+        .unit;
+    let reach = crate::game::systems::fountain_reach(hero).to_int();
+    let enemy_fountain = map_of(HERO_DEMO_ID).fountains[1];
+    let home = bota_core::hero_spawn_pos(map_of(HERO_DEMO_ID), Team::Radiant);
+    // Along the diagonal out of the Dire base: 7071 / 10000 of a distance on each axis.
+    let out = |distance: i32| {
+        let side = distance * 7071 / 10000;
+        enemy_fountain - Vec2::from_ints(side, side)
+    };
+    for (distance, at_home) in [(reach - 60, true), (reach + 60, false)] {
+        let mut demo = Demo::on(HERO_DEMO_ID);
+        demo.kill_hero();
+        demo.local.world_mut().seats[0].respawn_spot.at = Some(out(distance));
+        demo.run(DEMO_WAIT - 1);
+        let risen = demo.hero().expect("it rose").pos;
+        assert_eq!(
+            near(risen, home, 300),
+            at_home,
+            "fell {distance} from the enemy fountain (reach {reach}), rose at {risen:?}"
+        );
+    }
 }
