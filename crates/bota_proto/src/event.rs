@@ -60,6 +60,11 @@ pub enum EventKind {
         /// Removal): reduced as damage of its `kind` is, it set off nothing
         /// that answers to damage.
         removal: bool,
+        /// Whether it was the damage of an attack's critical strike: the swing's damage multiplied
+        /// by an item's chance of one (a Crystalys, a Daedalus). Told so that a front end can set
+        /// it apart from the plain damage around it, as Dota's overhead alert for a critical strike
+        /// does.
+        critical: bool,
     },
     /// An attack did not land: the target evaded it, or it was thrown
     /// uphill and missed.

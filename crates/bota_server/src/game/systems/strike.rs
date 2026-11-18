@@ -20,6 +20,9 @@ use super::modifiers::resisted_ticks;
 pub(super) struct Boost {
     /// The percent of its damage the swing deals: 100 for a plain one.
     pub crit_pct: i32,
+    /// Whether the roll that set [`Boost::crit_pct`] was a critical strike's: told by the roll
+    /// itself, so that a multiplier of 100 or a source of another kind is no different.
+    pub critical: bool,
     /// A critical strike landed as magic on top of the swing: the percent of its damage, and the
     /// item (Revenant's Brooch).
     pub phantom: Option<(i32, ItemId)>,
@@ -361,6 +364,7 @@ impl World {
     pub(super) fn boost_of(&mut self, attacker: Entity, on: Entity, stats: &Stats) -> Boost {
         let mut boost = Boost {
             crit_pct: 100,
+            critical: false,
             phantom: None,
             chain: None,
             split: None,
@@ -400,7 +404,10 @@ impl World {
             if self.rolls(attacker, source.origin, chance_pct) {
                 match source.origin {
                     Origin::Item { item, .. } if magic => boost.phantom = Some((mult, item)),
-                    _ => boost.crit_pct = mult,
+                    _ => {
+                        boost.crit_pct = mult;
+                        boost.critical = true;
+                    }
                 }
                 break;
             }

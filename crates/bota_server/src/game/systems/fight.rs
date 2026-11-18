@@ -72,6 +72,7 @@ impl World {
                     kind: blow.kind,
                     inflictor: blow.inflictor,
                     removal: blow.removal,
+                    critical: blow.critical,
                 },
                 visible_to: self.who_may_know(blow.target, None),
                 gold_hidden_from: None,

@@ -110,6 +110,7 @@ fn damage(source: EntityId, target: EntityId) -> EventKind {
         kind: DamageKind::Physical,
         inflictor: None,
         removal: false,
+        critical: false,
     }
 }
 

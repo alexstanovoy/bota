@@ -217,6 +217,7 @@ pub(crate) fn world_with_projectile_uphill_state(launch_tier: u8, can_miss_uphil
             striker: None,
             laid: crate::game::Laid::NONE,
             riders: crate::game::Riders::NONE,
+            category: crate::game::Category::Plain,
         },
     );
     world
@@ -1226,6 +1227,7 @@ pub(crate) fn manual_projectile_damage(
                 striker: Some(bota_core::Striker::Other),
                 laid: crate::game::Laid::NONE,
                 riders: crate::game::Riders::NONE,
+                category: crate::game::Category::Plain,
             },
         );
     }

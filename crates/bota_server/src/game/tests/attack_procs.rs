@@ -170,6 +170,7 @@ struct Blow {
     amount: i32,
     kind: DamageKind,
     inflictor: Option<Inflictor>,
+    critical: bool,
 }
 
 /// What `by` did while it attacked: the ticks its swings went off, and every blow it dealt.
@@ -240,6 +241,7 @@ fn attack_for(world: &mut World, by: Entity, on: Entity, swings: usize, refresh:
                     amount,
                     kind,
                     inflictor,
+                    critical,
                     ..
                 } if source == wire_id(by) => {
                     let Some(target) = world.entities.iter().find(|&unit| wire_id(unit) == target)
@@ -255,6 +257,7 @@ fn attack_for(world: &mut World, by: Entity, on: Entity, swings: usize, refresh:
                         amount,
                         kind,
                         inflictor,
+                        critical,
                     });
                 }
                 _ => {}
@@ -364,6 +367,67 @@ fn a_crystalys_strikes_critically_on_dotas_thirty_percent_run_for_160_percent() 
             "{blow:?}: {span:?}, critical {critical}"
         );
     }
+}
+
+/// `by` attacks with `item` alone until 40 swings landed; the run of its 30% proc says which
+/// swings struck critically. The blows of the swings themselves (no inflictor), as told, with what
+/// the run expects of each.
+fn swings_with(attacker: HeroId, item: ItemId) -> (Vec<Blow>, Vec<bool>, Vec<Blow>) {
+    let (mut world, hero, enemy) = duel(attacker, &[item], HeroId::PUDGE, Vec2::from_ints(150, 0));
+    let place = item_place(slot_holding(&world, hero, item));
+    let mut run = Prd::new(&world, hero, place, C30);
+    let all = attack_until(&mut world, hero, enemy, 40).blows;
+    let swings = attack_blows(&all, enemy);
+    let expected: Vec<bool> = swings.iter().map(|_| run.next()).collect();
+    assert!(expected.contains(&true) && expected.contains(&false));
+    let riding = all
+        .into_iter()
+        .filter(|blow| blow.inflictor == Some(Inflictor::Item(item)))
+        .collect();
+    (swings, expected, riding)
+}
+
+/// The match tells which of an attacker's blows struck critically, from the roll that decided it,
+/// so that a front end can set a critical strike's number apart: those the run says, and no plain
+/// swing's. A melee swing lands as it is struck, a ranged one as its missile arrives; two sources
+/// of different multipliers (Crystalys 160%, Daedalus 225%) are told alike.
+#[test]
+fn a_critical_strike_is_told_as_critical_damage_and_a_plain_swing_is_not() {
+    for (attacker, item) in [
+        (HeroId::PUDGE, ItemId::CRYSTALYS),
+        (HeroId::SHADOW_FIEND, ItemId::CRYSTALYS),
+        (HeroId::PUDGE, ItemId::DAEDALUS),
+        (HeroId::SHADOW_FIEND, ItemId::DAEDALUS),
+    ] {
+        let (swings, expected, _) = swings_with(attacker, item);
+        let told: Vec<bool> = swings.iter().map(|blow| blow.critical).collect();
+        assert_eq!(
+            told, expected,
+            "which of {attacker:?}'s swings with {item:?} were told as critical strikes"
+        );
+    }
+}
+
+/// Revenant's Brooch's Phantom Critical is a critical strike landed as magic: the magic on top
+/// is its damage and is told as critical, while the swing it rides with is plain.
+#[test]
+fn a_phantom_critical_is_told_as_critical_on_its_magic_and_not_on_its_plain_swing() {
+    let (swings, expected, magic) = swings_with(HeroId::PUDGE, ItemId::REVENANTS_BROOCH);
+    assert!(
+        swings.iter().all(|blow| !blow.critical),
+        "the swings of a Phantom Critical are plain: {swings:?}"
+    );
+    assert_eq!(
+        magic.len(),
+        expected.iter().filter(|&&strikes| strikes).count(),
+        "a magic blow for each critical strike the run says"
+    );
+    assert!(
+        magic
+            .iter()
+            .all(|blow| blow.critical && blow.kind == DamageKind::Magical),
+        "{magic:?}"
+    );
 }
 
 /// Of several critical strikes the strongest rolls first and the first that lands counts alone
@@ -2135,6 +2199,7 @@ fn attack_for_ticks(world: &mut World, by: Entity, on: Entity, ticks: u32) -> At
                     amount,
                     kind,
                     inflictor,
+                    critical,
                     ..
                 } if source == wire_id(by) => {
                     // The struck may be gone by now (a denied creep): it is named by its wire id.
@@ -2148,6 +2213,7 @@ fn attack_for_ticks(world: &mut World, by: Entity, on: Entity, ticks: u32) -> At
                             amount,
                             kind,
                             inflictor,
+                            critical,
                         });
                     }
                 }

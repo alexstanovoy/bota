@@ -19,9 +19,9 @@ use bota_proto::{
 use super::hitting::entity_slot;
 
 use crate::game::{
-    Action, ActionPhase, ActionState, Entity, Event, Hit, HitEffect, Laid, PendingCast, Projectile,
-    PseudoRandom, Purpose, RefusedOrder, Rider, RiderKind, Riders, Rolls, Stats, Target, World,
-    ability_hooks, wire_id,
+    Action, ActionPhase, ActionState, Category, Entity, Event, Hit, HitEffect, Laid, PendingCast,
+    Projectile, PseudoRandom, Purpose, RefusedOrder, Rider, RiderKind, Riders, Rolls, Stats,
+    Target, World, ability_hooks, wire_id,
 };
 
 /// What one swing deals, rolled when it lands.
@@ -31,6 +31,8 @@ struct Swing {
     striker: Striker,
     /// Its physical damage.
     damage: i32,
+    /// [`Category::Critical`] where it strikes critically, else [`Category::Plain`].
+    category: Category,
     /// Whether it goes through evasion for an accuracy aura's sake.
     accurate: bool,
     /// The magical damage each pierce that landed adds, and the item that
@@ -971,6 +973,11 @@ impl World {
             }),
             striker,
             damage: (damage + split_base) * boost.crit_pct / 100 * class_pct / 100,
+            category: if boost.critical {
+                Category::Critical
+            } else {
+                Category::Plain
+            },
             // A swing that lets loose chain lightning goes through evasion ("Lightning proc
             // pierces evasion").
             accurate: boost.accurate || boost.chain.is_some(),
@@ -991,6 +998,7 @@ impl World {
                     let shot = Swing {
                         proc: None,
                         damage: damage * share / 100,
+                        category: Category::Plain,
                         riders: Riders::NONE,
                         ..swing.clone()
                     };
@@ -1004,6 +1012,7 @@ impl World {
                         let shot = Swing {
                             striker: swing.striker,
                             damage: (split.base_damage + damage * split.pct / 100) * share / 100,
+                            category: Category::Plain,
                             accurate: boost.accurate,
                             pierced: Vec::new(),
                             physical_amp_bp: swing.physical_amp_bp,
@@ -1116,7 +1125,7 @@ impl World {
             removal: false,
             spares: false,
             riders: swing.riders,
-            category: crate::game::Category::Plain,
+            category: swing.category,
         });
         for (bonus, item) in swing.pierced {
             self.hits.push_back(Hit {
@@ -1138,7 +1147,7 @@ impl World {
                 removal: false,
                 spares: false,
                 riders: crate::game::Riders::NONE,
-                category: crate::game::Category::Plain,
+                category: Category::Plain,
             });
         }
     }
@@ -1175,6 +1184,7 @@ impl World {
                 striker: Some(swing.striker),
                 laid: swing.laid,
                 riders: swing.riders,
+                category: swing.category,
             },
         );
     }

@@ -1906,6 +1906,7 @@ fn our_blow_cues_the_unit_it_lands_on() {
             kind: bota_proto::DamageKind::Physical,
             inflictor: None,
             removal: false,
+            critical: false,
         }],
     });
     app.pump(0.0);

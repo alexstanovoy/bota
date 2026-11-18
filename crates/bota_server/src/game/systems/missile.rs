@@ -124,7 +124,7 @@ fn land(shot: &Projectile, uphill: bool, side: Option<Team>, hits: &mut VecDeque
         removal: false,
         spares: false,
         riders: shot.riders,
-        category: crate::game::Category::Plain,
+        category: shot.category,
     });
     for &(damage, item) in &shot.pierced {
         hits.push_back(Hit {

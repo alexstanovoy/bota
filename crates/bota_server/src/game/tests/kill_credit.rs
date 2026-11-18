@@ -905,7 +905,8 @@ fn kill_credit_ten_hero_fight_event_budget_roundtrips_without_drops() {
             amount: 1,
             kind: bota_proto::DamageKind::Magical,
             inflictor: None,
-            removal: false
+            removal: false,
+            critical: false
         };
         total
     ];

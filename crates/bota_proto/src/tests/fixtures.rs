@@ -638,6 +638,7 @@ pub fn all_events() -> Vec<EventKind> {
             kind: DamageKind::Physical,
             inflictor: None,
             removal: false,
+            critical: true,
         },
         EventKind::Damaged {
             source: None,
@@ -646,6 +647,7 @@ pub fn all_events() -> Vec<EventKind> {
             kind: DamageKind::Pure,
             inflictor: Some(Inflictor::Ability(AbilityId::MEAT_HOOK)),
             removal: true,
+            critical: false,
         },
         EventKind::Missed {
             source: Some(entity(7)),

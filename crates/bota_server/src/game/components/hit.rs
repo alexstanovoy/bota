@@ -94,14 +94,17 @@ impl StateHash for Laid {
 }
 
 /// What a blow is, where a rule answers to it: a damage block takes its share off an attack's own
-/// blow and off a cleave of one (Damage Block applies to cleave), off no other blow.
+/// blow and off a cleave of one (Damage Block applies to cleave), off no other blow; the match
+/// tells which of its blows struck critically.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Category {
-    /// Anything but a cleave: a spell's, what rides with an attack, a splash.
+    /// Anything but a cleave or a critical strike: a spell's, what rides with an attack, a splash.
     #[default]
     Plain,
     /// What a cleave deals off an attack that landed.
     Cleave,
+    /// An attack's own blow when it struck critically.
+    Critical,
 }
 
 /// A plain blow hashes as one before the field was.
@@ -110,6 +113,7 @@ impl StateHash for Category {
         match self {
             Category::Plain => {}
             Category::Cleave => fnv.u8(1),
+            Category::Critical => fnv.u8(2),
         }
     }
 }

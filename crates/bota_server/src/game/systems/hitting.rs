@@ -7,8 +7,8 @@ use bota_core::{
 use bota_proto::{DamageKind, Fixed, Inflictor, Team, UnitKind, Vec2};
 
 use crate::game::{
-    Entity, Fear, Health, Hit, HitEffect, Illusion, Inventory, MatchRng, Modifier, Modifiers,
-    PseudoRandom, Purpose, RiderKind, Riders, Rolls, Stats, Table, Transform, wire_id,
+    Category, Entity, Fear, Health, Hit, HitEffect, Illusion, Inventory, MatchRng, Modifier,
+    Modifiers, PseudoRandom, Purpose, RiderKind, Riders, Rolls, Stats, Table, Transform, wire_id,
 };
 
 use super::bubble::soak;
@@ -60,6 +60,8 @@ pub struct Landed {
     /// Whether it removed health rather than dealt damage, see
     /// [`Hit::removal`].
     pub removal: bool,
+    /// Whether it was an attack's critical strike, see [`Category::Critical`].
+    pub critical: bool,
     /// What the attack's item procs let loose where it landed: its own blow only.
     pub riders: Riders,
     /// What lifesteal heals a share of: the blow after armor and resistance,
@@ -309,6 +311,7 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
             attack: blow.attack,
             spell: blow.spell,
             removal: blow.removal,
+            critical: blow.category == Category::Critical,
             riders: blow.riders,
             stolen,
             dealt,
@@ -467,7 +470,8 @@ fn barrier(on_it: &mut Modifiers, mut taken: i32) -> i32 {
 }
 
 /// The magic an attack's critical strike lands on top once the attack landed (Revenant's Brooch's
-/// Phantom Critical): riding with the attack, no spell's and no attack of its own.
+/// Phantom Critical): riding with the attack, no spell's and no attack of its own. It is the
+/// critical strike's damage (the swing itself stays plain), so it is told as critical.
 fn riding_magic(attack: &Hit, damage: i32, item: bota_proto::ItemId, amp_bp: i32) -> Hit {
     Hit {
         proc: None,
@@ -488,7 +492,7 @@ fn riding_magic(attack: &Hit, damage: i32, item: bota_proto::ItemId, amp_bp: i32
         removal: false,
         spares: false,
         riders: Riders::NONE,
-        category: crate::game::Category::Plain,
+        category: crate::game::Category::Critical,
     }
 }
 

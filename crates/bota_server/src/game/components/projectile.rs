@@ -46,6 +46,8 @@ pub struct Projectile {
     pub proc: Option<crate::game::AttackProc>,
     /// What the attack's item procs let loose once it lands: an attack's.
     pub riders: crate::game::Riders,
+    /// What its blow is: a critical strike's where the attack struck critically.
+    pub category: crate::game::Category,
 }
 
 state_hash!(Projectile {
@@ -66,5 +68,6 @@ state_hash!(Projectile {
     striker,
     laid,
     proc,
-    riders
+    riders,
+    category
 });

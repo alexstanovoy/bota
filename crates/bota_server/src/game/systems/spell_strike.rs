@@ -78,6 +78,7 @@ impl World {
                 striker: None,
                 laid: crate::game::Laid::NONE,
                 riders: crate::game::Riders::NONE,
+                category: crate::game::Category::Plain,
             },
         );
         true
