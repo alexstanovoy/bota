@@ -150,7 +150,7 @@ pub fn nearby_creeps<'a>(
             let eligible = match kind {
                 NearbyCreeps::Lane => {
                     definition.lane_creep
-                        && (unit.team == actor.team.enemy()) == enemies
+                        && (unit.team != actor.team) == enemies
                         && unit.team != Team::Neutral
                 }
                 NearbyCreeps::Neutral => unit.team == Team::Neutral && definition.creep,
