@@ -49,7 +49,7 @@ fn heroes_path() -> PathBuf {
 
 /// The heroes whose numbers bota reads from the install. A hero not named here keeps its
 /// numbers in its own module until it moves over.
-const HEROES: &[&str] = &["npc_dota_hero_pudge"];
+const HEROES: &[&str] = &["npc_dota_hero_pudge", "npc_dota_hero_nevermore"];
 
 /// The id registry.
 fn registry_path() -> PathBuf {
@@ -229,7 +229,8 @@ mod tests {
         use heatel::keyvalues::Kv;
         let mut marked = std::collections::BTreeSet::new();
         for hero in ["nevermore", "pudge"] {
-            let root = crate::install::hero_script(crate::pinned_install().as_deref(), hero).expect("the hero's script");
+            let root = crate::install::hero_script(crate::pinned_install().as_deref(), hero)
+                .expect("the hero's script");
             let abilities = root
                 .get("DOTAHeroes")
                 .and_then(|heroes| heroes.get(&format!("npc_dota_hero_{hero}")))
@@ -257,8 +258,10 @@ mod tests {
     #[test]
     #[ignore = "needs a Dota 2 install"]
     fn the_committed_table_is_what_the_install_gives() {
-        let creeps = crate::rustfmt(&crate::creeps::table(crate::pinned_install().as_deref()).expect("lane creep scripts"))
-            .expect("formatted creep data");
+        let creeps = crate::rustfmt(
+            &crate::creeps::table(crate::pinned_install().as_deref()).expect("lane creep scripts"),
+        )
+        .expect("formatted creep data");
         let committed =
             std::fs::read_to_string(crate::repo().join("crates/bota_core/src/creep_data.rs"))
                 .expect("committed creep data");
@@ -266,8 +269,10 @@ mod tests {
             crate::emit::same_items(&committed, &creeps),
             "lane creep script data is stale"
         );
-        let boss = crate::rustfmt(&crate::boss::table(crate::pinned_install().as_deref()).expect("boss scripts"))
-            .expect("formatted scripts");
+        let boss = crate::rustfmt(
+            &crate::boss::table(crate::pinned_install().as_deref()).expect("boss scripts"),
+        )
+        .expect("formatted scripts");
         let committed =
             std::fs::read_to_string(crate::repo().join("crates/bota_core/src/roshan_data.rs"))
                 .expect("committed boss data");
@@ -275,8 +280,11 @@ mod tests {
             crate::emit::same_items(&committed, &boss),
             "Roshan data is stale"
         );
-        let zones = crate::rustfmt(&crate::zones::table(crate::pinned_install().as_deref()).expect("map placement volumes"))
-            .expect("formatted volumes");
+        let zones = crate::rustfmt(
+            &crate::zones::table(crate::pinned_install().as_deref())
+                .expect("map placement volumes"),
+        )
+        .expect("formatted volumes");
         let committed =
             std::fs::read_to_string(crate::repo().join("crates/bota_core/src/placement_data.rs"))
                 .expect("committed placement data");
@@ -298,7 +306,8 @@ mod tests {
     #[test]
     #[ignore = "needs a Dota 2 install"]
     fn the_committed_hero_table_is_what_the_install_gives() {
-        let source = crate::install::read_heroes(crate::pinned_install().as_deref(), crate::HEROES).expect("an install");
+        let source = crate::install::read_heroes(crate::pinned_install().as_deref(), crate::HEROES)
+            .expect("an install");
         let table = crate::emit_heroes::table(&source).expect("importable heroes");
         let table = crate::rustfmt(&table).expect("rustfmt");
         let committed = std::fs::read_to_string(crate::heroes_path()).expect("the committed table");

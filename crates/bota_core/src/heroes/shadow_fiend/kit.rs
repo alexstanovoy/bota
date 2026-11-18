@@ -1,7 +1,7 @@
 //! What Shadow Fiend is made of: his body, his seven abilities, his talent
 //! tree and the hero row.
 
-use bota_proto::{AbilityId, Attribute, Attributes, Fixed, HeroId};
+use bota_proto::{AbilityId, Attributes, HeroId};
 
 use super::numbers::{
     FEAST_COOLDOWN, FEAST_MANA, FEAST_RADIUS, PRESENCE_LINGER_TICKS, PRESENCE_RADIUS,
@@ -9,47 +9,55 @@ use super::numbers::{
     REQUIEM_CAST_POINT_MS, REQUIEM_COOLDOWN, REQUIEM_LINE_DISTANCE, REQUIEM_MANA,
 };
 use crate::ability::BARE_ABILITY;
+use crate::heroes_data::{NEVERMORE_DARK_LORD, NPC_DOTA_HERO_NEVERMORE as DATA};
+use crate::item_data::str_eq;
 use crate::unit::NO_GROWTH;
 use crate::{
     AbilityDef, Aura, AuraModifier, Growth, HERO, HeroDef, Pierces, Reach, Talent, TalentTree,
-    UnitDef, Whom, rules,
+    UnitDef, Whom, fixed, per_tick_of, rules, turn_rate_brads,
 };
 
-/// Shadow Fiend: fragile and long-ranged, at Dota 7.41f's numbers, 16 to 22
-/// base attack damage among them.
+/// Shadow Fiend: fragile and long-ranged, at his script's numbers. His backswing the script
+/// does not hold: Liquipedia's *Shadow Fiend* gives his attack animation as 0.5 + 0.54.
 pub const SHADOW_FIEND: UnitDef = UnitDef {
     attributes: Attributes {
-        strength: Fixed::from_int(19),
-        agility: Fixed::from_int(25),
-        intelligence: Fixed::from_int(16),
+        strength: fixed(DATA.strength),
+        agility: fixed(DATA.agility),
+        intelligence: fixed(DATA.intelligence),
     },
-    primary: Some(Attribute::Agility),
-    max_hp: 120,
-    max_mana: 75,
-    mana_regen: Fixed::from_ratio(3, 10 * rules::TICKS_PER_SECOND as i32),
-    damage: 16,
-    damage_spread: 6,
-    attack_range: 525,
-    acquisition: 800,
-    attack_time: 1600,
-    attack_point: 500,
+    primary: Some(DATA.primary),
+    max_hp: DATA.health,
+    max_mana: DATA.mana,
+    hp_regen: per_tick_of(DATA.health_regen),
+    mana_regen: per_tick_of(DATA.mana_regen),
+    damage: DATA.damage_min,
+    damage_spread: DATA.damage_max - DATA.damage_min,
+    attack_range: DATA.attack_range,
+    acquisition: DATA.acquisition,
+    attack_time: DATA.attack_rate.0,
+    attack_point: DATA.attack_point.0,
     attack_backswing: 540,
-    projectile_speed: Some(1200),
-    armor: 0,
-    move_speed: 305,
-    turn_rate: rules::FAST_TURN_RATE_BRADS,
+    projectile_speed: Some(DATA.projectile_speed),
+    armor: DATA.armor.int(),
+    magic_resist_pct: DATA.magic_resist.int(),
+    move_speed: DATA.move_speed,
+    turn_rate: turn_rate_brads(DATA.turn_rate),
+    day_vision: DATA.day_vision,
+    night_vision: DATA.night_vision,
     per_level: Growth {
         attributes: Attributes {
-            strength: Fixed::from_ratio(27, 10),
-            agility: Fixed::from_ratio(36, 10),
-            intelligence: Fixed::from_ratio(22, 10),
+            strength: fixed(DATA.strength_gain),
+            agility: fixed(DATA.agility_gain),
+            intelligence: fixed(DATA.intelligence_gain),
         },
         ..NO_GROWTH
     },
     ..HERO
 };
 
-/// Shadow Fiend's tree at Dota 7.41f, the left of each tier first.
+const _: () = assert!(!DATA.melee, "Shadow Fiend shoots: a projectile");
+
+/// Shadow Fiend's talents, in his script's order: the left of each tier first.
 pub const SHADOW_FIEND_TALENTS: TalentTree = [
     Talent::FeastAttackSpeed,
     Talent::RazeStackDamage,
@@ -60,6 +68,17 @@ pub const SHADOW_FIEND_TALENTS: TalentTree = [
     Talent::RazeAttackDamage,
     Talent::FeastCastSpeed,
 ];
+
+const _: () = {
+    let mut at = 0;
+    while at < SHADOW_FIEND_TALENTS.len() {
+        assert!(
+            str_eq(SHADOW_FIEND_TALENTS[at].key(), DATA.talents[at]),
+            "the script's tree"
+        );
+        at += 1;
+    }
+};
 
 /// The three razes by reach, nearest first, in the order of
 /// [`RAZE_DISTANCE`] they land by.
@@ -150,7 +169,7 @@ pub const PRESENCE: AbilityDef = AbilityDef {
         reaches: Reach::Living,
         radius: PRESENCE_RADIUS,
         linger: PRESENCE_LINGER_TICKS,
-        breakable: true,
+        breakable: matches!(NEVERMORE_DARK_LORD.breakable, Some(true)),
         invulnerable: false,
         water: false,
         modifier: AuraModifier::ArmorBroken,

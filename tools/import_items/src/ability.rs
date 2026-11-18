@@ -35,6 +35,10 @@ pub struct Ability {
     pub target_types: Vec<&'static str>,
     /// `AbilityUnitTargetFlags` flags without their `DOTA_UNIT_TARGET_FLAG_` prefix.
     pub target_flags: Vec<&'static str>,
+    /// `LinkedAbility`: the ability learned and levelled with this one.
+    pub linked: Option<String>,
+    /// `IsBreakable`: whether Break suspends it, when the script says.
+    pub breakable: Option<bool>,
     pub values: Vec<Value>,
 }
 
@@ -64,11 +68,20 @@ pub enum Bonus {
     Times(Milli),
     Set(Vec<Milli>),
     Percent(Milli),
+    /// `hero_levelup` with `levelup_interval`: so much more every so many hero levels.
+    HeroLevels {
+        add: Milli,
+        every: i64,
+    },
 }
 
+/// The key a value's growth with its hero's level is kept under among its bonuses.
+pub const HERO_LEVELUP: &str = "hero_levelup";
+
 /// The `AbilityBehavior` flags an ability may carry.
-pub const BEHAVIORS: [&str; 15] = [
+pub const BEHAVIORS: [&str; 18] = [
     "AOE",
+    "AURA",
     "CHANNELLED",
     "DIRECTIONAL",
     "DONT_RESUME_ATTACK",
@@ -77,6 +90,8 @@ pub const BEHAVIORS: [&str; 15] = [
     "IGNORE_BACKSWING",
     "IGNORE_CHANNEL",
     "IMMEDIATE",
+    "NORMAL_WHEN_STOLEN",
+    "NOT_LEARNABLE",
     "NO_TARGET",
     "OPTIONAL_UNIT_TARGET",
     "PASSIVE",
@@ -97,12 +112,13 @@ pub const TARGET_TYPES: [&str; 6] = ["BASIC", "BUILDING", "COURIER", "CREEP", "H
 pub const TARGET_FLAGS: [&str; 1] = ["MAGIC_IMMUNE_ENEMIES"];
 
 /// Keys read into [`Ability`].
-const READ: [&str; 16] = [
+const READ: [&str; 19] = [
     "AbilityBehavior",
     "AbilityCastPoint",
     "AbilityCastRange",
     "AbilityChannelTime",
     "AbilityCooldown",
+    "AbilityDamage",
     "AbilityManaCost",
     "AbilityType",
     "AbilityUnitDamageType",
@@ -111,20 +127,28 @@ const READ: [&str; 16] = [
     "AbilityUnitTargetType",
     "AbilityValues",
     "Innate",
+    "IsBreakable",
+    "LinkedAbility",
     "MaxLevel",
     "SpellDispellableType",
     "SpellImmunityType",
 ];
 
-/// Keys known and left out: presentation, and the flags that only say an upgrade exists (its
-/// values carry what it does).
-const LEFT_OUT: [&str; 6] = [
+/// Keys known and left out: presentation (animations, sounds, the bars the interface draws on
+/// learning and casting), the flags that only say an upgrade exists (its values carry what it
+/// does), and `AbilityModifierSupportValue`, a weight of the ability's modifiers no rule bota
+/// models reads.
+const LEFT_OUT: [&str; 10] = [
     "AbilityCastAnimation",
+    "AbilityCastGestureSlot",
     "AbilityChannelAnimation",
+    "AbilityModifierSupportValue",
     "AbilitySound",
     "FightRecapLevel",
     "HasScepterUpgrade",
     "HasShardUpgrade",
+    "OnCastbar",
+    "OnLearnbar",
 ];
 
 /// The level-list keys that may stand among the values instead of beside them.
@@ -138,6 +162,10 @@ const LEVEL_KEYS: [&str; 4] = [
 /// Keys of a value's own block beside its `value` and its bonuses: how the client shows it, or
 /// what an area increase does to it, which bota does not model.
 const VALUE_MODIFIERS: [&str; 2] = ["CalculateSpellDamageTooltip", "affected_by_aoe_increase"];
+
+/// The key of a value the client works out while the game runs, for its tooltip alone: such a
+/// value has no number in the script and is left out.
+const DYNAMIC_VALUE: &str = "dynamic_value";
 
 /// Reads the block of the ability `key`. A bonus of a facet in `dropped_facets` (one the hero no
 /// longer has) is left out; any other facet's is refused, since bota plays no facet.
@@ -161,7 +189,19 @@ pub fn read(key: &str, block: &Kv, dropped_facets: &[String]) -> Result<Ability,
         Some("ABILITY_TYPE_ATTRIBUTES") => Kind::Talent,
         Some(other) => return Err(fail(format!("unknown AbilityType {other:?}"))),
     };
-    let values = values(block, dropped_facets).map_err(fail)?;
+    let mut values = values(block, dropped_facets).map_err(fail)?;
+    if let Some(damage) = text("AbilityDamage")? {
+        if values.iter().any(|v| v.name == "AbilityDamage") {
+            return Err(fail(
+                "AbilityDamage stands beside and among the values".into(),
+            ));
+        }
+        values.push(Value {
+            name: "AbilityDamage".to_owned(),
+            levels: dec::levels(damage).map_err(|e| fail(format!("AbilityDamage: {e}")))?,
+            bonuses: Vec::new(),
+        });
+    }
     let levels = |name: &str| -> Result<Vec<Milli>, String> {
         let beside = text(name)?
             .map(|t| dec::levels(t).map_err(|e| fail(format!("{name}: {e}"))))
@@ -232,6 +272,16 @@ pub fn read(key: &str, block: &Kv, dropped_facets: &[String]) -> Result<Ability,
             &TARGET_FLAGS,
         )
         .map_err(|e| fail(format!("AbilityUnitTargetFlags: {e}")))?,
+        linked: text("LinkedAbility")?
+            .map(|linked| name::checked(linked).map(str::to_owned))
+            .transpose()
+            .map_err(|e| fail(format!("LinkedAbility: {e}")))?,
+        breakable: match text("IsBreakable")? {
+            None => None,
+            Some("0") => Some(false),
+            Some("1") => Some(true),
+            Some(other) => return Err(fail(format!("IsBreakable {other:?}"))),
+        },
         values: values
             .into_iter()
             .filter(|v| !LEVEL_KEYS.contains(&v.name.as_str()) || !v.bonuses.is_empty())
@@ -267,8 +317,15 @@ fn values(block: &Kv, dropped_facets: &[String]) -> Result<Vec<Value>, String> {
     let values = values.block().ok_or("AbilityValues is no block")?;
     values
         .iter()
+        .filter(|(_, value)| !is_dynamic(value))
         .map(|(name, value)| read_value(name, value, dropped_facets))
         .collect()
+}
+
+/// Whether a value's block is one the client works out ([`DYNAMIC_VALUE`]): it holds that key
+/// and no number.
+fn is_dynamic(value: &Kv) -> bool {
+    value.get(DYNAMIC_VALUE).is_some() && value.get("value").is_none()
 }
 
 fn read_value(name: &str, value: &Kv, dropped_facets: &[String]) -> Result<Value, String> {
@@ -292,6 +349,26 @@ fn read_value(name: &str, value: &Kv, dropped_facets: &[String]) -> Result<Value
         };
         if key == "value" {
             levels = Some(dec::levels(text).map_err(fail)?);
+        } else if key == HERO_LEVELUP {
+            let every = value
+                .get("levelup_interval")
+                .and_then(|every| match every {
+                    Kv::Text(every) => Some(every),
+                    Kv::Block(_) => None,
+                })
+                .ok_or_else(|| fail(format!("{HERO_LEVELUP} without levelup_interval")))?;
+            let add = text.trim().strip_prefix('+').unwrap_or(text.trim());
+            bonuses.push((
+                HERO_LEVELUP.to_owned(),
+                Bonus::HeroLevels {
+                    add: dec::milli(add).map_err(fail)?,
+                    every: dec::whole(every).map_err(fail)?,
+                },
+            ));
+        } else if key == "levelup_interval" {
+            if inner.iter().all(|(other, _)| other != HERO_LEVELUP) {
+                return Err(fail(format!("levelup_interval without {HERO_LEVELUP}")));
+            }
         } else if VALUE_MODIFIERS.contains(&key.as_str()) {
             continue;
         } else if let Some(facet) = key.strip_prefix("special_bonus_facet_") {
@@ -407,6 +484,45 @@ mod tests {
             named("special_bonus_unique_x_1", Bonus::Times(1_500))
         );
         assert_eq!(bonus("shard_only").0, vec![0], "only an upgrade gives it");
+    }
+
+    /// What Shadow Fiend's script says beyond levels and bonuses is read: the raze it levels with,
+    /// whether Break suspends it, a damage beside the values, a value's growth with the hero's
+    /// level; a value the client works out for its tooltip is left out.
+    #[test]
+    fn links_breakability_damage_and_hero_level_growth_are_read() {
+        let read = ability(
+            r#""LinkedAbility" "x_next" "IsBreakable" "1" "AbilityDamage" "80 120 160"
+            "AbilityValues" {
+                "per_soul" { "value" "1" "hero_levelup" "+0.8" "levelup_interval" "6" }
+                "tooltip" { "dynamic_value" "true" }
+            }"#,
+        )
+        .expect("a known ability");
+        assert_eq!(read.linked.as_deref(), Some("x_next"));
+        assert_eq!(read.breakable, Some(true));
+        let value = |name: &str| read.values.iter().find(|v| v.name == name).cloned();
+        assert_eq!(
+            value("AbilityDamage").map(|v| v.levels),
+            Some(vec![80_000, 120_000, 160_000])
+        );
+        assert_eq!(
+            value("per_soul").map(|v| v.bonuses),
+            Some(vec![(
+                HERO_LEVELUP.to_owned(),
+                Bonus::HeroLevels { add: 800, every: 6 }
+            )])
+        );
+        assert_eq!(value("tooltip"), None, "worked out by the client");
+        for refused in [
+            r#""AbilityValues" { "x" { "value" "1" "levelup_interval" "6" } }"#,
+            r#""AbilityValues" { "x" { "value" "1" "hero_levelup" "+1" } }"#,
+            r#""IsBreakable" "2""#,
+            r#""AbilityDamage" "5" "AbilityValues" { "AbilityDamage" "5" }"#,
+        ] {
+            let why = ability(refused).expect_err(refused);
+            assert!(!why.is_empty(), "{refused}");
+        }
     }
 
     /// A patch that brings a key, a flag or a bonus this tool does not know fails the import.

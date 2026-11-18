@@ -111,6 +111,12 @@ impl Behavior {
     pub const FORCE_NO_INNATE_UI: Behavior = Behavior(1 << 19);
     /// Activation leaves invisibility intact.
     pub const IGNORE_INVISIBLE: Behavior = Behavior(1 << 20);
+    /// Gives an aura.
+    pub const AURA: Behavior = Behavior(1 << 21);
+    /// Never learned with a skill point: the hero has it from the start.
+    pub const NOT_LEARNABLE: Behavior = Behavior(1 << 22);
+    /// Works as it does for its owner when another hero steals it.
+    pub const NORMAL_WHEN_STOLEN: Behavior = Behavior(1 << 23);
 
     /// Both sets of flags.
     pub const fn and(self, other: Behavior) -> Behavior {

@@ -100,7 +100,11 @@ pub struct AbilityData {
     pub target_types: UnitTargets,
     /// `AbilityUnitTargetFlags`.
     pub target_flags: TargetFlags,
-    /// `AbilityValues`, by Dota's key.
+    /// `LinkedAbility`: the ability learned and levelled with this one.
+    pub linked: Option<&'static str>,
+    /// `IsBreakable`: whether Break suspends it, when the script says.
+    pub breakable: Option<bool>,
+    /// `AbilityValues`, by Dota's key; `AbilityDamage` stands among them under that key.
     pub values: &'static [AbilityValue],
 }
 
@@ -181,7 +185,14 @@ pub enum Bonus {
     Set(&'static [Dec]),
     /// `+15%`: so many percent more.
     Percent(Dec),
+    /// `hero_levelup` with `levelup_interval`: `add` more for every `every` levels of the hero
+    /// that holds the ability, kept under the key `hero_levelup`. Not a learned bonus:
+    /// [`AbilityValue::at_hero_level`] reads it.
+    HeroLevels { add: Dec, every: u8 },
 }
+
+/// The key a value's growth with its hero's level ([`Bonus::HeroLevels`]) stands under.
+pub const HERO_LEVELUP: &str = "hero_levelup";
 
 impl AbilityData {
     /// The value of `key`. Fails the build when the ability has none.
@@ -231,6 +242,30 @@ impl AbilityValue {
             .fold(self.at(level), |value, (_, bonus)| {
                 bonus.applied(value, level)
             })
+    }
+
+    /// The number at ability level `level` (from zero) for a hero at `hero_level` (from one):
+    /// [`at`](Self::at) and its [`Bonus::HeroLevels`] growth for every whole interval reached.
+    pub const fn at_hero_level(&self, level: usize, hero_level: u8) -> Dec {
+        let base = self.at(level);
+        match self.bonus_of(HERO_LEVELUP) {
+            Some(Bonus::HeroLevels { add, every }) => {
+                Dec(base.0 + add.0 * (hero_level / every) as i32)
+            }
+            _ => base,
+        }
+    }
+
+    /// What the bonus `key` makes of it, if it has one.
+    const fn bonus_of(&self, key: &str) -> Option<Bonus> {
+        let mut at = 0;
+        while at < self.bonuses.len() {
+            if str_eq(self.bonuses[at].0, key) {
+                return Some(self.bonuses[at].1);
+            }
+            at += 1;
+        }
+        None
     }
 
     /// The first level's number.
@@ -293,6 +328,8 @@ impl Bonus {
             Bonus::Times(factor) => Dec((value.0 as i64 * factor.0 as i64 / 1000) as i32),
             Bonus::Set(levels) => level_of(levels, level),
             Bonus::Percent(pct) => Dec(value.0 + (value.0 as i64 * pct.0 as i64 / 100_000) as i32),
+            // The hero's level, not a learned bonus, grows it: `at_hero_level` reads it.
+            Bonus::HeroLevels { .. } => value,
         }
     }
 

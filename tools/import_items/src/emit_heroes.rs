@@ -192,7 +192,8 @@ fn write_ability(out: &mut String, ability: &Ability) -> Result<(), String> {
          max_level: {max_level},\n    cast_point: {point},\n    cast_range: {range},\n    \
          channel: {channel},\n    cooldown: {cooldown},\n    mana: {mana},\n    \
          damage: {damage},\n    pierces_immunity: {pierces:?},\n    dispel: {dispel},\n    \
-         target_team: {team},\n    target_types: {types},\n    target_flags: {target_flags},\n",
+         target_team: {team},\n    target_types: {types},\n    target_flags: {target_flags},\n    \
+         linked: {linked},\n    breakable: {breakable:?},\n",
         name = ability.key.to_uppercase(),
         key = ability.key,
         behavior = flags(&ability.behavior, "B", "B::NONE"),
@@ -210,6 +211,13 @@ fn write_ability(out: &mut String, ability: &Ability) -> Result<(), String> {
         team = option(team),
         types = flags(&ability.target_types, "T", "T::NONE"),
         target_flags = flags(&ability.target_flags, "F", "F::NONE"),
+        linked = option(
+            ability
+                .linked
+                .as_ref()
+                .map(|linked| format!("\"{linked}\""))
+        ),
+        breakable = ability.breakable,
     );
     if ability.values.is_empty() {
         out.push_str("    values: &[],\n};\n");
@@ -230,6 +238,10 @@ fn write_ability(out: &mut String, ability: &Ability) -> Result<(), String> {
                     Bonus::Percent(pct) => {
                         format!("Bonus::Percent(Dec::of(\"{}\"))", decimal(*pct))
                     }
+                    Bonus::HeroLevels { add, every } => format!(
+                        "Bonus::HeroLevels {{ add: Dec::of(\"{}\"), every: {every} }}",
+                        decimal(*add)
+                    ),
                 };
                 format!("(\"{key}\", {bonus})")
             })
