@@ -108,7 +108,9 @@ impl World {
                 self.settle();
             }
         }
-        events.extend(self.step());
+        // A command may decide a Map2 match itself (a cheat's fall): the tick it was given for
+        // still runs and is told, as the tick of a deciding blow is.
+        events.extend(self.tick_world());
         events
     }
 

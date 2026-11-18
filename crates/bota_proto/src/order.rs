@@ -316,6 +316,11 @@ pub enum Cheat {
         mana_bp: u16,
         ticks: u32,
     },
+    /// A simulator extension: the aimed unit falls at once, felled by the seat's hero through
+    /// whatever shields it (a building's protection, invulnerability), as if its last health were
+    /// taken: a structure falls by the match's rules, and an Ancient ends the match. Nothing aimed
+    /// means the addressed unit.
+    Destroy { target: Target },
 }
 
 /// The most experience one [`Cheat::Experience`] puts into a hero: more than every level holds.
@@ -567,7 +572,8 @@ impl Order {
                     | Cheat::Damage { target, .. }
                     | Cheat::SpellImmunity { target, .. }
                     | Cheat::Stun { target, .. }
-                    | Cheat::Control { target, .. },
+                    | Cheat::Control { target, .. }
+                    | Cheat::Destroy { target },
             } => target,
             Order::MoveDirection { toward: spot }
             | Order::Scan { at: spot }
@@ -643,7 +649,8 @@ impl Order {
                     | Cheat::Damage { target, .. }
                     | Cheat::SpellImmunity { target, .. }
                     | Cheat::Stun { target, .. }
-                    | Cheat::Control { target, .. },
+                    | Cheat::Control { target, .. }
+                    | Cheat::Destroy { target },
             } => target,
             Order::Cheat {
                 cheat:

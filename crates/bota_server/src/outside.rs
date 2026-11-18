@@ -1,5 +1,6 @@
 //! What the service that runs the server asks of it from outside the match: end it now, and end
-//! it at a time limit, with a warning ahead.
+//! it at a time limit, with a warning ahead; and what it is given back: the end, told the moment it
+//! is known, while the players may still be kept a while to see the match end.
 //!
 //! The server never reacts to either where it hears of it: it looks at [`Outside`] between its own
 //! steps (a lobby wait, a tick) and ends the match from there, so the end is announced, the
@@ -13,13 +14,23 @@
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 
 use bota_proto::AbortReason;
 
+use crate::game_loop::MatchEnd;
+
 /// How long before the limit the players are warned, unless the limit is so short that half of it
 /// is less.
 pub const DEFAULT_WARNING: Duration = Duration::from_secs(5 * 60);
+
+/// How long the players are kept at most once a fallen Ancient decided the match, by default: the
+/// client's ending (up to 13.6 s from the decision) and a margin for a slow one.
+pub const DEFAULT_END_LINGER: Duration = Duration::from_secs(20);
+
+/// The longest linger that can be asked for.
+pub const MAX_END_LINGER: Duration = Duration::from_secs(120);
 
 /// How often a server that is asked to watch looks, at the most: a signal wakes nothing.
 const LOOK_EVERY: Duration = Duration::from_millis(250);
@@ -146,6 +157,10 @@ pub struct Outside {
     pub stop: StopRequest,
     clock: LimitClock,
     warned: bool,
+    /// How long the players are kept, at most, once a fallen Ancient decided the match.
+    linger: Duration,
+    /// Where the end of the match is told as soon as it is known, before the server lingers.
+    told: Option<Sender<MatchEnd>>,
 }
 
 impl Default for Outside {
@@ -169,6 +184,43 @@ impl Outside {
             stop,
             clock,
             warned: false,
+            linger: Duration::ZERO,
+            told: None,
+        }
+    }
+
+    /// Keeps the players for up to `linger` once a fallen Ancient decided the match, counted on
+    /// this clock from the decision: the world stands as it fell while each client shows its
+    /// player the end, and the server lets go of each as it leaves. Without it every connection is
+    /// closed at the end, as for any other end.
+    #[must_use]
+    pub fn lingering(mut self, linger: Duration) -> Self {
+        self.linger = linger;
+        self
+    }
+
+    /// Tells `told` how the match ended the moment it is known: before the server lingers, so a
+    /// service never waits on the players' last look at the match.
+    #[must_use]
+    pub fn telling(mut self, told: Sender<MatchEnd>) -> Self {
+        self.told = Some(told);
+        self
+    }
+
+    /// How long the players are kept once a fallen Ancient decided the match.
+    pub(crate) fn linger(&self) -> Duration {
+        self.linger
+    }
+
+    /// Whether the service asked the server to stop.
+    pub(crate) fn stop_asked(&self) -> bool {
+        self.stop.made()
+    }
+
+    /// Tells the end to whoever asked to be told; a listener that is gone is no matter.
+    pub(crate) fn tell(&self, end: &MatchEnd) {
+        if let Some(told) = &self.told {
+            let _ = told.send(end.clone());
         }
     }
 
@@ -209,10 +261,10 @@ impl Outside {
     }
 
     /// How long a server that has run for `elapsed` may sleep before it must look again: not
-    /// at all when nothing is watched.
+    /// at all when nothing is watched on the wall clock (a hand-moved one may end a linger).
     #[must_use]
     pub fn look_again_in(&self, elapsed: Duration) -> Option<Duration> {
-        if self.limit.is_none() && self.stop.0.is_none() {
+        if self.limit.is_none() && self.stop.0.is_none() && self.clock.is_wall() {
             return None;
         }
         let due = self.limit.map(|limit| {

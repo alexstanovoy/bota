@@ -172,10 +172,32 @@ impl World {
                 });
             }
         }
+        let undecided = self.winner.is_none();
+        self.finish_map2_tick(tower_losses);
+        if undecided && let Some(ancient) = self.ancient_lost_with_map2() {
+            // Dota's 1v1 ends as a game does: the loser's Ancient is destroyed.
+            let told = self.told_of_fall(ancient, None);
+            structure_fell |= self.bury_entity(ancient, None, told, events).is_some();
+        }
         if structure_fell {
             self.lay_passability();
         }
-        self.finish_map2_tick(tower_losses);
+    }
+
+    /// The Ancient of the side that has just lost a solo mid match, while it stands.
+    fn ancient_lost_with_map2(&self) -> Option<Entity> {
+        if self.map.id != MAP2_ID {
+            return None;
+        }
+        let loser = match self.winner? {
+            Team::Radiant => Team::Dire,
+            Team::Dire => Team::Radiant,
+            Team::Neutral => return None,
+        };
+        self.entities.iter().find(|entity| {
+            self.kind.get(*entity) == Some(&UnitKind::Ancient)
+                && self.team.get(*entity) == Some(&loser)
+        })
     }
 
     fn bury_ground_item(

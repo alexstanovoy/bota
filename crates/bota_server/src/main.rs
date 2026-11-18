@@ -18,7 +18,9 @@ use bota_server::game_loop::{
 };
 use bota_server::lobby::ReservedSeat;
 use bota_server::net::{DEFAULT_MESSAGES_PER_SEC, Listeners};
-use bota_server::outside::{DEFAULT_WARNING, Outside, StopRequest, TimeLimit};
+use bota_server::outside::{
+    DEFAULT_END_LINGER, DEFAULT_WARNING, MAX_END_LINGER, Outside, StopRequest, TimeLimit,
+};
 use bota_server::spectators::Spectators;
 
 /// The exit code of a match nobody played: no result, nothing to rate.
@@ -123,6 +125,14 @@ struct Args {
     /// How many seconds before the time limit every connection is warned (at most half of it).
     #[arg(long, default_value_t = DEFAULT_WARNING.as_secs(), requires = "time_limit_secs")]
     time_limit_warning_secs: u64,
+    /// How many seconds at most the players are kept once a fallen Ancient decided the match,
+    /// counted from the decision, which the result line is printed at: each leaves when its client
+    /// is done showing the end, and the server exits when the last has left, at this bound, or
+    /// when asked to stop, whichever comes first. The default
+    /// covers the client's ending (up to 13.6 s) with a margin; 0 closes every connection at the
+    /// end, as any other end does.
+    #[arg(long, default_value_t = DEFAULT_END_LINGER.as_secs(), value_parser = clap::value_parser!(u64).range(0..=MAX_END_LINGER.as_secs()))]
+    end_linger_secs: u64,
     /// Write the match's metadata file to this file: what each seat held and had earned every
     /// game minute, the kills, purchases, levels, buildings and final items, in a format that
     /// outlives the build (the `bota_replay` crate). Refused before `READY` if it cannot be
@@ -301,35 +311,21 @@ fn main() -> ExitCode {
         }
     }
     let result_version = args.result_version;
-    match serve(args) {
-        Ok(MatchEnd::Over {
-            winner,
-            report,
-            left,
-            replay_truncated,
-        }) => {
-            println!(
-                "{}",
-                result_line(winner, &report, left, replay_truncated, result_version)
-            );
-            ExitCode::SUCCESS
-        }
-        Ok(MatchEnd::Aborted {
-            reason,
-            report,
-            replay_truncated,
-        }) => aborted_end(reason, report.as_ref(), replay_truncated, result_version),
-        Ok(MatchEnd::Abandoned { leaves }) => {
-            if !leaves.is_empty() {
-                let facts = leaves
-                    .iter()
-                    .map(|left| format!("{}@{}", left.slot.0, left.tick))
-                    .collect::<Vec<_>>()
-                    .join(",");
-                println!("ABANDONED leaves={facts}");
+    // The end is printed the moment it is known, for the service: the server may then keep its
+    // players a while (`--end-linger-secs`) before it exits.
+    let (told, ends) = std::sync::mpsc::channel::<MatchEnd>();
+    let printer = std::thread::spawn(move || {
+        for end in ends {
+            for line in departure(&end, result_version).0 {
+                println!("{line}");
             }
-            ExitCode::from(EXIT_ABANDONED)
         }
+    });
+    let served = serve(args, told);
+    // Every end told has been printed once the server has let go of its side of the channel.
+    let _ = printer.join();
+    match served {
+        Ok(end) => ExitCode::from(departure(&end, result_version).1),
         Err(error) => {
             eprintln!("bota_server: {error}");
             ExitCode::FAILURE
@@ -337,27 +333,51 @@ fn main() -> ExitCode {
     }
 }
 
-/// What a match the service ended from outside leaves on stdout and as an exit code. One that
+/// The lines a match's end leaves on stdout, and its exit code.
+fn departure(end: &MatchEnd, result_version: u16) -> (Vec<String>, u8) {
+    match end {
+        MatchEnd::Over {
+            winner,
+            report,
+            left,
+            replay_truncated,
+        } => (
+            vec![result_line(
+                *winner,
+                report,
+                *left,
+                *replay_truncated,
+                result_version,
+            )],
+            0,
+        ),
+        MatchEnd::Aborted {
+            reason,
+            report,
+            replay_truncated,
+        } => aborted_departure(*reason, report.as_ref(), *replay_truncated, result_version),
+        MatchEnd::Abandoned { leaves } => {
+            let mut lines = Vec::new();
+            if !leaves.is_empty() {
+                let facts = leaves
+                    .iter()
+                    .map(|left| format!("{}@{}", left.slot.0, left.tick))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                lines.push(format!("ABANDONED leaves={facts}"));
+            }
+            (lines, EXIT_ABANDONED)
+        }
+    }
+}
+
+/// What a match the service ended from outside leaves on stdout, and its exit code. One that
 /// began reports itself as far as it went to a launcher that reads `aborted` (result version 3):
 /// no winner, nothing rated, the report of its stats. One that did not begin, or a launcher that
 /// cannot read the field, gets no result: the first is a match nobody played, the second a failure,
 /// and the launcher rates neither. The replay file a launcher asked for is made at the server's
 /// start, so one that never began leaves it holding only its header (32 bytes, a replay of no
 /// match), not no file.
-fn aborted_end(
-    reason: AbortReason,
-    report: Option<&bota_proto::MatchReport>,
-    replay_truncated: bool,
-    result_version: u16,
-) -> ExitCode {
-    let (lines, code) = aborted_departure(reason, report, replay_truncated, result_version);
-    for line in lines {
-        println!("{line}");
-    }
-    ExitCode::from(code)
-}
-
-/// The lines and the exit code of [`aborted_end`].
 fn aborted_departure(
     reason: AbortReason,
     report: Option<&bota_proto::MatchReport>,
@@ -413,8 +433,9 @@ fn report_fields(report: &bota_proto::MatchReport) -> (u32, String) {
     (duration_ms, hex)
 }
 
-/// Listens, says `READY`, and plays the match.
-fn serve(mut args: Args) -> std::io::Result<MatchEnd> {
+/// Listens, says `READY`, and plays the match; its end is also told to `told` as soon as it is
+/// known.
+fn serve(mut args: Args, told: std::sync::mpsc::Sender<MatchEnd>) -> std::io::Result<MatchEnd> {
     if args.matchmaker.is_none() {
         args.matchmaker = std::env::var("RADOVID_PUBLIC_IDENTITY")
             .ok()
@@ -434,7 +455,7 @@ fn serve(mut args: Args) -> std::io::Result<MatchEnd> {
         false,
     )?;
     let listeners = listen(&args)?;
-    let outside = outside_of(&args)?;
+    let outside = outside_of(&args)?.telling(told);
     println!("READY");
     let profiles = launch_profiles(&args, opts.players).map_err(std::io::Error::other)?;
     match profiles {
@@ -517,7 +538,8 @@ fn outside_of(args: &Args) -> std::io::Result<Outside> {
             Duration::from_secs(args.time_limit_warning_secs),
         )
     });
-    Ok(Outside::new(limit, StopRequest::on(stop)))
+    Ok(Outside::new(limit, StopRequest::on(stop))
+        .lingering(Duration::from_secs(args.end_linger_secs)))
 }
 
 /// A variable of the environment; absent when unset or empty.

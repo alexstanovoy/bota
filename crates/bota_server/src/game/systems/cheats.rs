@@ -103,6 +103,13 @@ impl World {
                     self.set_pools(unit, health, mana);
                 }
             }
+            Cheat::Destroy { target } => {
+                if let Some(hero) = unit
+                    && let Ok(target) = self.cheat_target(hero, target)
+                {
+                    self.kill_by_hp_removal(hero, target);
+                }
+            }
             Cheat::Gold { amount } => {
                 if let Some(seat) = hero_seat {
                     self.seats[seat].adjust_gold(amount);
@@ -367,6 +374,12 @@ impl World {
                     return Err(RejectReason::BadCheat);
                 }
                 let target = self.cheat_target(living(unit)?, *target)?;
+                if !self.alive(target) {
+                    return Err(RejectReason::BadCheat);
+                }
+            }
+            Cheat::Destroy { target } => {
+                let target = self.cheat_target(unit.ok_or(RejectReason::HeroDead)?, *target)?;
                 if !self.alive(target) {
                     return Err(RejectReason::BadCheat);
                 }

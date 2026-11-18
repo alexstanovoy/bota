@@ -594,6 +594,9 @@ fn cheat_orders() -> Vec<Order> {
             mana_bp: 3500,
             ticks: 240,
         },
+        Cheat::Destroy {
+            target: Target::Unit(entity(7)),
+        },
     ]
     .into_iter()
     .map(|cheat| Order::Cheat { cheat })

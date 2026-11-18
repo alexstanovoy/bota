@@ -774,6 +774,11 @@ impl World {
         if self.map2_finished() {
             return Vec::new();
         }
+        self.tick_world()
+    }
+
+    /// The tick itself, whether or not the match is decided.
+    pub(crate) fn tick_world(&mut self) -> Vec<crate::game::Event> {
         let mut events = Vec::new();
         self.tick += 1;
         self.take_up_queues(&mut events);

@@ -373,10 +373,12 @@ fn run_inner(
     match server.lobby_phase() {
         Lobby::Match(cfg) => server.match_phase(*cfg),
         Lobby::Abandoned => {
-            server.close_all();
-            Ok(MatchEnd::Abandoned {
+            let end = MatchEnd::Abandoned {
                 leaves: server.left.clone(),
-            })
+            };
+            server.outside.tell(&end);
+            server.close_all();
+            Ok(end)
         }
         Lobby::Aborted(reason) => {
             server.broadcast(&ServerMsg::MatchAborted {
@@ -385,12 +387,14 @@ fn run_inner(
             });
             let replay = std::mem::replace(&mut server.replay, ReplayWriter::disabled());
             let replay_truncated = replay.finish();
-            server.close_all();
-            Ok(MatchEnd::Aborted {
+            let end = MatchEnd::Aborted {
                 reason,
                 report: None,
                 replay_truncated,
-            })
+            };
+            server.outside.tell(&end);
+            server.close_all();
+            Ok(end)
         }
     }
 }
@@ -1799,26 +1803,55 @@ impl Server {
             }
         };
         let replay_truncated = replay.finish();
-        self.close_all();
-        Ok(match end {
+        let end = with_truncated(end, replay_truncated);
+        // The service hears of the end now, its replay closed whole, whatever the players do next.
+        self.outside.tell(&end);
+        // A fallen Ancient (a match decided in the world, not given away) is shown to its end by
+        // every client: the world stands as it fell, and each player is let go when its client
+        // has shown it.
+        if matches!(
+            end,
             MatchEnd::Over {
-                winner,
-                report,
-                left,
+                winner: Team::Radiant | Team::Dire,
+                left: None,
                 ..
-            } => MatchEnd::Over {
-                winner,
-                report,
-                left,
-                replay_truncated,
-            },
-            MatchEnd::Aborted { reason, report, .. } => MatchEnd::Aborted {
-                reason,
-                report,
-                replay_truncated,
-            },
-            abandoned @ MatchEnd::Abandoned { .. } => abandoned,
-        })
+            }
+        ) {
+            self.linger();
+        }
+        self.close_all();
+        Ok(end)
+    }
+
+    /// Keeps the connections of a match that is over until each has left, at most the outside's
+    /// linger from now, or until the service asks the server to stop. What the network says is
+    /// heard (a peer that leaves is let go), but nothing the peers say changes anything any more,
+    /// and a newcomer is turned away.
+    fn linger(&mut self) {
+        let until = self.outside.elapsed().saturating_add(self.outside.linger());
+        while self.watched(until) {
+            self.drop_strangers();
+            let now = Instant::now();
+            let linger_due = now + until.saturating_sub(self.outside.elapsed());
+            let wake = self
+                .outside_looks_again()
+                .map_or(linger_due, |look| look.min(linger_due));
+            match self.rx.recv_timeout(wake.saturating_duration_since(now)) {
+                Ok(NetEvent::Connected(stream)) => drop(stream),
+                Ok(event) => {
+                    let _ = self.hear(event, true);
+                }
+                Err(RecvTimeoutError::Timeout | RecvTimeoutError::Disconnected) => {}
+            }
+        }
+    }
+
+    /// Whether somebody who said Hello is still connected, within the linger and with no request
+    /// to stop.
+    fn watched(&self, until: Duration) -> bool {
+        !self.outside.stop_asked()
+            && self.outside.elapsed() < until
+            && self.conns.iter().any(|conn| self.greeted(conn.id))
     }
 
     /// The service ends the match: everybody is told and shown the last tick, the replay gets
@@ -2300,6 +2333,29 @@ impl Server {
         self.remaining_seats()
             .filter(|s| s.player.is_some())
             .all(|s| acked[usize::from(s.slot.0)] >= tick)
+    }
+}
+
+/// The end, with whether its replay was cut short.
+fn with_truncated(end: MatchEnd, truncated: bool) -> MatchEnd {
+    match end {
+        MatchEnd::Over {
+            winner,
+            report,
+            left,
+            ..
+        } => MatchEnd::Over {
+            winner,
+            report,
+            left,
+            replay_truncated: truncated,
+        },
+        MatchEnd::Aborted { reason, report, .. } => MatchEnd::Aborted {
+            reason,
+            report,
+            replay_truncated: truncated,
+        },
+        abandoned @ MatchEnd::Abandoned { .. } => abandoned,
     }
 }
 

@@ -903,3 +903,7 @@ field HeroUpgrades 0 shard: bool
 field HeroUpgrades 1 scepter_blessing: bool
 field PlayerView 21 scepter_active: Option<bool>
 field PlayerView 22 current_net_worth: Option<i32>
+
+# A cheat that fells any unit through what shields it (tests reach a match's end with it).
+variant Cheat 34 Destroy {}
+field Cheat::Destroy 0 target: Target

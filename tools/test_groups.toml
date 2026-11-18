@@ -717,6 +717,7 @@ paths = [
     "crates/bota_server/tests/twin_gates.rs",
     "crates/bota_server/tests/misses.rs",
     "crates/bota_server/tests/base_blockers.rs",
+    "crates/bota_server/tests/victory.rs",
 ]
 tests = [
     { crate = "bota_server", target = "test:solo" },
@@ -738,6 +739,7 @@ tests = [
     { crate = "bota_server", target = "test:twin_gates" },
     { crate = "bota_server", target = "test:misses" },
     { crate = "bota_server", target = "test:base_blockers" },
+    { crate = "bota_server", target = "test:victory" },
 ]
 # Whole matches play every system: any change to the simulation's code runs them too (a change to its tests does not).
 also_paths = [
