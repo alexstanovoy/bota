@@ -9,6 +9,8 @@
 //!   the service's news into a [`Searches`] view a menu only has to draw,
 //!   answers proposals by itself when [`Client::set_auto_accept`] says so, and
 //!   knows the account's [`Limits`];
+//! - [`ServiceCheck`], the protocol's first exchange with a service before anyone signs in to it:
+//!   whether it is a radovid this client can use, or the one [`ServiceFault`] that says why not;
 //! - the way into the game a [`Handoff`] names: [`take_seat`], [`spectate`],
 //!   [`connect`] and [`connect_net`] natively, [`web_link`] and [`seat_hello`]
 //!   in the browser, all with the handoff's ticket as the seat key;
@@ -30,6 +32,7 @@ mod connect;
 mod game;
 mod report;
 mod search;
+mod service_check;
 mod tls;
 #[cfg(all(target_arch = "wasm32", feature = "web"))]
 mod web;
@@ -42,10 +45,12 @@ pub use game::{
 };
 pub use radovid_client::proto::{self, *};
 pub use radovid_client::{
-    ClientError, Incoming, matchmaker_identity, same_matchmaker, shareable_matchmaker_identity,
+    ClientError, Incoming, ServiceFault, ServiceFound, matchmaker_identity, same_matchmaker,
+    shareable_matchmaker_identity,
 };
 pub use report::decode_report;
 pub use search::{Offer, Search, Searches, SlotWait};
+pub use service_check::ServiceCheck;
 pub use tls::Tls;
 #[cfg(all(target_arch = "wasm32", feature = "web"))]
 pub use web::web_link;
