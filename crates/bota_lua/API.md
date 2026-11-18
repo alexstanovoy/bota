@@ -537,30 +537,58 @@ preserve initialization counts and run aggregation does not double count them.
 
 ## Shared observation and movement queries
 
-The following extensions use the installed game's bot API conventions (build 6975).
 Their substance is shared with other clients; Lua performs identity checks, argument conversion and fuel accounting.
+"Basis" says where each rule comes from. *Reference* means established from the installed game
+(build 6975); *seat* means a fact the receiving seat is told over the wire. Where the reference rejects a call (it logs
+an error and answers a sentinel), the host answers the same sentinel and counts the call in `declined_api_calls`
+(statistics; keyed `<API>_<reason>`) so that a script's misuse stays visible. A fact the seat was never told is `nil`
+or a counted gap, never an invented value.
 
-| API | Shared query or data |
-|---|---|
-| `GetAbilityPoints` | Client skill-book accounting; shared rank groups count once and talents use separate points. Foreign skill points return `-1`. |
-| `GetAttackProjectileSpeed`, `GetBaseDamageVariance` | Core body definitions. Variance is **half** the base max-minus-min interval and may be fractional. Both getters return `-1` for an unobserved foreign body. |
-| `GetStashValue`, `GetItemStockCount` | Received storage and stock. Stash stacks contribute their catalogue cost regardless of remaining charges; unlimited stock is `-1`. |
-| `GetChannelTime` | Core catalogue channel time; imported milliseconds retain sub-tick precision. |
-| `IsInAbilityPhase`, `GetPowerTreadsStat` | Received cast points and item modes. Spell identity must match; an unidentified item cast cannot identify its item and returns `nil`. Treads map Strength/Agility/Intelligence to `0/1/2`, other items to `-1`. |
-| `GetAttackTarget`, `GetExtrapolatedLocation` | Client aggro memory and displacement between visible snapshots. Hidden bodies do not yield current targets or predictions. |
-| `WasRecentlyDamagedByCreep`, `WasRecentlyDamagedByHero` | Client last-positive-damage ticks by source class and attacking hero seat. A strict time window is used; unobserved damage cannot alter this memory. No amount log or server timer is added. |
-| `GetNearbyLaneCreeps`, `GetNearbyNeutralCreeps` | Client query over currently visible living units, sorted by distance then identity; radius is capped at 1600. |
-| `GetHeightLevel`, `GetTimeOfDay`, `GetItemSlotType`, `DistanceFromSecretShop` | Published terrain and core time, storage and shop geometry. Dedicated slot 15 has the legacy invalid slot class. |
-| `IsLocationVisible` | Shared client `SightGround`; the received forest is cached, with the same terrain, tree and vision-grant rules used by other clients. |
-| `GetTreeLocation` | Host tree identities resolve public static trees or received planted-tree coordinates. An invalid id yields the zero vector. |
-| `IsBot` | The explicit bot declarations already used by `IsPlayerBot`. |
-| `ActionImmediate_SwapItems`, `Action_UseAbilityOnTree` | Ordinary inventory and item/ability orders; tree ids resolve to received map coordinates. |
-| `ActionQueue_MoveToLocation`, `Action_MovePath` | Ordinary ordered movement. A path's first waypoint interrupts and its tail queues; at most `MAX_QUEUED_ORDERS` waypoints are accepted. |
+Receiver rules of the reference: a unit method needs the receiver to be a teammate or a unit the bot's team can see;
+the methods marked *bot* additionally need the receiver to be a bot-controlled hero.
 
-Query cost bounds are documented beside the shared functions. Scalar callbacks charge bounded view/table scans;
-nearby queries charge their scan and sort, handles charge construction separately, and visibility charges both its
-forest rebuild and bounded sight rays. These prices are independent of summary collection.
+| API | Answer | Basis |
+|---|---|---|
+| `GetAbilityPoints` | Unspent ordinary points (shared rank groups count once; talents use separate points). Foreign bodies `-1`. A hero out of view is read from its player record, not from its retained last body. | Seat; the simulation's learn groups. |
+| `GetAttackProjectileSpeed`, `GetBaseDamageVariance` | Core body definition; variance is **half** the base max-minus-min interval and may be fractional (`0.5` multiplier). `-1` for a foreign body that is not in view; a handle that is no longer known raises "unit is no longer known". | Reference (multiplier), seat. |
+| `GetActualIncomingDamage` | Damage after the receiver's armor or magic resistance, for physical (1), magical (2) or pure (4) type; any other type raises. A receiver the team cannot see answers `-1` and is counted (`GetActualIncomingDamage_target_not_seen`). | Reference (seen gate, `-1`), seat. |
+| `GetStashValue` | Sum of catalogue costs of the stash (charges ignored) of a teammate bot. Anyone else answers `-1` and is counted (`GetStashValue_not_a_bot_teammate`). A stash the seat was never told is `nil` (`GetStashValue_stash_not_received`). | Reference (*bot* gate, `-1`), seat. |
+| `GetItemStockCount` | Remaining public stock for the receiving team; unlimited `-1`. | Seat. |
+| `GetChannelTime` | Catalogue channel time; imported milliseconds keep sub-tick precision. This replaces the buff-duration read behind the existing `AbilityChannelTime` key. | Catalogue. |
+| `IsInAbilityPhase` | The identified spell is in its cast point; an item cast cannot identify its item, so `nil`; a body out of view `nil`. | Seat. |
+| `GetPowerTreadsStat` | Selected attribute as `0/1/2` (Strength/Agility/Intelligence); other items `-1`. An enemy's mode is shown while the carrier is in view; out of view it is `-1`, counted (`GetPowerTreadsStat_item_not_seen`). A mode the seat was not told is `nil`. | Reference (visible-carrier gate, `-1`); the server sends the bag of every body in view. |
+| `GetAttackTarget` | The target of a body in view, from the aggro the seat is told; `nil` when the body is out of view or its target is not in view to the seat. | Reference (a visible unit's target is readable); the target-in-view limit is the seat's fog. |
+| `GetExtrapolatedLocation` | Linear projection from observed displacement; `nil` out of view. | Seat. |
+| `WasRecentlyDamagedByCreep`, `WasRecentlyDamagedByHero` | See below. | Reference. |
+| `GetNearbyLaneCreeps`, `GetNearbyNeutralCreeps` | Visible living units, sorted by distance then identity; radius capped at 1600 (inclusive); `nil` for a receiver that is out of view. A neutral receiver counts both sides' lane creeps as enemies. | Seat. |
+| `GetHeightLevel`, `GetTimeOfDay`, `GetItemSlotType`, `DistanceFromSecretShop` | Published terrain tier; day fraction of the shared clock; storage class (dedicated slot 15 is `-1`); shop geometry (`nil` out of view). | Published map and rules. |
+| `IsLocationVisible` | The seat's own vision (bodies in view, grants, base vision) over its received forest; remembered bodies out of view see nothing. | Seat; the server's sight rule. |
+| `GetTreeLocation` | Public static tree or received planted-tree position. An id that names no tree answers the zero vector, as the reference does. | Reference. |
+| `IsBot` | The explicit declarations behind `IsPlayerBot`. | Host declarations. |
+| `ActionImmediate_SwapItems`, `Action_UseAbilityOnTree` | Ordinary inventory and ability orders; tree ids resolve to received map coordinates. | Orders. |
+| `ActionQueue_MoveToLocation`, `Action_MovePath` | Ordered movement: a path's first waypoint interrupts and its tail queues. A path takes the vectors at keys `1..n` (at most `MAX_QUEUED_ORDERS`); a hole in the first `MAX_QUEUED_ORDERS + 1` keys is an error and publishes nothing. The reference reads every vector in the table in iteration order and skips the rest; this host reads the sequence only. | Reference (stricter here: no table iteration in the interpreter). |
+
+Integer arguments (damage type, slot, tree id) must be whole numbers; a fraction raises the argument error `integer expected`
+(the reference truncates, as the other id arguments of this host used to).
+
+### Damage history
+
+The reference answers `WasRecentlyDamagedByCreep` and `WasRecentlyDamagedByHero` only for a receiver that is a teammate
+**and** a bot-controlled hero. For any other receiver (an enemy, an ally that is not a declared bot, a creep) it logs an
+error and answers `false`. The host answers the same `false` and counts it (`..._not_a_bot_teammate`); declared allied
+bots are answered from the journal, the host's own seats included. The journal is the seat's: the last positive damage tick
+per source class and per attacking player, fed only by damage events the seat is told (damage from an unseen source is not
+recorded). The hero history is kept by player, as in the reference: every body of the attacking player (illusions
+included) counts, and the player's scoreboard record answers even after the attacker's body was forgotten. The window is
+strict as in the reference's comparison `interval > age`: damage exactly `interval` seconds old is outside, and an interval
+of zero never matches. For the creep variant the gate is established; its window is assumed to be the same strict one.
+Per-player keys are wire seats, a client identity.
 
 No alias is provided for the non-API global `Glyph`; the supported action is `ActionImmediate_Glyph`.
 The host does not substitute animation ids for bot-controller action types, approximate movement-direction
 stability with a constant, or infer silence/courier controller state absent from the received facts.
+
+Fuel: every call prices its whole scan before it runs, on every branch (including rejected ones): scalar queries charge
+the view and roster scans, nearby queries their scan and sort (handles are charged where they are made), visibility its
+bounded sight rays and, on a changed forest, the rebuild. These prices are independent of summary collection and are pinned
+by exact-minimum tests.
