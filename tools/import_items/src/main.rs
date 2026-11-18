@@ -11,6 +11,9 @@
 //! `--add` appends a registry line for each new item key first. `--check` writes nothing and
 //! fails when a committed table holds other rows than the install gives (the client build it
 //! names aside). `--creeps-only` updates or checks the lane creep numeric table alone.
+//!
+//! Without `--dota`, `BOTA_DOTA_PATH` names the install (a `dota 2 beta` folder), else the first
+//! Steam library's is read; the tests read the same one.
 
 mod ability;
 mod boss;
@@ -53,6 +56,13 @@ fn registry_path() -> PathBuf {
     repo().join("crates/bota_proto/registry/ids.txt")
 }
 
+/// The install `BOTA_DOTA_PATH` names, if it names one: what the tool and its tests read when no
+/// `--dota` is given, so a check can be held to a chosen client build rather than whichever one
+/// Steam installed last.
+fn pinned_install() -> Option<PathBuf> {
+    std::env::var_os("BOTA_DOTA_PATH").map(PathBuf::from)
+}
+
 struct Args {
     dota: Option<PathBuf>,
     check: bool,
@@ -62,7 +72,7 @@ struct Args {
 
 fn args() -> Result<Args, String> {
     let mut parsed = Args {
-        dota: None,
+        dota: pinned_install(),
         check: false,
         add: Vec::new(),
         creeps_only: false,
@@ -219,7 +229,7 @@ mod tests {
         use heatel::keyvalues::Kv;
         let mut marked = std::collections::BTreeSet::new();
         for hero in ["nevermore", "pudge"] {
-            let root = crate::install::hero_script(None, hero).expect("the hero's script");
+            let root = crate::install::hero_script(crate::pinned_install().as_deref(), hero).expect("the hero's script");
             let abilities = root
                 .get("DOTAHeroes")
                 .and_then(|heroes| heroes.get(&format!("npc_dota_hero_{hero}")))
@@ -247,7 +257,7 @@ mod tests {
     #[test]
     #[ignore = "needs a Dota 2 install"]
     fn the_committed_table_is_what_the_install_gives() {
-        let creeps = crate::rustfmt(&crate::creeps::table(None).expect("lane creep scripts"))
+        let creeps = crate::rustfmt(&crate::creeps::table(crate::pinned_install().as_deref()).expect("lane creep scripts"))
             .expect("formatted creep data");
         let committed =
             std::fs::read_to_string(crate::repo().join("crates/bota_core/src/creep_data.rs"))
@@ -256,7 +266,7 @@ mod tests {
             crate::emit::same_items(&committed, &creeps),
             "lane creep script data is stale"
         );
-        let boss = crate::rustfmt(&crate::boss::table(None).expect("boss scripts"))
+        let boss = crate::rustfmt(&crate::boss::table(crate::pinned_install().as_deref()).expect("boss scripts"))
             .expect("formatted scripts");
         let committed =
             std::fs::read_to_string(crate::repo().join("crates/bota_core/src/roshan_data.rs"))
@@ -265,13 +275,13 @@ mod tests {
             crate::emit::same_items(&committed, &boss),
             "Roshan data is stale"
         );
-        let zones = crate::rustfmt(&crate::zones::table(None).expect("map placement volumes"))
+        let zones = crate::rustfmt(&crate::zones::table(crate::pinned_install().as_deref()).expect("map placement volumes"))
             .expect("formatted volumes");
         let committed =
             std::fs::read_to_string(crate::repo().join("crates/bota_core/src/placement_data.rs"))
                 .expect("committed placement data");
         assert_eq!(committed, zones, "map placement data is stale");
-        let source = crate::install::read(None).expect("an install");
+        let source = crate::install::read(crate::pinned_install().as_deref()).expect("an install");
         let registry = std::fs::read_to_string(crate::registry_path()).expect("the registry");
         let items = crate::registry::items(&registry).expect("a well-formed registry");
         let table = crate::emit::table(&source, &items).expect("an importable install");
@@ -288,7 +298,7 @@ mod tests {
     #[test]
     #[ignore = "needs a Dota 2 install"]
     fn the_committed_hero_table_is_what_the_install_gives() {
-        let source = crate::install::read_heroes(None, crate::HEROES).expect("an install");
+        let source = crate::install::read_heroes(crate::pinned_install().as_deref(), crate::HEROES).expect("an install");
         let table = crate::emit_heroes::table(&source).expect("importable heroes");
         let table = crate::rustfmt(&table).expect("rustfmt");
         let committed = std::fs::read_to_string(crate::heroes_path()).expect("the committed table");
@@ -305,7 +315,7 @@ mod tests {
     fn registered_secret_items_match_the_installs_secret_shop_keys() {
         use heatel::keyvalues::Kv;
         use std::collections::BTreeSet;
-        let source = crate::install::read(None).expect("an install");
+        let source = crate::install::read(crate::pinned_install().as_deref()).expect("an install");
         let registry = std::fs::read_to_string(crate::registry_path()).expect("registry");
         let entries = crate::registry::items(&registry).expect("registered ids");
         let expected = BTreeSet::from([
