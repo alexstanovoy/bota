@@ -621,6 +621,7 @@ impl World {
             .iter()
             .map(|part| item_def(*part).map(|def| def.cost))
             .sum::<Option<i32>>()?;
+        let cost = if self.map.free_purchases { 0 } else { cost };
         let context = PurchaseContext {
             hero: self.purchase_carrier(unit),
             courier: self.purchase_carrier(self.seats[seat].courier),

@@ -277,6 +277,16 @@ pub enum Cheat {
     /// A simulator extension: applies the existing spell-immunity predicate for a bounded
     /// duration, through a timed modifier. Nothing aimed means the addressed unit.
     SpellImmunity { target: Target, ticks: u32 },
+    /// The hero the order is for, which a cheat created, leaves the match with its seat and
+    /// everything its seat drives (Dota's Hero Demo's Remove). Refused with
+    /// [`RejectReason::BadCheat`](crate::RejectReason::BadCheat) for a hero no cheat created.
+    RemoveHero,
+    /// Every ability of the hero the order is for goes up as far as its level and its points
+    /// allow (the learning of Dota's Hero Demo's Level Max).
+    MaxAbilities,
+    /// A simulator extension: every ability point the hero the order is for spent, and every
+    /// talent it took, comes back to be spent again; its level stays.
+    UnlearnAbilities,
 }
 
 /// Whose creeps a [`Cheat::KillCreeps`] takes away.
@@ -557,7 +567,10 @@ impl Order {
                     | Cheat::TimeOfDay { .. }
                     | Cheat::Suicide
                     | Cheat::ResetBuyback
-                    | Cheat::SetPools { .. },
+                    | Cheat::SetPools { .. }
+                    | Cheat::RemoveHero
+                    | Cheat::MaxAbilities
+                    | Cheat::UnlearnAbilities,
             }
             | Order::Buy { .. }
             | Order::Sell { .. }
@@ -618,7 +631,10 @@ impl Order {
                     | Cheat::SpawnRune { .. }
                     | Cheat::Suicide
                     | Cheat::ResetBuyback
-                    | Cheat::SetPools { .. },
+                    | Cheat::SetPools { .. }
+                    | Cheat::RemoveHero
+                    | Cheat::MaxAbilities
+                    | Cheat::UnlearnAbilities,
             }
             | Order::Buy { .. }
             | Order::Sell { .. }

@@ -65,8 +65,10 @@ fn objectives_and_runes_are_sets_by_name_and_what_a_map_does_not_play_fails_befo
             (["--runes", "bounty"], &["1", "3"][..]),
             (["--objectives", "twin_gates"], &["1", "3"][..]),
         ] {
-            let args = Args::try_parse_from(["bota_server", "--map", map, asked[0], asked[1]])
-                .expect("a set by name");
+            // The hero demo is played with cheats on.
+            let args =
+                Args::try_parse_from(["bota_server", "--map", map, asked[0], asked[1], "--cheats"])
+                    .expect("a set by name");
             let opts = crate::server_opts(&args).expect("options");
             match crate::check_opts(&opts) {
                 Err(refused) => {
@@ -237,4 +239,28 @@ fn reservation_versions_are_separate_bounded_fields() {
         crate::reservation(0, &format!("{key}:0:engine:bot:v={excessive}")).unwrap_err(),
         "invalid reserved version"
     );
+}
+
+#[test]
+fn the_hero_demo_map_starts_only_with_cheats_on() {
+    for (extra, refused) in [
+        (&[][..], true),
+        (&["--cheats"][..], false),
+        (&["--lobby-cheats", "--cheats"][..], false),
+    ] {
+        let args = Args::try_parse_from(
+            ["bota_server", "--map", "3"]
+                .into_iter()
+                .chain(extra.iter().copied()),
+        )
+        .expect("parsed");
+        let opts = crate::server_opts(&args).expect("options");
+        match crate::check_opts(&opts) {
+            Err(why) => {
+                assert!(refused, "{extra:?}: {why}");
+                assert_eq!(why, "map 3 is played with cheats on (--cheats)");
+            }
+            Ok(()) => assert!(!refused, "{extra:?} started the hero demo"),
+        }
+    }
 }

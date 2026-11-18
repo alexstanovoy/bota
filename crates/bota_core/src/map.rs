@@ -194,6 +194,12 @@ pub struct MapDef {
     pub fixed_respawn_ticks: Option<u32>,
     /// Whether a fallen hero rises where it fell rather than at its fountain.
     pub respawn_where_fell: bool,
+    /// Whether every purchase costs nothing, as the Hero Demo pays each one back
+    /// (`OnItemPurchased`).
+    pub free_purchases: bool,
+    /// Whether the map is played only with cheats on: a sandbox nobody plays a
+    /// rated or queued match on.
+    pub needs_cheats: bool,
 }
 
 /// The Dota lanes bend once each on the way round the map; mid runs straight.
@@ -293,6 +299,8 @@ const DOTA: MapDef = MapDef {
     hero_starts: None,
     fixed_respawn_ticks: None,
     respawn_where_fell: false,
+    free_purchases: false,
+    needs_cheats: false,
 };
 
 /// The hero demo map: one short lane with a single tower a side, two
@@ -342,6 +350,8 @@ const DEMO: MapDef = MapDef {
     hero_starts: None,
     fixed_respawn_ticks: None,
     respawn_where_fell: false,
+    free_purchases: false,
+    needs_cheats: false,
 };
 
 /// Full Dota geometry with mid-only waves and a hero/tower finish bounded by
@@ -373,7 +383,9 @@ const SKIRMISH: MapDef = MapDef {
 /// starts with no pregame (`SetPreGameTime( 0 )`), so the first waves walk
 /// out on the first tick, and every hero lying dead a fixed four seconds
 /// (`SetFixedRespawnTime( 4 )`). A fallen hero rises where it fell, not at
-/// its fountain, so trying a hero out is never a walk back. Nothing ends it:
+/// its fountain, so trying a hero out is never a walk back. Every purchase costs
+/// nothing, as the Hero Demo pays each back, so a hero of either side can be
+/// fitted out; and it is played only with cheats on. Nothing ends it:
 /// it has no Ancients, no death limit, and towers that fall end nothing.
 const HERO_DEMO: MapDef = MapDef {
     id: HERO_DEMO_ID,
@@ -386,6 +398,8 @@ const HERO_DEMO: MapDef = MapDef {
     hero_starts: Some(rules::DEMO_HERO_STARTS),
     fixed_respawn_ticks: Some(rules::DEMO_RESPAWN_SECONDS * rules::TICKS_PER_SECOND),
     respawn_where_fell: true,
+    free_purchases: true,
+    needs_cheats: true,
     ..DEMO
 };
 

@@ -595,6 +595,7 @@ name = "game_match"
 about = "a match as a whole: its flow, the maps, gold and bounties, economic events, cheats, a side's view, local matches"
 paths = [
     "crates/bota_server/src/game/systems/cheats.rs",
+    "crates/bota_server/src/game/systems/control.rs",
     "crates/bota_server/src/game/config/economy_event.rs",
     "crates/bota_server/src/game/systems/buyback.rs",
     "crates/bota_server/src/game/components/buyback.rs",

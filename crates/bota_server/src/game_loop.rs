@@ -455,6 +455,14 @@ pub fn check_opts(opts: &ServerOpts) -> Result<(), String> {
     if opts.lobby_cheats && !opts.cheats {
         return Err("lobby cheats are cheats: --lobby-cheats turns them on".to_owned());
     }
+    // The Hero Demo is a sandbox: a queued or rated match, which never cheats, cannot be
+    // started on it.
+    if bota_core::map_of(opts.map).needs_cheats && !opts.cheats {
+        return Err(format!(
+            "map {} is played with cheats on (--cheats)",
+            opts.map.0
+        ));
+    }
     // Reserved seats are exactly the lineup, and a dummy is a seat nobody holds.
     if opts.seated_start && (!opts.reserved.is_empty() || opts.dummy_seat) {
         return Err(

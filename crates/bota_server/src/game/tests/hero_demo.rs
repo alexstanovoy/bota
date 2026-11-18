@@ -4,8 +4,8 @@
 
 use bota_core::{DEMO_ID, HERO_DEMO_ID, attackable_from, map_of, rules};
 use bota_proto::{
-    Cheat, DamageKind, EntityId, HeroId, MapId, Order, OutgoingOrder, PlayerView, RejectReason,
-    ServerMsg, SlotId, Team, UnitKind, UnitView, Vec2, WorldView,
+    AbilitySlot, Cheat, DamageKind, EntityId, HeroId, ItemId, MapId, Order, OutgoingOrder,
+    PlayerView, RejectReason, ServerMsg, SlotId, Target, Team, UnitKind, UnitView, Vec2, WorldView,
 };
 
 use super::support::config;
@@ -63,14 +63,20 @@ impl Demo {
     }
 
     fn step(&mut self, orders: &[Order]) {
+        let named: Vec<_> = orders.iter().map(|&order| (None, order)).collect();
+        self.step_naming(&named);
+    }
+
+    /// One tick with these orders, each to the unit it names (nobody: one's hero).
+    fn step_naming(&mut self, orders: &[(Option<EntityId>, Order)]) {
         let seen = self.local.tick();
         let out: Vec<OutgoingOrder> = orders
             .iter()
-            .map(|&order| {
+            .map(|&(unit, order)| {
                 self.seq += 1;
                 OutgoingOrder {
                     seq: self.seq,
-                    unit: None,
+                    unit,
                     order,
                     seen,
                     queue: false,
@@ -84,6 +90,49 @@ impl Demo {
     fn cheat(&mut self, cheat: Cheat) {
         self.step(&[Order::Cheat { cheat }]);
         assert_eq!(self.rejected, [], "{cheat:?} was turned down");
+    }
+
+    /// One order to a unit, which must not be turned down.
+    fn order(&mut self, unit: EntityId, order: Order) {
+        self.step_naming(&[(Some(unit), order)]);
+        assert_eq!(self.rejected, [], "{order:?} to {unit:?} was turned down");
+    }
+
+    /// A cheat aimed at a unit, which must not be turned down.
+    fn cheat_at(&mut self, unit: EntityId, cheat: Cheat) {
+        self.order(unit, Order::Cheat { cheat });
+    }
+
+    /// A hero of `hero` stood up by the panel's ENEMY a little way along the lane, and its handle.
+    fn spawn_enemy(&mut self, hero: HeroId) -> EntityId {
+        let before = self.view().players.len();
+        self.cheat(Cheat::CreateHero {
+            hero,
+            enemy: true,
+            at: rules::DEMO_LANE_CORNERS[1],
+        });
+        assert_eq!(
+            self.view().players.len(),
+            before + 1,
+            "a seat was made for it"
+        );
+        self.cheat(Cheat::AllVision { on: true });
+        let row = self.view().players.last().expect("its row");
+        assert_eq!(row.team, Team::Dire);
+        row.unit.expect("its hero")
+    }
+
+    /// The seat a hero belongs to, as the view tells it.
+    fn row_of(&self, hero: EntityId) -> &PlayerView {
+        self.view()
+            .players
+            .iter()
+            .find(|row| row.unit == Some(hero))
+            .expect("the hero's seat")
+    }
+
+    fn unit(&self, id: EntityId) -> &UnitView {
+        self.view().unit(id).expect("the unit is seen")
     }
 
     fn run(&mut self, ticks: u32) {
@@ -102,10 +151,6 @@ impl Demo {
 
     fn hero(&self) -> Option<&UnitView> {
         self.view().unit(self.me().unit?)
-    }
-
-    fn unit(&self, id: EntityId) -> &UnitView {
-        self.view().unit(id).expect("the unit is seen")
     }
 
     fn units(&self, kind: UnitKind) -> impl Iterator<Item = &UnitView> {
@@ -355,6 +400,308 @@ fn nothing_the_player_does_ends_the_hero_demo() {
     demo.run(2 * 60 * rules::TICKS_PER_SECOND);
     assert!(!demo.over, "the hero demo ended");
     assert!(demo.hero().is_some(), "the hero stands");
+}
+
+/// The levels of the abilities a point raises (those that go above one level), in slot order.
+fn learned(unit: &UnitView) -> Vec<u8> {
+    unit.abilities
+        .iter()
+        .filter(|ability| ability.max_level > 1)
+        .map(|ability| ability.level)
+        .collect()
+}
+
+#[test]
+fn a_player_orders_an_enemy_hero_the_panel_spawned_as_its_own() {
+    let mut demo = Demo::on(HERO_DEMO_ID);
+    let pudge = demo.spawn_enemy(HeroId::PUDGE);
+    let from = demo.unit(pudge).pos;
+    let to = rules::DEMO_LANE_CORNERS[2];
+    demo.order(
+        pudge,
+        Order::Move {
+            target: Target::Pos(to),
+        },
+    );
+    demo.run(3 * rules::TICKS_PER_SECOND);
+    let now = demo.unit(pudge).pos;
+    assert!(
+        now.distance_squared(to) < from.distance_squared(to),
+        "the enemy hero stayed at {now:?}"
+    );
+    // Teleport, aimed at it, puts it where the player points.
+    demo.cheat_at(pudge, Cheat::Teleport { at: to });
+    assert!(near(demo.unit(pudge).pos, to, 150), "not teleported");
+}
+
+#[test]
+fn a_player_levels_an_enemy_hero_and_learns_unlearns_and_maxes_its_abilities() {
+    let mut demo = Demo::on(HERO_DEMO_ID);
+    let pudge = demo.spawn_enemy(HeroId::PUDGE);
+    demo.cheat_at(pudge, Cheat::Levels { count: 1 });
+    assert_eq!(
+        demo.row_of(pudge).level,
+        2,
+        "LEVEL UP raised the aimed hero"
+    );
+    assert_eq!(demo.me().level, 1, "and not the player's");
+    demo.order(
+        pudge,
+        Order::Learn {
+            slot: AbilitySlot(0),
+        },
+    );
+    assert_eq!(
+        learned(demo.unit(pudge))[0],
+        1,
+        "a point learned its first ability"
+    );
+    demo.cheat_at(
+        pudge,
+        Cheat::Levels {
+            count: rules::HERO_MAX_LEVEL,
+        },
+    );
+    demo.cheat_at(pudge, Cheat::MaxAbilities);
+    let maxed: Vec<u8> = demo
+        .unit(pudge)
+        .abilities
+        .iter()
+        .filter(|ability| ability.max_level > 1)
+        .map(|ability| ability.max_level)
+        .collect();
+    assert_eq!(
+        learned(demo.unit(pudge)),
+        maxed,
+        "LEVEL MAX learned everything"
+    );
+    demo.cheat_at(pudge, Cheat::UnlearnAbilities);
+    assert!(
+        learned(demo.unit(pudge)).iter().all(|level| *level == 0),
+        "every point came back: {:?}",
+        learned(demo.unit(pudge))
+    );
+    assert_eq!(
+        demo.row_of(pudge).level,
+        rules::HERO_MAX_LEVEL,
+        "its level stayed"
+    );
+    demo.order(
+        pudge,
+        Order::Learn {
+            slot: AbilitySlot(3),
+        },
+    );
+    assert_eq!(
+        learned(demo.unit(pudge))[3],
+        1,
+        "the points are there to spend again"
+    );
+}
+
+#[test]
+fn a_player_buys_an_item_for_an_enemy_hero_and_it_lands_in_that_heros_bag() {
+    let mut demo = Demo::on(HERO_DEMO_ID);
+    let pudge = demo.spawn_enemy(HeroId::PUDGE);
+    // At its own fountain, its home shop; the Hero Demo's purchases cost nothing.
+    let home = bota_core::hero_spawn_pos(map_of(HERO_DEMO_ID), Team::Dire);
+    demo.cheat_at(pudge, Cheat::Teleport { at: home });
+    let gold = demo.me().gold;
+    demo.order(
+        pudge,
+        Order::Buy {
+            item: ItemId::BLINK_DAGGER,
+        },
+    );
+    let carried = demo
+        .unit(pudge)
+        .items
+        .iter()
+        .flatten()
+        .any(|item| item.id == ItemId::BLINK_DAGGER);
+    assert!(carried, "the Blink Dagger is in the enemy hero's bag");
+    assert_eq!(demo.me().gold, gold, "the player paid nothing");
+}
+
+#[test]
+fn the_hero_demo_sells_everything_for_nothing() {
+    let mut demo = Demo::on(HERO_DEMO_ID);
+    demo.cheat(Cheat::Teleport {
+        at: bota_core::hero_spawn_pos(map_of(HERO_DEMO_ID), Team::Radiant),
+    });
+    let gold = demo.me().gold;
+    demo.step(&[Order::Buy {
+        item: ItemId::BLINK_DAGGER,
+    }]);
+    assert_eq!(
+        demo.rejected,
+        [],
+        "a Blink Dagger costs more than the starting gold"
+    );
+    assert_eq!(demo.me().gold, gold);
+}
+
+#[test]
+fn a_removed_hero_leaves_the_match_and_its_place_serves_the_next() {
+    let mut demo = Demo::on(HERO_DEMO_ID);
+    let pudge = demo.spawn_enemy(HeroId::PUDGE);
+    let slot = demo.row_of(pudge).slot;
+    demo.cheat_at(pudge, Cheat::RemoveHero);
+    assert!(demo.view().player(slot).is_none(), "its seat is gone");
+    assert!(demo.view().unit(pudge).is_none(), "its hero is gone");
+    let next = demo.spawn_enemy(HeroId::SHADOW_FIEND);
+    assert_eq!(
+        demo.row_of(next).slot,
+        slot,
+        "the next hero takes the place"
+    );
+}
+
+#[test]
+fn the_panel_cannot_remove_the_players_own_hero_nor_aim_at_nothing() {
+    let mut demo = Demo::on(HERO_DEMO_ID);
+    let own = demo.me().unit.expect("the hero");
+    for unit in [None, Some(own)] {
+        demo.step_naming(&[(
+            unit,
+            Order::Cheat {
+                cheat: Cheat::RemoveHero,
+            },
+        )]);
+        assert_eq!(demo.rejected, [RejectReason::BadCheat], "aimed at {unit:?}");
+    }
+    assert!(demo.hero().is_some());
+}
+
+#[test]
+fn a_hero_the_panel_spawned_dies_and_rises_where_it_fell() {
+    let mut demo = Demo::on(HERO_DEMO_ID);
+    let pudge = demo.spawn_enemy(HeroId::PUDGE);
+    let spot = rules::DEMO_LANE_CORNERS[2];
+    demo.cheat_at(pudge, Cheat::Teleport { at: spot });
+    demo.cheat_at(pudge, Cheat::Suicide);
+    assert!(demo.view().unit(pudge).is_none(), "it lies dead");
+    demo.run(DEMO_WAIT - 1);
+    assert!(near(demo.unit(pudge).pos, spot, 150), "it rose elsewhere");
+}
+
+/// The new cheats of the Hero Demo, each as the panel gives it.
+const PANEL_CHEATS: [Cheat; 3] = [
+    Cheat::RemoveHero,
+    Cheat::MaxAbilities,
+    Cheat::UnlearnAbilities,
+];
+
+#[test]
+fn a_match_without_cheats_refuses_the_hero_demos_cheats_and_control_of_other_heroes() {
+    // What a matchmaking service launches for people playing each other, rated or a lobby
+    // without cheats, and a match started directly: none honours cheats.
+    let cfg = MatchConfig {
+        picks: super::support::fiend_against_fiend(),
+        ..config()
+    };
+    assert!(!cfg.cheats);
+    let (mut local, opening) =
+        LocalMatch::new(&cfg, &[OrderDelay::NONE, OrderDelay::NONE]).expect("a match");
+    let enemy = opening[1]
+        .iter()
+        .find_map(|msg| match msg {
+            ServerMsg::Snapshot { view } => view.player(SlotId(1)).and_then(|row| row.unit),
+            _ => None,
+        })
+        .expect("the other side's hero");
+    let mut seq = 0;
+    for cheat in PANEL_CHEATS {
+        for (unit, why) in [
+            (None, RejectReason::NoCheats),
+            (Some(enemy), RejectReason::NotYourUnit),
+        ] {
+            seq += 1;
+            let order = OutgoingOrder {
+                seq,
+                unit,
+                order: Order::Cheat { cheat },
+                seen: local.tick(),
+                queue: false,
+            };
+            let streams = local.step(&[&[order], &[]]).expect("a step");
+            let refused: Vec<_> = streams[0]
+                .iter()
+                .filter_map(|msg| match msg {
+                    ServerMsg::OrderRejected { reason, .. } => Some(*reason),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(refused, [why], "{cheat:?} aimed at {unit:?}");
+        }
+    }
+    // Nor does anyone order the other side's hero.
+    seq += 1;
+    let order = OutgoingOrder {
+        seq,
+        unit: Some(enemy),
+        order: Order::Move {
+            target: Target::None,
+        },
+        seen: local.tick(),
+        queue: false,
+    };
+    let streams = local.step(&[&[order], &[]]).expect("a step");
+    assert!(
+        streams[0].iter().any(|msg| matches!(
+            msg,
+            ServerMsg::OrderRejected {
+                reason: RejectReason::NotYourUnit,
+                ..
+            }
+        )),
+        "the other side's hero took an order"
+    );
+}
+
+#[test]
+fn with_cheats_on_a_player_still_cannot_order_another_players_hero() {
+    let cfg = MatchConfig {
+        picks: super::support::fiend_against_fiend(),
+        cheats: true,
+        ..config()
+    };
+    let (mut local, opening) =
+        LocalMatch::new(&cfg, &[OrderDelay::NONE, OrderDelay::NONE]).expect("a match");
+    let other = opening[1]
+        .iter()
+        .find_map(|msg| match msg {
+            ServerMsg::Snapshot { view } => view.player(SlotId(1)).and_then(|row| row.unit),
+            _ => None,
+        })
+        .expect("the other player's hero");
+    for order in [
+        Order::Move {
+            target: Target::None,
+        },
+        Order::Cheat {
+            cheat: Cheat::Levels { count: 1 },
+        },
+    ] {
+        let given = OutgoingOrder {
+            seq: 1,
+            unit: Some(other),
+            order,
+            seen: local.tick(),
+            queue: false,
+        };
+        let streams = local.step(&[&[given], &[]]).expect("a step");
+        assert!(
+            streams[0].iter().any(|msg| matches!(
+                msg,
+                ServerMsg::OrderRejected {
+                    reason: RejectReason::NotYourUnit,
+                    ..
+                }
+            )),
+            "{order:?} reached another player's hero"
+        );
+    }
 }
 
 /// The demo map's Radiant tower, whose footprint nothing may stand in.

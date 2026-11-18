@@ -83,12 +83,19 @@ impl World {
         }
         let mut events = Vec::new();
         self.economy_events_due(&mut events);
-        for cmd in cmds {
+        for given in cmds {
+            // A player's order to a hero it controls is carried out as that hero's seat's;
+            // a refusal still answers the player.
+            let acting = Command {
+                slot: self.acting_seat(given.slot, given.unit, &given.order),
+                ..*given
+            };
+            let cmd = &acting;
             if check
                 && let Err(reason) = self.check_order(cmd.slot, cmd.unit, &cmd.order, cmd.queue)
             {
                 self.refused.push(crate::game::RefusedOrder {
-                    slot: cmd.slot,
+                    slot: given.slot,
                     seq: cmd.seq,
                     reason,
                 });
@@ -504,7 +511,8 @@ impl World {
             return seat.unit;
         };
         let unit = self.of_wire(named)?;
-        (self.owner.get(unit) == Some(&slot)).then_some(unit)
+        (self.owner.get(unit) == Some(&slot) || self.controlled_seat(slot, named).is_some())
+            .then_some(unit)
     }
 
     /// Whether an order is for a seat's hero while it lies dead: naming
@@ -531,6 +539,7 @@ impl World {
         order: &Order,
         queue: bool,
     ) -> Result<(), RejectReason> {
+        let slot = self.acting_seat(slot, named, order);
         if !inventory_dependent(*order) {
             return self.check_order(slot, named, order, queue);
         }
@@ -553,6 +562,7 @@ impl World {
         named: Option<bota_proto::EntityId>,
         order: &Order,
     ) -> Result<(), RejectReason> {
+        let slot = self.acting_seat(slot, named, order);
         if *order == Order::Glyph {
             return self.check_glyph(slot);
         }
@@ -576,6 +586,11 @@ impl World {
                 .driven_by(slot, Some(named))
                 .ok_or(RejectReason::NotYourUnit)?,
         };
+        // A cheat aimed at a hero the player controls reaches it dead or alive, as one aimed
+        // at its own hero does.
+        if let Order::Cheat { cheat } = order {
+            return self.check_cheat(slot, Some(unit), cheat);
+        }
         if !self.alive(unit) {
             return Err(RejectReason::HeroDead);
         }
@@ -614,7 +629,6 @@ impl World {
                 .swap_refusal(unit, seat, usize::from(from.0), usize::from(to.0))
                 .map_or(Ok(()), Err),
             Order::Use { slot, target } => self.check_use(unit, seat, usize::from(slot.0), target),
-            Order::Cheat { cheat } => self.check_cheat(slot, Some(unit), cheat),
             Order::LearnTalent { talent } => {
                 bota_core::learning_refusal(self.can_learn_talent(unit, *talent))
             }
@@ -636,6 +650,7 @@ impl World {
         queue: bool,
     ) -> Result<(), RejectReason> {
         self.validate_order(slot, named, order)?;
+        let slot = self.acting_seat(slot, named, order);
         let full = queue
             && bota_core::order_queues(*order)
             && self
@@ -660,7 +675,8 @@ impl World {
         if matches!(order, Order::Glyph | Order::Buyback | Order::Scan { .. }) {
             return None;
         }
-        self.driven_by(slot, named).map(wire_id)
+        self.driven_by(self.acting_seat(slot, named, order), named)
+            .map(wire_id)
     }
 
     /// Whether a seat may buy an item: one that exists, with gold enough

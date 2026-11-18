@@ -95,6 +95,26 @@ struct Step {
 enum Asked {
     Typed(&'static str),
     Button(Cheat),
+    /// A Demo Hero button aimed at the hero of seat 1 (one a cheat created), or at one's own
+    /// where there is none.
+    AtCreated(Cheat),
+}
+
+/// The hero of seat 1, which `-createhero` made, while it is seen.
+fn created(view: &WorldView) -> Option<&bota_proto::UnitView> {
+    view.unit(view.player(SlotId(1))?.unit?)
+}
+
+/// The created hero's abilities a point raises, each as its level and its cap.
+fn created_learned(view: &WorldView) -> Option<Vec<(u8, u8)>> {
+    let hero = created(view)?;
+    Some(
+        hero.abilities
+            .iter()
+            .filter(|ability| ability.max_level > 1)
+            .map(|ability| (ability.level, ability.max_level))
+            .collect(),
+    )
 }
 
 fn me(view: &WorldView) -> &bota_proto::PlayerView {
@@ -135,7 +155,7 @@ fn spot() -> Vec2 {
 }
 
 fn steps() -> Vec<Step> {
-    use Asked::{Button, Typed};
+    use Asked::{AtCreated, Button, Typed};
     vec![
         Step {
             asked: Typed("-gold 5000"),
@@ -175,6 +195,36 @@ fn steps() -> Vec<Step> {
                 let pudge = v.player(SlotId(1)).and_then(|p| p.unit);
                 pudge.is_some_and(|id| v.units.iter().any(|unit| unit.id == id))
             },
+        },
+        // The panel's buttons aimed at the created hero, which the player controls.
+        Step {
+            asked: AtCreated(Cheat::Levels { count: 30 }),
+            holds: |v| v.player(SlotId(1)).is_some_and(|p| p.level == 30),
+        },
+        Step {
+            asked: AtCreated(Cheat::MaxAbilities),
+            holds: |v| created_learned(v).is_some_and(|levels| levels.iter().all(|(l, m)| l == m)),
+        },
+        Step {
+            asked: AtCreated(Cheat::UnlearnAbilities),
+            holds: |v| created_learned(v).is_some_and(|levels| levels.iter().all(|(l, _)| *l == 0)),
+        },
+        Step {
+            asked: AtCreated(Cheat::Item {
+                item: ItemId::BLINK_DAGGER,
+            }),
+            holds: |v| {
+                created(v).is_some_and(|hero| {
+                    hero.items
+                        .iter()
+                        .flatten()
+                        .any(|item| item.id == ItemId::BLINK_DAGGER)
+                })
+            },
+        },
+        Step {
+            asked: AtCreated(Cheat::RemoveHero),
+            holds: |v| v.player(SlotId(1)).is_none(),
         },
         Step {
             asked: Typed("-spawncreeps"),
@@ -274,7 +324,7 @@ fn cheat_of(asked: &Asked) -> Cheat {
             );
             parse_command(line, &Pointing(spot())).expect("a command")
         }
-        Asked::Button(cheat) => *cheat,
+        Asked::Button(cheat) | Asked::AtCreated(cheat) => *cheat,
     }
 }
 
@@ -310,7 +360,14 @@ fn play_steps(address: &str) -> Vec<RejectReason> {
                     let order = Order::Cheat {
                         cheat: cheat_of(&steps[at].asked),
                     };
-                    let outgoing = session.issue(IssuedOrder::hero(order)).expect("issued");
+                    let aimed = matches!(steps[at].asked, Asked::AtCreated(_))
+                        .then(|| view.player(SlotId(1)).and_then(|row| row.unit))
+                        .flatten();
+                    let issued = IssuedOrder {
+                        unit: aimed,
+                        ..IssuedOrder::hero(order)
+                    };
+                    let outgoing = session.issue(issued).expect("issued");
                     link.send(&outgoing.message()).expect("sent");
                     waiting = true;
                 }

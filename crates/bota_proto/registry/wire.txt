@@ -852,3 +852,7 @@ field RadarView 0 at: Vec2
 field RadarView 1 ticks_left: u32
 field RadarView 2 found: bool
 variant RejectReason 37 NoScanCharge
+# Hero Demo: removing a created hero, and learning or unlearning a hero's abilities at once.
+variant Cheat 27 RemoveHero
+variant Cheat 28 MaxAbilities
+variant Cheat 29 UnlearnAbilities

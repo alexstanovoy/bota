@@ -8,6 +8,7 @@ mod buyback;
 pub(crate) mod cast;
 mod cast_rule;
 mod cheats;
+mod control;
 mod courier;
 mod disassemble;
 mod econ;

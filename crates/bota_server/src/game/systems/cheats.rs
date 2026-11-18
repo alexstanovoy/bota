@@ -33,9 +33,14 @@ impl World {
         if self.check_cheat(slot, unit, &cheat).is_err() {
             return;
         }
-        let Some(seat) = self.seats.iter().position(|seat| seat.slot == slot) else {
+        let Some(giver) = self.seats.iter().position(|seat| seat.slot == slot) else {
             return;
         };
+        // What works through a hero works through the one the cheat is aimed at: the giver's
+        // own, or one it controls.
+        let seat = unit
+            .and_then(|unit| self.seats.iter().position(|seat| seat.unit == Some(unit)))
+            .unwrap_or(giver);
         match cheat {
             Cheat::SpellImmunity { target, ticks } => {
                 if let Some(mark) = unit.and_then(|unit| self.cheat_target(unit, target).ok()) {
@@ -114,7 +119,7 @@ impl World {
             }
             Cheat::Respawn => self.respawn_now(seat),
             Cheat::CreateHero { hero, enemy, at } => {
-                let team = self.cheat_side(seat, enemy);
+                let team = self.cheat_side(giver, enemy);
                 let body =
                     LandingBody::of_def(hero_def(hero).map_or(&HERO, |hero| hero.unit), team);
                 if let Some(at) = self.open_landing_as(body, at) {
@@ -151,7 +156,7 @@ impl World {
                 }
             }
             Cheat::CreateCreeps { enemy, at } => {
-                let team = self.cheat_side(seat, enemy);
+                let team = self.cheat_side(giver, enemy);
                 if let Some(at) = self.open_landing(at) {
                     self.spawn_wave_at(team, at);
                 }
@@ -163,6 +168,17 @@ impl World {
                 }
             }
             Cheat::ResetBuyback => self.seats[seat].buyback.ready_at = self.tick,
+            Cheat::RemoveHero => self.remove_created_seat(seat),
+            Cheat::MaxAbilities => {
+                if let Some(hero) = self.seats[seat].unit {
+                    self.learn_all(hero);
+                }
+            }
+            Cheat::UnlearnAbilities => {
+                if let Some(hero) = self.seats[seat].unit {
+                    self.unlearn_all(hero);
+                }
+            }
         }
     }
 
@@ -266,6 +282,22 @@ impl World {
                 let unit = unit.ok_or(RejectReason::HeroDead)?;
                 self.open_landing_for(unit, *at)
                     .ok_or(RejectReason::ClosedGround)?;
+            }
+            Cheat::RemoveHero => {
+                let unit = unit.ok_or(RejectReason::HeroDead)?;
+                let created = self
+                    .seats
+                    .iter()
+                    .any(|seat| seat.created && seat.unit == Some(unit));
+                if !created {
+                    return Err(RejectReason::BadCheat);
+                }
+            }
+            Cheat::MaxAbilities | Cheat::UnlearnAbilities => {
+                let unit = unit.ok_or(RejectReason::HeroDead)?;
+                if !self.seats.iter().any(|seat| seat.unit == Some(unit)) {
+                    return Err(RejectReason::BadCheat);
+                }
             }
             Cheat::Gold { .. }
             | Cheat::Levels { .. }
@@ -407,13 +439,12 @@ impl World {
     /// where it is put, at level one, and earns as a seat does. It has no
     /// courier.
     fn create_hero(&mut self, hero: bota_proto::HeroId, team: Team, at: Vec2) {
-        let next = self
-            .seats
-            .iter()
-            .map(|seat| seat.slot.0)
-            .max()
-            .map_or(0, |top| top + 1);
-        let slot = SlotId(next);
+        // The lowest place no seat holds: one a removed hero left is taken again, so the
+        // places stay within the seats a match may hold.
+        let free = (0..=u8::MAX)
+            .find(|slot| !self.seats.iter().any(|seat| seat.slot.0 == *slot))
+            .expect("a place below the bound on seats");
+        let slot = SlotId(free);
         let mut seat = Seat::new(slot, team, hero, 0, rules::STASH_SLOTS);
         seat.created = true;
         let unit = self.spawn_hero(team, at, slot, hero);
@@ -519,6 +550,74 @@ impl World {
         } else {
             self.raise_fallen_hero(seat, at);
         }
+    }
+
+    /// Dota's Hero Demo's Remove: a seat a cheat created leaves the match, its hero and every
+    /// unit it drives taken off the map with nothing done on their death. The seats after it
+    /// close up, and what remembered it by place forgets it.
+    fn remove_created_seat(&mut self, index: usize) {
+        assert!(self.seats[index].created, "only a created seat is removed");
+        let slot = self.seats[index].slot;
+        let driven: Vec<Entity> = self
+            .entities
+            .iter()
+            .filter(|&entity| self.owner.get(entity) == Some(&slot))
+            .chain(self.seats[index].unit)
+            .collect();
+        for unit in driven {
+            self.despawn(unit);
+        }
+        self.seats.remove(index);
+        for seat in &mut self.seats {
+            seat.hurt_by.retain(|hurt| hurt.by != index);
+            for hurt in &mut seat.hurt_by {
+                if hurt.by > index {
+                    hurt.by -= 1;
+                }
+            }
+        }
+        self.settle();
+    }
+
+    /// The learning of Dota's Hero Demo's Level Max: every ability a point raises goes up, a
+    /// level at a time in slot order, until no point or no level is left.
+    fn learn_all(&mut self, hero: Entity) {
+        let slots = self.abilities.get(hero).map_or(0, |book| book.slots.len());
+        // Each pass raises some slot or ends; no slot rises more than its cap.
+        for _ in 0..usize::from(rules::HERO_MAX_LEVEL) {
+            let mut raised = false;
+            for slot in 0..slots {
+                raised |= self.learn(hero, slot);
+            }
+            if !raised {
+                break;
+            }
+        }
+        self.settle();
+    }
+
+    /// Every point a hero spent comes back: what it learned of its own abilities stands at
+    /// nothing again, the Attribute Bonus too, and its talents are untaken. What its level
+    /// grants it keeps.
+    fn unlearn_all(&mut self, hero: Entity) {
+        let kit = self
+            .hero
+            .get(hero)
+            .and_then(|id| hero_def(*id))
+            .map_or(&[] as &[bota_proto::AbilityId], |def| def.abilities);
+        let Some(book) = self.abilities.get_mut(hero) else {
+            return;
+        };
+        // The hero's own abilities alone: what the map lends every unit (an objective's
+        // interaction) is no learning.
+        for held in book.slots.iter_mut().filter(|held| kit.contains(&held.id)) {
+            if bota_core::ability_def(held.id).is_some_and(|def| def.granted_at.is_none()) {
+                held.level = 0;
+            }
+        }
+        book.attribute_bonus = 0;
+        book.talents = bota_proto::Talents::default();
+        self.settle();
     }
 
     /// The unit a modifier cheat lands on: the one it names, else the one
