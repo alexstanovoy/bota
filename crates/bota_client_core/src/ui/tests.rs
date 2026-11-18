@@ -705,7 +705,9 @@ fn a_lobby_offering_more_heroes_than_there_are_breaks_the_stream() {
 }
 
 /// A unit told to see farther than any unit of the game can lights no more than the farthest
-/// sight there is: a view of thousands of such units cannot make the fog take for ever.
+/// sight there is: a view of thousands of such units cannot make the fog take for ever. The
+/// base blockers light their own cells whatever the view holds, so only the cells the unit adds
+/// to those are measured.
 #[test]
 fn a_unit_told_to_see_past_the_farthest_sight_there_is_lights_no_farther() {
     use bota_core::{CellGrid, rules};
@@ -725,12 +727,18 @@ fn a_unit_told_to_see_past_the_farthest_sight_there_is_lights_no_farther() {
     unit.pos = CellGrid::cell_center(centre);
     unit.vision_radius = Fixed::MAX;
     let mut lit = vec![false; cells];
+    let mut lit_without_the_unit = vec![false; cells];
     ground.lit(&a_tick(1, vec![unit], Vec::new()), Team::Radiant, &mut lit);
+    ground.lit(
+        &a_tick(1, Vec::new(), Vec::new()),
+        Team::Radiant,
+        &mut lit_without_the_unit,
+    );
     let reach = (bota_core::MAX_VISION / rules::GRID_CELL_SIZE + 1) as usize;
     let farthest = lit
         .iter()
         .enumerate()
-        .filter(|(_, lit)| **lit)
+        .filter(|(at, lit)| **lit && !lit_without_the_unit[*at])
         .map(|(at, _)| {
             let (x, y) = (at % rules::GRID_CELLS, at / rules::GRID_CELLS);
             x.abs_diff(centre.0).max(y.abs_diff(centre.1))
