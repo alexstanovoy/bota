@@ -3539,3 +3539,261 @@ fn action_phase_snapshots_reject_elapsed_time_for_idle() {
         assert_eq!(!app.lost, accepted);
     }
 }
+
+mod damage_numbers {
+    use super::*;
+    use crate::ui::app::FloaterKind;
+    use bota_proto::DamageKind;
+
+    /// A blow on the enemy hero `later` match ticks after the last tick, as the server tells it.
+    struct Scene {
+        app: App,
+        us: EntityId,
+        theirs: EntityId,
+    }
+
+    impl Scene {
+        /// An enemy hero in sight, the watched hero's blows on it.
+        fn new() -> Self {
+            let (mut app, us, theirs) = a_duel_app();
+            let mut view = app.view().expect("a view").clone();
+            view.tick += 1;
+            let mut enemy = owned(2, UnitKind::Hero, Some(SlotId(1)));
+            enemy.team = Team::Dire;
+            view.units.push(enemy);
+            app.handle(bota_proto::ServerMsg::Snapshot { view });
+            Scene { app, us, theirs }
+        }
+
+        fn window(&self) -> u32 {
+            self.app.damage_window_ticks()
+        }
+
+        fn deal(&mut self, later: u32, amount: i32, kind: DamageKind, critical: bool) {
+            // Each blow is a tick of its own: the stream tells a tick's events once.
+            let mut view = self.app.view().expect("a view").clone();
+            view.tick += later;
+            let tick = view.tick;
+            self.app.handle(bota_proto::ServerMsg::Snapshot { view });
+            self.app.handle(bota_proto::ServerMsg::Events {
+                tick,
+                events: vec![EventKind::Damaged {
+                    source: Some(self.us),
+                    target: self.theirs,
+                    amount,
+                    kind,
+                    inflictor: None,
+                    removal: false,
+                    critical,
+                }],
+            });
+        }
+
+        fn blow(&mut self, later: u32, amount: i32, kind: DamageKind) {
+            self.deal(later, amount, kind, false);
+        }
+
+        fn numbers(&self) -> Vec<(FloaterKind, i32)> {
+            self.app
+                .floaters
+                .iter()
+                .map(|f| (f.kind, f.amount))
+                .collect()
+        }
+    }
+
+    #[test]
+    fn five_ticks_inside_the_window_float_one_number_with_their_sum() {
+        let mut scene = Scene::new();
+        for amount in [10, 20, 30, 40, 50] {
+            scene.blow(6, amount, DamageKind::Magical);
+            scene.app.tick_effects(0.2);
+        }
+        assert_eq!(scene.numbers(), [(FloaterKind::Magic, 150)]);
+    }
+
+    #[test]
+    fn a_joined_number_starts_its_climb_again() {
+        let mut scene = Scene::new();
+        scene.blow(1, 10, DamageKind::Magical);
+        scene.app.tick_effects(0.5);
+        scene.blow(15, 10, DamageKind::Magical);
+        assert_eq!(
+            scene.app.floaters[0].age, 0.0,
+            "the sum appears at the start"
+        );
+    }
+
+    #[test]
+    fn a_blow_after_the_window_floats_a_second_number_and_the_first_finishes_its_climb() {
+        let mut scene = Scene::new();
+        scene.blow(1, 10, DamageKind::Magical);
+        scene.app.tick_effects(1.0);
+        scene.blow(scene.window(), 7, DamageKind::Magical);
+        assert_eq!(
+            scene.numbers(),
+            [(FloaterKind::Magic, 10), (FloaterKind::Magic, 7)]
+        );
+        assert!(
+            scene.app.floaters[0].age > 0.0,
+            "the old number goes on climbing"
+        );
+    }
+
+    #[test]
+    fn a_blow_on_the_last_tick_of_the_window_still_joins() {
+        let mut scene = Scene::new();
+        scene.blow(1, 10, DamageKind::Magical);
+        scene.blow(scene.window() - 1, 7, DamageKind::Magical);
+        assert_eq!(scene.numbers(), [(FloaterKind::Magic, 17)]);
+    }
+
+    #[test]
+    fn the_window_runs_from_the_first_blow_not_the_latest() {
+        let mut scene = Scene::new();
+        let third = scene.window() * 3 / 5;
+        scene.blow(1, 10, DamageKind::Magical);
+        scene.blow(third, 10, DamageKind::Magical);
+        scene.blow(third, 10, DamageKind::Magical);
+        assert_eq!(
+            scene.numbers(),
+            [(FloaterKind::Magic, 20), (FloaterKind::Magic, 10)]
+        );
+    }
+
+    /// The same blows, every `gap` ticks, as a replay at `speed` times shows them: the frames
+    /// between two ticks are as short as the speed makes them. The number each blow ends in.
+    fn sums_at_replay_speed(speed: f32) -> Vec<(FloaterKind, i32)> {
+        let mut scene = Scene::new();
+        let gap = scene.window() * 2 / 3;
+        let mut shown = Vec::new();
+        for amount in [10, 20, 40] {
+            scene.blow(gap, amount, DamageKind::Magical);
+            shown.push(*scene.numbers().last().expect("the blow's number"));
+            let seconds = gap as f32 / f32::from(scene.app.tick_rate());
+            scene.app.tick_effects(seconds / speed);
+        }
+        shown
+    }
+
+    #[test]
+    fn blows_sum_the_same_at_every_replay_speed() {
+        let live = sums_at_replay_speed(1.0);
+        assert_eq!(
+            live,
+            [
+                (FloaterKind::Magic, 10),
+                (FloaterKind::Magic, 30),
+                (FloaterKind::Magic, 40)
+            ]
+        );
+        for speed in [4.0, 16.0] {
+            assert_eq!(sums_at_replay_speed(speed), live, "at {speed}x");
+        }
+    }
+
+    #[test]
+    fn a_pause_inside_the_window_does_not_close_it() {
+        let mut scene = Scene::new();
+        scene.blow(1, 10, DamageKind::Magical);
+        // A pause: frames go on, the match does not.
+        scene.app.tick_effects(1.2);
+        scene.blow(3, 5, DamageKind::Magical);
+        assert_eq!(scene.numbers(), [(FloaterKind::Magic, 15)]);
+    }
+
+    #[test]
+    fn a_jump_forward_in_a_replay_keeps_the_seconds_it_skips_apart() {
+        let mut scene = Scene::new();
+        scene.blow(1, 10, DamageKind::Magical);
+        // A seek delivers the next blow in the same frame, a minute of the match later.
+        scene.blow(
+            60 * u32::from(scene.app.tick_rate()),
+            5,
+            DamageKind::Magical,
+        );
+        assert_eq!(
+            scene.numbers(),
+            [(FloaterKind::Magic, 10), (FloaterKind::Magic, 5)]
+        );
+    }
+
+    #[test]
+    fn blows_that_took_nothing_float_no_number_and_open_no_window() {
+        let mut scene = Scene::new();
+        for _ in 0..5 {
+            scene.blow(3, 0, DamageKind::Magical);
+            scene.app.tick_effects(0.1);
+        }
+        assert_eq!(scene.numbers(), []);
+        scene.blow(3, 9, DamageKind::Magical);
+        let opened = scene.app.floaters[0].opened;
+        scene.blow(scene.window() - 1, 1, DamageKind::Magical);
+        assert_eq!(
+            scene.numbers(),
+            [(FloaterKind::Magic, 10)],
+            "the window opened with the first damage, at tick {opened}"
+        );
+    }
+
+    #[test]
+    fn each_damage_type_sums_into_a_number_of_its_own() {
+        let mut scene = Scene::new();
+        for (amount, kind) in [
+            (10, DamageKind::Magical),
+            (20, DamageKind::Physical),
+            (30, DamageKind::Pure),
+            (1, DamageKind::Magical),
+            (2, DamageKind::Physical),
+            (3, DamageKind::Pure),
+        ] {
+            scene.blow(1, amount, kind);
+        }
+        assert_eq!(
+            scene.numbers(),
+            [
+                (FloaterKind::Magic, 11),
+                (FloaterKind::Damage, 22),
+                (FloaterKind::Pure, 33)
+            ]
+        );
+    }
+
+    #[test]
+    fn damage_to_two_units_sums_apart() {
+        let mut scene = Scene::new();
+        scene.blow(1, 10, DamageKind::Physical);
+        let (us, theirs) = (scene.us, scene.theirs);
+        (scene.us, scene.theirs) = (theirs, us);
+        scene.blow(1, 5, DamageKind::Physical);
+        (scene.us, scene.theirs) = (us, theirs);
+        scene.blow(1, 10, DamageKind::Physical);
+        assert_eq!(
+            scene.numbers(),
+            [(FloaterKind::Damage, 20), (FloaterKind::Damage, 5)]
+        );
+    }
+
+    #[test]
+    fn a_critical_strike_floats_a_number_of_its_own_that_the_sum_does_not_take_in() {
+        let mut scene = Scene::new();
+        scene.blow(1, 50, DamageKind::Physical);
+        scene.deal(1, 160, DamageKind::Physical, true);
+        scene.blow(1, 50, DamageKind::Physical);
+        assert_eq!(
+            scene.numbers(),
+            [(FloaterKind::Damage, 100), (FloaterKind::Crit, 160)]
+        );
+    }
+
+    #[test]
+    fn two_critical_strikes_float_two_numbers() {
+        let mut scene = Scene::new();
+        scene.deal(1, 160, DamageKind::Physical, true);
+        scene.deal(1, 170, DamageKind::Physical, true);
+        assert_eq!(
+            scene.numbers(),
+            [(FloaterKind::Crit, 160), (FloaterKind::Crit, 170)]
+        );
+    }
+}

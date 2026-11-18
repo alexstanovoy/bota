@@ -8,7 +8,7 @@ use bota_proto::{
 };
 
 use crate::ui::app::{
-    App, CueKind, FeedKind, Floater, FloaterKind, Killer, MAX_TOLD, RuneAct, Victim,
+    App, CueKind, DAMAGE_WINDOW, FeedKind, Floater, FloaterKind, Killer, MAX_TOLD, RuneAct, Victim,
 };
 
 /// Health share under which the low-health cue comes.
@@ -30,8 +30,14 @@ impl App {
             .or(self.selected.filter(|id| hero(*id)))
     }
 
+    /// How many match ticks [`DAMAGE_WINDOW`] lasts in this match.
+    pub fn damage_window_ticks(&self) -> u32 {
+        (DAMAGE_WINDOW * f32::from(self.tick_rate())).round() as u32
+    }
+
     /// Takes in one event of `tick`, and keeps it for the front end.
     pub(crate) fn absorb_event(&mut self, tick: u32, event: EventKind) {
+        self.event_tick = tick;
         // The Scan fact is restated in every batch: it tells no happening of its own, only what
         // changed since the last one.
         if let EventKind::Scan { team, radars, .. } = &event {
@@ -158,8 +164,9 @@ impl App {
                 target,
                 amount,
                 kind,
+                critical,
                 ..
-            } => self.on_damage(source, target, amount, kind),
+            } => self.on_damage(source, target, amount, kind, critical),
             EventKind::Missed { source, target } => {
                 if self.involves_hero(source, target) {
                     self.float(target, 0, FloaterKind::Miss);
@@ -294,15 +301,23 @@ impl App {
         target: EntityId,
         amount: i32,
         kind: DamageKind,
+        critical: bool,
     ) {
         if !self.involves_hero(source, target) {
             return;
         }
         let look = match kind {
             DamageKind::Physical => FloaterKind::Damage,
-            _ => FloaterKind::Magic,
+            DamageKind::Magical => FloaterKind::Magic,
+            DamageKind::Pure => FloaterKind::Pure,
         };
-        self.float(target, amount, look);
+        // A blow that took nothing (blocked, immune, rounded to nothing) shows no number and
+        // opens no window. A critical strike's number is its own, outside the sum.
+        if amount > 0 && critical {
+            self.float(target, amount, FloaterKind::Crit);
+        } else if amount > 0 {
+            self.float_damage(target, amount, look);
+        }
         let ears = self.ears();
         if source.is_some() && source == ears && kind == DamageKind::Physical {
             let hero = source.and_then(|id| self.freshest(id)).and_then(|u| u.hero);
@@ -501,8 +516,30 @@ impl App {
                 world,
                 unit,
                 age: 0.0,
+                opened: self.event_tick,
             });
         }
+    }
+
+    /// Floats damage over its unit: added to the number of its kind still within
+    /// [`DAMAGE_WINDOW`] of its first blow, which starts to climb afresh with the new sum, or as
+    /// a number of its own, which opens a window.
+    fn float_damage(&mut self, unit: EntityId, amount: i32, kind: FloaterKind) {
+        debug_assert!(kind.sums() && amount > 0, "{kind:?} {amount}");
+        let (now, window) = (self.event_tick, self.damage_window_ticks());
+        let open = self.floaters.iter_mut().rev().find(|f| {
+            f.unit == unit
+                && f.kind == kind
+                && now
+                    .checked_sub(f.opened)
+                    .is_some_and(|since| since < window)
+        });
+        if let Some(open) = open {
+            open.amount = open.amount.saturating_add(amount);
+            open.age = 0.0;
+            return;
+        }
+        self.float(unit, amount, kind);
     }
 
     /// The kill feed line of a death. Only a hero's death has one.

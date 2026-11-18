@@ -202,7 +202,7 @@ pub fn tap_again(last: Option<(Tap, f32)>, what: Tap) -> (bool, Option<(Tap, f32
 /// What a floater tells of, which decides how it is drawn.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FloaterKind {
-    /// Health taken off by a plain blow.
+    /// Health taken off by a plain (physical) blow.
     Damage,
     /// Health taken off by magic.
     Magic,
@@ -216,22 +216,37 @@ pub enum FloaterKind {
     Deny,
     /// Health mended.
     Heal,
+    /// Health taken off by pure damage, which nothing reduces.
+    Pure,
+    /// The damage of a critical strike: told apart from the plain damage around it, whose sum it
+    /// is not part of.
+    Crit,
 }
 
 /// A number floating off a unit.
 pub struct Floater {
     pub kind: FloaterKind,
     /// The level for a level gained, the number for health mended, gold won
-    /// or damage dealt; 0 for a miss and a deny.
+    /// or damage dealt (the running sum of its window, see
+    /// [`DAMAGE_WINDOW`]); 0 for a miss and a deny.
     pub amount: i32,
     /// World position it rises from: where its unit stood when it was set
     /// off.
     pub world: (f32, f32),
     /// The unit it tells of, for a front end to keep it over that unit.
     pub unit: EntityId,
-    /// Seconds since it appeared.
+    /// Seconds since it appeared, or since the last damage joined it: the display's clock.
     pub age: f32,
+    /// The match tick of the first damage of its sum: while [`App::damage_window_ticks`] have not
+    /// passed since, the next damage of its kind to its unit joins it. Only damage floaters sum;
+    /// the rest are never joined. A count of match ticks, not of frames or seconds, so that a
+    /// replay at any speed, a pause or a jump forward sum what live play does.
+    pub opened: u32,
 }
+
+/// Match seconds after the first blow of a number during which further damage of its kind to the
+/// same unit is added to it rather than floating a number of its own.
+pub const DAMAGE_WINDOW: f32 = 1.0;
 
 /// Seconds a floater rises before it is gone, unless its kind says otherwise
 /// ([`FloaterKind::life`]).
@@ -241,6 +256,15 @@ pub const FLOATER_LIFE: f32 = 1.3;
 pub const MISS_LIFE: f32 = 1.5;
 
 impl FloaterKind {
+    /// Whether floaters of this kind are damage numbers, whose instants within a
+    /// [`DAMAGE_WINDOW`] sum into one number.
+    pub const fn sums(self) -> bool {
+        matches!(
+            self,
+            FloaterKind::Damage | FloaterKind::Magic | FloaterKind::Pure
+        )
+    }
+
     /// Seconds a floater of this kind rises before it is gone.
     pub const fn life(self) -> f32 {
         match self {
@@ -577,6 +601,8 @@ pub struct App {
     /// The seat whose eyes a spectator has asked to watch through.
     pub eyes: Option<SlotId>,
     pub floaters: Vec<Floater>,
+    /// The match tick of the event being taken in: what a floater it sets off is stamped with.
+    pub(crate) event_tick: u32,
     pub feed: Vec<FeedLine>,
     /// The unit that last fell and who struck it, for the line its fall makes if it is a building.
     pub(crate) fallen_to: Option<(EntityId, Option<EntityId>)>,
@@ -661,6 +687,7 @@ impl App {
             shown_orders: Vec::new(),
             eyes: None,
             floaters: Vec::new(),
+            event_tick: 0,
             feed: Vec::new(),
             fallen_to: None,
             chat: Chat::default(),
