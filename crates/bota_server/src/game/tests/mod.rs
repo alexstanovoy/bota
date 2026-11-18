@@ -36,6 +36,7 @@ mod glyph;
 mod grenade;
 mod handles;
 mod hash;
+mod hero_demo;
 mod ids;
 mod illusions;
 mod item_numbers;

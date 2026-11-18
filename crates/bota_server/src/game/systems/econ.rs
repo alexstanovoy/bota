@@ -8,7 +8,7 @@ use bota_proto::{EventKind, GoldAward, GoldAwardKind, Team, UnitKind, Vec2};
 
 use crate::game::{
     Bounty, Entity, Event, EventVisibility, KILL_CREDIT_WINDOW_TICKS, Landed, Level, Modifier,
-    Purpose, World, wire_id,
+    Purpose, RespawnSpot, World, wire_id,
 };
 
 use super::fight::other_side;
@@ -643,8 +643,18 @@ impl World {
         }
     }
 
-    /// Stands a seat's fallen hero up at its fountain now.
+    /// Stands a seat's fallen hero up now: where it fell on a map that
+    /// raises heroes so, else at its fountain.
     pub(crate) fn respawn(&mut self, index: usize) {
+        if let Some(at) = self.seats[index].respawn_spot.0 {
+            self.raise_fallen_hero(index, at);
+            // Ground taken there leaves the hero down a tick more, to try
+            // the same spot again.
+            if !self.seats[index].dead() {
+                self.seats[index].respawn_spot = RespawnSpot::default();
+            }
+            return;
+        }
         let at = hero_spawn_pos(self.map, self.seats[index].team);
         self.raise_fallen_hero(index, at);
         let Some(hero) = self.seats[index].unit else {

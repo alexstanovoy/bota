@@ -139,7 +139,9 @@ struct Args {
     /// Public account ids in slot order, comma separated; '-' means no profile.
     #[arg(long, env = "BOTA_PROFILE_ACCOUNTS", value_parser = profile_accounts)]
     profile_accounts: Option<String>,
-    /// Which map to play: 0 Dota, 1 hero demo, 2 mid-only Dota (two lives or first tower, twenty game minutes).
+    /// Which map to play: 0 Dota, 1 the demo map as a sandbox, 2 mid-only Dota (two lives or first
+    /// tower, twenty game minutes), 3 Dota's Hero Demo on the demo map (Roshan, heroes rising where
+    /// they fell four seconds later, nothing that ends it).
     #[arg(long, default_value_t = 0, value_parser = parse_map)]
     map: u16,
     /// Seed of the match randomness. Drawn from the operating system when absent, and then
@@ -708,7 +710,9 @@ fn parse_map(value: &str) -> Result<u16, String> {
         .ok()
         .filter(|id| bota_core::MAPS.iter().any(|map| map.id.0 == *id))
         .ok_or_else(|| {
-            format!("unsupported map '{value}'; expected 0 (Dota), 1 (demo), or 2 (mid-only Dota)")
+            format!(
+                "unsupported map '{value}'; expected 0 (Dota), 1 (demo), 2 (mid-only Dota), or 3 (hero demo)"
+            )
         })
 }
 

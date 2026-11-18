@@ -42,6 +42,16 @@ pub fn at_base_shop(map: &impl ShopGeometry, pos: Vec2) -> bool {
         .any(|fountain| pos.within(*fountain, rules::units(map.shop_range())))
 }
 
+/// Where a team's heroes come in at the start of a match: the map's player
+/// start where it has one, else where they respawn.
+pub fn hero_start_pos(map: &MapDef, team: Team) -> Vec2 {
+    match (map.hero_starts, team) {
+        (Some([radiant, _]), Team::Radiant) => radiant,
+        (Some([_, dire]), Team::Dire) => dire,
+        _ => hero_spawn_pos(map, team),
+    }
+}
+
 /// Where a team's hero appears, beside the fountain rather than inside it.
 pub fn hero_spawn_pos(map: &MapDef, team: Team) -> Vec2 {
     let offset = match team {

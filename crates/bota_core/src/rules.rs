@@ -265,6 +265,18 @@ pub const DEMO_LANE_CORNERS: [Vec2; 3] = [
     Vec2::from_ints(8768, 9024),
     Vec2::from_ints(9312, 9376),
 ];
+/// Where heroes start on the demo map, Radiant then Dire: the map's
+/// `info_player_start_goodguys` and `info_player_start_badguys`, between
+/// Roshan's pit and the lane.
+pub const DEMO_HERO_STARTS: [Vec2; 2] =
+    [Vec2::from_ints(7104, 10560), Vec2::from_ints(7168, 10624)];
+/// Roshan's spot on the demo map: its `npc_dota_roshan_spawner`, where both
+/// `roshan_location` starts stand.
+pub const DEMO_ROSHAN_PIT: Vec2 = Vec2::from_ints(5888, 9472);
+/// Seconds a hero of the demo game lies dead, whatever its level: the
+/// Hero Demo's `SetFixedRespawnTime( 4 )` (`hero_demo/scripts/vscripts/
+/// addon_game_mode.lua`).
+pub const DEMO_RESPAWN_SECONDS: u32 = 4;
 
 // Trees and the jungle.
 

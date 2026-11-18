@@ -102,7 +102,8 @@ artifact_args = ["--replay", "{artifact}"]
 # one account start a match of it alone at once (`StartSolo`). Only people use it (a bot has no use for cheats).
 # `info` is bota's own flag byte (01: this ruleset is a Demo, which bota_radovid::is_demo reads and dbota opens from its
 # Demo Hero entry); radovid does not read it. --cheats is what makes the game server honour the cheats (it refuses them
-# with two or more seats). The map is the one `--map` value: 0 is the whole Dota map, 1 Dota's small demo map. A match
+# with two or more seats). The map is the one `--map` value: 3 is Dota's Hero Demo on its small demo map (Roshan,
+# heroes rising where they fell); 0 would be the whole Dota map. A match
 # ends a minute after its player left it (--empty-after-secs), and there is no replay to keep.
 [[ruleset]]
 id = "demo"
@@ -123,7 +124,7 @@ container_port = 4456
 public_url = "wss://game.example.org:{port}"
 mounts = ["/etc/radovid/game-cert:/certs:ro"]
 version_probe = ["--wire-fingerprint"]
-args = ["--map", "0", "--match-id", "{match_id}", "--bind", "0.0.0.0", "--ws-port", "4456",
+args = ["--map", "3", "--match-id", "{match_id}", "--bind", "0.0.0.0", "--ws-port", "4456",
         "--tls-cert", "/certs/fullchain.pem", "--tls-key", "/certs/privkey.pem",
         "--cheats", "--tactical-secs", "0", "--abandon-unjoined", "--empty-after-secs", "60"]
 env = { BOTA_SEATS = "{seats_with_versions}" }

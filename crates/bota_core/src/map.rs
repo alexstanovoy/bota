@@ -21,6 +21,10 @@ pub const MAP2_ID: MapId = MapId(2);
 pub const MAP2_DEATH_LIMIT: u16 = 2;
 /// Map2 gameplay duration in simulation ticks, excluding pregame.
 pub const MAP2_GAME_TICKS: u32 = 20 * 60 * rules::TICKS_PER_SECOND;
+/// The hero demo game: the demo map as Dota's Hero Demo plays it, with
+/// Roshan in his pit and heroes that rise where they fell.
+pub const HERO_DEMO_ID: MapId = MapId(3);
+
 /// The tick Map2 ends on as a draw when nothing decided it earlier, its
 /// pregame (Solo Mid's) included.
 pub const MAP2_TICK_CAP: u32 = rules::SOLO_MID_PREGAME_TICKS + MAP2_GAME_TICKS;
@@ -181,6 +185,14 @@ pub struct MapDef {
     /// and no seat it may not share it with holds it. Absent, such a seat is
     /// given a random one of those it may pick, as Dota gives one.
     pub default_hero: Option<HeroId>,
+    /// Where the heroes of a side come in at the start, Radiant then Dire:
+    /// the map's own player starts. Absent, beside their fountain.
+    pub hero_starts: Option<[Vec2; 2]>,
+    /// Ticks every hero lies dead, whatever its level and whoever killed it
+    /// (Dota's `SetFixedRespawnTime`). Absent, the game's own respawn times.
+    pub fixed_respawn_ticks: Option<u32>,
+    /// Whether a fallen hero rises where it fell rather than at its fountain.
+    pub respawn_where_fell: bool,
 }
 
 /// The Dota lanes bend once each on the way round the map; mid runs straight.
@@ -210,8 +222,34 @@ const DEMO_CAMPS: [CampDef; 2] = [
     ),
 ];
 
+/// Roshan's pit on the demo map as its two `trigger_boss_attackable`
+/// volumes bound it: both hold the one hull of `maps/hero_demo_main/
+/// entities/trigger_boss_attackable_2_6561.vmdl` (and `unnamed_6563.vmdl`),
+/// turned by the entities' yaw 91.62 about their origin (-3712, 128), shifted
+/// as the map is and rounded to the unit.
+const DEMO_BOSS_ZONES: [PitZone; 1] = [PitZone {
+    corners: &[
+        Vec2::from_ints(5556, 9505),
+        Vec2::from_ints(5591, 9302),
+        Vec2::from_ints(5824, 9081),
+        Vec2::from_ints(6140, 9186),
+        Vec2::from_ints(6289, 9638),
+        Vec2::from_ints(5911, 9980),
+        Vec2::from_ints(5629, 9764),
+    ],
+}];
+
+/// Roshan on the demo map: one pit, his home by day and by night, so he
+/// never walks; his respawn and drops are the game's.
+const DEMO_ROSHAN_LAIR: crate::LairDef = crate::LairDef {
+    day: rules::DEMO_ROSHAN_PIT,
+    night: rules::DEMO_ROSHAN_PIT,
+    moving: None,
+    ..crate::ROSHAN_LAIR
+};
+
 /// Every map, indexed by [`MapId`].
-pub const MAPS: [MapDef; 3] = [DOTA, DEMO, SKIRMISH];
+pub const MAPS: [MapDef; 4] = [DOTA, DEMO, SKIRMISH, HERO_DEMO];
 
 /// The Dota map, played to its Ancient.
 const DOTA: MapDef = MapDef {
@@ -251,6 +289,9 @@ const DOTA: MapDef = MapDef {
     opening_runes: true,
     pregame_ticks: rules::DOTA_PREGAME_TICKS,
     default_hero: None,
+    hero_starts: None,
+    fixed_respawn_ticks: None,
+    respawn_where_fell: false,
 };
 
 /// The hero demo map: one short lane with a single tower a side, two
@@ -297,6 +338,9 @@ const DEMO: MapDef = MapDef {
     opening_runes: true,
     pregame_ticks: rules::SOLO_MID_PREGAME_TICKS,
     default_hero: None,
+    hero_starts: None,
+    fixed_respawn_ticks: None,
+    respawn_where_fell: false,
 };
 
 /// Full Dota geometry with mid-only waves and a hero/tower finish bounded by
@@ -321,6 +365,27 @@ const SKIRMISH: MapDef = MapDef {
     pregame_ticks: rules::SOLO_MID_PREGAME_TICKS,
     default_hero: Some(HeroId::SHADOW_FIEND),
     ..DOTA
+};
+
+/// Dota's Hero Demo (`dota_addons/hero_demo`) on its map: the demo map with
+/// Roshan in the pit the map holds, the heroes coming in at the map's player
+/// starts with no pregame (`SetPreGameTime( 0 )`), so the first waves walk
+/// out on the first tick, and every hero lying dead a fixed four seconds
+/// (`SetFixedRespawnTime( 4 )`). A fallen hero rises where it fell, not at
+/// its fountain, so trying a hero out is never a walk back. Nothing ends it:
+/// it has no Ancients, no death limit, and towers that fall end nothing.
+const HERO_DEMO: MapDef = MapDef {
+    id: HERO_DEMO_ID,
+    lairs: &[DEMO_ROSHAN_LAIR],
+    boss_zones: &DEMO_BOSS_ZONES,
+    default_objectives: ObjectiveSet::of(ObjectiveKind::Roshan),
+    // No pregame: the horn sounds on the match's first tick, the first the
+    // clock reaches.
+    pregame_ticks: 1,
+    hero_starts: Some(rules::DEMO_HERO_STARTS),
+    fixed_respawn_ticks: Some(rules::DEMO_RESPAWN_SECONDS * rules::TICKS_PER_SECOND),
+    respawn_where_fell: true,
+    ..DEMO
 };
 
 const _: () = assert!(MAP2_TICK_CAP == SKIRMISH.pregame_ticks + MAP2_GAME_TICKS);

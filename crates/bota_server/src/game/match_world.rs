@@ -1,7 +1,7 @@
 //! The surface a match runs a world through: what the game loop asks of it.
 
 use bota_core::order_halts as is_halt;
-use bota_core::{AllyUse, ItemDef, clamp_to_map, hero_spawn_pos, item_def, map_of, rules};
+use bota_core::{AllyUse, ItemDef, clamp_to_map, hero_start_pos, item_def, map_of, rules};
 use bota_proto::{Aim, MatchStats, Order, RejectReason, SlotId, SlotStats, Target, Team};
 
 use crate::game::{
@@ -35,7 +35,7 @@ impl World {
         world.stand_up_objectives(cfg.objectives);
         world.stand_up_runes(cfg.runes);
         for pick in &cfg.picks {
-            let at = hero_spawn_pos(map, pick.team);
+            let at = hero_start_pos(map, pick.team);
             let hero = world.spawn_hero(pick.team, at, pick.slot, pick.hero);
             let mut seat = Seat::new(
                 pick.slot,

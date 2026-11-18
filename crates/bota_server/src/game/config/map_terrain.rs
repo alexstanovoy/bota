@@ -31,7 +31,7 @@ pub const DOTA_TERRAIN: MapTerrain = MapTerrain {
 };
 
 /// Every map's forest and ground, indexed like [`MAPS`].
-const TERRAINS: [MapTerrain; MAPS.len()] = [DOTA_TERRAIN, DEMO_TERRAIN, DOTA_TERRAIN];
+const TERRAINS: [MapTerrain; MAPS.len()] = [DOTA_TERRAIN, DEMO_TERRAIN, DOTA_TERRAIN, DEMO_TERRAIN];
 
 /// The hero demo map's forest and ground.
 pub const DEMO_TERRAIN: MapTerrain = MapTerrain {

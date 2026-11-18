@@ -4,7 +4,7 @@ use crate::Args;
 
 #[test]
 fn map_cli_accepts_each_registered_map() {
-    for id in ["0", "1", "2"] {
+    for id in ["0", "1", "2", "3"] {
         let args = Args::try_parse_from(["bota_server", "--map", id]).expect("registered map");
 
         assert_eq!(args.map.to_string(), id);
@@ -13,7 +13,7 @@ fn map_cli_accepts_each_registered_map() {
 
 #[test]
 fn map_cli_rejects_unknown_maps_with_supported_ids_in_the_error() {
-    for id in ["3", "65535", "not-a-map", "-1"] {
+    for id in ["4", "65535", "not-a-map", "-1"] {
         let error = Args::try_parse_from(["bota_server", &format!("--map={id}")])
             .expect_err("unknown maps must not fall back to Map0");
 
@@ -26,7 +26,7 @@ fn map_cli_rejects_unknown_maps_with_supported_ids_in_the_error() {
         assert!(
             error
                 .to_string()
-                .contains("expected 0 (Dota), 1 (demo), or 2 (mid-only Dota)")
+                .contains("expected 0 (Dota), 1 (demo), 2 (mid-only Dota), or 3 (hero demo)")
         );
     }
 }
@@ -57,13 +57,13 @@ fn objectives_and_runes_are_sets_by_name_and_what_a_map_does_not_play_fails_befo
             Args::try_parse_from(["bota_server", bad[0], bad[1]]).expect_err("no such kind");
         assert_eq!(error.kind(), ErrorKind::ValueValidation, "{bad:?}");
     }
-    // The demo map has neither pits nor rune spots, nor the Twin Gates, which
-    // stand at the full map's corners.
-    for map in ["0", "1", "2"] {
+    // The demo map has no rune spots, nor the Twin Gates, which stand at the
+    // full map's corners; its pit holds Roshan only in the hero demo.
+    for map in ["0", "1", "2", "3"] {
         for (asked, refused_on) in [
             (["--objectives", "roshan"], &["1"][..]),
-            (["--runes", "bounty"], &["1"][..]),
-            (["--objectives", "twin_gates"], &["1"][..]),
+            (["--runes", "bounty"], &["1", "3"][..]),
+            (["--objectives", "twin_gates"], &["1", "3"][..]),
         ] {
             let args = Args::try_parse_from(["bota_server", "--map", map, asked[0], asked[1]])
                 .expect("a set by name");

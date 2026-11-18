@@ -2,7 +2,7 @@
 
 use bota_proto::{HeroId, ItemId, SlotId, Team, Vec2};
 
-use crate::engine::state_hash;
+use crate::engine::{Fnv, StateHash, state_hash};
 use crate::game::{Buyback, Entity, Inventory};
 
 /// A Town Portal Scroll being read by a seat's hero, and the sight it
@@ -55,6 +55,36 @@ pub struct HeroContribution {
     pub at: u32,
     /// Last damage separately: a later debuff cannot renew kill credit.
     pub damage_at: Option<u32>,
+}
+
+/// The tag a seat's respawn spot goes into the world fingerprint under.
+const RESPAWN_SPOT_HASH_TAG: u8 = 0xB8;
+
+/// Where a seat's fallen hero rises, on a map whose heroes rise where they
+/// fell: the spot it fell on, until it rises. Empty on every other map, and
+/// the fingerprint of a match on one carries nothing of it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RespawnSpot(pub Option<Vec2>);
+
+impl StateHash for RespawnSpot {
+    fn state_hash(&self, fnv: &mut Fnv) {
+        let Some(at) = self.0 else {
+            return;
+        };
+        fnv.u8(RESPAWN_SPOT_HASH_TAG);
+        at.state_hash(fnv);
+    }
+}
+
+#[cfg(test)]
+impl crate::engine::Specimen for RespawnSpot {
+    fn low() -> Self {
+        RespawnSpot(None)
+    }
+
+    fn high() -> Self {
+        RespawnSpot(Some(Vec2::from_ints(1, 2)))
+    }
 }
 
 /// One player's place at the match. Everything here outlives the body.
@@ -129,6 +159,8 @@ pub struct Seat {
     pub hurt_by: Vec<HeroContribution>,
     /// Its buyback: the cooldown, and what its hero's next death owes.
     pub buyback: Buyback,
+    /// Where its fallen hero rises, when the map raises it where it fell.
+    pub respawn_spot: RespawnSpot,
 }
 
 /// Damage within twenty seconds can credit a creep or tower finish to its sole
@@ -214,6 +246,7 @@ impl Seat {
             invulnerable: false,
             hurt_by: Vec::new(),
             buyback: Buyback::default(),
+            respawn_spot: RespawnSpot::default(),
         }
     }
 
@@ -263,5 +296,6 @@ state_hash!(Seat {
     created,
     invulnerable,
     hurt_by,
-    buyback
+    buyback,
+    respawn_spot
 });
