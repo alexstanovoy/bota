@@ -25,7 +25,7 @@ use std::sync::Arc;
 
 use bota_core::{MapDef, map_of};
 use bota_proto::{
-    AbortReason, EntityId, EventKind, Heard, HeroId, MatchInfo, MatchStats, OutgoingOrder,
+    AbortReason, EntityId, EventKind, Heard, HeroId, MatchInfo, MatchStats, Order, OutgoingOrder,
     PlayerView, RejectReason, ServerMsg, SlotId, Talents, Team, TickMode, UnitView, WorldView,
 };
 
@@ -163,6 +163,7 @@ pub struct ClientSession {
     waits: LocalWaits,
     next_seq: u32,
     confirmations: confirmations::Confirmations,
+    pending_learning: Option<u32>,
     stream: StreamState,
     ended: Option<SessionEnd>,
     scan: scan::ScanFacts,
@@ -229,6 +230,7 @@ impl ClientSession {
             waits: LocalWaits::default(),
             next_seq: 0,
             confirmations: confirmations::Confirmations::default(),
+            pending_learning: None,
             stream: StreamState::default(),
             ended: None,
             scan: scan::ScanFacts::default(),
@@ -238,11 +240,17 @@ impl ClientSession {
     pub(crate) fn bind_connection(&mut self, player: bota_proto::PlayerId) {
         if self.confirmations.bind(player) {
             self.waits.clear_swap_predictions();
+            self.pending_learning = None;
         }
     }
 
     pub(crate) fn confirmed_sequence(&self) -> u32 {
         self.confirmations.through()
+    }
+
+    #[cfg(feature = "ui")]
+    pub(crate) fn learning_pending(&self) -> bool {
+        self.pending_learning.is_some()
     }
 
     /// Folds one server message in.
@@ -406,6 +414,12 @@ impl ClientSession {
                 .and_then(|d| d.settled)
         });
         self.confirmations.snapshot(settled, tick);
+        if self
+            .pending_learning
+            .is_some_and(|sequence| sequence <= self.confirmed_sequence())
+        {
+            self.pending_learning = None;
+        }
         let context = crate::readiness::backpack_context(self);
         self.waits.synchronize(tick, &context);
         let ack = self.settle_stream(tick);
@@ -440,6 +454,9 @@ impl ClientSession {
 
     /// Rolls back an order the server refused.
     pub fn ingest_rejection(&mut self, seq: u32, reason: RejectReason) -> Ingested {
+        if self.pending_learning == Some(seq) {
+            self.pending_learning = None;
+        }
         self.ledger.reject(seq);
         self.waits.reject(seq);
         Ingested::Rejected { seq, reason }
@@ -456,6 +473,14 @@ impl ClientSession {
         let ends_body = crate::ends_body(self, order);
         self.ledger.record(seq, order, ends_body)?;
         self.confirmations.record(seq, seen);
+        if order.unit.is_none()
+            && matches!(
+                order.order,
+                Order::LearnTalent { .. } | Order::LearnAttributeBonus
+            )
+        {
+            self.pending_learning = Some(seq);
+        }
         // A queued use starts its wait only when its unit takes it up.
         if !order.waits()
             && let Some(body) = wait_started_by(self, order)

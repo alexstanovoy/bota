@@ -397,6 +397,8 @@ pub enum Refused {
     /// An attack on an ally the client did not send, the game not letting it
     /// be denied.
     Undeniable(Undeniable),
+    /// A talent or the Attribute Bonus asked for that the hero's view says it cannot take.
+    Talent(crate::TalentRefusal),
     /// A line the client could not read (the console's).
     Command(CommandError),
 }
@@ -827,16 +829,99 @@ impl App {
             .copied()
     }
 
-    /// Takes a talent of one's hero's tree; talents spend no skill point.
+    /// Takes a talent of one's hero's tree; talents spend no skill point. A talent the hero's
+    /// view says it cannot take is not asked for: the refusal says why.
     pub fn learn_talent(&mut self, talent: u8) {
-        self.send_order(Order::LearnTalent {
-            talent: TalentSlot(talent),
-        });
+        if self.ordering_unit().is_none() && self.hero_learning_blocked() {
+            return;
+        }
+        let slot = TalentSlot(talent);
+        if let Some(why) = self.my_talent_refusal(slot) {
+            self.refuse_talent(why);
+            return;
+        }
+        self.send_order(Order::LearnTalent { talent: slot });
     }
 
-    /// Spends a skill point of one's hero on its Attribute Bonus.
+    /// Takes the talent of `side` in the lowest tier that is open to take, as Dota's talent keys
+    /// do; when no tier of that side is, the refusal of the lowest tier not yet taken there says
+    /// why.
+    pub fn learn_talent_of_side(&mut self, side: crate::TalentSide) {
+        if self.ordering_unit().is_some() || self.hero_learning_blocked() {
+            return;
+        }
+        let Some(view) = self.my_slot.and_then(|slot| self.talents_of(slot)) else {
+            return;
+        };
+        let tiers = 0..TalentSlot::COUNT / 2;
+        let slots = tiers.map(|tier| TalentSlot(2 * tier + side as u8));
+        if let Some(open) = slots
+            .clone()
+            .find(|slot| view.may_learn.is_some_and(|open| open.has(*slot)))
+        {
+            self.send_order(Order::LearnTalent { talent: open });
+        } else if let Some(why) = slots
+            .filter(|slot| !view.learned.has(*slot))
+            .find_map(|slot| self.my_talent_refusal(slot))
+        {
+            self.refuse_talent(why);
+        }
+    }
+
+    /// Spends a skill point of one's hero on its Attribute Bonus; one it cannot take is not asked
+    /// for: the refusal says why.
     pub fn learn_attribute_bonus(&mut self) {
+        if self.ordering_unit().is_none() && self.hero_learning_blocked() {
+            return;
+        }
+        if let Some(why) = self.my_attribute_refusal() {
+            self.refuse_talent(why);
+            return;
+        }
         self.send_order(Order::LearnAttributeBonus);
+    }
+
+    fn hero_learning_blocked(&mut self) -> bool {
+        if self
+            .my_slot
+            .and_then(|slot| self.player(slot))
+            .is_some_and(|player| player.respawn_left > 0)
+        {
+            self.refuse_talent(crate::TalentRefusal::HeroDead);
+            return true;
+        }
+        self.session().is_some_and(ClientSession::learning_pending)
+    }
+
+    /// Why one's own hero cannot take `slot` now, as its view tells it.
+    fn my_talent_refusal(&self, slot: TalentSlot) -> Option<crate::TalentRefusal> {
+        if self.ordering_unit().is_some() {
+            return None;
+        }
+        let player = self.player(self.my_slot?)?;
+        crate::talent_refusal(&self.talents_of(player.slot)?, player.level, slot)
+    }
+
+    /// Why one's own hero cannot spend a point on its Attribute Bonus now.
+    fn my_attribute_refusal(&self) -> Option<crate::TalentRefusal> {
+        if self.ordering_unit().is_some() {
+            return None;
+        }
+        let player = self.player(self.my_slot?)?;
+        let hero = self.view()?.unit(player.unit?)?;
+        let view = self.talents_of(player.slot)?;
+        let unspent = crate::unspent_points(hero.level, &hero.abilities, view.attribute_bonus);
+        crate::attribute_refusal(&view, player.level, unspent)
+    }
+
+    /// Tells of a talent or the Attribute Bonus the hero cannot take now, sent nowhere.
+    fn refuse_talent(&mut self, why: crate::TalentRefusal) {
+        self.reject = Some((Refused::Talent(why), 2.5));
+        self.cue(
+            CueKind::Refused(bota_proto::RejectReason::CannotLearn),
+            0.8,
+            None,
+        );
     }
 
     /// Activates the Glyph of Fortification of one's side.

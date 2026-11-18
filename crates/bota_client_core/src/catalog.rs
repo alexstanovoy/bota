@@ -5,7 +5,7 @@ use bota_core::{
     agility_armor, agility_attack_speed, attribute_regen, attributes_at_level, hero_def,
     intelligence_magic_resist_bp, talent_floor, white_damage_least,
 };
-use bota_proto::{EffectId, Fixed, HeroId, TalentSlot, Talents};
+use bota_proto::{EffectId, Fixed, HeroId, TalentSlot, TalentView, Talents};
 
 /// Whether a front end lists an effect among a unit's buffs and debuffs. Dota
 /// shows how long a ward or a summoned unit has left on its health bar, not
@@ -26,6 +26,59 @@ pub fn talent_levels(slot: TalentSlot) -> (u8, u8) {
         talent_floor(slot, none),
         talent_floor(slot, none.with(slot.other())),
     )
+}
+
+/// Which side of its tier a talent stands on, as an interface draws the tier: the left talent is
+/// the even slot, the right one the odd.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TalentSide {
+    Left = 0,
+    Right = 1,
+}
+
+/// Why the tree of a hero's talents or its Attribute Bonus takes nothing more right now, as the
+/// hero's own view tells it: what a front end tells a player who asks for it anyway.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TalentRefusal {
+    /// The seat's hero is waiting to respawn.
+    HeroDead,
+    /// The hero has not reached the level the talent opens at (the tier's, or once the other
+    /// talent of the tier is taken, the later one's).
+    LevelNotReached(u8),
+    /// The talent is taken already.
+    AlreadyLearned,
+    /// No skill point is unspent.
+    NoPoint,
+    /// The Attribute Bonus has every level it may have.
+    BonusComplete,
+}
+
+/// Why `slot` is locked by its level or learned state.
+pub fn talent_refusal(view: &TalentView, level: u8, slot: TalentSlot) -> Option<TalentRefusal> {
+    if slot.0 >= TalentSlot::COUNT || view.may_learn.is_some_and(|open| open.has(slot)) {
+        return None;
+    }
+    if view.learned.has(slot) {
+        return Some(TalentRefusal::AlreadyLearned);
+    }
+    let floor = talent_floor(slot, view.learned);
+    (level < floor).then_some(TalentRefusal::LevelNotReached(floor))
+}
+
+/// Why the Attribute Bonus is locked by its level or the available skill points.
+pub fn attribute_refusal(view: &TalentView, level: u8, unspent: u8) -> Option<TalentRefusal> {
+    if view.may_learn_attribute_bonus == Some(true) {
+        return None;
+    }
+    if view.attribute_bonus >= bota_core::rules::ATTRIBUTE_BONUS_MAX_LEVEL {
+        return Some(TalentRefusal::BonusComplete);
+    }
+    let floor = bota_core::attribute_bonus_floor(view.attribute_bonus);
+    if level < floor {
+        Some(TalentRefusal::LevelNotReached(floor))
+    } else {
+        (unspent == 0).then_some(TalentRefusal::NoPoint)
+    }
 }
 
 /// Whether a hero has a talent tree at all.

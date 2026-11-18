@@ -3804,3 +3804,189 @@ mod damage_numbers {
         );
     }
 }
+/// An app whose seat drives a Shadow Fiend of `level` with `told` as its talents.
+fn a_fiend_with_talents(level: u8, told: bota_proto::TalentView) -> App {
+    let mut app = a_started_app();
+    let mut fiend = owned(1, UnitKind::Hero, Some(SlotId(0)));
+    fiend.hero = Some(HeroId::SHADOW_FIEND);
+    fiend.level = level;
+    let id = fiend.id;
+    let mut seat = a_seat(SlotId(0), Some(id));
+    seat.level = level;
+    let mut view = a_tick(10, vec![fiend], vec![seat]);
+    view.talents = vec![told];
+    app.handle(bota_proto::ServerMsg::Snapshot { view });
+    app
+}
+
+fn last_order(app: &App) -> Option<Order> {
+    app.shown_orders.last().map(|shown| shown.order)
+}
+
+fn talents_told(learned: &[u8], may_learn: &[u8], attribute_bonus: u8) -> bota_proto::TalentView {
+    let set = |slots: &[u8]| {
+        slots
+            .iter()
+            .fold(bota_proto::Talents::default(), |set, slot| {
+                set.with(bota_proto::TalentSlot(*slot))
+            })
+    };
+    bota_proto::TalentView {
+        slot: SlotId(0),
+        learned: set(learned),
+        learnable: bota_proto::Talents::default(),
+        attribute_bonus,
+        attribute_bonus_learnable: false,
+        may_learn: Some(set(may_learn)),
+        may_learn_attribute_bonus: Some(false),
+    }
+}
+
+#[test]
+fn the_left_talent_key_takes_the_left_talent_of_the_lowest_open_tier() {
+    use crate::TalentSide;
+    // Level 15 with nothing taken: the level-10 and the level-15 tier are both open.
+    let mut app = a_fiend_with_talents(15, talents_told(&[], &[0, 1, 2, 3], 0));
+    app.learn_talent_of_side(TalentSide::Left);
+    assert_eq!(
+        last_order(&app),
+        Some(Order::LearnTalent {
+            talent: bota_proto::TalentSlot(0)
+        }),
+        "the left key takes the level-10 tier's left talent first"
+    );
+    let mut app = a_fiend_with_talents(15, talents_told(&[0], &[2, 3], 0));
+    app.learn_talent_of_side(TalentSide::Left);
+    assert_eq!(
+        last_order(&app),
+        Some(Order::LearnTalent {
+            talent: bota_proto::TalentSlot(2)
+        }),
+        "with the level-10 tier taken, the left key goes on to the level-15 tier"
+    );
+    let mut app = a_fiend_with_talents(15, talents_told(&[], &[0, 1, 2, 3], 0));
+    app.learn_talent_of_side(TalentSide::Right);
+    assert_eq!(
+        last_order(&app),
+        Some(Order::LearnTalent {
+            talent: bota_proto::TalentSlot(1)
+        }),
+        "the right key takes the right talent"
+    );
+}
+
+#[test]
+fn a_talent_key_with_no_tier_open_tells_the_level_the_next_tier_opens_at_and_sends_nothing() {
+    let mut app = a_fiend_with_talents(9, talents_told(&[], &[], 0));
+    app.learn_talent_of_side(crate::TalentSide::Left);
+    assert_eq!(last_order(&app), None, "nothing is asked of the server");
+    assert_eq!(
+        app.reject.as_ref().map(|(refused, _)| refused),
+        Some(&crate::Refused::Talent(
+            crate::TalentRefusal::LevelNotReached(10)
+        )),
+        "the refusal names the level of the lowest tier"
+    );
+}
+
+#[test]
+fn a_talent_asked_for_by_slot_that_is_taken_already_is_refused_as_taken() {
+    let mut app = a_fiend_with_talents(15, talents_told(&[0], &[2, 3], 0));
+    app.learn_talent(0);
+    assert_eq!(last_order(&app), None);
+    assert_eq!(
+        app.reject.as_ref().map(|(refused, _)| refused),
+        Some(&crate::Refused::Talent(
+            crate::TalentRefusal::AlreadyLearned
+        ))
+    );
+}
+
+#[test]
+fn the_other_talent_of_a_taken_tier_waits_for_the_late_level() {
+    let mut app = a_fiend_with_talents(15, talents_told(&[0], &[2, 3], 0));
+    app.learn_talent(1);
+    assert_eq!(last_order(&app), None);
+    assert_eq!(
+        app.reject.as_ref().map(|(refused, _)| refused),
+        Some(&crate::Refused::Talent(
+            crate::TalentRefusal::LevelNotReached(bota_core::rules::TALENT_SECOND_LEVELS[0])
+        ))
+    );
+}
+
+#[test]
+fn a_talent_slot_outside_the_tree_reaches_the_server_without_indexing_a_tier() {
+    let mut app = a_fiend_with_talents(15, talents_told(&[], &[0, 1], 0));
+    app.learn_talent(u8::MAX);
+    assert_eq!(
+        last_order(&app),
+        Some(Order::LearnTalent {
+            talent: bota_proto::TalentSlot(u8::MAX)
+        })
+    );
+}
+
+#[test]
+fn an_attribute_bonus_above_the_cap_is_refused_without_calculating_a_level_floor() {
+    let mut app = a_fiend_with_talents(30, talents_told(&[], &[], u8::MAX));
+    app.learn_attribute_bonus();
+    assert_eq!(
+        app.reject.as_ref().map(|(refused, _)| refused),
+        Some(&crate::Refused::Talent(crate::TalentRefusal::BonusComplete))
+    );
+}
+
+#[test]
+fn an_attribute_bonus_asked_for_below_its_level_is_refused_with_that_level_and_sends_nothing() {
+    let mut app = a_fiend_with_talents(1, talents_told(&[], &[], 0));
+    app.learn_attribute_bonus();
+    assert_eq!(last_order(&app), None);
+    assert_eq!(
+        app.reject.as_ref().map(|(refused, _)| refused),
+        Some(&crate::Refused::Talent(
+            crate::TalentRefusal::LevelNotReached(bota_core::attribute_bonus_floor(0))
+        ))
+    );
+}
+
+#[test]
+fn the_attribute_bonus_says_why_it_takes_nothing() {
+    use crate::{TalentRefusal, attribute_refusal};
+    let told = |bonus, open| bota_proto::TalentView {
+        attribute_bonus: bonus,
+        may_learn_attribute_bonus: Some(open),
+        ..talents_told(&[], &[], 0)
+    };
+    assert_eq!(
+        attribute_refusal(&told(0, false), 6, 0),
+        Some(TalentRefusal::NoPoint),
+        "the level is there, no point is unspent"
+    );
+    assert_eq!(
+        attribute_refusal(
+            &told(bota_core::rules::ATTRIBUTE_BONUS_MAX_LEVEL, false),
+            30,
+            3
+        ),
+        Some(TalentRefusal::BonusComplete),
+        "every level taken"
+    );
+    assert_eq!(
+        attribute_refusal(&told(2, false), 4, 1),
+        Some(TalentRefusal::LevelNotReached(
+            bota_core::attribute_bonus_floor(2)
+        )),
+        "the third level waits for its floor"
+    );
+    assert_eq!(
+        attribute_refusal(&told(2, true), 6, 1),
+        None,
+        "the view says it can"
+    );
+    assert_eq!(
+        attribute_refusal(&told(2, false), 6, 1),
+        None,
+        "a point and the level, yet closed: the hero stands dead, and no reason is told"
+    );
+}
