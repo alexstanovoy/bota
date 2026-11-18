@@ -203,9 +203,8 @@ fn a_match_runs_on_for_a_teammate_after_a_seat_leaves_for_good() {
         seat(2, "friend", Team::Radiant),
         seat(3, "enemy", Team::Dire),
     ];
-    let directory =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/recording_tests");
-    std::fs::create_dir_all(&directory).expect("recording directory");
+    // The temporary directory: a checkout built with CARGO_TARGET_DIR has no `target/`.
+    let directory = std::env::temp_dir();
     let meta = directory.join(format!("team-leave-{}.meta", std::process::id()));
     let replay = meta.with_extension("brp");
     let mut options = opts(reserved);
@@ -283,6 +282,9 @@ fn a_match_runs_on_for_a_teammate_after_a_seat_leaves_for_good() {
             .map(|left| (left.slot.0, left.tick))
             .collect::<Vec<_>>()
     );
+    for path in [&meta, &replay] {
+        let _ = std::fs::remove_file(path);
+    }
 }
 
 /// A link that drops its connection, without leaving, once it has acknowledged `drop_at`.
@@ -320,9 +322,8 @@ fn a_match_everyone_dropped_ends_once_it_was_empty_long_enough() {
         seat(3, "enemy", Team::Dire),
     ]);
     opts.empty_after = Some(Duration::from_secs(1));
-    let directory =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/recording_tests");
-    std::fs::create_dir_all(&directory).expect("recording directory");
+    // The temporary directory: a checkout built with CARGO_TARGET_DIR has no `target/`.
+    let directory = std::env::temp_dir();
     let meta = directory.join(format!("team-drop-{}.meta", std::process::id()));
     opts.meta = Some(meta.clone());
     let (ended, end) = std::sync::mpsc::channel();
@@ -361,7 +362,8 @@ fn a_match_everyone_dropped_ends_once_it_was_empty_long_enough() {
         "no result for a match nobody plays"
     );
     let recorded =
-        bota_replay::meta::decode(&std::fs::read(meta).expect("metadata")).expect("read metadata");
+        bota_replay::meta::decode(&std::fs::read(&meta).expect("metadata")).expect("read metadata");
+    let _ = std::fs::remove_file(&meta);
     assert!(!recorded.complete);
     assert!(
         !recorded

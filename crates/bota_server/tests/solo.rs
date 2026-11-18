@@ -161,8 +161,8 @@ fn observer(address: &str) -> thread::JoinHandle<()> {
 fn scripted_with_observer(watched: bool) -> Left {
     static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
     let sequence = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/recording_tests");
-    std::fs::create_dir_all(&dir).expect("recording directory");
+    // The temporary directory: a checkout built with CARGO_TARGET_DIR has no `target/`.
+    let dir = std::env::temp_dir();
     let id = std::process::id();
     let left = Left {
         replay: dir.join(format!("bota-meta-{id}-{sequence}.brp")),
