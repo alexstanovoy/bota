@@ -140,6 +140,10 @@ impl World {
             self.buy_back(cmd.slot, cmd.unit, events);
             return;
         }
+        if let Order::Scan { at } = cmd.order {
+            self.use_scan(cmd.slot, at);
+            return;
+        }
         if self.for_dead_hero(cmd.slot, cmd.unit) {
             self.take_order_while_down(cmd.slot, cmd.order, events);
             return;
@@ -461,6 +465,7 @@ impl World {
             | Order::LearnAttributeBonus
             | Order::Glyph
             | Order::Buyback
+            | Order::Scan { .. }
             | Order::Swap { .. }
             | Order::Sell { .. }
             | Order::SwitchWard { .. }
@@ -553,6 +558,9 @@ impl World {
         }
         if *order == Order::Buyback {
             return self.check_buyback(slot, named);
+        }
+        if matches!(order, Order::Scan { .. }) {
+            return self.check_scan(slot);
         }
         let Some(seat) = self.seat(slot) else {
             return Err(RejectReason::HeroDead);
@@ -649,7 +657,7 @@ impl World {
         named: Option<bota_proto::EntityId>,
         order: &Order,
     ) -> Option<bota_proto::EntityId> {
-        if matches!(order, Order::Glyph | Order::Buyback) {
+        if matches!(order, Order::Glyph | Order::Buyback | Order::Scan { .. }) {
             return None;
         }
         self.driven_by(slot, named).map(wire_id)

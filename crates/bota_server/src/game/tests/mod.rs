@@ -60,6 +60,7 @@ mod pudge_talents;
 mod purchase_rules;
 mod queue;
 mod runes;
+mod scan;
 mod shared_cooldown;
 mod shop;
 mod stacking;

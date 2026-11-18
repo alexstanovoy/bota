@@ -341,6 +341,7 @@ impl World {
         for glyph in &mut self.glyphs {
             glyph.ready_at = glyph.ready_at.min(now);
         }
+        self.refresh_scans();
     }
 
     /// Puts an item into the hero's bag for nothing, or into the stash when

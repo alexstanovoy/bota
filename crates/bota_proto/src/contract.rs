@@ -314,6 +314,18 @@
 //! cannot, for it does not know the seat's gold. A hero's respawn wait is
 //! public, the part a buyback added to it included.
 //!
+//! # What a side is told of its Scan
+//!
+//! A side's Scan is one ledger of charges, shared by its seats, and the scans that look for it.
+//! Once a side has used its Scan, or a cheat touched it, every batch of events to that side
+//! holds one [`EventKind::Scan`] naming its charges, the wait to the next one and the scans
+//! looking now, each with what its latest look found: whether an enemy hero stands in the area,
+//! and nothing else (no count, no hero, no place). Until then nothing is sent and a client works
+//! the ledger out from the game clock (`bota_core::ScanLedger::untouched`), so a match nobody
+//! scans in is told what it was told before Scan existed. The fact is told to the scanning
+//! side and to a spectator who sees all, and never to the other side: its views and events are
+//! the same whether a scan found its hero or not, an invisible one included.
+//!
 //! # Illusions
 //!
 //! A side is told which of its own units are illusions: an illusion wears

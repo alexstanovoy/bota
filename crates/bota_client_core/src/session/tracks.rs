@@ -438,6 +438,7 @@ impl Tracks {
             | EventKind::BossFell { .. }
             | EventKind::MegaCreeps { .. }
             | EventKind::BoughtBack { .. }
+            | EventKind::Scan { .. }
             | EventKind::ItemDestroyed { .. }
             | EventKind::ItemPlaced { .. }
             | EventKind::ItemTaken { .. }

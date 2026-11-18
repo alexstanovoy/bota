@@ -841,3 +841,14 @@ field SeatIdentity 2 bot: bool
 field SeatIdentity 3 version: Option<String>
 variant RejectReason 35 BadVersion
 variant RejectReason 36 VersionNotAllowed
+variant Order 19 Scan {}
+field Order::Scan 0 at: Vec2
+variant EventKind 31 Scan {}
+field EventKind::Scan 0 team: Team
+field EventKind::Scan 1 charges: u8
+field EventKind::Scan 2 next_charge_in: Option<u32>
+field EventKind::Scan 3 radars: Vec<RadarView>
+field RadarView 0 at: Vec2
+field RadarView 1 ticks_left: u32
+field RadarView 2 found: bool
+variant RejectReason 37 NoScanCharge

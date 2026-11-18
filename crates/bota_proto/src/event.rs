@@ -357,6 +357,38 @@ pub enum EventKind {
         item: ItemId,
         active: bool,
     },
+    /// A side's Scan, told again in every batch of events to the side itself and to a spectator
+    /// who sees all, never to the other side, from the first time the side's Scan was used or
+    /// touched: until then the side holds what `bota_core::ScanLedger::untouched` says of the
+    /// game clock, so a match nobody scans in sends what it sent before. The other side is told
+    /// nothing of it, whatever a scan found.
+    Scan {
+        /// The side whose Scan it is.
+        team: Team,
+        /// Charges the side holds.
+        charges: u8,
+        /// Ticks until the next charge arrives; none while the side holds every charge.
+        next_charge_in: Option<u32>,
+        /// The scans of the side that are looking now, oldest first.
+        #[serde(
+            deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_SCAN_RADARS }>"
+        )]
+        radars: Vec<RadarView>,
+    },
+}
+
+/// A Scan that is looking: where, for how long still, and what its latest look found. It tells
+/// presence and nothing else: no count, no hero, no place of any hero. A scan looks as it is
+/// placed and then every `bota_core::rules::SCAN_LOOK_TICKS` of its lifetime.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct RadarView {
+    /// The centre of the area it looks in, `bota_core::rules::SCAN_RADIUS` wide.
+    pub at: Vec2,
+    /// Ticks until it ends. At least 1.
+    pub ticks_left: u32,
+    /// Whether the latest look found an enemy hero in the area. Looked for again at every
+    /// look, so it may change while the scan runs.
+    pub found: bool,
 }
 
 /// The seats a [`EventKind::Died`] names as assisting, in seat order.

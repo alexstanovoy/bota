@@ -3252,6 +3252,112 @@ fn mega_creeps_sound_globally_and_at_the_public_enemy_ancient() {
     );
 }
 
+/// The Scan facts a seat is told, as the server tells them every batch once its side scanned.
+fn scan_fact(
+    team: Team,
+    charges: u8,
+    next_charge_in: Option<u32>,
+    radars: Vec<bota_proto::RadarView>,
+) -> EventKind {
+    EventKind::Scan {
+        team,
+        charges,
+        next_charge_in,
+        radars,
+    }
+}
+
+fn a_radar(at: Vec2, ticks_left: u32, found: bool) -> bota_proto::RadarView {
+    bota_proto::RadarView {
+        at,
+        ticks_left,
+        found,
+    }
+}
+
+#[test]
+fn a_seat_knows_its_scan_from_the_clock_until_told() {
+    let (mut app, _, _) = a_duel_app();
+    let mut radiant_eyes = a_tick(1, Vec::new(), Vec::new());
+    app.handle(bota_proto::ServerMsg::Snapshot {
+        view: radiant_eyes.clone(),
+    });
+    app.pump(0.0);
+    let schedule = bota_core::rules::Schedule::of(app.pregame_ticks());
+    let own = app.scan().expect("one's own side's Scan is known");
+    assert_eq!(
+        own.ledger,
+        bota_core::ScanLedger::pregame(schedule),
+        "no charge before the first, the clock alone says"
+    );
+    assert!(own.radars.is_empty());
+    radiant_eyes.tick = 2;
+    app.handle(bota_proto::ServerMsg::Snapshot { view: radiant_eyes });
+    app.pump(0.0);
+    app.handle(bota_proto::ServerMsg::Events {
+        tick: 2,
+        events: vec![scan_fact(
+            Team::Radiant,
+            1,
+            Some(500),
+            vec![a_radar(Vec2::from_ints(5, 5), 200, true)],
+        )],
+    });
+    let told = app.scan().expect("told");
+    assert_eq!(told.ledger.charges, 1);
+    assert_eq!(told.ledger.next_charge, Some(2 + 500));
+    assert_eq!(told.radars.len(), 1);
+    assert!(
+        app.session()
+            .expect("a session")
+            .recent_events()
+            .iter()
+            .all(|event| !matches!(event.kind, EventKind::Scan { .. })),
+        "a restated fact is no happening"
+    );
+}
+
+#[test]
+fn the_sounds_of_a_scan_are_one_at_its_placing_and_one_at_each_look_to_its_own_side_alone() {
+    let (mut app, _, _) = a_duel_app();
+    app.cues.clear();
+    let at = Vec2::from_ints(5, 5);
+    let batches = [
+        // Placed, the tick after; then thirty ticks into its life, the second look.
+        (3, vec![a_radar(at, 239, false)]),
+        (4, vec![a_radar(at, 238, false)]),
+        (5, vec![a_radar(at, 210, true)]),
+    ];
+    for (tick, radars) in batches {
+        app.handle(bota_proto::ServerMsg::Events {
+            tick,
+            events: vec![scan_fact(Team::Radiant, 1, Some(500), radars)],
+        });
+        app.pump(0.0);
+    }
+    let kinds: Vec<_> = app.cues.iter().map(|cue| cue.kind).collect();
+    assert_eq!(
+        kinds,
+        [
+            CueKind::ScanActivated,
+            CueKind::ScanLooked { found: false },
+            CueKind::ScanLooked { found: true },
+        ]
+    );
+    app.cues.clear();
+    app.handle(bota_proto::ServerMsg::Events {
+        tick: 6,
+        events: vec![scan_fact(
+            Team::Dire,
+            1,
+            Some(500),
+            vec![a_radar(at, 239, true)],
+        )],
+    });
+    app.pump(0.0);
+    assert!(app.cues.is_empty(), "the other side's scan makes no sound");
+}
+
 /// The reach drawn for a Blink Dagger takes the cast range bonus of an Aether Lens shown carried,
 /// as the server lengthens the blink: 1,200 and 225.
 #[test]

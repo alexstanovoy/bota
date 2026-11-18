@@ -507,19 +507,22 @@ tests = [{ crate = "bota_server", target = "lib", filters = [
 
 [[group]]
 name = "game_lanes"
-about = "the lanes: waves, creep AI, towers and buildings, backdoor protection, the Glyph"
+about = "the lanes: waves, creep AI, towers and buildings, backdoor protection, the Glyph, Scan"
 paths = [
     "crates/bota_server/src/game/systems/wave.rs",
     "crates/bota_server/src/game/systems/guard.rs",
     "crates/bota_server/src/game/systems/backdoor.rs",
     "crates/bota_server/src/game/systems/glyph.rs",
     "crates/bota_server/src/game/components/glyph.rs",
+    "crates/bota_server/src/game/systems/scan.rs",
+    "crates/bota_server/src/game/components/scan.rs",
     "crates/bota_server/src/game/tests/waves.rs",
     "crates/bota_server/src/game/tests/creep_ai.rs",
     "crates/bota_server/src/game/tests/towers.rs",
     "crates/bota_server/src/game/tests/buildings.rs",
     "crates/bota_server/src/game/tests/backdoor.rs",
     "crates/bota_server/src/game/tests/glyph.rs",
+    "crates/bota_server/src/game/tests/scan.rs",
 ]
 tests = [{ crate = "bota_server", target = "lib", filters = [
     "game::tests::waves::",
@@ -528,6 +531,7 @@ tests = [{ crate = "bota_server", target = "lib", filters = [
     "game::tests::buildings::",
     "game::tests::backdoor::",
     "game::tests::glyph::",
+    "game::tests::scan::",
 ] }]
 
 [[group]]

@@ -26,7 +26,7 @@ pub fn ends_standing_order(order: Order, ability: Option<AbilityId>, item: Optio
 }
 
 /// Whether `order` needs the hero standing when it names no unit: all but buying, selling (from
-/// the stash), taking an item apart, locking it against combining, the Glyph, a buyback and a
+/// the stash), taking an item apart, locking it against combining, the Glyph, Scan, a buyback and a
 /// cheat (as Dota's `-respawn`), which a seat whose hero lies dead may still give.
 pub const fn order_needs_body(order: Order) -> bool {
     !matches!(
@@ -37,6 +37,7 @@ pub const fn order_needs_body(order: Order) -> bool {
             | Order::SetCombineLock { .. }
             | Order::Glyph
             | Order::Buyback
+            | Order::Scan { .. }
             | Order::Cheat { .. }
     )
 }
@@ -66,7 +67,8 @@ pub const fn order_queues(order: Order) -> bool {
         | Order::Disassemble { .. }
         | Order::SetCombineLock { .. }
         | Order::Glyph
-        | Order::Buyback => false,
+        | Order::Buyback
+        | Order::Scan { .. } => false,
     }
 }
 

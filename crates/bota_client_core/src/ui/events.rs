@@ -1,6 +1,7 @@
 //! What the client makes of the events of a tick: floaters, the kill feed,
 //! and cues for the front end.
 
+use bota_core::rules;
 use bota_proto::{
     AbilityId, DamageKind, EntityId, EventKind, GoldAward, GoldAwardKind, RuneKind, SlotId, Team,
     UnitKind, UnitView,
@@ -31,6 +32,12 @@ impl App {
 
     /// Takes in one event of `tick`, and keeps it for the front end.
     pub(crate) fn absorb_event(&mut self, tick: u32, event: EventKind) {
+        // The Scan fact is restated in every batch: it tells no happening of its own, only what
+        // changed since the last one.
+        if let EventKind::Scan { team, radars, .. } = &event {
+            self.hear_scans(*team, radars);
+            return;
+        }
         let before = if self.told.len() < MAX_TOLD {
             let mut referenced = event.clone();
             let mut before = Vec::new();
@@ -59,6 +66,28 @@ impl App {
         for cue in &mut self.cues[sounded..] {
             cue.told = Some(event.clone());
             cue.before = before.clone();
+        }
+    }
+
+    /// The sounds of one's own side's scans: one when a scan is placed, one at every look it
+    /// makes. Spectators hear none: Dota's filter names the scanning side.
+    fn hear_scans(&mut self, team: Team, radars: &[bota_proto::RadarView]) {
+        if self.my_team() != Some(team) {
+            return;
+        }
+        let before = std::mem::take(&mut self.scans_heard);
+        for radar in radars {
+            let known = before.iter().find(|(at, _)| *at == radar.at);
+            if known.is_none() {
+                self.cue(CueKind::ScanActivated, 0.9, None);
+            }
+            // A scan looks as it is placed and again every `SCAN_LOOK_TICKS` of its life.
+            let looks = (rules::SCAN_DURATION_TICKS.saturating_sub(radar.ticks_left)
+                / rules::SCAN_LOOK_TICKS) as u8;
+            if known.is_none_or(|(_, before)| *before != looks) {
+                self.cue(CueKind::ScanLooked { found: radar.found }, 1.0, None);
+            }
+            self.scans_heard.push((radar.at, looks));
         }
     }
 
@@ -223,7 +252,9 @@ impl App {
             | EventKind::LotusPlucked { .. } => {}
             // Dota's feed tells no warp: the gates glow and hum, and the unit
             // comes out at the other end.
-            EventKind::GateWarped { .. } | EventKind::RetiredItemState { .. } => {}
+            EventKind::GateWarped { .. }
+            | EventKind::RetiredItemState { .. }
+            | EventKind::Scan { .. } => {}
         }
     }
 

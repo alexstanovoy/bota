@@ -520,6 +520,9 @@ pub fn all_orders() -> Vec<Order> {
         },
         Order::Glyph,
         Order::Buyback,
+        Order::Scan {
+            at: Vec2::from_ints(7000, 9000),
+        },
     ];
     orders.extend(item_orders());
     orders.extend(cheat_orders());
@@ -771,6 +774,16 @@ pub fn all_events() -> Vec<EventKind> {
             attacker: entity(7),
             target: Some(entity(9)),
         },
+        EventKind::Scan {
+            team: Team::Radiant,
+            charges: 1,
+            next_charge_in: Some(4000),
+            radars: vec![RadarView {
+                at: Vec2::from_ints(7000, 9000),
+                ticks_left: 150,
+                found: true,
+            }],
+        },
     ]
 }
 
@@ -887,6 +900,10 @@ pub fn all_server_msgs() -> Vec<ServerMsg> {
         ServerMsg::OrderRejected {
             seq: 57,
             reason: RejectReason::NotAHero,
+        },
+        ServerMsg::OrderRejected {
+            seq: 58,
+            reason: RejectReason::NoScanCharge,
         },
         ServerMsg::MatchOver {
             winner: Team::Radiant,

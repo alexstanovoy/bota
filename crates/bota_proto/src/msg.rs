@@ -281,6 +281,9 @@ pub enum RejectReason {
     NotAHero,
     BadVersion,
     VersionNotAllowed,
+    /// A [`Scan`](crate::Order::Scan) while the side holds no charge of it, or while as many of
+    /// its scans as one side may have are looking: Dota's "Cannot Radar currently".
+    NoScanCharge,
 }
 
 /// Final numbers for one seat.

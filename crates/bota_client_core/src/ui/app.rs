@@ -315,6 +315,14 @@ pub enum CueKind {
     BoughtBack {
         own: bool,
     },
+    /// One's own side's Scan was used: Dota's `scan_minimap.activate`, heard by the scanning
+    /// side alone.
+    ScanActivated,
+    /// One of one's own side's scans looked once more (`minimap_radar.cycle`), and found an
+    /// enemy hero or not (`minimap_radar.target` besides).
+    ScanLooked {
+        found: bool,
+    },
 }
 
 /// A cue's kind, gain and optional world position. A positional event retains `told`
@@ -524,6 +532,9 @@ pub struct App {
     pub my_slot: Option<SlotId>,
     /// The slot taken up and waiting for a click to aim it, if one is.
     pub aiming: Option<crate::ui::slots::Slot>,
+    /// Whether the next click on the world or the minimap aims one's side's Scan: Dota's click
+    /// behaviour for it, which the Scan button and its key take up.
+    pub scan_aim: bool,
     /// The slot taken up for an ally, by Control: set with `aiming`, and only meant while
     /// `aiming` is still that slot (see [`App::aiming_ally`]).
     pub ally_aim: Option<crate::ui::slots::Slot>,
@@ -608,6 +619,9 @@ pub struct App {
     pub told_ticks: Vec<u32>,
     /// Referenced units before each event's tick, retained across a pump that reads many ticks.
     pub(crate) before_told: Vec<std::sync::Arc<[UnitView]>>,
+    /// The scans of one's own side the last batch told, with the looks they had made: what the
+    /// next batch is compared with, to tell what a look is.
+    pub(crate) scans_heard: Vec<(Vec2, u8)>,
     /// Seconds before the next low-health cue may come.
     pub heartbeat: f32,
     /// The seat a replay is watched as, as if it were playing.
@@ -628,6 +642,7 @@ impl App {
             phase: Phase::Lobby,
             my_slot: None,
             aiming: None,
+            scan_aim: false,
             ally_aim: None,
             held_item: None,
             lobby: Lobby::default(),
@@ -663,6 +678,7 @@ impl App {
             told: Vec::new(),
             told_ticks: Vec::new(),
             before_told: Vec::new(),
+            scans_heard: Vec::new(),
             heartbeat: 0.0,
             pov: None,
             quick_buy: crate::QuickBuyQueue::default(),
@@ -837,6 +853,47 @@ impl App {
             .find(|identity| identity.slot == slot)
     }
 
+    /// Takes the Scan up for aiming, as pressing its button does; with no charge to spend it
+    /// takes up nothing and says so, as Dota's "Recharging...". Returns whether it is taken up.
+    pub fn press_scan(&mut self) -> bool {
+        if self.my_slot.is_none() {
+            return false;
+        }
+        if self.scan().is_none_or(|side| side.ledger.charges == 0) {
+            self.scan_aim = false;
+            self.refuse(bota_proto::RejectReason::NoScanCharge);
+            return false;
+        }
+        self.scan_aim = !self.scan_aim;
+        if self.scan_aim {
+            self.aiming = None;
+            self.attack_move_armed = false;
+        }
+        self.scan_aim
+    }
+
+    /// Uses one's side's Scan at a point of the map, the one the aim was taken up for.
+    pub fn activate_scan(&mut self, at: Vec2) {
+        self.scan_aim = false;
+        self.send_order(Order::Scan { at });
+    }
+
+    /// The Scan of one's side, or of the side the panel shows when one has none: its charges
+    /// and the scans looking for it. A spectator of both sides asks by side
+    /// ([`Self::scan_of`]).
+    pub fn scan(&self) -> Option<crate::session::ScanSide> {
+        let team = self
+            .my_team()
+            .or_else(|| Some(self.player(self.panel_slot()?)?.team))?;
+        self.scan_of(team)
+    }
+
+    /// The Scan of a side, as far as this client may know it: a player's own side's, both for a
+    /// spectator.
+    pub fn scan_of(&self, team: Team) -> Option<crate::session::ScanSide> {
+        self.seat.session()?.scan(team)
+    }
+
     /// The name the player of a seat gave in the lobby, if any.
     pub fn player_name(&self, slot: SlotId) -> Option<&str> {
         self.names
@@ -896,6 +953,7 @@ impl App {
     pub fn choose(&mut self, unit: Option<EntityId>, again: bool) {
         self.selected = unit;
         self.aiming = None;
+        self.scan_aim = false;
         if again {
             self.pinned = unit.map(|id| match self.hero_seat(id) {
                 Some(slot) => Pin::Hero(slot),

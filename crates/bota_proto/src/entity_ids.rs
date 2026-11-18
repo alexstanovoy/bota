@@ -68,7 +68,8 @@ impl EventKind {
             | EventKind::TreeGrew { .. }
             | EventKind::RuneSpawned { .. }
             | EventKind::MegaCreeps { .. }
-            | EventKind::BoughtBack { .. } => {}
+            | EventKind::BoughtBack { .. }
+            | EventKind::Scan { .. } => {}
         }
     }
 }

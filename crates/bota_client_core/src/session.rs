@@ -13,6 +13,7 @@ pub use damage::{DamageSource, RecentDamage};
 mod error;
 mod memory;
 mod missiles;
+mod scan;
 pub use activity::{
     Activity, ActivityClock, ActivityPhase, ActivityProfile, CurrentActivity, INSTANT_MOVE_DISTANCE,
 };
@@ -30,6 +31,7 @@ use bota_proto::{
 
 pub use error::{IngestError, SessionError};
 pub use missiles::{LootTrack, MissileTrack};
+pub use scan::ScanSide;
 pub use tracks::{
     AbilityCastObservation, AttackLaunchObservation, DamageObservation, DeathObservation,
     EntityTrack, HealObservation, ManaRestorationObservation, ObservedEvent, PossibleAttackLanded,
@@ -163,6 +165,7 @@ pub struct ClientSession {
     confirmations: confirmations::Confirmations,
     stream: StreamState,
     ended: Option<SessionEnd>,
+    scan: scan::ScanFacts,
 }
 
 impl ClientSession {
@@ -228,6 +231,7 @@ impl ClientSession {
             confirmations: confirmations::Confirmations::default(),
             stream: StreamState::default(),
             ended: None,
+            scan: scan::ScanFacts::default(),
         }
     }
 
@@ -557,11 +561,19 @@ impl ClientSession {
             map_of(self.statics.metadata().map),
             self.statics.metadata().tick_rate,
         );
+        let game_tick = tick.saturating_add(
+            self.current()
+                .and_then(|view| view.clock)
+                .map_or(0, |shift| shift.game),
+        );
+        self.scan.take(events, game_tick);
         for event in events {
+            // What is restated every batch would crowd out what happened.
             if matches!(
                 event,
                 EventKind::AttackLaunched { .. } | EventKind::RetiredItemState { .. }
-            ) {
+            ) || scan::restated(event)
+            {
                 continue;
             }
             if self.recent_events.len() == MAX_RECENT_EVENTS {
@@ -630,6 +642,17 @@ impl ClientSession {
     #[inline]
     pub fn ended(&self) -> Option<SessionEnd> {
         self.ended
+    }
+
+    /// A side's Scan at the latest snapshot's game clock: what the batches told of it, or what
+    /// the clock alone says while neither side's Scan was ever used. The other side's is told
+    /// to no player and to spectators only: a seat holds nothing of it.
+    pub fn scan(&self, team: Team) -> Option<scan::ScanSide> {
+        if !scan::may_know(self.viewer(), team) {
+            return None;
+        }
+        let schedule = bota_core::rules::Schedule::of(self.statics.metadata().pregame_ticks);
+        self.scan.of(team, schedule, self.current()?.game_tick())
     }
 
     /// The latest folded snapshot.

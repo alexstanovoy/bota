@@ -396,3 +396,28 @@ fn action_phases_keep_their_wire_tags_and_counters_without_entity_handles() {
     };
     assert_eq!(roundtrip(&maximum), maximum);
 }
+
+#[test]
+fn scan_keeps_its_wire_tags_and_decodes_no_more_scans_than_one_side_may_have() {
+    let order = Order::Scan {
+        at: Vec2::from_ints(7000, 9000),
+    };
+    assert_eq!(postcard::to_allocvec(&order).expect("encode order")[0], 19);
+    assert_eq!(roundtrip(&order), order);
+    let radar = RadarView {
+        at: Vec2::from_ints(7000, 9000),
+        ticks_left: 120,
+        found: true,
+    };
+    let fact = |count: usize| EventKind::Scan {
+        team: Team::Dire,
+        charges: 1,
+        next_charge_in: Some(30),
+        radars: vec![radar; count],
+    };
+    let event = fact(MAX_SCAN_RADARS);
+    assert_eq!(postcard::to_allocvec(&event).expect("encode scan")[0], 31);
+    assert_eq!(roundtrip(&event), event);
+    let too_many = postcard::to_allocvec(&fact(MAX_SCAN_RADARS + 1)).expect("encode scan");
+    assert!(postcard::from_bytes::<EventKind>(&too_many).is_err());
+}

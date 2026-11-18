@@ -41,3 +41,7 @@ pub const COURIER_ITEM_SLOTS: usize = INVENTORY_SLOTS;
 
 /// Enabled boss lairs retained by one match and snapshot.
 pub const MAX_LAIRS: usize = 8;
+/// Scans one side has looking at once. Two charges, eight seconds a scan and 210 seconds a
+/// recharge never come near it; only a cheat that refreshes the charges may, and a use past it
+/// is refused.
+pub const MAX_SCAN_RADARS: usize = 4;

@@ -115,6 +115,20 @@ impl Verdict {
     }
 }
 
+/// What the Scan facts a stream told prove about admission of a [`Scan`](Order::Scan) of the
+/// seat's side now: it needs no body and no point (every point is kept on the map), only a
+/// charge, and no more scans of the side looking than one side may have. Without the fact
+/// (nothing told yet) the order's admission is unknown.
+pub fn scan_legality(side: Option<&crate::ScanSide>) -> Verdict {
+    let Some(side) = side else {
+        return Verdict::Unknown(UnknownReason::HiddenState);
+    };
+    Verdict::from_check(
+        side.ledger.charges > 0 && side.radars.len() < bota_proto::MAX_SCAN_RADARS,
+        RejectReason::NoScanCharge,
+    )
+}
+
 /// A seat's filtered snapshot and the match's public rules. Sequence scans are capped at
 /// wire limits, all slot reads are checked, and no query allocates. Use coherent snapshots
 /// from a [`crate::ClientSession`]; malformed or withheld information yields Unknown.
@@ -130,7 +144,9 @@ impl OrderContext<'_> {
     /// Checks an order against the current snapshot, independently of pseudo-queue
     /// reservations. Known cast-point deferral yields Unknown(QueueState), even with a
     /// complete ledger: admission now cannot prove acceptance at take-up. A named unit
-    /// must belong to this seat. Glyph and a buyback need no body.
+    /// must belong to this seat. Glyph, a buyback and Scan need no body. The snapshot carries no
+    /// charges of Scan, so its verdict here is always Unknown(HiddenState): the restated fact
+    /// does ([`scan_legality`]).
     pub fn check(&self, unit: Option<EntityId>, order: Order, queue: bool) -> Verdict {
         if !self.bounded() {
             return Verdict::Unknown(UnknownReason::MalformedView);
@@ -147,6 +163,9 @@ impl OrderContext<'_> {
         }
         if order == Order::Buyback {
             return self.buyback(unit);
+        }
+        if matches!(order, Order::Scan { .. }) {
+            return Verdict::Unknown(UnknownReason::HiddenState);
         }
         let id = unit.or(self.player.unit);
         let body = id.and_then(|id| self.unit(id));
@@ -298,6 +317,7 @@ impl OrderContext<'_> {
             Order::Cheat { cheat } => self.cheat(cheat, true),
             Order::Glyph => self.glyph(),
             Order::Buyback => self.buyback(Some(body.id)),
+            Order::Scan { .. } => Verdict::Unknown(UnknownReason::HiddenState),
         }
     }
 

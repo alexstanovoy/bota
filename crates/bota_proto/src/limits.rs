@@ -131,6 +131,8 @@ limits! {
     MAX_LAIRS: usize = crate::game_limits::MAX_LAIRS;
     /// Opaque bot version bytes, independent of the displayed seat name.
     MAX_VERSION_LEN: usize = 32;
+    /// Most scans of one side an event lists as looking.
+    MAX_SCAN_RADARS: usize = crate::game_limits::MAX_SCAN_RADARS;
 }
 
 pub use crate::game_limits::{COURIER_ITEM_SLOTS, HERO_ITEM_SLOTS};
@@ -162,6 +164,7 @@ const _: () = {
     assert!(MAX_SNAPSHOT_RUNES * size_of::<crate::RuneView>() <= MAX_DECODED_BYTES);
     assert!(MAX_PROJECTILES * size_of::<crate::ProjectileView>() <= MAX_DECODED_BYTES);
     assert!(MAX_LAIRS * size_of::<crate::LairView>() <= MAX_DECODED_BYTES);
+    assert!(MAX_SCAN_RADARS * size_of::<crate::RadarView>() <= MAX_DECODED_BYTES);
     assert!(MAX_SHOP_ENTRIES * size_of::<crate::ShopEntry>() <= MAX_DECODED_BYTES);
     assert!(
         MAX_SECRET_SHOPS

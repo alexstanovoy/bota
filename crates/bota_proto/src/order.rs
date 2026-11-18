@@ -491,6 +491,18 @@ pub enum Order {
     /// `HeroAlive` again while the hero is rising by a reincarnation, checked
     /// in that order, as Dota's.
     Buyback,
+    /// Use the side's Scan: Dota's `DOTA_UNIT_ORDER_RADAR`, the button beside the minimap. For
+    /// a few seconds the side is told, again and again, whether any enemy hero stands within
+    /// `bota_core::rules::SCAN_RADIUS` of the point, and nothing else of it: no count, no
+    /// name, no place, no vision. It sees through fog and invisibility alike. One ledger of
+    /// charges serves the whole side, so any seat's order spends it. Needs no body: a seat
+    /// whose hero lies dead may give it. The point is kept on the map. Refused with
+    /// [`RejectReason::NoScanCharge`](crate::RejectReason::NoScanCharge) while the side holds no
+    /// charge. The other side is told nothing of it.
+    Scan {
+        /// The centre of the area to look in.
+        at: Vec2,
+    },
 }
 
 impl Order {
@@ -514,6 +526,7 @@ impl Order {
                     | Cheat::SpellImmunity { target, .. },
             } => target,
             Order::MoveDirection { toward: spot }
+            | Order::Scan { at: spot }
             | Order::Cheat {
                 cheat:
                     Cheat::CreateHero { at: spot, .. }
@@ -618,7 +631,8 @@ impl Order {
             | Order::Disassemble { .. }
             | Order::SetCombineLock { .. }
             | Order::Glyph
-            | Order::Buyback => return,
+            | Order::Buyback
+            | Order::Scan { .. } => return,
         };
         if let Target::Unit(id) = target {
             visit(id);

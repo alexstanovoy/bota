@@ -105,6 +105,9 @@ world_tables! {
         /// How many river runes have been put out, which keys the draws of the
         /// next.
         pub rune_draws: u32 = 0;
+        /// Both sides' Scan charges: absent for a side until it scans or a cheat touches its
+        /// Scan, from when the clock alone tells them.
+        pub scans: crate::game::ScanBook = crate::game::ScanBook::default();
     }
 
     tables {
@@ -226,6 +229,9 @@ world_tables! {
         pub creep_tier: CreepTier;
         /// Expanding item waves, with independent per-cast hit history.
         pub area_wave: crate::game::AreaWave;
+        /// What each scan that is looking has found so far, on the entity standing where it
+        /// looks.
+        pub radar: crate::game::Radar;
     }
 
     derived {
@@ -782,6 +788,7 @@ impl World {
         self.timed(Phase::Damage, |world| world.step_damage(&mut events));
         self.note_what_is_shown();
         self.note_rune_spawns(&mut events);
+        self.scan_facts(&mut events);
         self.tick_applied();
         events
     }
@@ -814,7 +821,7 @@ impl World {
     }
 
     /// Modifiers, hooks, requiem lines, grenades, the forest, backdoor
-    /// protection and auras.
+    /// protection, auras and Scan.
     fn step_effects(&mut self) {
         self.tick_modifiers();
         self.tick_rune_regeneration();
@@ -827,6 +834,7 @@ impl World {
         self.tick_backdoor();
         self.tick_auras();
         self.lift_fountain_invulnerability();
+        self.tick_scans();
     }
 
     /// Stats worked out afresh, pools following their maxima, and the

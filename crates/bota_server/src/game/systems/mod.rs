@@ -40,6 +40,7 @@ mod reincarnation;
 pub(super) mod restoration;
 mod rouse;
 mod rune;
+mod scan;
 mod shrine;
 mod spawn;
 mod spell;

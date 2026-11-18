@@ -404,6 +404,11 @@ impl Schedule {
         self.horn + GLYPH_FIRST_USE_AFTER_HORN
     }
 
+    /// The tick a side's first Scan charge arrives.
+    pub const fn scan_first_charge(self) -> u32 {
+        self.horn + SCAN_FIRST_CHARGE_AFTER_HORN
+    }
+
     /// The tick the scroll every hero starts with is first ready.
     pub const fn scroll_first_ready(self) -> u32 {
         self.horn + SCROLL_FIRST_READY_AFTER_HORN
@@ -837,6 +842,39 @@ pub const GLYPH_MULTISHOT_TARGETS: usize = 5;
 /// melee barracks fall before its Glyph is ready again: the cooldown is set
 /// to one second.
 pub const GLYPH_REFRESH_TICKS: u32 = TICKS_PER_SECOND;
+
+/// Charges a side's Scan holds at most: both are spent at once or one after the other, and
+/// they come back one by one (Dota 7.34: "Scan now has 2 charges"; the same in 7.41f's game
+/// code).
+pub const SCAN_MAX_CHARGES: u8 = 2;
+/// Ticks one Scan charge takes to come back, 210 seconds, whichever team's heroes spent it.
+/// A side holding every charge has no wait running; spending one starts
+/// it, and a wait already running goes on.
+pub const SCAN_RECHARGE_TICKS: u32 = 210 * TICKS_PER_SECOND;
+/// Ticks from the horn until a side's first Scan charge arrives. Dota empties both sides'
+/// charges and starts the first wait when the pregame state begins, 210 seconds before the
+/// first charge (7.41f game code): 120 seconds past the horn after
+/// Dota's ninety-second pregame, as the first scroll's and the Glyph's waits are laid; a map
+/// with a shorter pregame lays the wait on the game clock.
+pub const SCAN_FIRST_CHARGE_AFTER_HORN: u32 = SCAN_RECHARGE_TICKS - DOTA_PREGAME_TICKS;
+/// How far from the point a Scan was aimed at it looks for an enemy hero, in world units
+/// (7.41f game code).
+pub const SCAN_RADIUS: i32 = 900;
+/// Ticks a Scan keeps looking: 8 seconds (7.41f game code).
+pub const SCAN_DURATION_TICKS: u32 = 8 * TICKS_PER_SECOND;
+/// Ticks between two looks of a running Scan: the first look is made as the Scan is placed,
+/// then one every second, the last as its eight seconds end: nine looks (7.41f game code).
+pub const SCAN_LOOK_TICKS: u32 = TICKS_PER_SECOND;
+/// Ticks the thinker of a Scan stands: its duration and one tick more, in which the look of the
+/// last second is made and told before the modifier is taken off, as Dota's think runs before
+/// its expiry.
+pub const SCAN_THINKER_TICKS: u32 = SCAN_DURATION_TICKS + 1;
+
+const _: () = {
+    assert!(SCAN_RECHARGE_TICKS > DOTA_PREGAME_TICKS);
+    assert!(SCAN_DURATION_TICKS.is_multiple_of(SCAN_LOOK_TICKS));
+    assert!(SCAN_MAX_CHARGES == 2);
+};
 
 /// Melee barracks health.
 pub const RAX_MELEE_HP: i32 = 2200;
