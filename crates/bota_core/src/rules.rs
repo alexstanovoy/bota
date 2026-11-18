@@ -865,10 +865,6 @@ pub const SCAN_DURATION_TICKS: u32 = 8 * TICKS_PER_SECOND;
 /// Ticks between two looks of a running Scan: the first look is made as the Scan is placed,
 /// then one every second, the last as its eight seconds end: nine looks (7.41f game code).
 pub const SCAN_LOOK_TICKS: u32 = TICKS_PER_SECOND;
-/// Ticks the thinker of a Scan stands: its duration and one tick more, in which the look of the
-/// last second is made and told before the modifier is taken off, as Dota's think runs before
-/// its expiry.
-pub const SCAN_THINKER_TICKS: u32 = SCAN_DURATION_TICKS + 1;
 
 const _: () = {
     assert!(SCAN_RECHARGE_TICKS > DOTA_PREGAME_TICKS);

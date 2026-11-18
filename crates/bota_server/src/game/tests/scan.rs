@@ -80,14 +80,14 @@ fn scan(at: Vec2) -> Order {
 /// What the scans of the world have found, by side: the answer of the latest look of each, and
 /// the ticks each has left.
 fn answers(world: &World) -> Vec<(Team, bool, u32)> {
-    world
-        .entities
-        .iter()
-        .filter_map(|entity| {
-            let radar = world.radar.get(entity)?;
-            // The thinker stands a tick past its duration: what is left of the scan is one less.
-            let ticks_left = world.expiry.get(entity)?.ticks_left.saturating_sub(1);
-            Some((*world.team.get(entity)?, radar.found, ticks_left))
+    [Team::Radiant, Team::Dire]
+        .into_iter()
+        .zip(world.scans.0)
+        .flat_map(|(team, side)| {
+            side.into_iter()
+                .flat_map(move |side| side.radars)
+                .flatten()
+                .map(move |radar| (team, radar.found, radar.ticks_left))
         })
         .collect()
 }
@@ -365,14 +365,38 @@ fn a_scan_finds_an_illusion() {
     assert!(answer(&world));
 }
 
+/// A seat's hero falls to Dota's `-kill`, with an Aegis in its bag when `aegis` says so.
+fn fall(world: &mut World, slot: SlotId, aegis: bool) {
+    if aegis {
+        let item = bota_proto::ItemId::AEGIS;
+        give(
+            world,
+            slot,
+            Order::Cheat {
+                cheat: Cheat::Item { item },
+            },
+        );
+    }
+    give(
+        world,
+        slot,
+        Order::Cheat {
+            cheat: Cheat::Suicide,
+        },
+    );
+}
+
 #[test]
 fn a_scan_does_not_find_a_dead_hero() {
-    let (mut world, enemy_at) = scanned_enemy(Vec2::from_ints(0, 0));
+    let (mut world, _) = scanned_enemy(Vec2::from_ints(0, 0));
     assert!(answer(&world));
     let enemy = hero_of(&world, DIRE);
-    world.bury(vec![(enemy, None)], &mut Vec::new());
+    fall(&mut world, DIRE, false);
+    assert!(!world.alive(enemy));
+    // A fallen hero is laid down, off the map: no look can read a place of it.
+    assert_eq!(world.pos(enemy), None);
     run(&mut world, rules::SCAN_LOOK_TICKS);
-    assert!(!answer(&world), "the next look misses it: {enemy_at:?}");
+    assert!(!answer(&world), "the next look misses it");
 }
 
 #[test]
@@ -382,11 +406,65 @@ fn a_scan_does_not_find_a_hero_waiting_to_respawn() {
     let ready = first_charge(&world);
     run_to(&mut world, ready);
     let enemy = hero_of(&world, DIRE);
-    world.bury(vec![(enemy, None)], &mut Vec::new());
+    fall(&mut world, DIRE, false);
     assert!(!world.alive(enemy));
     assert!(world.seat(DIRE).is_some_and(|seat| seat.respawn_left > 0));
     give(&mut world, RADIANT, scan(enemy_at));
     assert!(!answer(&world));
+}
+
+#[test]
+fn a_scan_does_not_find_a_hero_waiting_to_reincarnate() {
+    let mut world = duel();
+    let enemy_at = teleport(&mut world, DIRE, DIRE_BASE);
+    let ready = first_charge(&world);
+    run_to(&mut world, ready);
+    let enemy = hero_of(&world, DIRE);
+    fall(&mut world, DIRE, true);
+    assert!(
+        world
+            .seat(DIRE)
+            .is_some_and(|seat| seat.reincarnating_at.is_some() && seat.respawn_left > 0),
+        "the Aegis took it down to rise again where it fell"
+    );
+    assert!(!world.alive(enemy));
+    give(&mut world, RADIANT, scan(enemy_at));
+    assert!(!answer(&world));
+}
+
+#[test]
+fn a_hero_has_a_place_on_the_map_only_while_it_lives_however_it_falls() {
+    // What lets a look skip the dead without asking: every way a hero falls (a lethal blow, a
+    // death, a death the Aegis turns into a rising) lays it down in the tick of its fall, and it
+    // has a place again only when it stands up with its health.
+    for how in ["a lethal blow", "a death", "a death with an Aegis"] {
+        let mut world = duel();
+        teleport(&mut world, DIRE, DIRE_BASE);
+        let enemy = hero_of(&world, DIRE);
+        match how {
+            "a lethal blow" => {
+                world.push_hit(None, enemy, 100_000, bota_proto::DamageKind::Pure, None);
+                world.step();
+            }
+            "a death" => fall(&mut world, DIRE, false),
+            _ => fall(&mut world, DIRE, true),
+        }
+        assert!(!world.alive(enemy), "{how} lays the hero down");
+        let mut was_down = false;
+        for _ in 0..(60 * rules::TICKS_PER_SECOND) {
+            for hero in [hero_of(&world, RADIANT), enemy] {
+                assert!(
+                    world.pos(hero).is_none() || world.alive(hero),
+                    "after {how}: a hero with a place on the map has no health at tick {}",
+                    world.tick
+                );
+            }
+            was_down |= world.pos(enemy).is_none();
+            world.step();
+        }
+        assert!(was_down, "{how} took the hero off the map");
+        assert!(world.alive(enemy), "and it stood up again");
+    }
 }
 
 #[test]
@@ -513,7 +591,7 @@ fn the_answer_is_looked_for_again_every_second_for_nine_looks_from_the_first_to_
         told.extend(answers(&world).first().copied());
     }
     // Looks are made at 0, 1, ..., 8 seconds, the answer of each the one told until the next:
-    // the thinker's think comes before its expiry at 8, so the ninth look is made and told.
+    // the radar's think comes before its expiry at 8, so the ninth look is made and told.
     let left = |second: u32| rules::SCAN_DURATION_TICKS - second * rules::SCAN_LOOK_TICKS;
     assert_eq!(
         told,
@@ -565,27 +643,152 @@ fn the_scanning_side_is_told_its_charges_and_scans_and_the_other_side_nothing() 
     );
 }
 
+/// A real match, recorded, in which Dire's hero stands in its base and Radiant may scan it at
+/// the first charge: what Dire's seat was sent message by message, as bytes, and the
+/// replay's records.
+struct Played {
+    dire: Vec<Vec<u8>>,
+    replay: Vec<bota_proto::ReplayRecord>,
+}
+
+/// Plays the match to the first charge, scans `aimed` units from Dire's hero then if it is given,
+/// and goes on past the scan's end through two creep waves.
+fn play(aimed: Option<Vec2>) -> Played {
+    use crate::game::OrderDelay;
+    use crate::local::LocalMatch;
+    use bota_proto::{OutgoingOrder, encode_frame_to_vec};
+
+    let mut cfg = mid_config();
+    cfg.cheats = true;
+    let ready = map_of(cfg.map).schedule().scan_first_charge();
+    let (mut local, opening) =
+        LocalMatch::new_recorded(&cfg, &[OrderDelay::NONE]).expect("a match");
+    let mut dire = Vec::new();
+    let mut keep = |streams: &[Vec<bota_proto::ServerMsg>]| {
+        for msg in &streams[1] {
+            dire.push(encode_frame_to_vec(msg).expect("a message encodes"));
+        }
+    };
+    keep(&opening);
+    let teleport = OutgoingOrder {
+        seq: 1,
+        unit: None,
+        order: Order::Cheat {
+            cheat: Cheat::Teleport { at: DIRE_BASE },
+        },
+        seen: 1,
+        queue: false,
+    };
+    keep(&local.step(&[&[], &[teleport]]).expect("a step"));
+    while local.tick() < ready {
+        keep(&local.step(&[&[], &[]]).expect("a step"));
+    }
+    let enemy_at = local
+        .world()
+        .pos(local.hero_of(1).expect("standing"))
+        .expect("standing");
+    let order = aimed.map(|offset| OutgoingOrder {
+        seq: 2,
+        unit: None,
+        order: scan(enemy_at + offset),
+        seen: local.tick(),
+        queue: false,
+    });
+    keep(&local.step(&[order.as_slice(), &[]]).expect("a step"));
+    for _ in 0..(rules::SCAN_DURATION_TICKS + 2 * rules::WAVE_PERIOD_TICKS) {
+        keep(&local.step(&[&[], &[]]).expect("a step"));
+    }
+    let replay = local.take_records();
+    Played { dire, replay }
+}
+
+/// The first message at which two byte streams part, if they do.
+fn first_difference(left: &[Vec<u8>], right: &[Vec<u8>]) -> Option<usize> {
+    if left.len() != right.len() {
+        return Some(left.len().min(right.len()));
+    }
+    left.iter().zip(right).position(|(a, b)| a != b)
+}
+
 #[test]
 fn what_the_other_side_is_told_never_depends_on_what_a_scan_found() {
-    let mut told_to_dire = Vec::new();
-    for offset in [Vec2::from_ints(0, 0), Vec2::from_ints(5000, 0)] {
-        let (mut world, _) = scanned_enemy(offset);
-        let mut stream = Vec::new();
-        for _ in 0..(rules::SCAN_DURATION_TICKS + 30) {
-            let events = world.step();
-            stream.push(visible_events(&events, Some(Team::Dire)));
-        }
-        told_to_dire.push((stream, world.hash()));
-    }
+    let found = play(Some(Vec2::from_ints(0, 0)));
+    let missed = play(Some(Vec2::from_ints(5000, 0)));
     assert_eq!(
-        told_to_dire[0].0, told_to_dire[1].0,
-        "the events of the scanned side are the same whether the scan found its hero or not"
+        first_difference(&found.dire, &missed.dire),
+        None,
+        "the bytes sent to the scanned side differ between a scan that found its hero and one that missed"
     );
-    assert!(told_to_dire[0].0.iter().all(|events| {
-        events
-            .iter()
-            .all(|kind| !matches!(kind, EventKind::Scan { .. }))
-    }));
+}
+
+#[test]
+fn what_the_other_side_is_told_is_byte_for_byte_what_a_match_without_a_scan_tells_it() {
+    let unscanned = play(None);
+    for (what, offset) in [("found", 0), ("missed", 5000)] {
+        let scanned = play(Some(Vec2::from_ints(offset, 0)));
+        assert_eq!(
+            first_difference(&scanned.dire, &unscanned.dire),
+            None,
+            "a scan that {what} its hero changes the bytes sent to the scanned side"
+        );
+    }
+}
+
+/// The message records of a replay as the scanned side's point of view in the viewer takes them,
+/// less two things, each for a reason: the Scan facts of the scanning side, which the viewer's
+/// filter drops for that point of view, and the delay line's account of which seat's orders
+/// settled when, an input by definition. The `Orders` records are left out as well: they carry
+/// the scan's point, and the two matches differ in them by definition. A replay file is a full
+/// record of the match, every side's orders included as in the reference game's replays; a
+/// point of view in the viewer is a display filter over it, not a secret kept, and nothing of
+/// the file is sent to a seat while the match runs.
+fn replay_for_dire(replay: &[bota_proto::ReplayRecord]) -> Vec<Vec<u8>> {
+    use bota_proto::{ReplayRecord, ServerMsg, encode_frame_to_vec};
+    replay
+        .iter()
+        .filter_map(|record| {
+            let ReplayRecord::Msg(msg) = record else {
+                return None;
+            };
+            let msg = match msg {
+                ServerMsg::Events { tick, events } => {
+                    let events: Vec<EventKind> = events
+                        .iter()
+                        .filter(|kind| !matches!(kind, EventKind::Scan { .. }))
+                        .cloned()
+                        .collect();
+                    if events.is_empty() {
+                        return None;
+                    }
+                    ServerMsg::Events {
+                        tick: *tick,
+                        events,
+                    }
+                }
+                ServerMsg::Snapshot { view } => {
+                    let mut view = view.clone();
+                    view.order_delays.clear();
+                    ServerMsg::Snapshot { view }
+                }
+                other => other.clone(),
+            };
+            Some(encode_frame_to_vec(&msg).expect("a record encodes"))
+        })
+        .collect()
+}
+
+#[test]
+fn the_scanned_sides_point_of_view_stream_of_a_replay_is_byte_for_byte_that_of_a_match_without_a_scan()
+ {
+    let unscanned = replay_for_dire(&play(None).replay);
+    for (what, offset) in [("found", 0), ("missed", 5000)] {
+        let scanned = replay_for_dire(&play(Some(Vec2::from_ints(offset, 0))).replay);
+        assert_eq!(
+            first_difference(&scanned, &unscanned),
+            None,
+            "a scan that {what} its hero changes the replay the scanned side's point of view reads"
+        );
+    }
 }
 
 #[test]

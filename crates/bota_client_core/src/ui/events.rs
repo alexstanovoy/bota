@@ -71,23 +71,31 @@ impl App {
 
     /// The sounds of one's own side's scans: one when a scan is placed, one at every look it
     /// makes. Spectators hear none: Dota's filter names the scanning side.
+    ///
+    /// Scans of one side may look at the same point, so a point does not name a scan. A batch
+    /// tells them oldest first and a scan only ever has fewer ticks left than in the batch
+    /// before, while a scan just placed has more than any that stood: so each radar is the first
+    /// one of the last batch not yet taken that is at its point with at least as many ticks left.
     fn hear_scans(&mut self, team: Team, radars: &[bota_proto::RadarView]) {
         if self.my_team() != Some(team) {
             return;
         }
-        let before = std::mem::take(&mut self.scans_heard);
+        let mut before = std::mem::take(&mut self.scans_heard);
         for radar in radars {
-            let known = before.iter().find(|(at, _)| *at == radar.at);
+            let known = before
+                .iter()
+                .position(|(at, ticks_left, _)| *at == radar.at && *ticks_left >= radar.ticks_left)
+                .map(|place| before.remove(place));
             if known.is_none() {
                 self.cue(CueKind::ScanActivated, 0.9, None);
             }
             // A scan looks as it is placed and again every `SCAN_LOOK_TICKS` of its life.
             let looks = (rules::SCAN_DURATION_TICKS.saturating_sub(radar.ticks_left)
                 / rules::SCAN_LOOK_TICKS) as u8;
-            if known.is_none_or(|(_, before)| *before != looks) {
+            if known.is_none_or(|(.., before)| before != looks) {
                 self.cue(CueKind::ScanLooked { found: radar.found }, 1.0, None);
             }
-            self.scans_heard.push((radar.at, looks));
+            self.scans_heard.push((radar.at, radar.ticks_left, looks));
         }
     }
 

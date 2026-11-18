@@ -619,9 +619,9 @@ pub struct App {
     pub told_ticks: Vec<u32>,
     /// Referenced units before each event's tick, retained across a pump that reads many ticks.
     pub(crate) before_told: Vec<std::sync::Arc<[UnitView]>>,
-    /// The scans of one's own side the last batch told, with the looks they had made: what the
-    /// next batch is compared with, to tell what a look is.
-    pub(crate) scans_heard: Vec<(Vec2, u8)>,
+    /// The scans of one's own side the last batch told, as their point, the ticks they had left
+    /// and the looks they had made: what the next batch is compared with, to tell what a look is.
+    pub(crate) scans_heard: Vec<(Vec2, u32, u8)>,
     /// Seconds before the next low-health cue may come.
     pub heartbeat: f32,
     /// The seat a replay is watched as, as if it were playing.

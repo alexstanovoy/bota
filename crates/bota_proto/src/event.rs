@@ -384,7 +384,7 @@ pub enum EventKind {
 pub struct RadarView {
     /// The centre of the area it looks in, `bota_core::rules::SCAN_RADIUS` wide.
     pub at: Vec2,
-    /// Ticks until it ends. At least 1.
+    /// Ticks until it ends; 0 in the batch of its last tick.
     pub ticks_left: u32,
     /// Whether the latest look found an enemy hero in the area. Looked for again at every
     /// look, so it may change while the scan runs.

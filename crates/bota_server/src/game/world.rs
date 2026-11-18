@@ -105,8 +105,8 @@ world_tables! {
         /// How many river runes have been put out, which keys the draws of the
         /// next.
         pub rune_draws: u32 = 0;
-        /// Both sides' Scan charges: absent for a side until it scans or a cheat touches its
-        /// Scan, from when the clock alone tells them.
+        /// Both sides' Scan: charges and the scans that are looking. Absent for a side until it
+        /// scans or a cheat touches its Scan, from when the clock alone tells the charges.
         pub scans: crate::game::ScanBook = crate::game::ScanBook::default();
     }
 
@@ -229,9 +229,6 @@ world_tables! {
         pub creep_tier: CreepTier;
         /// Expanding item waves, with independent per-cast hit history.
         pub area_wave: crate::game::AreaWave;
-        /// What each scan that is looking has found so far, on the entity standing where it
-        /// looks.
-        pub radar: crate::game::Radar;
     }
 
     derived {

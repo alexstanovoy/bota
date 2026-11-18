@@ -3358,6 +3358,40 @@ fn the_sounds_of_a_scan_are_one_at_its_placing_and_one_at_each_look_to_its_own_s
     assert!(app.cues.is_empty(), "the other side's scan makes no sound");
 }
 
+#[test]
+fn two_scans_of_one_side_at_one_point_each_sound_their_placing_and_their_looks() {
+    let (mut app, _, _) = a_duel_app();
+    app.cues.clear();
+    let at = Vec2::from_ints(5, 5);
+    let batches = [
+        (3, vec![a_radar(at, 239, false)]),
+        // The second scan is placed on the first one's point while the first looks.
+        (4, vec![a_radar(at, 238, false), a_radar(at, 239, true)]),
+        // The first one's second look, the second's none yet.
+        (5, vec![a_radar(at, 210, false), a_radar(at, 238, true)]),
+        // The first one is over.
+        (6, vec![a_radar(at, 237, true)]),
+    ];
+    for (tick, radars) in batches {
+        app.handle(bota_proto::ServerMsg::Events {
+            tick,
+            events: vec![scan_fact(Team::Radiant, 0, Some(500), radars)],
+        });
+        app.pump(0.0);
+    }
+    let kinds: Vec<_> = app.cues.iter().map(|cue| cue.kind).collect();
+    assert_eq!(
+        kinds,
+        [
+            CueKind::ScanActivated,
+            CueKind::ScanLooked { found: false },
+            CueKind::ScanActivated,
+            CueKind::ScanLooked { found: true },
+            CueKind::ScanLooked { found: false },
+        ]
+    );
+}
+
 /// The reach drawn for a Blink Dagger takes the cast range bonus of an Aether Lens shown carried,
 /// as the server lengthens the blink: 1,200 and 225.
 #[test]

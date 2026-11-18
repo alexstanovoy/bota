@@ -323,8 +323,11 @@
 //! and nothing else (no count, no hero, no place). Until then nothing is sent and a client works
 //! the ledger out from the game clock (`bota_core::ScanLedger::untouched`), so a match nobody
 //! scans in is told what it was told before Scan existed. The fact is told to the scanning
-//! side and to a spectator who sees all, and never to the other side: its views and events are
-//! the same whether a scan found its hero or not, an invisible one included.
+//! side and to a spectator who sees all, and never to the other side: what that side is sent,
+//! its names for entities and the order of its lists included, is byte for byte what it would
+//! be had no scan been used, whether a scan found its hero or not, an invisible one included.
+//! A scan is the scanning side's own record and takes nothing from what the world shares
+//! (entity handles, slots, random draws).
 //!
 //! # Illusions
 //!
