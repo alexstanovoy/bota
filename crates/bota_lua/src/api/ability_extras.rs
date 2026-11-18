@@ -39,7 +39,7 @@ fn read(context: &ApiContext, vm: &mut Vm, args: Args, name: &str) -> Result<usi
     let value = match name {
         "GetChannelTime" => channel(&state, identity),
         "IsInAbilityPhase" => phase(&state, snapshot, identity),
-        "GetPowerTreadsStat" => treads(&state, snapshot, identity),
+        "GetPowerTreadsStat" => treads(&state, identity),
         _ => unreachable!(),
     };
     vm.results(&[value])
@@ -83,20 +83,14 @@ fn phase(state: &State, snapshot: &crate::state::Snapshot, identity: Identity) -
     });
     phase.map_or(Value::Nil, Value::Boolean)
 }
-fn treads(state: &State, snapshot: &crate::state::Snapshot, identity: Identity) -> Value {
+fn treads(state: &State, identity: Identity) -> Value {
     let Identity::Item { unit, slot, id } = identity else {
         return Value::Number(-1.0);
     };
     if id != ItemId::POWER_TREADS {
         return Value::Number(-1.0);
     }
-    let observed = state
-        .player(unit)
-        .is_some_and(|player| player.team == state.team)
-        || snapshot
-            .units
-            .iter()
-            .any(|known| known.unit.id == unit && known.visible);
+    let observed = state.askable(unit);
     if !observed {
         state.decline("GetPowerTreadsStat_item_not_seen");
         return Value::Number(-1.0);

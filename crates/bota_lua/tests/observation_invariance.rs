@@ -47,7 +47,7 @@ fn reader(side: Team, slot: SlotId) -> LuaTeam {
    assert(enemy:GetAbilityPoints()==-1 and enemy:GetStashValue()==-1)
    assert(enemy:GetAttackProjectileSpeed()==-1 and enemy:GetBaseDamageVariance()==-1)
    assert(enemy:GetAttackTarget()==nil and enemy:GetExtrapolatedLocation(1)==nil)
-   assert(enemy:GetNearbyLaneCreeps(1600,true)==nil and enemy:GetNearbyNeutralCreeps(1600)==nil)
+   assert(#enemy:GetNearbyLaneCreeps(1600,true)==0 and #enemy:GetNearbyNeutralCreeps(1600)==0)
   end
   assert(enemy:NumQueuedActions()==-1)
   assert(GetNumCouriers()==1 and GetCourier(1)==nil)

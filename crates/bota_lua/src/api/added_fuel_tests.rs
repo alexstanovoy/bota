@@ -54,8 +54,8 @@ fn scalar_observation_queries_charge_their_nonempty_view_work_before_results() {
         ("GetAttackProjectileSpeed", shared),
         ("GetBaseDamageVariance", shared),
         ("GetStashValue", shared),
-        ("GetAttackTarget", receiver + 8 + n),
-        ("GetActualIncomingDamage", receiver + 16 + n),
+        ("GetAttackTarget", receiver + 8 + n + p),
+        ("GetActualIncomingDamage", receiver + 16 + n + p),
         ("WasRecentlyDamagedByCreep", receiver + 16 + n + p),
         ("IsBot", receiver + 16 + n + p + 1),
         ("ActionImmediate_SwapItems", receiver + 10),
@@ -205,7 +205,7 @@ mod pins {
         let key = rig.lua.string(b"item_branches").unwrap();
         let ability_work = 16 + bota_core::ABILITIES.len() as u64 + ability_count + n + p;
         let scan = 16 + n + p;
-        let creeps = receiver + 16 + n * (8 + u64::from(n.max(1).ilog2())) + table;
+        let creeps = receiver + 16 + p + n * (8 + u64::from(n.max(1).ilog2())) + table;
         let seconds = Value::Number(5.0);
         let cases: Vec<(&str, Value, Vec<Value>, u64)> = vec![
             (
@@ -291,8 +291,12 @@ mod pins {
                 "Action_MovePath",
                 method(&mut rig, false, "Action_MovePath"),
                 vec![me, path],
-                // Prepaid scan, plus the interpreter's one fuel for each of the slots read to find a hole.
-                receiver + 16 + 9 * bota_core::rules::MAX_QUEUED_ORDERS as u64 + 1,
+                // Prepaid 8 per waypoint, plus the interpreter's own fuel for each of the
+                // MAX + 1 slots it reads (the extra one finds a path that is too long).
+                receiver
+                    + 16
+                    + 8 * bota_core::rules::MAX_QUEUED_ORDERS as u64
+                    + (bota_core::rules::MAX_QUEUED_ORDERS as u64 + 1),
             ),
             (
                 "Action_UseAbilityOnTree",
@@ -318,5 +322,188 @@ mod pins {
             scan + rebuild,
         );
         assert_exact(&mut rig, "IsLocationVisible (cached)", visible, &[pt], scan);
+    }
+
+    #[test]
+    fn every_declined_branch_charges_the_price_of_the_answering_branch() {
+        use crate::api::guard_tests::{LANE, add_body, treads_item};
+        let mut rig = Rig::new(|snapshot, own| {
+            add_body(snapshot, own, 70_001, LANE, Team::Dire, 100);
+            add_body(snapshot, own, 70_021, LANE, Team::Radiant, 50);
+            add_body(
+                snapshot,
+                own,
+                70_002,
+                bota_proto::UnitKind::Hero,
+                Team::Dire,
+                200,
+            );
+            let enemy = snapshot
+                .units
+                .iter_mut()
+                .find(|known| known.unit.id.idx == 70_002)
+                .unwrap();
+            enemy.unit.owner = Some(SlotId(1));
+            enemy.unit.hero = Some(HeroId::SHADOW_FIEND);
+            enemy.unit.items = vec![Some(treads_item(Some(bota_proto::Attribute::Agility)))];
+            let enemy_id = enemy.unit.id;
+            snapshot
+                .players
+                .iter_mut()
+                .find(|player| player.team == Team::Dire)
+                .unwrap()
+                .unit = Some(enemy_id);
+            let me = snapshot
+                .units
+                .iter_mut()
+                .find(|known| known.unit.id == own)
+                .unwrap();
+            me.unit.items = vec![Some(treads_item(None))];
+            snapshot
+                .players
+                .iter_mut()
+                .find(|player| player.unit == Some(own))
+                .unwrap()
+                .stash = None;
+        });
+        rig.run(
+            "me = GetBot(); foe = GetUnitList(UNIT_LIST_ENEMY_CREEPS)[1]; ally = GetUnitList(UNIT_LIST_ALLIED_CREEPS)[1]; enemy = GetUnitList(UNIT_LIST_ENEMY_HEROES)[1]; own_treads = me:GetItemInSlot(0); their_treads = enemy:GetItemInSlot(0)",
+        )
+        .expect("setup");
+        for index in [70_001, 70_002] {
+            rig.hide(index);
+        }
+        let (n, p, t, ability_count) = {
+            let state = rig.state.borrow();
+            let snapshot = state.snapshot.as_ref().unwrap();
+            (
+                snapshot.units.len() as u64,
+                snapshot.players.len() as u64,
+                snapshot.talents.len() as u64,
+                state.abilities.len() as u64,
+            )
+        };
+        let units = rig.state.borrow().units.len() as u64;
+        let receiver = 1 + units / 8 + n / 8;
+        let table = {
+            let function = rig
+                .lua
+                .function(
+                    "table",
+                    Rc::new(|vm, _| {
+                        vm.new_table()?;
+                        Ok(0)
+                    }),
+                )
+                .unwrap();
+            spent(&mut rig, function, &[])
+        };
+        let value = |rig: &mut Rig, name: &str| global(rig, name);
+        let (me, foe, ally, enemy) = (
+            value(&mut rig, "me"),
+            value(&mut rig, "foe"),
+            value(&mut rig, "ally"),
+            value(&mut rig, "enemy"),
+        );
+        let (own_treads, their_treads) = (
+            value(&mut rig, "own_treads"),
+            value(&mut rig, "their_treads"),
+        );
+        let scan = 16 + n + p;
+        let ability_work = 16 + bota_core::ABILITIES.len() as u64 + ability_count + n + p;
+        let shared = receiver + 16 + n + p + t + 64;
+        let creeps = receiver + 16 + p + n * (8 + u64::from(n.max(1).ilog2())) + table;
+        let five = Value::Number(5.0);
+        let radius = Value::Number(500.0);
+        let cases: Vec<(&str, Value, Vec<Value>, u64)> = vec![
+            (
+                "GetActualIncomingDamage_target_not_seen",
+                method(&mut rig, false, "GetActualIncomingDamage"),
+                vec![foe, Value::Number(100.0), Value::Number(2.0)],
+                receiver + 16 + n + p,
+            ),
+            (
+                "GetAttackTarget_target_not_seen",
+                method(&mut rig, false, "GetAttackTarget"),
+                vec![foe],
+                receiver + 8 + n + p,
+            ),
+            (
+                "GetPowerTreadsStat_item_not_seen",
+                method(&mut rig, true, "GetPowerTreadsStat"),
+                vec![their_treads],
+                ability_work,
+            ),
+            (
+                "GetPowerTreadsStat_mode_not_received",
+                method(&mut rig, true, "GetPowerTreadsStat"),
+                vec![own_treads],
+                ability_work,
+            ),
+            (
+                "WasRecentlyDamagedByCreep_not_a_bot_teammate",
+                method(&mut rig, false, "WasRecentlyDamagedByCreep"),
+                vec![foe, five],
+                receiver + scan,
+            ),
+            (
+                "WasRecentlyDamagedByHero_not_a_bot_teammate",
+                method(&mut rig, false, "WasRecentlyDamagedByHero"),
+                vec![foe, me, five],
+                2 * receiver + scan,
+            ),
+            (
+                "GetStashValue_not_a_bot_teammate",
+                method(&mut rig, false, "GetStashValue"),
+                vec![enemy],
+                shared,
+            ),
+            (
+                "GetStashValue_stash_not_received",
+                method(&mut rig, false, "GetStashValue"),
+                vec![me],
+                shared,
+            ),
+            (
+                "GetNearbyLaneCreeps_not_seen",
+                method(&mut rig, false, "GetNearbyLaneCreeps"),
+                vec![foe, radius, Value::Boolean(true)],
+                creeps,
+            ),
+            (
+                "GetNearbyLaneCreeps_not_a_bot",
+                method(&mut rig, false, "GetNearbyLaneCreeps"),
+                vec![ally, radius, Value::Boolean(true)],
+                creeps,
+            ),
+            (
+                "GetNearbyNeutralCreeps_not_seen",
+                method(&mut rig, false, "GetNearbyNeutralCreeps"),
+                vec![foe, radius],
+                creeps,
+            ),
+            (
+                "GetNearbyNeutralCreeps_not_a_bot",
+                method(&mut rig, false, "GetNearbyNeutralCreeps"),
+                vec![ally, radius],
+                creeps,
+            ),
+        ];
+        // Every key the host can count appears here once; a new key must be pinned too.
+        let mut keys: Vec<_> = cases.iter().map(|case| case.0).collect();
+        keys.sort_unstable();
+        assert_eq!(
+            keys,
+            crate::api::guard_tests::DECLINED_KEYS,
+            "the keys pinned are the keys documented"
+        );
+        for (key, function, args, work) in cases {
+            assert_exact(&mut rig, key, function, &args, work);
+            assert!(
+                rig.declined().iter().any(|(name, _)| name == key),
+                "{key} was not counted: {:?}",
+                rig.declined()
+            );
+        }
     }
 }

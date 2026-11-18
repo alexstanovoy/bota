@@ -526,6 +526,22 @@ impl State {
             .find(|player| player.unit == Some(id))
     }
 
+    /// A receiver this seat may ask about: a body or player of its own team, or any body in view.
+    /// The reference refuses the rest ("cannot be seen"). O(units + players): callers have paid.
+    pub fn askable(&self, id: EntityId) -> bool {
+        let Some(snapshot) = &self.snapshot else {
+            return false;
+        };
+        snapshot
+            .units
+            .iter()
+            .any(|known| known.unit.id == id && (known.visible || known.unit.team == self.team))
+            || snapshot
+                .players
+                .iter()
+                .any(|player| player.unit == Some(id) && player.team == self.team)
+    }
+
     /// Counts a call the reference rejects with a logged error, or one the seat cannot answer.
     /// `name` is `<API name>_<reason>`; unmeasured runs keep no statistics.
     pub fn decline(&self, name: &'static str) {

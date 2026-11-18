@@ -47,12 +47,11 @@ fn read(context: &ApiContext, vm: &mut Vm, args: Args, name: &str) -> Result<usi
     if known.is_none() && player.is_none() {
         return Err(vm.error("unit is no longer known"));
     }
-    let own = player.is_some_and(|player| player.team == state.team);
     let value = match name {
         "GetAbilityPoints" => points(&state, snapshot, id, known, player),
         "GetStashValue" => stash(&state, player),
         "GetAttackProjectileSpeed" => {
-            if own || known.is_some_and(|known| known.visible) {
+            if state.askable(id) {
                 unit_data::base_definition(&state, id).map(|def| def.projectile_speed.unwrap_or(0))
             } else {
                 Some(-1)
@@ -87,7 +86,11 @@ fn attack_target(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize,
         .snapshot
         .as_ref()
         .ok_or_else(|| vm.error("a current view is required"))?;
-    vm.charge_fuel(8 + snapshot.units.len() as u64)?;
+    vm.charge_fuel(8 + snapshot.units.len() as u64 + snapshot.players.len() as u64)?;
+    if !state.askable(id) {
+        state.decline("GetAttackTarget_target_not_seen");
+    }
+    // A body out of view has no current aggro; the server tells a seat only the target it carries.
     let target = snapshot
         .units
         .iter()
@@ -131,6 +134,10 @@ fn lane_creeps(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, L
         args,
         bota_client_core::NearbyCreeps::Lane,
         enemies,
+        [
+            "GetNearbyLaneCreeps_not_seen",
+            "GetNearbyLaneCreeps_not_a_bot",
+        ],
     )
 }
 fn neutral_creeps(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaError> {
@@ -140,8 +147,14 @@ fn neutral_creeps(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize
         args,
         bota_client_core::NearbyCreeps::Neutral,
         false,
+        [
+            "GetNearbyNeutralCreeps_not_seen",
+            "GetNearbyNeutralCreeps_not_a_bot",
+        ],
     )
 }
+/// The reference logs and answers an empty table unless the receiver is seen (`declined[0]`
+/// otherwise) and a bot-controlled hero (`declined[1]` otherwise).
 #[expect(
     clippy::float_arithmetic,
     reason = "finite API radius rounded down to fixed planar range"
@@ -152,6 +165,7 @@ fn creeps(
     args: Args,
     kind: bota_client_core::NearbyCreeps,
     enemies: bool,
+    declined: [&'static str; 2],
 ) -> Result<usize, LuaError> {
     let id = context.receiver(vm, args)?;
     let radius = vector::number(vm, args, 1)?.clamp(0.0, 1600.0);
@@ -164,13 +178,22 @@ fn creeps(
         .as_ref()
         .ok_or_else(|| vm.error("a current view is required"))?;
     let n = snapshot.units.len() as u64;
-    vm.charge_fuel(16 + n * (8 + u64::from(n.max(1).ilog2())))?;
-    let Some(actor) = snapshot
-        .units
-        .iter()
-        .find(|known| known.unit.id == id && known.visible)
-    else {
-        return vm.results(&[Value::Nil]);
+    vm.charge_fuel(16 + snapshot.players.len() as u64 + n * (8 + u64::from(n.max(1).ilog2())))?;
+    let bot = state.player(id).is_some_and(|player| {
+        player.team == state.team && super::players::declared_bot(&state, player.slot)
+    });
+    let actor = snapshot.units.iter().find(|known| known.unit.id == id);
+    let refusal = match actor {
+        Some(_) if !state.askable(id) => Some(declined[0]),
+        None => Some(declined[0]),
+        Some(_) if !bot => Some(declined[1]),
+        Some(_) => None,
+    };
+    let (Some(actor), None) = (actor, refusal) else {
+        state.decline(refusal.expect("a refusal when there is no actor"));
+        drop(state);
+        let table = vm.new_table()?;
+        return vm.results(&[Value::Table(table)]);
     };
     let ids = bota_client_core::nearby_creeps(
         &actor.unit,
@@ -199,14 +222,14 @@ fn secret_distance(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usiz
         .snapshot
         .as_ref()
         .ok_or_else(|| vm.error("a current view is required"))?;
+    vm.charge_fuel(16 + snapshot.units.len() as u64)?;
     vm.charge_fuel(
-        16 + snapshot.units.len() as u64
-            + snapshot
-                .map
-                .secret_shops
-                .iter()
-                .map(|shop| shop.corners.len() as u64)
-                .sum::<u64>(),
+        snapshot
+            .map
+            .secret_shops
+            .iter()
+            .map(|shop| shop.corners.len() as u64)
+            .sum(),
     )?;
     let distance = snapshot
         .units
@@ -233,12 +256,13 @@ fn incoming_damage(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usiz
         .snapshot
         .as_ref()
         .ok_or_else(|| vm.error("a current view is required"))?;
-    vm.charge_fuel(16 + snapshot.units.len() as u64)?;
-    let value = match snapshot
+    vm.charge_fuel(16 + snapshot.units.len() as u64 + snapshot.players.len() as u64)?;
+    let body = snapshot
         .units
         .iter()
-        .find(|known| known.unit.id == id && known.visible)
-    {
+        .find(|known| known.unit.id == id)
+        .filter(|_| state.askable(id));
+    let value = match body {
         Some(known) => bota_client_core::observed_incoming_damage(&known.unit, amount, kind)
             .ok_or_else(|| vm.error("received damage statistics exceed projection range"))?,
         None => {
@@ -269,14 +293,7 @@ fn variance(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaE
     if state.player(id).is_none() && !snapshot.units.iter().any(|known| known.unit.id == id) {
         return Err(vm.error("unit is no longer known"));
     }
-    let owned = state
-        .player(id)
-        .is_some_and(|player| player.team == state.team);
-    let visible = snapshot
-        .units
-        .iter()
-        .any(|known| known.visible && known.unit.id == id);
-    let value = if owned || visible {
+    let value = if state.askable(id) {
         unit_data::base_definition(&state, id)
             .map(bota_core::base_damage_variance)
             .map_or(Value::Number(-1.0), |value| {

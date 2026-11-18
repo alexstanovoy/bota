@@ -75,7 +75,7 @@ impl Rig {
         }
     }
 
-    fn declined(&self) -> Vec<(String, u64)> {
+    pub(super) fn declined(&self) -> Vec<(String, u64)> {
         self.state
             .borrow()
             .statistics
@@ -90,7 +90,7 @@ impl Rig {
     }
 
     /// The seat stops seeing the body, as when it walks into the fog; scripts keep their handles.
-    fn hide(&mut self, idx: u32) {
+    pub(super) fn hide(&mut self, idx: u32) {
         self.state
             .borrow_mut()
             .snapshot
@@ -108,8 +108,38 @@ impl Rig {
     }
 }
 
+/// Power Treads told with the given selected attribute (none: the seat was not told it).
+pub(super) fn treads_item(mode: Option<bota_proto::Attribute>) -> bota_proto::ItemView {
+    bota_proto::ItemView {
+        id: bota_proto::ItemId::POWER_TREADS,
+        charges: None,
+        cooldown_left: 0,
+        mute_left: 0,
+        mode,
+        mana_cost: 0,
+        range: 0,
+        aim: None,
+        for_sale: false,
+        owner: SlotId(1),
+        selling: None,
+        dispenser: None,
+        locked: None,
+        disassembly: None,
+        rune: None,
+        expires_in: None,
+        level: 0,
+    }
+}
+
 /// A body told to the seat beside the hero, `by` units to the east of it.
-fn add_body(snapshot: &mut Snapshot, own: EntityId, id: u32, kind: UnitKind, team: Team, by: i32) {
+pub(super) fn add_body(
+    snapshot: &mut Snapshot,
+    own: EntityId,
+    id: u32,
+    kind: UnitKind,
+    team: Team,
+    by: i32,
+) {
     let hero = snapshot
         .units
         .iter()
@@ -138,9 +168,27 @@ fn add_body(snapshot: &mut Snapshot, own: EntityId, id: u32, kind: UnitKind, tea
         attack_target: None,
     };
     snapshot.units.push(known);
+    // Handles look bodies up by binary search, as a captured snapshot is sorted.
+    snapshot.units.sort_by_key(|known| known.unit.id);
 }
 
-const LANE: UnitKind = UnitKind::CreepMelee;
+/// Every key `declined_api_calls` can hold, sorted; API.md lists the same ones.
+pub(super) const DECLINED_KEYS: [&str; 12] = [
+    "GetActualIncomingDamage_target_not_seen",
+    "GetAttackTarget_target_not_seen",
+    "GetNearbyLaneCreeps_not_a_bot",
+    "GetNearbyLaneCreeps_not_seen",
+    "GetNearbyNeutralCreeps_not_a_bot",
+    "GetNearbyNeutralCreeps_not_seen",
+    "GetPowerTreadsStat_item_not_seen",
+    "GetPowerTreadsStat_mode_not_received",
+    "GetStashValue_not_a_bot_teammate",
+    "GetStashValue_stash_not_received",
+    "WasRecentlyDamagedByCreep_not_a_bot_teammate",
+    "WasRecentlyDamagedByHero_not_a_bot_teammate",
+];
+
+pub(super) const LANE: UnitKind = UnitKind::CreepMelee;
 
 #[test]
 fn nearby_creeps_never_reach_beyond_sixteen_hundred_units_whatever_radius_is_asked() {
@@ -181,7 +229,7 @@ fn nearby_creeps_never_reach_beyond_sixteen_hundred_units_whatever_radius_is_ask
 }
 
 #[test]
-fn nearby_creeps_skip_bodies_the_seat_no_longer_sees_and_answer_nil_for_an_unseen_actor() {
+fn nearby_creeps_skip_bodies_the_seat_no_longer_sees_and_refuse_a_receiver_out_of_view() {
     let mut rig = Rig::new(|snapshot, own| {
         add_body(snapshot, own, 70_001, LANE, Team::Dire, 100);
         add_body(snapshot, own, 70_002, LANE, Team::Dire, 200);
@@ -201,9 +249,8 @@ fn nearby_creeps_skip_bodies_the_seat_no_longer_sees_and_answer_nil_for_an_unsee
             Team::Neutral,
             200,
         );
-        add_body(snapshot, own, 70_021, LANE, Team::Radiant, 50);
     });
-    rig.run("ally = GetUnitList(UNIT_LIST_ALLIED_CREEPS)[1]")
+    rig.run("foe = GetUnitList(UNIT_LIST_ENEMY_CREEPS)[1]")
         .unwrap();
     rig.hide(70_002);
     rig.hide(70_012);
@@ -215,16 +262,57 @@ fn nearby_creeps_skip_bodies_the_seat_no_longer_sees_and_answer_nil_for_an_unsee
         rig.number("return #GetBot():GetNearbyNeutralCreeps(1000)"),
         1.0
     );
+    assert_eq!(rig.declined(), []);
+    rig.hide(70_001);
     assert_eq!(
-        rig.number("return #ally:GetNearbyLaneCreeps(1000, true)"),
-        1.0
+        rig.number("return #foe:GetNearbyLaneCreeps(1000, true)"),
+        0.0,
+        "a receiver out of view answers the reference's empty table"
     );
-    rig.hide(70_021);
     assert_eq!(
-        rig.run("return ally:GetNearbyLaneCreeps(1000, true)"),
-        Ok(Value::Nil),
-        "a creep that is no longer visible has no neighbours to report"
+        rig.declined(),
+        [("GetNearbyLaneCreeps_not_seen".to_owned(), 1)]
     );
+}
+
+#[test]
+fn nearby_creeps_answer_the_empty_table_for_a_receiver_that_is_not_a_bot() {
+    let mut rig = Rig::new(|snapshot, own| {
+        add_body(snapshot, own, 70_001, LANE, Team::Dire, 100);
+        add_body(
+            snapshot,
+            own,
+            70_011,
+            UnitKind::CreepNeutral,
+            Team::Neutral,
+            100,
+        );
+        add_body(snapshot, own, 70_021, LANE, Team::Radiant, 50);
+    });
+    rig.run(
+        "ally = GetUnitList(UNIT_LIST_ALLIED_CREEPS)[1]; foe = GetUnitList(UNIT_LIST_ENEMY_CREEPS)[1]; jungler = GetUnitList(UNIT_LIST_NEUTRAL_CREEPS)[1]",
+    )
+    .unwrap();
+    for receiver in ["ally", "foe", "jungler"] {
+        for call in [
+            "GetNearbyLaneCreeps(1000, true)",
+            "GetNearbyNeutralCreeps(1000)",
+        ] {
+            assert_eq!(
+                rig.number(&format!("return #{receiver}:{call}")),
+                0.0,
+                "{receiver}:{call}"
+            );
+        }
+    }
+    assert_eq!(
+        rig.declined(),
+        [
+            ("GetNearbyLaneCreeps_not_a_bot".to_owned(), 3),
+            ("GetNearbyNeutralCreeps_not_a_bot".to_owned(), 3),
+        ]
+    );
+    assert!(rig.number("return #GetBot():GetNearbyLaneCreeps(1000, true)") >= 1.0);
 }
 
 #[test]
@@ -355,25 +443,7 @@ fn power_treads_of_an_unseen_foreign_unit_are_minus_one_and_counted() {
             .unwrap();
         hero.unit.owner = Some(SlotId(1));
         hero.unit.hero = Some(HeroId::SHADOW_FIEND);
-        hero.unit.items = vec![Some(bota_proto::ItemView {
-            id: bota_proto::ItemId::POWER_TREADS,
-            charges: None,
-            cooldown_left: 0,
-            mute_left: 0,
-            mode: Some(bota_proto::Attribute::Agility),
-            mana_cost: 0,
-            range: 0,
-            aim: None,
-            for_sale: false,
-            owner: SlotId(1),
-            selling: None,
-            dispenser: None,
-            locked: None,
-            disassembly: None,
-            rune: None,
-            expires_in: None,
-            level: 0,
-        })];
+        hero.unit.items = vec![Some(treads_item(Some(bota_proto::Attribute::Agility)))];
     });
     rig.run("treads = GetUnitList(UNIT_LIST_ENEMY_HEROES)[1]:GetItemInSlot(0)")
         .unwrap();
@@ -473,32 +543,6 @@ fn an_own_stash_the_seat_never_received_is_nil_and_counted_not_minus_one() {
 }
 
 #[test]
-fn a_neutral_receiver_sees_both_sides_lane_creeps_as_enemies() {
-    let mut rig = Rig::new(|snapshot, own| {
-        add_body(
-            snapshot,
-            own,
-            70_001,
-            UnitKind::CreepNeutral,
-            Team::Neutral,
-            50,
-        );
-        add_body(snapshot, own, 70_002, LANE, Team::Radiant, 100);
-        add_body(snapshot, own, 70_003, LANE, Team::Dire, 150);
-    });
-    rig.run("jungler = GetUnitList(UNIT_LIST_NEUTRAL_CREEPS)[1]")
-        .unwrap();
-    assert_eq!(
-        rig.number("return #jungler:GetNearbyLaneCreeps(1000, true)"),
-        2.0
-    );
-    assert_eq!(
-        rig.number("return #jungler:GetNearbyLaneCreeps(1000, false)"),
-        0.0
-    );
-}
-
-#[test]
 fn ability_points_of_a_hero_the_seat_no_longer_sees_come_from_its_player_record() {
     let mut rig = Rig::new(|snapshot, own| {
         let level = 6;
@@ -556,4 +600,51 @@ fn hero_damage_needs_a_current_view_even_for_an_attacker_that_is_not_a_hero() {
     rig.state.borrow_mut().snapshot = None;
     let error = rig.error("return me:WasRecentlyDamagedByHero(foe, 5)");
     assert!(error.contains("a current view is required"), "{error}");
+}
+
+#[test]
+fn an_allied_body_out_of_view_may_still_be_asked_about_but_an_enemy_may_not() {
+    let mut rig = Rig::new(|snapshot, own| {
+        add_body(snapshot, own, 70_001, LANE, Team::Dire, 100);
+        add_body(snapshot, own, 70_021, LANE, Team::Radiant, 50);
+    });
+    rig.run("ally = GetUnitList(UNIT_LIST_ALLIED_CREEPS)[1]; foe = GetUnitList(UNIT_LIST_ENEMY_CREEPS)[1]")
+        .unwrap();
+    rig.hide(70_001);
+    rig.hide(70_021);
+    for call in [
+        "GetActualIncomingDamage(100, DAMAGE_TYPE_PURE)",
+        "GetAttackProjectileSpeed()",
+        "GetBaseDamageVariance()",
+    ] {
+        assert_ne!(
+            rig.number(&format!("return ally:{call}")),
+            -1.0,
+            "allied body: {call}"
+        );
+        assert_eq!(
+            rig.number(&format!("return foe:{call}")),
+            -1.0,
+            "enemy body: {call}"
+        );
+    }
+    assert_eq!(rig.run("return ally:GetAttackTarget()"), Ok(Value::Nil));
+    assert_eq!(rig.run("return foe:GetAttackTarget()"), Ok(Value::Nil));
+    assert_eq!(
+        rig.declined(),
+        [
+            ("GetActualIncomingDamage_target_not_seen".to_owned(), 1),
+            ("GetAttackTarget_target_not_seen".to_owned(), 1),
+        ],
+        "only the enemy body is refused; an allied one is merely not in view"
+    );
+    assert_eq!(
+        rig.number("return #ally:GetNearbyLaneCreeps(1000, true)"),
+        0.0
+    );
+    assert!(
+        rig.declined()
+            .contains(&("GetNearbyLaneCreeps_not_a_bot".to_owned(), 1)),
+        "an allied creep out of view is seen by the gate and refused as a non-bot"
+    );
 }
