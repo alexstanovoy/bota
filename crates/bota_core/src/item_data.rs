@@ -197,6 +197,9 @@ pub struct ItemData {
     pub builds: &'static [&'static [ItemId]],
     /// The keys of the values an AoE bonus widens (`affected_by_aoe_increase`).
     pub aoe: &'static [&'static str],
+    /// The keys of the values the Item Potency of the attack that carries them scales
+    /// (`apply_effectiveness`).
+    pub potency: &'static [&'static str],
     /// `AbilitySharedCooldown`: the cooldown it shares with every item naming the same one.
     pub shared_cooldown: Option<&'static str>,
     /// `AbilityValues`: each a number a level, by Dota's key.
@@ -249,15 +252,26 @@ impl ItemData {
 
     /// Whether an AoE bonus widens the value of `key` (`affected_by_aoe_increase`).
     pub const fn widened(&self, key: &str) -> bool {
-        let mut at = 0;
-        while at < self.aoe.len() {
-            if str_eq(self.aoe[at], key) {
-                return true;
-            }
-            at += 1;
-        }
-        false
+        listed(self.aoe, key)
     }
+
+    /// Whether the Item Potency of the attack that carries it scales the value of `key`
+    /// (`apply_effectiveness`).
+    pub const fn potent(&self, key: &str) -> bool {
+        listed(self.potency, key)
+    }
+}
+
+/// Whether `keys` holds `key`.
+const fn listed(keys: &[&str], key: &str) -> bool {
+    let mut at = 0;
+    while at < keys.len() {
+        if str_eq(keys[at], key) {
+            return true;
+        }
+        at += 1;
+    }
+    false
 }
 
 /// Whether two strings are the same, in a const context.
@@ -306,6 +320,8 @@ pub struct ItemLimits {
     pub sellable: bool,
     pub killable: bool,
     pub backpack: bool,
+    /// `ItemCanBeUsedWithoutInventory`: usable while it sits in the backpack.
+    pub used_from_backpack: bool,
 }
 impl ItemLimits {
     pub const UNRESTRICTED: Self = Self {
@@ -313,5 +329,6 @@ impl ItemLimits {
         sellable: true,
         killable: true,
         backpack: true,
+        used_from_backpack: false,
     };
 }

@@ -39,6 +39,8 @@ pub struct Item {
     pub sellable: bool,
     pub killable: bool,
     pub backpack: bool,
+    /// `ItemCanBeUsedWithoutInventory`: usable while it sits in the backpack.
+    pub used_from_backpack: bool,
     pub cooldown_in_inventory: bool,
     /// A recipe's `ItemResult` and its `ItemRequirements`, each a list of item keys.
     pub recipe: Option<(String, Vec<Vec<String>>)>,
@@ -46,6 +48,9 @@ pub struct Item {
     pub values: Vec<(String, Vec<Milli>)>,
     /// The keys of the values `affected_by_aoe_increase` marks, in their order.
     pub aoe: Vec<String>,
+    /// The keys of the values `apply_effectiveness` marks, in their order: those the Item
+    /// Potency of the attack that carries them scales.
+    pub potency: Vec<String>,
     /// `AbilitySharedCooldown`: the name of the cooldown it shares with every item that names
     /// the same one; none where it names none.
     pub shared_cooldown: Option<String>,
@@ -93,6 +98,7 @@ const READ: &[&str] = &[
     "ItemSellable",
     "ItemKillable",
     "AllowedInBackpack",
+    "ItemCanBeUsedWithoutInventory",
     "CooldownPausedOutOfInventory",
     "ItemRequirements",
     "ItemResult",
@@ -127,6 +133,8 @@ const LEFT_OUT: &[&str] = &[
     "ItemDisplayCharges",
     "ItemHideCharges",
     "ItemInitialStockTimeTurbo",
+    // That a neutral camp's drop holds it: neutral item drops are not simulated yet.
+    "ItemIsNeutralActiveDrop",
     "ItemPermanent",
     "ItemQuality",
     "ItemRecipe",
@@ -148,22 +156,28 @@ const LEFT_OUT: &[&str] = &[
     "WorldDropSound",
 ];
 
+/// The flag of a value's block that says an AoE bonus widens it.
+const AOE_FLAG: &str = "affected_by_aoe_increase";
+/// The flag of a value's block that says the attack's Item Potency scales it.
+const POTENCY_FLAG: &str = "apply_effectiveness";
+/// The flag of a value's block that says a neutral item's enchantment (Dormant Curio) raises it:
+/// neutral items and their enchantments are not simulated yet.
+const CURIO_FLAG: &str = "apply_curio_bonus";
 /// Keys of a value's own block beside its `value`: how other things scale it.
-const VALUE_MODIFIERS: [&str; 1] = ["affected_by_aoe_increase"];
+const VALUE_MODIFIERS: [&str; 3] = [AOE_FLAG, POTENCY_FLAG, CURIO_FLAG];
 
-/// The keys of the values an AoE bonus widens: those whose block says
-/// `affected_by_aoe_increase` 1.
-fn aoe(block: &Kv) -> Result<Vec<String>, String> {
+/// The keys of the values whose block sets `flag` to 1, in their order.
+fn marked(block: &Kv, flag: &str) -> Result<Vec<String>, String> {
     let Some(values) = block.get("AbilityValues").and_then(Kv::block) else {
         return Ok(Vec::new());
     };
     let mut keys = Vec::new();
     for (name, value) in values {
-        match value.get("affected_by_aoe_increase") {
+        match value.get(flag) {
             None => {}
-            Some(Kv::Text(flag)) if flag.trim() == "1" => keys.push(name.clone()),
-            Some(Kv::Text(flag)) if flag.trim() == "0" => {}
-            Some(_) => return Err(format!("{name}: affected_by_aoe_increase must be 0 or 1")),
+            Some(Kv::Text(set)) if set.trim() == "1" => keys.push(name.clone()),
+            Some(Kv::Text(set)) if set.trim() == "0" => {}
+            Some(_) => return Err(format!("{name}: {flag} must be 0 or 1")),
         }
     }
     Ok(keys)
@@ -259,10 +273,12 @@ pub fn read(key: &str, block: &Kv) -> Result<Item, String> {
         sellable: whole("ItemSellable", 1)? == 1,
         killable: whole("ItemKillable", 1)? == 1,
         backpack: whole("AllowedInBackpack", 1)? == 1,
+        used_from_backpack: whole("ItemCanBeUsedWithoutInventory", 0)? == 1,
         cooldown_in_inventory: whole("CooldownPausedOutOfInventory", 0)? == 1,
         recipe,
         values: values(block).map_err(fail)?,
-        aoe: aoe(block).map_err(fail)?,
+        aoe: marked(block, AOE_FLAG).map_err(fail)?,
+        potency: marked(block, POTENCY_FLAG).map_err(fail)?,
         shared_cooldown: text("AbilitySharedCooldown")?.map(str::to_owned),
     })
 }
@@ -441,6 +457,26 @@ mod tests {
             parse(r#""SecretShop" "2""#).expect_err("invalid flag"),
             "item_x: SecretShop must be 0 or 1"
         );
+    }
+
+    /// 7.42's item scripts mark the values an attack's Item Potency scales
+    /// (`apply_effectiveness`) and an item used from the backpack
+    /// (`ItemCanBeUsedWithoutInventory`): both are read; a neutral enchantment's mark
+    /// (`apply_curio_bonus`) is known and left out.
+    #[test]
+    fn potency_marks_and_use_from_the_backpack_are_read() {
+        let source = Source::new(
+            "fixture".into(),
+            r#""DOTAAbilities" { "item_x" { "ItemCanBeUsedWithoutInventory" "1" "AbilityValues" {
+                "chance" { "value" "25" "apply_effectiveness" "1" }
+                "damage" { "value" "60" "apply_curio_bonus" "1" }
+                "range" { "value" "300" "apply_effectiveness" "0" } } } }"#,
+        )
+        .expect("KV");
+        let item = read("item_x", source.items().get("item_x").expect("item")).expect("an item");
+        assert_eq!(item.potency, vec!["chance".to_owned()]);
+        assert!(item.used_from_backpack);
+        assert_eq!(item.values.len(), 3);
     }
 
     /// A requirement list may end in one semicolon (7.41f's Octarine Core recipe:

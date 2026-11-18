@@ -30,12 +30,22 @@ pub fn same_items(one: &str, other: &str) -> bool {
 /// The source of `crates/bota_core/src/data/items.rs` for the registered items.
 pub fn table(source: &Source, registered: &[Registered]) -> Result<String, String> {
     let items = source.items();
+    // An item the game no longer lists keeps its row and its id, holding nothing and offered
+    // nowhere: its rules stay, to be offered again.
+    let gone = heatel::keyvalues::Kv::Block(Default::default());
     let mut rows = Vec::with_capacity(registered.len());
     for entry in registered {
-        let block = items
-            .get(&entry.key)
-            .ok_or(format!("{} is registered but not in items.txt", entry.key))?;
-        let mut row = item::read(&entry.key, block)?;
+        let listed = items.get(&entry.key);
+        if listed.is_none() && !entry.retired {
+            println!(
+                "import_items: {} is no longer in items.txt: its row stays, not purchasable",
+                entry.key
+            );
+        }
+        let mut row = item::read(&entry.key, listed.unwrap_or(&gone))?;
+        if listed.is_none() {
+            row.purchasable = false;
+        }
         overrides::apply(&mut row)?;
         rows.push(row);
     }
@@ -62,9 +72,9 @@ fn header(build: &str) -> String {
          do not edit, run\n//! the tool.\n//!\n{BUILD_LINE}{build}.\n"
     );
     if !OVERRIDES.is_empty() {
-        out.push_str(
-            "//!\n//! Where 7.41f is not the install (`tools/import_items/src/overrides.rs`):\n",
-        );
+        out.push_str(&format!(
+            "//!\n//! Where {PATCH} is not the install (`tools/import_items/src/overrides.rs`):\n"
+        ));
         for o in OVERRIDES {
             let _ = writeln!(
                 out,
@@ -178,8 +188,9 @@ fn write_row(out: &mut String, entry: &Registered, row: &Item, builds: &[Vec<u16
     );
     let _ = writeln!(
         out,
-        "    limits: ItemLimits {{ droppable: {}, sellable: {}, killable: {}, backpack: {} }},",
-        row.droppable, row.sellable, row.killable, row.backpack
+        "    limits: ItemLimits {{ droppable: {}, sellable: {}, killable: {}, backpack: {}, \
+         used_from_backpack: {} }},",
+        row.droppable, row.sellable, row.killable, row.backpack, row.used_from_backpack
     );
     let _ = writeln!(
         out,
@@ -196,6 +207,8 @@ fn write_row(out: &mut String, entry: &Registered, row: &Item, builds: &[Vec<u16
     let _ = writeln!(out, "    builds: &[{}],", ways.join(", "));
     let aoe: Vec<String> = row.aoe.iter().map(|key| format!("\"{key}\"")).collect();
     let _ = writeln!(out, "    aoe: &[{}],", aoe.join(", "));
+    let potency: Vec<String> = row.potency.iter().map(|key| format!("\"{key}\"")).collect();
+    let _ = writeln!(out, "    potency: &[{}],", potency.join(", "));
     let shared = row
         .shared_cooldown
         .as_ref()
@@ -263,4 +276,54 @@ pub(crate) fn script_row(
     }
     out.push_str("] };\n");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::install::Source;
+    use crate::registry::Registered;
+
+    /// An item the game stops listing (7.42's Revenant's Brooch recipe) keeps its row and its id
+    /// in the table, and is offered nowhere: not purchasable, not at cost 0.
+    #[test]
+    fn an_item_the_install_no_longer_lists_keeps_a_row_nobody_can_buy() {
+        let source = Source::new(
+            "fixture".into(),
+            // The ward dispenser stands in for every row the overrides name.
+            r#""DOTAAbilities" { "item_kept" { "ItemCost" "50" }
+                "item_ward_dispenser" { "ItemCost" "0" "AbilityCooldown" "0" } }"#,
+        )
+        .expect("KV");
+        let registered = [
+            Registered {
+                id: 0,
+                key: "item_kept".into(),
+                retired: false,
+            },
+            Registered {
+                id: 2,
+                key: "item_ward_dispenser".into(),
+                retired: false,
+            },
+            Registered {
+                id: 1,
+                key: "item_gone".into(),
+                retired: false,
+            },
+        ];
+        let table = super::table(&source, &registered).unwrap_or_else(|why| panic!("{why}"));
+        let row = |key: &str| {
+            table
+                .split("ItemData = ItemData {")
+                .find(|row| row.contains(&format!("key: \"{key}\"")))
+                .expect("its row")
+                .to_owned()
+        };
+        assert!(row("item_kept").contains("purchasable: true"));
+        assert!(row("item_gone").contains("purchasable: false"));
+        assert!(
+            row("item_gone").contains("retired: false"),
+            "its id stays live"
+        );
+    }
 }
