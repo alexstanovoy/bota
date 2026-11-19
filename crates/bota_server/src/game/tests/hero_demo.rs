@@ -2078,3 +2078,163 @@ fn deferred_shift_queued_order_refusal_on_take_up_goes_to_the_giver() {
     );
     assert_eq!(seat0_refusals, [], "Seat 0 gave no order");
 }
+
+#[test]
+fn removing_a_created_hero_removes_ground_items_it_owned() {
+    use bota_proto::ItemSlot;
+
+    let mut demo = Demo::on(HERO_DEMO_ID);
+    let hero_a = demo.spawn_enemy(HeroId::PUDGE);
+    let slot = demo.row_of(hero_a).slot;
+    demo.cheat_at(
+        hero_a,
+        Cheat::Item {
+            item: ItemId::BLINK_DAGGER,
+        },
+    );
+    demo.order(
+        hero_a,
+        Order::Put {
+            slot: ItemSlot(0),
+            target: Target::None,
+        },
+    );
+    for _ in 0..rules::TICKS_PER_SECOND {
+        demo.run(1);
+        if demo
+            .view()
+            .loot
+            .iter()
+            .any(|loot| loot.item == ItemId::BLINK_DAGGER)
+        {
+            break;
+        }
+    }
+    assert!(
+        demo.view()
+            .loot
+            .iter()
+            .any(|loot| loot.item == ItemId::BLINK_DAGGER),
+        "dropped Blink Dagger lies on the ground"
+    );
+
+    demo.cheat_at(hero_a, Cheat::RemoveHero);
+    assert!(
+        demo.view()
+            .loot
+            .iter()
+            .all(|loot| loot.item != ItemId::BLINK_DAGGER),
+        "ground items owned by the removed hero must be removed with it"
+    );
+
+    // Spawning another hero in the reused slot finds nothing left on the ground from the old hero.
+    let hero_b = demo.spawn_enemy(HeroId::SHADOW_FIEND);
+    assert_eq!(demo.row_of(hero_b).slot, slot);
+    assert!(demo.view().loot.is_empty());
+}
+
+#[test]
+fn items_of_a_removed_hero_held_by_another_unit_become_that_holders() {
+    use bota_proto::ItemSlot;
+
+    // Sandbox map (DEMO_ID): items have prices and selling refunds gold.
+    let mut demo = Demo::on(DEMO_ID);
+    demo.cheat(Cheat::AllVision { on: true });
+    let own = demo.me().unit.expect("own hero");
+    let home = bota_core::hero_spawn_pos(map_of(DEMO_ID), Team::Radiant);
+    demo.cheat(Cheat::Teleport { at: home });
+
+    // Create an allied Radiant hero beside the player's hero at the Radiant fountain.
+    demo.cheat(Cheat::CreateHero {
+        hero: HeroId::PUDGE,
+        enemy: false,
+        at: home + Vec2::from_ints(100, 0),
+    });
+    let hero_a = demo
+        .view()
+        .player(SlotId(1))
+        .and_then(|row| row.unit)
+        .expect("ally hero A in slot 1");
+    demo.cheat_at(
+        hero_a,
+        Cheat::Item {
+            item: ItemId::BLINK_DAGGER,
+        },
+    );
+    // Hero A hands its Blink Dagger to the player's own hero.
+    demo.order(
+        hero_a,
+        Order::Put {
+            slot: ItemSlot(0),
+            target: Target::Unit(own),
+        },
+    );
+    for _ in 0..2 * rules::TICKS_PER_SECOND {
+        demo.run(1);
+        if demo
+            .unit(own)
+            .items
+            .iter()
+            .flatten()
+            .any(|item| item.id == ItemId::BLINK_DAGGER)
+        {
+            break;
+        }
+    }
+    let blink_slot = demo
+        .unit(own)
+        .items
+        .iter()
+        .position(|slot| slot.as_ref().is_some_and(|item| item.id == ItemId::BLINK_DAGGER))
+        .expect("player hero holds hero A's Blink Dagger");
+    assert_eq!(
+        demo.unit(own).items[blink_slot]
+            .as_ref()
+            .expect("item")
+            .owner,
+        SlotId(1),
+        "before removal, hero A owns the handed item"
+    );
+    // Before removal, the player cannot sell hero A's item.
+    demo.step(&[Order::Sell {
+        slot: ItemSlot(blink_slot as u8),
+    }]);
+    assert_eq!(demo.rejected, [RejectReason::NotYourItem]);
+
+    // Remove hero A, then spawn hero B reusing SlotId(1).
+    demo.cheat_at(hero_a, Cheat::RemoveHero);
+    let owner_after = demo.unit(own).items[blink_slot]
+        .as_ref()
+        .expect("player still holds Blink Dagger")
+        .owner;
+    assert_eq!(
+        owner_after,
+        SlotId(0),
+        "held item must transfer ownership to its holder (and never carry a sentinel)"
+    );
+    assert_ne!(owner_after, SlotId(u8::MAX));
+
+    demo.cheat(Cheat::CreateHero {
+        hero: HeroId::SHADOW_FIEND,
+        enemy: false,
+        at: home + Vec2::from_ints(100, 0),
+    });
+    let hero_b_row = demo.view().player(SlotId(1)).expect("hero B reused slot 1");
+    let hero_b_gold_before = hero_b_row.gold.expect("ally gold visible");
+
+    // The player (new owner) can now sell the Blink Dagger and receives the gold; hero B gets none.
+    let own_gold_before = demo.me().gold.expect("own gold");
+    demo.step(&[Order::Sell {
+        slot: ItemSlot(blink_slot as u8),
+    }]);
+    assert_eq!(demo.rejected, [], "holder can sell the transferred item");
+    assert!(
+        demo.me().gold.expect("own gold") > own_gold_before,
+        "holder received the sale gold"
+    );
+    assert_eq!(
+        demo.view().player(SlotId(1)).expect("hero B").gold,
+        Some(hero_b_gold_before),
+        "next hero in slot 1 received nothing"
+    );
+}

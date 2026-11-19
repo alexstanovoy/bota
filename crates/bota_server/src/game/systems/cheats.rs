@@ -622,6 +622,44 @@ impl World {
                 }
             }
         }
+        // Ground items owned by the removed seat leave with it; stacks of its ownership held
+        // by another unit become that holder's so a new hero reusing the slot inherits nothing.
+        let ground_loot: Vec<Entity> = self
+            .entities
+            .iter()
+            .filter(|&entity| {
+                self.loot
+                    .get(entity)
+                    .is_some_and(|loot| loot.0.owner == slot)
+            })
+            .collect();
+        for loot in ground_loot {
+            self.loot.remove(loot);
+            self.despawn(loot);
+        }
+        let holders: Vec<(Entity, SlotId)> = self
+            .entities
+            .iter()
+            .filter_map(|entity| Some((entity, *self.owner.get(entity)?)))
+            .collect();
+        for (holder, holder_slot) in holders {
+            if let Some(bag) = self.inventory.get_mut(holder) {
+                for stack in bag.every_stack_mut() {
+                    if stack.owner == slot {
+                        stack.owner = holder_slot;
+                        stack.for_sale = false;
+                    }
+                }
+            }
+        }
+        for seat in &mut self.seats {
+            for stack in seat.stash.every_stack_mut() {
+                if stack.owner == slot {
+                    stack.owner = seat.slot;
+                    stack.for_sale = false;
+                }
+            }
+        }
         self.settle();
     }
 
