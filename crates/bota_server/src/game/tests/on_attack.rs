@@ -6,7 +6,7 @@ use bota_proto::{DamageKind, EffectId, EventKind, Fixed, ItemId, Team, Vec2};
 
 use crate::game::{Entity, Hit, HitEffect, Laid, World, wire_id};
 
-use super::item_numbers::{foe_hero, out_of_fountain_after_buying};
+use super::item_numbers::{foe_hero, foe_illusion, out_of_fountain_after_buying};
 use super::support::*;
 
 /// A world where the seat's hero bought `items` and its attack, given through the seat, has just
@@ -857,20 +857,7 @@ fn poison_attack_on_a_lane_creep_spends_no_cooldown_and_lays_no_poison() {
 
 #[test]
 fn poison_attack_on_an_enemy_hero_illusion_starts_its_cooldown() {
-    let (world, hero, illusion, _) = first_landing(&[ItemId::ORB_OF_VENOM], |world, at| {
-        let enemy = foe_hero(world, at);
-        world.make_rune_illusions(enemy);
-        world
-            .entities
-            .iter()
-            .find(|&unit| {
-                world
-                    .illusion
-                    .get(unit)
-                    .is_some_and(|copy| copy.of == enemy)
-            })
-            .expect("an enemy hero illusion")
-    });
+    let (world, hero, illusion, _) = first_landing(&[ItemId::ORB_OF_VENOM], foe_illusion);
     assert!(slot_of(&world, hero, 0).expect("orb").cooldown > 0);
     assert_eq!(laid_on(&world, illusion, ItemId::ORB_OF_VENOM).0, 1);
 }
