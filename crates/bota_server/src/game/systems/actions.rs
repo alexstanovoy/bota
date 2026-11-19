@@ -1053,10 +1053,10 @@ impl World {
             let Some(def) = item_def(id) else {
                 continue;
             };
-            if !def
-                .on_attack
-                .is_some_and(|attack| attack.affects.takes(foe, target_kind))
-            {
+            let Some(attack) = def.on_attack else {
+                continue;
+            };
+            if def.cooldown > 0 && !attack.affects.takes(foe, target_kind) {
                 continue;
             }
             let waiting = carried

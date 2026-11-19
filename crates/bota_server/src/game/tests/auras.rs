@@ -459,27 +459,42 @@ fn headdress_aura_reaches_owned_units_but_passes_over_ordinary_lane_creeps() {
 }
 
 #[test]
-fn pipe_barrier_is_removed_by_a_basic_dispel_of_buffs() {
+fn pipe_barrier_blocks_magic_until_a_dispel_of_buffs() {
     // “Barrier is now dispellable”.
-    let mut world = World::new();
-    let hero = hero_at(&mut world, Vec2::from_ints(5500, 5500));
-    let item = bota_core::item_by_key("item_pipe").expect("catalogue");
-    let effect = bota_core::item_def(item).unwrap().modifiers[1].effect;
-    world.inventory.get_mut(hero).unwrap().slots[0] = Some(fresh_stack(item, 0));
-    world.settle();
-    assert!(world.use_item(hero, 0, bota_proto::Target::None, &mut Vec::new()));
-    let protected = |world: &World| {
-        world.modifiers.get(hero).is_some_and(|modifiers| {
-            modifiers
-                .active()
-                .any(|held| held.kind.effect_id() == effect)
-        })
-    };
-    assert!(protected(&world));
-    world.dispel(
-        hero,
-        crate::game::Dispel::Buffs,
-        crate::game::DispelPower::Basic,
-    );
-    assert!(!protected(&world));
+    use crate::game::{Dispel, DispelPower, wire_id};
+    use bota_proto::{DamageKind, EventKind};
+
+    for power in [DispelPower::Basic, DispelPower::Strong] {
+        let mut world = World::new();
+        let hero = hero_at(&mut world, Vec2::from_ints(5500, 5500));
+        let item = bota_core::item_by_key("item_pipe").expect("catalogue");
+        hand_item(&mut world, hero, item, 0);
+        world.settle();
+        assert!(world.use_item(hero, 0, bota_proto::Target::None, &mut Vec::new()));
+        let magic_hit = |world: &mut World| {
+            world.push_hit(None, hero, 100, DamageKind::Magical, None);
+            world
+                .step()
+                .iter()
+                .filter_map(|event| match event.kind() {
+                    EventKind::Damaged { target, amount, .. } if target == wire_id(hero) => {
+                        Some(amount)
+                    }
+                    _ => None,
+                })
+                .sum::<i32>()
+        };
+        assert_eq!(magic_hit(&mut world), 0, "the barrier absorbs magic");
+        world.dispel(hero, Dispel::Debuffs, power);
+        assert_eq!(
+            magic_hit(&mut world),
+            0,
+            "dispelling debuffs preserves the barrier"
+        );
+        world.dispel(hero, Dispel::Buffs, power);
+        assert!(
+            magic_hit(&mut world) > 0,
+            "magic reaches the hero after a buff dispel"
+        );
+    }
 }

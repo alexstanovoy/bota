@@ -44,7 +44,7 @@ pub struct ItemModifier {
     pub priority: i32,
     pub pierces_immunity: bool,
     pub barrier: Option<ItemBarrier>,
-    /// The installed row permits a basic dispel of this modifier.
+    /// A basic dispel of this modifier's polarity removes it.
     pub basic_dispel: bool,
     pub pulse: Option<DamagePulse>,
     pub restoration: Option<RestorationAura>,

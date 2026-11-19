@@ -1,6 +1,6 @@
 use super::{UnknownReason, Verdict};
-use bota_core::{CastConditions, cast_refusal, item_def};
-use bota_proto::{AbilityView, EffectId, ItemSlot, ItemView, StatusFlags, UnitView};
+use bota_core::{CastConditions, ItemDef, cast_refusal, item_def};
+use bota_proto::{AbilityView, EffectId, ItemSlot, ItemView, RejectReason, StatusFlags, UnitView};
 
 /// What whole-point wire mana proves about paying a nonnegative cost.
 /// A positive fractional pool is shown as one, so one cannot prove a one-point cost.
@@ -82,16 +82,13 @@ pub fn item_readiness(unit: &UnitView, slot: ItemSlot, item: &ItemView) -> Verdi
 }
 
 pub(super) fn item_ready(unit: &UnitView, slot: ItemSlot, item: &ItemView, gives: bool) -> Verdict {
-    use bota_proto::RejectReason;
     if unit.hp <= 0 {
         return Verdict::Illegal(RejectReason::HeroDead);
     }
-    let Some(def) = item_def(item.id) else {
-        return Verdict::Illegal(RejectReason::EmptySlot);
+    let def = match item_in_usable_slot(item, slot) {
+        Ok(def) => def,
+        Err(reason) => return Verdict::Illegal(reason),
     };
-    if !bota_core::can_use_item_slot(usize::from(slot.0), def) {
-        return Verdict::Illegal(RejectReason::WrongTargetKind);
-    }
     if let Err(reason) = bota_core::item_usability(def.aim, item.mute_left, illusion(unit)) {
         return Verdict::Illegal(reason);
     }
@@ -99,7 +96,7 @@ pub(super) fn item_ready(unit: &UnitView, slot: ItemSlot, item: &ItemView, gives
     if needs_charge && item.charges.is_none() {
         return Verdict::Unknown(UnknownReason::MalformedView);
     }
-    let resources = item_resource_check(item, slot, unit.mana, gives);
+    let resources = item_resource_check(item, unit.mana, gives);
     if disabled(unit) {
         return resources.and(Verdict::Illegal(RejectReason::Disabled));
     }
@@ -143,14 +140,20 @@ pub fn ability_resources(ability: &AbilityView, mana: i32) -> Verdict {
 /// Resource-only ordinary item use. A stored rune needs no charge. This says nothing
 /// about caster control, inventory copies or the recipient's mana deficit.
 pub fn item_resources(item: &ItemView, slot: ItemSlot, mana: i32) -> Verdict {
-    item_resource_check(item, slot, mana, false)
+    match item_in_usable_slot(item, slot) {
+        Ok(_) => item_resource_check(item, mana, false),
+        Err(reason) => Verdict::Illegal(reason),
+    }
 }
 
-fn item_resource_check(item: &ItemView, slot: ItemSlot, mana: i32, gives: bool) -> Verdict {
-    use bota_proto::RejectReason;
-    if !bota_core::in_inventory(usize::from(slot.0)) && slot != ItemSlot::TOWN_PORTAL {
-        return Verdict::Illegal(RejectReason::WrongTargetKind);
-    }
+fn item_in_usable_slot(item: &ItemView, slot: ItemSlot) -> Result<&'static ItemDef, RejectReason> {
+    let def = item_def(item.id).ok_or(RejectReason::EmptySlot)?;
+    bota_core::can_use_item_slot(usize::from(slot.0), def)
+        .then_some(def)
+        .ok_or(RejectReason::WrongTargetKind)
+}
+
+fn item_resource_check(item: &ItemView, mana: i32, gives: bool) -> Verdict {
     if let Err(reason) = bota_core::item_usability(item.aim, item.mute_left, false) {
         return Verdict::Illegal(reason);
     }

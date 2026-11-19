@@ -331,8 +331,8 @@ impl LocalWaits {
         removed
     }
 
-    /// Ticks the hero's inventory `slot` stays muted by a swap, at tick `now`;
-    /// absent for a courier and for slots outside the inventory.
+    /// Predicts a swap's remaining mute in the hero's inventory at tick `now`.
+    /// Usable backpack stacks carry their own mute in the snapshot.
     pub fn mute_left(&self, body: ControlledUnit, slot: ItemSlot, now: u32) -> Option<u32> {
         if body != ControlledUnit::Hero {
             return None;

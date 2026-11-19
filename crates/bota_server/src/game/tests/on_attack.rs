@@ -854,3 +854,33 @@ fn poison_attack_on_a_lane_creep_spends_no_cooldown_and_lays_no_poison() {
     assert_eq!(slot_of(&world, hero, 0).expect("orb").cooldown, 0);
     assert_eq!(laid_on(&world, creep, ItemId::ORB_OF_VENOM).0, 0);
 }
+
+#[test]
+fn poison_attack_on_an_enemy_hero_illusion_starts_its_cooldown() {
+    let (world, hero, illusion, _) = first_landing(&[ItemId::ORB_OF_VENOM], |world, at| {
+        let enemy = foe_hero(world, at);
+        world.make_rune_illusions(enemy);
+        world
+            .entities
+            .iter()
+            .find(|&unit| {
+                world
+                    .illusion
+                    .get(unit)
+                    .is_some_and(|copy| copy.of == enemy)
+            })
+            .expect("an enemy hero illusion")
+    });
+    assert!(slot_of(&world, hero, 0).expect("orb").cooldown > 0);
+    assert_eq!(laid_on(&world, illusion, ItemId::ORB_OF_VENOM).0, 1);
+}
+
+#[test]
+fn frost_and_blight_still_affect_enemy_creeps() {
+    for item in [ItemId::ORB_OF_FROST, ItemId::BLIGHT_STONE] {
+        let (world, _, creep, _) = first_landing(&[item], |world, at| {
+            world.spawn_unit(&bota_core::MELEE_CREEP, Team::Dire, at)
+        });
+        assert_eq!(laid_on(&world, creep, item).0, 1, "{item:?}");
+    }
+}

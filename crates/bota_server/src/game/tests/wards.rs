@@ -768,3 +768,93 @@ fn roshans_banner_can_be_planted_directly_from_the_backpack() {
     }));
     assert!(world.inventory.get(hero).unwrap().slots[backpack].is_none());
 }
+
+#[test]
+fn swapping_a_banner_does_not_clear_its_cooldown() {
+    let (mut world, hero, spot) = a_hero_with_a_ward(ItemId::ROSHANS_BANNER);
+    let active = ItemSlot(0);
+    let pocket = ItemSlot(rules::INVENTORY_SLOTS as u8);
+    let cooldown = rules::TICKS_PER_SECOND;
+    world.inventory.get_mut(hero).unwrap().slots[0]
+        .as_mut()
+        .unwrap()
+        .cooldown = cooldown;
+    let use_at = |slot| Order::Use {
+        slot,
+        target: Target::Pos(spot + Vec2::from_ints(200, 0)),
+    };
+
+    advance_validated(
+        &mut world,
+        None,
+        Order::Swap {
+            from: active,
+            to: pocket,
+        },
+    );
+    assert_eq!(
+        world.validate_order(SlotId(0), None, &use_at(pocket)),
+        Err(bota_proto::RejectReason::OnCooldown)
+    );
+    advance_validated(
+        &mut world,
+        None,
+        Order::Swap {
+            from: pocket,
+            to: active,
+        },
+    );
+    assert_eq!(
+        world.validate_order(SlotId(0), None, &use_at(active)),
+        Err(bota_proto::RejectReason::OnCooldown)
+    );
+    run(&mut world, cooldown);
+    assert_eq!(
+        world.validate_order(SlotId(0), None, &use_at(active)),
+        Ok(())
+    );
+}
+
+#[test]
+fn a_backpacked_banner_cannot_be_planted_while_stunned_dead_or_an_illusion() {
+    use crate::game::wire_id;
+    use bota_core::ModifierKind;
+    use bota_proto::RejectReason;
+
+    let (mut world, hero, spot) = a_hero_with_a_ward(ItemId::ROSHANS_BANNER);
+    let pocket = ItemSlot(rules::INVENTORY_SLOTS as u8);
+    advance_validated(
+        &mut world,
+        None,
+        Order::Swap {
+            from: ItemSlot(0),
+            to: pocket,
+        },
+    );
+    let order = Order::Use {
+        slot: pocket,
+        target: Target::Pos(spot + Vec2::from_ints(200, 0)),
+    };
+    assert_eq!(world.validate_order(SlotId(0), None, &order), Ok(()));
+
+    world.make_rune_illusions(hero);
+    let illusion = world
+        .entities
+        .iter()
+        .find(|&unit| world.illusion.get(unit).is_some_and(|copy| copy.of == hero))
+        .unwrap();
+    assert_eq!(
+        world.validate_order(SlotId(0), Some(wire_id(illusion)), &order),
+        Err(RejectReason::NotCastable)
+    );
+    put_on(&mut world, hero, ModifierKind::Stunned, 2);
+    assert_eq!(
+        world.validate_order(SlotId(0), None, &order),
+        Err(RejectReason::Disabled)
+    );
+    world.bury(vec![(hero, None)], &mut Vec::new());
+    assert_eq!(
+        world.validate_order(SlotId(0), None, &order),
+        Err(RejectReason::HeroDead)
+    );
+}

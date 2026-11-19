@@ -348,8 +348,8 @@ pub fn ability_look(held: Option<&AbilityView>, mana: i32) -> Look {
 
 /// How one item slot should be drawn.
 ///
-/// `at` says which slot it is, since one carried in the backpack or waiting in
-/// the stash is held rather than used, and `mana` is what its holder has.
+/// `at` identifies the slot so backpack use honors the item's slot rule.
+/// `mana` is what its holder has.
 pub fn item_look(item: Option<&ItemView>, at: u8, mana: i32) -> Look {
     let Some(item) = item else {
         return Look::default();

@@ -3993,7 +3993,8 @@ fn the_attribute_bonus_says_why_it_takes_nothing() {
 }
 
 #[test]
-fn pressing_the_backpacked_banner_arms_placement_and_ordinary_items_stay_inactive() {
+fn a_backpacked_banner_is_usable_and_ordinary_items_stay_inactive() {
+    use crate::order_legality::{OrderContext, Verdict};
     use crate::ui::intent::Intent;
 
     let slot = crate::ui::slots::INVENTORY_SLOTS;
@@ -4021,5 +4022,27 @@ fn pressing_the_backpacked_banner_arms_placement_and_ordinary_items_stay_inactiv
             ctrl: false,
         });
         assert_eq!(app.aiming, expected);
+
+        let view = app.view().expect("the current snapshot");
+        let hero = view.unit(hero_id).expect("the hero on the map");
+        let context = OrderContext {
+            view,
+            player: &view.players[0],
+            map: bota_core::map_of(bota_proto::MapId(1)),
+            catalogue: bota_core::Catalogue::FULL,
+            cheats: false,
+        };
+        let order = order_for(Slot::Item(slot), Target::Pos(hero.pos));
+        let verdict = if expected.is_some() {
+            Verdict::Legal
+        } else {
+            Verdict::Illegal(bota_proto::RejectReason::WrongTargetKind)
+        };
+        assert_eq!(context.check(None, order, false), verdict, "{item:?}");
+        assert_eq!(
+            item_look(hero.items[usize::from(slot)].as_ref(), slot, hero.mana).usable,
+            expected.is_some(),
+            "{item:?}",
+        );
     }
 }

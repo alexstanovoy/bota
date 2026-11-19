@@ -14,6 +14,9 @@ use crate::{
     UseSpec, hundredths_per_second, points, points_with, rules,
 };
 
+const ASSAULT_ARMOR_AURA: EffectId = EffectId(113);
+const VLADMIR_AURA: EffectId = EffectId(115);
+
 /// The row of an item as its script gives it; a row of the catalog adds what bota does with it.
 const fn from(d: &ItemData) -> ItemDef {
     ItemDef {
@@ -1333,7 +1336,7 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
             ..NOTHING
         },
         modifiers: &[ItemModifier {
-            superseded_by: &[EffectId(113), EffectId(115)],
+            superseded_by: &[ASSAULT_ARMOR_AURA, VLADMIR_AURA],
             ..ItemModifier::buff(
                 EffectId(103),
                 Buff::of(Stat::Armor, [int(&ITEM_BUCKLER, "bonus_aoe_armor"); 4]),
@@ -1367,11 +1370,7 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         aim: Some(Aim::Own),
         immediate: true,
         effect: UseSpec::Support(AreaSupport {
-            lockout: if int(&ITEM_MEKANSM, "add_nostack_debuff") != 0 {
-                Some(1)
-            } else {
-                None
-            },
+            lockout: Some(1),
             lockout_margin: rules::TICKS_PER_SECOND,
             lockout_scope: crate::SupportLockout::Health,
             ..AreaSupport::recovery(
@@ -1563,11 +1562,7 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         aim: Some(Aim::Own),
         immediate: true,
         effect: UseSpec::Support(AreaSupport {
-            lockout: if int(&ITEM_GUARDIAN_GREAVES, "add_nostack_debuff") != 0 {
-                Some(2)
-            } else {
-                None
-            },
+            lockout: Some(2),
             lockout_margin: rules::TICKS_PER_SECOND,
             lockout_scope: crate::SupportLockout::Health,
             dispel_self: true,
@@ -1590,7 +1585,7 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         },
         modifiers: &[
             ItemModifier::buff(
-                EffectId(113),
+                ASSAULT_ARMOR_AURA,
                 Buff::two(
                     Stat::Armor,
                     [int(&ITEM_ASSAULT, "aura_positive_armor"); 4],
@@ -1629,7 +1624,7 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
             ..NOTHING
         },
         modifiers: &[ItemModifier::buff(
-            EffectId(115),
+            VLADMIR_AURA,
             Buff::many(&[
                 (Stat::Armor, [int(&ITEM_VLADMIR, "armor_aura"); 4]),
                 (
