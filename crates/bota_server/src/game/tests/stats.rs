@@ -676,6 +676,76 @@ fn shadow_fiend_stands_at_dota_numbers_from_the_first_level_to_the_last() {
 /// A creep kind, its health, its damage range and its gold range.
 type Row = (&'static UnitDef, i32, (i32, i32), (i32, i32));
 
+fn creep_bounty_cases() -> impl Iterator<Item = (String, &'static UnitDef, u32)> {
+    let last_lane_step = u32::MAX / (rules::WAVE_PERIOD_TICKS * rules::WAVE_UPGRADE_PERIOD);
+    let lane = bota_core::FIXED_UNIT_DEFS
+        .into_iter()
+        .filter(|def| bota_core::lane_creep_def(def.kind).is_some())
+        .map(move |def| {
+            (
+                format!("{:?}/{:?}", def.kind, def.tier),
+                def,
+                last_lane_step,
+            )
+        });
+    let neutral = bota_core::NEUTRALS.iter().map(|neutral| {
+        let earliest = rules::Schedule::of(0);
+        let last_step = neutral
+            .growth
+            .map_or(0, |growth| growth.clock.count(u32::MAX, earliest));
+        (neutral.unit.to_owned(), &neutral.def, last_step)
+    });
+    lane.chain(neutral)
+}
+
+#[test]
+fn upgraded_bounty_matches_the_previous_spawn_bounty_for_every_creep_and_step() {
+    // The previous server was sampled exhaustively. Each row stores the first award and
+    // the alternating increments verified across the entire sampled range.
+    let mut rows = include_str!("fixtures/creep_bounties_025607d6.txt")
+        .lines()
+        .filter(|line| !line.starts_with('#'));
+    for (name, def, last_step) in creep_bounty_cases() {
+        let mut fields = rows
+            .next()
+            .expect("a row for each creep")
+            .split_ascii_whitespace();
+        assert_eq!(fields.next(), Some(name.as_str()));
+        assert_eq!(
+            fields
+                .next()
+                .expect("last step")
+                .parse::<u32>()
+                .expect("step count"),
+            last_step,
+            "{name}"
+        );
+        let [mut expected, odd, even]: [[i32; 3]; 3] = std::array::from_fn(|_| {
+            std::array::from_fn(|_| {
+                fields
+                    .next()
+                    .expect("bounty field")
+                    .parse()
+                    .expect("amount")
+            })
+        });
+        assert!(fields.next().is_none(), "{name}: extra fields");
+        for step in 0..=last_step {
+            let (gold, experience) = def.upgraded_bounty(step);
+            assert_eq!(
+                [gold.min, gold.max, experience],
+                expected,
+                "{name} step {step}"
+            );
+            let increment = if step.is_multiple_of(2) { odd } else { even };
+            for (value, change) in expected.iter_mut().zip(increment) {
+                *value += change;
+            }
+        }
+    }
+    assert!(rows.next().is_none(), "unexpected creep rows");
+}
+
 #[test]
 fn a_spawned_creep_pays_its_definition_bounty_with_fractional_upgrades_rounded_once() {
     static CREEP: UnitDef = UnitDef {

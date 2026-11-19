@@ -385,6 +385,7 @@ paths = [
     "crates/bota_server/src/game/tests/auras.rs",
     "crates/bota_server/src/game/tests/talents.rs",
     "crates/bota_server/src/game/tests/stats.rs",
+    "crates/bota_server/src/game/tests/fixtures/creep_bounties_025607d6.txt",
     "crates/bota_server/src/game/systems/tests/cast.rs",
     "crates/bota_server/src/game/systems/tests/applied.rs",
     "crates/bota_server/src/game/systems/tests/spawn_modifier.rs",
