@@ -154,6 +154,31 @@ fn the_first_blow_of_an_orb_of_blight_lands_on_the_corrupted_armor() {
     assert_ne!(taken, mitigate(100, DamageKind::Physical, before, 0));
 }
 
+/// Corruption applies before attack damage. Two blows landing in one tick both meet the
+/// reduction, as the 7.42 note's "properties of items that apply on-hit effects" still do.
+#[test]
+fn two_attacks_landing_together_both_use_the_corrupted_armor() {
+    let (mut world, hero) = out_of_fountain_after_buying(&[ItemId::BLIGHT_STONE]);
+    let at = world.transform.get(hero).expect("standing").pos;
+    let mark = foe_hero(&mut world, at + Vec2::from_ints(300, 0));
+    world.step();
+    let corrupted = armor(&world, mark) - corruption().armor;
+    let blow = swing_laying(hero, mark, ItemId::BLIGHT_STONE);
+    world.hits.extend([blow, blow]);
+    let amounts: Vec<_> = world
+        .step()
+        .iter()
+        .filter_map(|event| match event.kind() {
+            EventKind::Damaged { target, amount, .. } if target == wire_id(mark) => Some(amount),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        amounts,
+        [mitigate(100, DamageKind::Physical, corrupted, 0); 2]
+    );
+}
+
 /// Two Orbs of Blight carried corrupt as one: one modifier, two armor.
 #[test]
 fn two_orbs_of_blight_corrupt_as_one() {

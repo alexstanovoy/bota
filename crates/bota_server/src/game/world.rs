@@ -1095,7 +1095,7 @@ impl World {
             landed: &mut self.landed,
             transform: &self.transform,
             team: &self.team,
-            stats: &self.stats,
+            stats: &mut self.stats,
             health: &mut self.health,
             modifiers: &mut self.modifiers,
             kind: &self.kind,

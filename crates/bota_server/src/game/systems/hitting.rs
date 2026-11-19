@@ -85,7 +85,7 @@ pub struct HitCx<'a> {
     pub transform: &'a Table<Transform>,
     pub team: &'a Table<Team>,
     /// Armor and resistance.
-    pub stats: &'a Table<Stats>,
+    pub stats: &'a mut Table<Stats>,
     /// What the blow comes off.
     pub health: &'a mut Table<Health>,
     /// What is on each entity, read and added to by successful blows.
@@ -225,10 +225,13 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
             foe: blow.source.and_then(|by| team.get(by)) != Some(&side),
         };
         let fresh_cut = lay(blow, struck, modifiers.get_mut(blow.target), tick);
-        let stat = Stats {
-            armor: stat.armor - fresh_cut,
-            ..stat
-        };
+        let mut stat = stat;
+        if fresh_cut != Fixed::ZERO {
+            stat.armor -= fresh_cut;
+            if let Some(current) = stats.get_mut(blow.target) {
+                current.armor = stat.armor;
+            }
+        }
         if let Some(proc) = blow.proc {
             apply_attack_proc(blow, proc, &stat, kind, stats, modifiers);
         }
