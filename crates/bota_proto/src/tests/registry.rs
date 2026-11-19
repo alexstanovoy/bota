@@ -14,8 +14,23 @@ use crate::*;
 const WIRE: &str = include_str!("../../registry/wire.txt");
 
 #[test]
-fn experience_and_restore_follow_the_reserved_cheat_positions() {
+fn stun_control_experience_and_restore_keep_their_wire_positions() {
     let orders = [
+        (
+            30,
+            Cheat::Stun {
+                target: Target::None,
+                ticks: 1,
+            },
+        ),
+        (
+            31,
+            Cheat::Control {
+                target: Target::None,
+                control: ControlKind::Stun,
+                ticks: 1,
+            },
+        ),
         (32, Cheat::Experience { amount: 1 }),
         (
             33,
