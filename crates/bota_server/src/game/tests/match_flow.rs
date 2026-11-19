@@ -153,10 +153,10 @@ fn a_hero_kill_pays_dotas_bounty_first_blood_and_assist_gold() {
     let mut events = Vec::new();
     world.bury(vec![(prey, Some(hunter))], &mut events);
 
-    // 125 + 8 × level 4 + 60 for a streak of three + 135 First Blood, and
-    // 15 + 50 + 0.037 × 500 assist gold at even net worth, rounded down.
-    let head = 125 + 32 + 60 + 135 + 83;
-    assert_eq!(world.seats[0].gold, head, "Dota 7.41f's head and assist");
+    // 7.42: "Hero kill bounty rescaled". Level four pays 100 + 10 × 4 before streak
+    // and First Blood. At equal worth the assist still pays 83.
+    let head = 100 + 40 + 60 + 135 + 83;
+    assert_eq!(world.seats[0].gold, head, "Dota 7.42's head and assist");
     assert_eq!(world.seats[0].kills, 1);
     assert_eq!(
         world.seats[0].streak, 1,
@@ -184,7 +184,7 @@ fn a_hero_kill_pays_dotas_bounty_first_blood_and_assist_gold() {
     );
 
     // The second head pays no First Blood: a level-one hero on no streak
-    // is 125 + 8 and 15 + 50 + 0.037 × its 1000, the killer side leading
+    // is 100 + 10 and 15 + 50 + 0.037 × its 1000, the killer side leading
     // 1435 to 1000 and paid 1000/1435 of it.
     let prey = seat_hero(&mut world, 2, Team::Dire, Vec2::from_ints(5050, 5000));
     world.seats[2].net_worth = 1000;
@@ -195,7 +195,7 @@ fn a_hero_kill_pays_dotas_bounty_first_blood_and_assist_gold() {
     let before = world.seats[0].gold;
     world.bury(vec![(prey, Some(hunter))], &mut Vec::new());
     let assist = (15_000 + 50_000 + 37 * 1000) * 1000 / 1435 / 1000;
-    assert_eq!(world.seats[0].gold - before, 133 + assist);
+    assert_eq!(world.seats[0].gold - before, 110 + assist);
 }
 
 /// 7.42: "Passive gold per minute no longer scales over game time".

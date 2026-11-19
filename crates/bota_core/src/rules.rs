@@ -1230,12 +1230,10 @@ pub const PASSIVE_XP_INTERVAL: u32 = 6 * TICKS_PER_SECOND / 5;
 /// A dying hero loses its net worth divided by this, never more gold than
 /// it holds.
 pub const DEATH_GOLD_LOSS_SHARE: i32 = 40;
-/// Gold for killing a hero, before its level, its streak and First Blood:
-/// Dota's `125 + 8 * level + streak gold + First Blood` since 7.31
-/// (Liquipedia, *Gold*, "Hero kills" and "Kill Streaks", read 2026-10).
-pub const HERO_KILL_GOLD_BASE: i32 = 125;
+/// Gold for killing a hero before its level, streak and First Blood, from the installed 7.42 rules.
+pub const HERO_KILL_GOLD_BASE: i32 = 100;
 /// Gold for killing a hero, a level of the fallen.
-pub const HERO_KILL_GOLD_PER_LEVEL: i32 = 8;
+pub const HERO_KILL_GOLD_PER_LEVEL: i32 = 10;
 /// Gold for ending a streak of 3, 4, ... 10 or more kills.
 pub const STREAK_GOLD: [i32; 8] = [60, 100, 150, 210, 280, 360, 450, 550];
 /// The shortest streak whose end pays gold.

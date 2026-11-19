@@ -111,8 +111,8 @@ fn kill_credit_assigns_a_creep_or_tower_finish_to_the_single_recent_enemy_damage
             world.seats[0].assists, 0,
             "its own credited kill is not an assist"
         );
-        // Level-one bounty 125+8, First Blood 135; assist 15 + 50 + 0.037 * 1000, equal team worth.
-        assert_eq!(world.seats[0].gold - before, 370);
+        // 7.42 level-one bounty 100 + 10, First Blood 135; assist 15 + 50 + 0.037 * 1000, equal team worth.
+        assert_eq!(world.seats[0].gold - before, 347);
         assert!(events.iter().any(|event| matches!(event.kind(), EventKind::Died { unit, killer: Some(killer), ref credited_hero, .. } if unit == wire_id(victim) && killer == wire_id(source) && credited_hero.as_deref() == Some(&wire_id(ours[0])))));
     }
 }
@@ -128,8 +128,8 @@ fn kill_credit_distinguishes_the_single_damager_from_a_debuff_only_contributor()
     finish(&mut world, victim, source);
     assert_eq!(world.seats[0].kills, 1);
     assert_eq!(world.seats[2].kills, 0);
-    // Both contributors receive 15 + (50 + 0.037 * 2000) / 2 = 77; only the damager gets 268 kill gold.
-    assert_eq!(world.seats[0].gold - before[0], 345);
+    // Both contributors receive 15 + (50 + 0.037 * 2000) / 2 = 77; only the damager gets 245 kill gold.
+    assert_eq!(world.seats[0].gold - before[0], 322);
     assert_eq!(world.seats[2].gold - before[2], 77);
 }
 
@@ -151,8 +151,8 @@ fn kill_credit_assist_gold_includes_distant_damage_or_debuff_and_nearby_nonparti
         world.transform.get_mut(ours[3]).unwrap().pos = FALL + Vec2::from_ints(3000, 0);
         let before: Vec<_> = world.seats.iter().map(|seat| seat.gold).collect();
         finish(&mut world, victim, ours[0]);
-        // Killer, distant participant, nearby observer: 15 + (50 + 0.037 * 2000) / 3 rounds down to 56.
-        assert_eq!(world.seats[0].gold - before[0], 324);
+        // Killer, distant participant, nearby observer: 15 + (50 + 0.037 * 2000) / 3 pays 56 gold.
+        assert_eq!(world.seats[0].gold - before[0], 301);
         assert_eq!(
             world.seats[2].gold - before[2],
             56,
@@ -188,15 +188,15 @@ fn kill_credit_does_not_assign_an_arbitrary_hero_after_multiple_or_expired_damag
             assert_eq!(world.seats[0].kills, 0);
             assert_eq!(world.seats[2].kills, 0);
             assert_eq!(world.first_blood_claimed, !expired);
-            // Fresh damagers share 268 / 2 kill gold and 77 assist gold each.
-            // Expired damage leaves 133 / 2 for each enemy; only the nearby ally gets 139 assist gold.
+            // Fresh damagers share 245 / 2 kill gold and 77 assist gold each.
+            // Expired damage leaves 110 / 2 for each enemy; only the nearby ally gets 139 assist gold.
             assert_eq!(
                 world.seats[0].gold - before[0],
-                if expired { 66 } else { 211 }
+                if expired { 55 } else { 199 }
             );
             assert_eq!(
                 world.seats[2].gold - before[2],
-                if expired { 205 } else { 211 }
+                if expired { 194 } else { 199 }
             );
             assert!(events.iter().any(|event| matches!(event.kind(), EventKind::Died { unit, killer: Some(killer), .. } if unit == wire_id(victim) && killer == wire_id(source))));
         }
@@ -351,7 +351,7 @@ fn kill_credit_awards_report_scaled_assist_gold_and_filter_it_by_recipient_team(
                 recipient: SlotId(0),
                 team: Team::Radiant,
                 kind: GoldAwardKind::KillBounty,
-                amount: 268
+                amount: 245
             },
             GoldAward {
                 recipient: SlotId(0),
@@ -399,7 +399,7 @@ fn kill_credit_awards_report_scaled_assist_gold_and_filter_it_by_recipient_team(
         };
         assert_eq!(
             *bounty,
-            Some(345),
+            Some(322),
             "legacy bounty stays the killer's aggregate"
         );
         assert_eq!(*assists, 1 << 2);
@@ -472,8 +472,8 @@ fn kill_credit_an_undamaged_creep_or_tower_finish_shares_bounty_with_every_enemy
         for index in [0, 2] {
             assert_eq!(
                 world.seats[index].gold - before[index],
-                66,
-                "133 base bounty split between two enemies, without First Blood"
+                55,
+                "110 base bounty split between two enemies, without First Blood"
             );
             assert_eq!(world.seats[index].kills, 0);
         }
@@ -482,7 +482,7 @@ fn kill_credit_an_undamaged_creep_or_tower_finish_shares_bounty_with_every_enemy
                 .iter()
                 .map(|award| award.amount)
                 .sum::<i32>(),
-            132
+            110
         );
         assert!(
             !world.first_blood_claimed,
@@ -510,7 +510,7 @@ fn kill_credit_a_shared_hero_kill_spends_first_blood_once() {
         .find(|award| award.kind == GoldAwardKind::KillBounty)
         .expect("later solo bounty");
     assert_eq!(
-        award.amount, 133,
+        award.amount, 110,
         "the shared kill already claimed First Blood"
     );
 }
@@ -529,7 +529,7 @@ fn kill_credit_trailing_team_uses_the_victim_to_earner_worth_ratio() {
         }
         let before: Vec<_> = world.seats.iter().map(|seat| seat.gold).collect();
         finish(&mut world, victim, ours[0]);
-        assert_eq!(world.seats[0].gold - before[0], 268 + assist);
+        assert_eq!(world.seats[0].gold - before[0], 245 + assist);
         for (seat, before) in world.seats.iter().zip(&before).skip(2) {
             assert_eq!(seat.gold - before, assist);
         }
@@ -696,8 +696,8 @@ fn kill_credit_a_zero_damage_blow_earns_an_assist_but_not_the_kill() {
     assert_eq!(world.seats[0].assists, 1);
     assert_eq!(
         world.seats[0].gold - before,
-        235,
-        "133 shared base bounty and 102 assist gold"
+        212,
+        "110 shared base bounty and 102 assist gold"
     );
 }
 
