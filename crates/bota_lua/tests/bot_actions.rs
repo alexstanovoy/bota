@@ -400,3 +400,142 @@ fn a_death_and_respawn_between_thinks_cannot_keep_the_old_controller_tail() {
     assert!(next.failures.is_empty(), "{:?}", next.failures);
     assert!(next.bots[0].orders.is_empty());
 }
+
+#[test]
+fn the_thirty_third_waiting_entry_is_rejected_without_changing_the_first_thirty_two() {
+    let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let mut lua=host(br#"local frame=0 function Think() frame=frame+1;local b=GetBot();if frame==1 then for i=1,32 do b:ActionQueue_MoveToLocation(b:GetLocation()+Vector(256+i,0,0)) end local ok,why=pcall(b.ActionQueue_MoveToLocation,b,Vector(0,0,0));assert(not ok and string.find(tostring(why),'bot action queue limit exceeded',1,true));assert(b:NumQueuedActions()==32);assert(b:GetQueuedActionType(31)==BOT_ACTION_TYPE_MOVE_TO);assert(b:GetQueuedActionType(32)==-1) else assert(b:NumQueuedActions()==31) end end"#);
+    for _ in 0..2 {
+        let turn = lua.think(&sessions[0]).unwrap();
+        assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+        step(&mut local, &mut sessions, &turn.bots[0].orders);
+    }
+}
+#[test]
+fn a_couriers_waiting_move_is_independent_of_the_heros_queue() {
+    let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let courier = sessions[0]
+        .current()
+        .unwrap()
+        .units
+        .iter()
+        .find(|unit| unit.kind == bota_proto::UnitKind::Courier && unit.owner == Some(SlotId(0)))
+        .unwrap()
+        .id;
+    let mut lua=host(br#"local frame=0 function Think() frame=frame+1;local b=GetBot();local c=GetCourier(0);if frame==1 then c:Action_MoveDirectly(c:GetLocation()+Vector(512,0,0));c:ActionQueue_MoveToLocation(c:GetLocation()+Vector(512,256,0));b:Action_MoveDirectly(b:GetLocation()+Vector(256,0,0));assert(c:NumQueuedActions()==2);assert(b:NumQueuedActions()==1) else assert(c:NumQueuedActions()==1);assert(b:NumQueuedActions()==0);assert(c:GetCurrentActionType()==BOT_ACTION_TYPE_MOVE_TO_DIRECTLY) end end"#);
+    for frame in 0..2 {
+        let turn = lua.think(&sessions[0]).unwrap();
+        assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+        if frame == 0 {
+            assert_eq!(turn.bots[0].orders.len(), 2);
+            assert!(
+                turn.bots[0]
+                    .orders
+                    .iter()
+                    .any(|order| order.unit == Some(courier))
+            );
+            assert!(turn.bots[0].orders.iter().any(|order| order.unit.is_none()));
+        }
+        step(&mut local, &mut sessions, &turn.bots[0].orders);
+    }
+}
+#[test]
+fn a_hero_that_stays_dead_has_no_current_or_waiting_action_on_later_ticks() {
+    let (mut local, mut sessions) =
+        support::local_with_cheats(&[Team::Radiant, Team::Dire], bota_core::MAP2_ID);
+    let mut lua=host(br#"local frame=0 function Think() frame=frame+1;local b=GetBot();if frame==1 then b:Action_MoveDirectly(b:GetLocation()+Vector(512,0,0));b:ActionQueue_MoveToLocation(Vector(0,256,0)) else assert(b:GetCurrentActionType()==BOT_ACTION_TYPE_IDLE);assert(b:NumQueuedActions()==0) end end"#);
+    let turn = lua.think(&sessions[0]).unwrap();
+    assert!(turn.failures.is_empty());
+    step(&mut local, &mut sessions, &turn.bots[0].orders);
+    step(
+        &mut local,
+        &mut sessions,
+        &[IssuedOrder::hero(Order::Cheat {
+            cheat: Cheat::Suicide,
+        })],
+    );
+    for _ in 0..5 {
+        assert!(sessions[0].current().unwrap().players[0].respawn_left > 0);
+        let turn = lua.think(&sessions[0]).unwrap();
+        assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+        assert!(turn.bots[0].orders.is_empty());
+        step(&mut local, &mut sessions, &[]);
+    }
+}
+#[test]
+fn arriving_at_an_attack_move_releases_the_waiting_move() {
+    let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let goal = sessions[0].own_hero().unwrap().pos + Vec2::from_ints(256, 0);
+    let mut lua=host(br#"local frame=0 function Think() frame=frame+1;local b=GetBot();if frame==1 then b:Action_AttackMove(b:GetLocation());b:ActionQueue_MoveToLocation(b:GetLocation()+Vector(256,0,0)) else assert(b:GetCurrentActionType()==BOT_ACTION_TYPE_MOVE_TO);assert(b:NumQueuedActions()==0) end end"#);
+    let first = lua.think(&sessions[0]).unwrap();
+    assert!(first.failures.is_empty());
+    step(&mut local, &mut sessions, &first.bots[0].orders);
+    let next = lua.think(&sessions[0]).unwrap();
+    assert!(next.failures.is_empty(), "{:?}", next.failures);
+    assert_eq!(
+        next.bots[0].orders,
+        vec![IssuedOrder::hero(Order::Move {
+            target: bota_proto::Target::Pos(goal)
+        })]
+    );
+}
+#[test]
+fn an_unidentified_effect_releases_the_waiting_move_at_its_five_second_bound() {
+    use bota_client_core::bot_actions::{BotAction, BotActionMode, BotActionType, BotActions};
+    let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let hero = sessions[0].own_hero().unwrap();
+    let goal = hero.pos + Vec2::from_ints(128, 0);
+    let mut controller = BotActions::default();
+    controller.bind(Some(hero.id));
+    controller
+        .request(
+            BotAction {
+                kind: BotActionType::UseAbility,
+                order: Order::Cast {
+                    slot: bota_proto::AbilitySlot(255),
+                    target: bota_proto::Target::None,
+                },
+                effect: None,
+                once: false,
+            },
+            BotActionMode::Queue,
+        )
+        .unwrap();
+    controller
+        .request(
+            BotAction {
+                kind: BotActionType::MoveTo,
+                order: Order::Move {
+                    target: bota_proto::Target::Pos(goal),
+                },
+                effect: None,
+                once: false,
+            },
+            BotActionMode::Queue,
+        )
+        .unwrap();
+    let started = sessions[0].current().unwrap().tick;
+    let first = controller.start_ready(&sessions[0]).unwrap();
+    step(&mut local, &mut sessions, &[IssuedOrder::hero(first)]);
+    let bound = 5 * bota_core::rules::TICKS_PER_SECOND;
+    for elapsed in 1..=bound {
+        assert_eq!(sessions[0].current().unwrap().tick - started, elapsed);
+        let order = controller.update(&sessions[0]);
+        if elapsed < bound {
+            assert!(order.is_none());
+            step(&mut local, &mut sessions, &[]);
+        } else {
+            assert_eq!(
+                order,
+                Some(Order::Move {
+                    target: bota_proto::Target::Pos(goal)
+                })
+            );
+            step(
+                &mut local,
+                &mut sessions,
+                &[IssuedOrder::hero(order.unwrap())],
+            );
+        }
+    }
+}

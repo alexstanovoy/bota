@@ -840,9 +840,9 @@ impl State {
             .snapshot
             .as_ref()
             .map_or(0, |snapshot| snapshot.units.len());
-        vm.charge_fuel(
-            16 + BOT_ACTION_CAPACITY as u64 * (units as u64 + 1 + actions.len() as u64),
-        )?;
+        // One roster lookup, a controller copy plus its possible shift/clear, and
+        // one constant-time insertion per requested entry. The roster is not rescanned per slot.
+        vm.charge_fuel(16 + units as u64 + 2 * BOT_ACTION_CAPACITY as u64 + actions.len() as u64)?;
         if actions.len() > BOT_ACTION_CAPACITY {
             return Err(vm.error("bot action queue limit exceeded"));
         }

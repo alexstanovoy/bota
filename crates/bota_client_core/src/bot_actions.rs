@@ -3,8 +3,10 @@ use bota_proto::{
     AbilityId, EntityId, EventKind, Fixed, Inflictor, ItemId, Order, StatusFlags, Target, UnitView,
 };
 
-/// Host safety bound. The reference warns at ten entries but has no hard queue limit.
+/// Maximum waiting entries per controlled body.
 pub const BOT_ACTION_CAPACITY: usize = bota_core::rules::MAX_QUEUED_ORDERS;
+/// Safety bound for an action whose effect cannot be identified from the received sheet.
+pub const UNKNOWN_EFFECT_TIMEOUT_TICKS: u32 = 5 * bota_core::rules::TICKS_PER_SECOND;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BotActionType {
@@ -37,8 +39,8 @@ pub struct RunningBotAction {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BotActionQueueFull;
 
-/// A bounded waiting FIFO and one current action. The embedder chooses the reference's
-/// zero-delay level 3/4: a pending entry becomes current in the same controller step.
+/// A bounded waiting FIFO and one current action. A pending entry becomes current
+/// in the same controller step, after the callback finishes.
 /// All mutation is O(capacity), independent of world size; no allocation after construction.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BotActions {
@@ -93,7 +95,7 @@ impl BotActions {
             .flatten()
             .map(|action| action.kind)
     }
-    /// A same-target Action_AttackUnit is a complete no-op, including when bOnce differs.
+    /// A same-target Action_AttackUnit is a complete no-op, including when its attack-once option changes.
     /// Overflow is rejected before any entry changes. Returns whether it changed the controller.
     pub fn request(
         &mut self,
@@ -242,7 +244,7 @@ impl BotActionView for crate::ClientSession {
     }
 }
 impl BotActions {
-    /// O(visible-unit lookup + received impacts + capacity). Zero-delay controller update.
+    /// O(visible-unit lookup + received impacts + capacity). Advance the current action.
     /// Some engine-specific endings and bot waypoint planning remain unsupported.
     pub fn update(&mut self, view: &impl BotActionView) -> Option<Order> {
         let source = self.owner?;
@@ -327,10 +329,13 @@ impl BotActions {
             return true;
         };
         match current.action.kind {
-            BotActionType::MoveTo | BotActionType::MoveDirectly => {
-                let Order::Move {
+            BotActionType::MoveTo | BotActionType::MoveDirectly | BotActionType::AttackMove => {
+                let (Order::Move {
                     target: Target::Pos(point),
-                } = current.action.order
+                }
+                | Order::Attack {
+                    target: Target::Pos(point),
+                }) = current.action.order
                 else {
                     return false;
                 };
@@ -351,7 +356,8 @@ impl BotActions {
             }
             BotActionType::UseAbility => {
                 let Some(effect) = current.action.effect else {
-                    return false;
+                    return view.tick().saturating_sub(current.started_at)
+                        >= UNKNOWN_EFFECT_TIMEOUT_TICKS;
                 };
                 if view.impacts().any(|impact| {
                     impact.source == source
@@ -371,7 +377,7 @@ impl BotActions {
                 // No cast phase yet means unknown, not inactive: the body may be walking
                 // into range. Never-started/instant casts require a separate observed ending.
                 // The stream exposes spell cast/channel identity. Item cast identity and
-                // out-of-range accepted casts have narrower information than the reference.
+                // out-of-range accepted casts may not expose enough information to determine completion.
                 match effect {
                     BotActionEffect::Ability(ability) => {
                         unit.cast.is_none_or(|cast| cast.ability != Some(ability))
@@ -382,7 +388,7 @@ impl BotActions {
                     BotActionEffect::Item(_) => unit.cast.is_none() && unit.channel.is_none(),
                 }
             }
-            BotActionType::Idle | BotActionType::AttackMove => false,
+            BotActionType::Idle => false,
         }
     }
 }

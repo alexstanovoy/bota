@@ -30,9 +30,6 @@ fn queue_move(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, Lu
     let at = vector::position(vm, vm.arg(args, 1))?;
     let mut state = context.state.borrow_mut();
     vm.charge_fuel(8)?;
-    if Some(id) != state.own_id() {
-        return Err(vm.error("action requires the active bot"));
-    }
     state.request_action(
         vm,
         id,

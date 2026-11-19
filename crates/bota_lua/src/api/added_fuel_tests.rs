@@ -141,6 +141,47 @@ mod pins {
     }
 
     #[test]
+    fn a_controller_request_prices_one_roster_scan_and_two_bounded_queue_copies() {
+        for (roster, expected_work) in [(1usize, 83u64), (60, 149)] {
+            let mut rig = Rig::new(|snapshot, own| {
+                snapshot.units.retain(|known| known.unit.id == own);
+                for index in 1..roster {
+                    crate::api::guard_tests::add_body(
+                        snapshot,
+                        own,
+                        70000 + index as u32,
+                        bota_proto::UnitKind::Hero,
+                        Team::Radiant,
+                        100,
+                    );
+                }
+                assert_eq!(snapshot.units.len(), roster);
+            });
+            rig.run("me=GetBot(); pt=Vector(0,0,0)").unwrap();
+            let me = global(&mut rig, "me");
+            let pt = global(&mut rig, "pt");
+            let function = method(&mut rig, false, "Action_MoveDirectly");
+            let work = spent(&mut rig, function, &[me, pt]);
+            assert!(
+                work >= roster as u64 + 64,
+                "the scan and bounded copy must be paid: {work}"
+            );
+            assert!(
+                work <= roster as u64 + 96,
+                "one scan must not be multiplied by queue capacity: {work}"
+            );
+            assert_eq!(work, expected_work, "explicit roster {roster} fuel pin");
+            assert_exact(
+                &mut rig,
+                "controller request",
+                function,
+                &[me, pt],
+                expected_work,
+            );
+        }
+    }
+
+    #[test]
     fn every_other_new_call_charges_its_documented_work_exactly() {
         let mut rig = Rig::new(|_, _| {});
         rig.run("me = GetBot(); ab = me:GetAbilityByName('nevermore_shadowraze1'); pt = Vector(0, 0, 0); path = {pt, pt, pt}")
@@ -283,7 +324,7 @@ mod pins {
                 "ActionQueue_MoveToLocation",
                 method(&mut rig, false, "ActionQueue_MoveToLocation"),
                 vec![me, pt],
-                receiver + 8,
+                receiver + 8 + 16 + n + 2 * 32 + 1,
             ),
             (
                 "Action_MovePath",
@@ -294,13 +335,17 @@ mod pins {
                 receiver
                     + 16
                     + 8 * bota_core::rules::MAX_QUEUED_ORDERS as u64
-                    + (bota_core::rules::MAX_QUEUED_ORDERS as u64 + 1),
+                    + (bota_core::rules::MAX_QUEUED_ORDERS as u64 + 1)
+                    + 16
+                    + n
+                    + 2 * 32
+                    + 3,
             ),
             (
                 "Action_UseAbilityOnTree",
                 method(&mut rig, false, "Action_UseAbilityOnTree"),
                 vec![me, ab, Value::Number(0.0)],
-                receiver + 1 + ability_count / 8,
+                receiver + 1 + ability_count / 8 + 16 + n + 2 * 32 + 1,
             ),
         ];
         for (label, function, args, work) in cases {

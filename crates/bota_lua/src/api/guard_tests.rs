@@ -33,6 +33,7 @@ impl Rig {
             }],
         )));
         state.borrow_mut().statistics = Some(crate::statistics::collector());
+        state.borrow_mut().prepare_sight(&snapshot);
         state.borrow_mut().snapshot = Some(snapshot);
         let mut lua = Lua::new(
             Limits::DEFAULT.with_fuel_per_call(Limits::DEFAULT.fuel_per_tick),
@@ -56,7 +57,9 @@ impl Rig {
     pub(super) fn run(&mut self, source: &str) -> Result<Value, luagee::Error> {
         let program = self.lua.load("guard", source.as_bytes()).expect("chunk");
         self.lua.begin_tick();
-        let results = self.lua.call(program, &[])?;
+        let result = self.lua.call(program, &[]);
+        self.state.borrow_mut().flush_actions(0, false);
+        let results = result?;
         Ok(results.first().copied().unwrap_or(Value::Nil))
     }
 
@@ -523,7 +526,16 @@ fn a_movement_path_with_a_hole_is_an_error_and_publishes_nothing() {
     assert_eq!(rig.orders(), 0);
     rig.run("GetBot():Action_MovePath({Vector(1, 1, 0), Vector(2, 2, 0)})")
         .unwrap();
-    assert_eq!(rig.orders(), 2, "a gap-free path is published whole");
+    assert_eq!(rig.orders(), 1, "only the active path head is published");
+    assert_eq!(
+        rig.state.borrow().bots[0].actions[0].queued_len(),
+        1,
+        "the remaining waypoint stays in the client queue"
+    );
+    assert_eq!(
+        rig.state.borrow().bots[0].actions[0].queued_type(0),
+        Some(bota_client_core::bot_actions::BotActionType::MoveTo)
+    );
 }
 
 #[test]

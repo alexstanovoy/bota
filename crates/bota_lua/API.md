@@ -624,25 +624,31 @@ work is FIFO: `NumQueuedActions` excludes the current action, and `GetQueuedActi
 uses zero-based waiting indices (-1 for absent or foreign entries). Controller state is
 private to the running seat and its courier, never another seat's intentions.
 
-Actions use the reference's zero-delay level3/4 scheduling. A new request is
-visible to getters immediately, and starts after its callback, including one that errors.
-`Action_` replaces the controller work, `ActionQueue_` appends; same-target
-`Action_AttackUnit` is a complete no-op even when its `once` argument changes.
+A new request is visible to getters immediately and starts after its callback, including
+one that errors. `Action_` replaces the controller work, `ActionQueue_` appends;
+same-target `Action_AttackUnit` is a complete no-op even when its `once` argument changes.
 `Action_ClearActions(false)` clears intentions without sending Stop; true also sends Stop.
-The shared client FIFO has a host safety bound of32 waiting entries: the reference warns
-at10 but is unbounded. Over-capacity requests and paths fail before partial mutation.
-Only the active head emits an ordinary server order; client tails are not Shift orders.
+The shared client FIFO has a safety bound of 32 waiting entries. Over-capacity requests
+and paths fail before partial mutation. Only the active head emits an ordinary server
+order; client tails are not Shift orders.
 
 Attack-once ends on **observed damage dealt** by the controlled unit while that action is
-current (any victim, including a previously launched projectile or spell/modifier damage),
-not on launch. Queued movement follows the impact. A continuous attack stays current
-through windup and backswing. Visible dead/missing targets and dead/replaced controlled
-bodies release their controller work. Direct moves finish within10units; the current
-MoveTo adapter uses the final25unit threshold without the reference bot waypoint planner.
-Spell actions use observed cast/channel identity and matching damage-impact events.
+current (any victim, including a previously launched projectile or spell/modifier damage).
+Queued movement follows the impact. A continuous attack stays current through windup
+and backswing. Visible dead/missing targets and dead/replaced controlled bodies release
+their controller work. Direct moves finish within 10 units; MoveTo and attack-move finish
+within 25 units of their destinations. Spell actions use observed cast/channel identity
+and matching damage-impact events.
 
-Explicit reference gaps: Some engine-specific action endings are unsupported; they are not guessed from stopped motion. Full bot waypoint planning, item cast identity/mute, nightmare state, zero-damage
-and missed attack notifications, and never-started/instant cast completion without a damage impact are deferred. A body
-walking into cast range is not declared inactive just because no cast phase is visible. These limitations need source evidence, not new server state
-added for a bot. Controller substance lives in `bota_client_core::bot_actions`; bindings
-only map names, validate handles/arguments and charge fixed-capacity work.
+An ability or item whose effect cannot be identified from the received sheet releases
+its controller action after five seconds of simulation ticks. This is a safety bound;
+it does not invent a cast-completion fact. A following action then issues its own order.
+Controller request fuel pays for one roster scan, two bounded queue copies and the number
+of submitted entries: `16 + units + 2*32 + entries`, in addition to binding/argument costs.
+
+Some action endings remain unsupported. Full bot waypoint planning, item cast identity
+and mute, nightmare state, zero-damage/missed attack notifications, and completion of
+identified casts that never start or end instantly without a damage impact are deferred.
+A body walking into cast range is not declared inactive because no cast phase is visible.
+Controller substance lives in `bota_client_core::bot_actions`; bindings map names, validate
+handles/arguments and charge bounded work.
