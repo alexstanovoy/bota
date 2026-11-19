@@ -73,7 +73,7 @@ fn the_bands_and_the_cheap_parts_carry_their_742_bonuses() {
     // 7.42: "Attack Speed bonus increased from +6 to +10".
     assert_eq!(
         wraith.attack_speed - bare.attack_speed,
-        10 + 5,
+        Fixed::from_int(10 + 5),
         "ten attack speed besides the agility"
     );
     assert!(near(
@@ -742,7 +742,7 @@ fn assert_carries_its_values(item: ItemId, bare: Stats) {
             "bonus_agility" => attributes.agility += points(*value),
             "bonus_intellect" => attributes.intelligence += points(*value),
             "bonus_damage" => expected.damage += value.int(),
-            "bonus_attack_speed" => expected.attack_speed += value.int(),
+            "bonus_attack_speed" => expected.attack_speed += Fixed::from_int(value.int()),
             "bonus_armor" => expected.armor += points(*value),
             "bonus_health" => expected.max_hp += points(*value),
             "bonus_mana" => expected.max_mana += points(*value),

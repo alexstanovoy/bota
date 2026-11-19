@@ -554,7 +554,7 @@ fn a_hellbears_death_enrages_its_partner_unless_it_was_broken() {
         let now = world.stats.get(partner).expect("derived").attack_speed;
         assert_eq!(
             now - quick,
-            if broken { 0 } else { 120 },
+            Fixed::from_int(if broken { 0 } else { 120 }),
             "broken: {broken}: the partner's attack speed"
         );
         assert!(!wears(&world, outsider, NeutralAbility::DeathThroeRush));

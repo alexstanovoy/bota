@@ -375,7 +375,11 @@ fn the_kept_feast_attack_speed_talent_adds_thirty_where_a_tree_holds_it() {
         cast(&mut world, FEAST_SLOT, Target::None);
         world.step();
         let during = world.stats.get(fiend).expect("settled").attack_speed;
-        assert_eq!(during - before, added, "learned: {learned}");
+        assert_eq!(
+            during - before,
+            Fixed::from_int(added),
+            "learned: {learned}"
+        );
     }
 }
 
@@ -389,7 +393,7 @@ fn no_talent_of_his_tree_adds_to_the_feasts_attack_speed() {
         cast(&mut world, FEAST_SLOT, Target::None);
         world.step();
         let during = world.stats.get(fiend).expect("settled").attack_speed;
-        assert_eq!(during - before, added, "{talent:?}");
+        assert_eq!(during - before, Fixed::from_int(added), "{talent:?}");
     }
 }
 

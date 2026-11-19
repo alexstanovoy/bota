@@ -342,7 +342,8 @@ fn both_animation_getters_observe_a_hidden_target_windup_and_return_sentinels_af
                     .attack_speed;
                 assert_eq!(
                     phase.elapsed,
-                    first.elapsed + ticks * bota_core::attack_gain(speed),
+                    first.elapsed
+                        + ticks * bota_core::attack_gain(bota_proto::Fixed::from_int(speed)),
                     "exact visible wind-up progress per tick"
                 );
                 advanced = true;

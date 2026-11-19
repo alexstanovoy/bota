@@ -27,7 +27,7 @@ pub(crate) fn stats() -> Stats {
         attack_range: Fixed::ZERO,
         acquisition: Fixed::ZERO,
         attack_time: 1000,
-        attack_speed: 100,
+        attack_speed: Fixed::from_int(100),
         attributes: Attributes::ZERO,
         primary: None,
         attack_point: 0,

@@ -112,7 +112,8 @@ pub fn agility_armor(has: Attributes) -> Fixed {
     rules::ARMOR_PER_AGILITY * has.agility
 }
 
-/// The attack speed agility is worth.
-pub fn agility_attack_speed(has: Attributes) -> i32 {
-    (has.agility * Fixed::from_int(rules::ATTACK_SPEED_PER_AGILITY)).to_int()
+/// The attack speed agility is worth: every fraction of it pays (the game's server code
+/// multiplies the unfloored attribute).
+pub fn agility_attack_speed(has: Attributes) -> Fixed {
+    has.agility * Fixed::from_int(rules::ATTACK_SPEED_PER_AGILITY)
 }

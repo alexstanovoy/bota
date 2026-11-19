@@ -487,7 +487,7 @@ fn the_banisher_purges_a_feasting_fiend_and_his_feast_ends() {
             .all(|effect| effect.id != EffectId::FEASTING),
         "the feast is off him"
     );
-    assert_eq!(shown.attack_speed, plain, "and so is its haste");
+    assert_eq!(shown.attack_speed, plain.to_int(), "and so is its haste");
 }
 
 #[test]

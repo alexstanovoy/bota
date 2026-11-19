@@ -505,7 +505,7 @@ fn stepped_illusion_progress_rate_matches_the_worn_hero_sheet() {
             {
                 assert_eq!(
                     b.elapsed - a.elapsed,
-                    bota_core::attack_gain(pair[0].0),
+                    bota_core::attack_gain(Fixed::from_int(pair[0].0)),
                     "backswing advances at the worn speed"
                 );
                 observed += 1;

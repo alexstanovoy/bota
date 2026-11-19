@@ -395,7 +395,10 @@ fn roshans_npc_level_attack_speed_and_bounty_are_the_boss_rows() {
     let roshan = boss(&world);
     let at = world.pos(roshan).expect("boss");
     assert_eq!(world.level.get(roshan).expect("NPC level").0, 30);
-    assert_eq!(world.stats.get(roshan).expect("boss").attack_speed, 200);
+    assert_eq!(
+        world.stats.get(roshan).expect("boss").attack_speed,
+        Fixed::from_int(200)
+    );
     for (i, seat) in world.seats.clone().into_iter().enumerate() {
         if let Some(hero) = seat.unit {
             world.transform.get_mut(hero).expect("hero").pos =
@@ -1073,7 +1076,10 @@ fn roshan_slams_a_crowd_with_a_hero_and_deals_double_damage_to_creeps() {
         world.stats.get(a).expect("creep stats").move_speed,
         bota_proto::Fixed::from_int(150)
     );
-    assert_eq!(world.stats.get(a).expect("creep stats").attack_speed, 50);
+    assert_eq!(
+        world.stats.get(a).expect("creep stats").attack_speed,
+        bota_proto::Fixed::from_int(50)
+    );
     run(&mut world, 120);
     for target in [hero, a, b] {
         assert!(

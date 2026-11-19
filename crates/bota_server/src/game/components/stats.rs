@@ -42,7 +42,7 @@ pub struct Stats {
     /// `MIN_ATTACK_SPEED..=MAX_ATTACK_SPEED` where read.
     ///
     /// [`rules::BASE_ATTACK_SPEED`]: bota_core::rules::BASE_ATTACK_SPEED
-    pub attack_speed: i32,
+    pub attack_speed: Fixed,
     /// Milliseconds from the start of an attack to the hit at the base
     /// attack speed.
     pub attack_point: u32,

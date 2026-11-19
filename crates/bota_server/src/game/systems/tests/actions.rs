@@ -76,8 +76,8 @@ fn strikes_match_the_closed_form_at_every_speed() {
         for speed in SPEEDS {
             let (mut world, from, on) = duel(def, speed);
             let stats = *world.stats.get(from).expect("settled");
-            assert_eq!(stats.attack_speed, speed);
-            let gain = attack_gain(speed);
+            assert_eq!(stats.attack_speed, bota_proto::Fixed::from_int(speed));
+            let gain = attack_gain(bota_proto::Fixed::from_int(speed));
             let hit_at = beats(def.attack_point);
             let len = beats(def.attack_time);
             for step in 1..=400 {

@@ -157,7 +157,9 @@ pub fn stat_split(unit: &bota_proto::UnitView) -> Option<StatSplit> {
     Some(StatSplit {
         armor: Split::fixed(Fixed::from_int(kind.armor) + agility_armor(has), unit.armor),
         attack_speed: Split::whole(
-            kind.attack_speed + kind.per_level.attack_speed * levels + agility_attack_speed(has),
+            (Fixed::from_int(kind.attack_speed + kind.per_level.attack_speed * levels)
+                + agility_attack_speed(has))
+            .to_int(),
             unit.attack_speed,
         ),
         move_speed: Split::whole(kind.move_speed, whole(unit.move_speed)),

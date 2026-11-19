@@ -41,7 +41,11 @@ fn every_tier_stands_and_shoots_as_in_seven_forty_one() {
         assert_eq!(world.kind.get(tower), Some(&UnitKind::Tower));
         assert_eq!(
             (stats.max_hp, stats.armor, stats.attack_speed),
-            (Fixed::from_int(hp), Fixed::from_int(armor), 110),
+            (
+                Fixed::from_int(hp),
+                Fixed::from_int(armor),
+                Fixed::from_int(110)
+            ),
             "tier {tier}"
         );
         world.set_target(tower, on);

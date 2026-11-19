@@ -460,7 +460,7 @@ fn attack_speed_shortens_the_wait_between_attacks() {
     let hasted = *world.stats.get(hero).expect("settled");
     assert_eq!(
         hasted.attack_speed,
-        plain.attack_speed + 20,
+        plain.attack_speed + Fixed::from_int(20),
         "the gloves are worth twenty"
     );
     assert_eq!(
@@ -538,6 +538,21 @@ fn armor_pays_for_every_fraction_of_agility() {
     assert_ne!(stats.armor, armor(Fixed::from_int(agility.to_int())));
 }
 
+/// And agility for attack speed: "GetAgility x 1", unfloored; bota truncated it to whole points
+/// before.
+#[test]
+fn attack_speed_pays_for_every_fraction_of_agility() {
+    let (stats, level) = fiend_holding_fractions();
+    let base = &bota_core::SHADOW_FIEND;
+    let levels = i32::from(level) - 1;
+    let speed = |agility| {
+        Fixed::from_int(base.attack_speed + base.per_level.attack_speed * levels) + agility
+    };
+    let agility = stats.attributes.agility;
+    assert_eq!(stats.attack_speed, speed(agility), "level {level}");
+    assert_ne!(stats.attack_speed, speed(Fixed::from_int(agility.to_int())));
+}
+
 /// And intelligence for magic resistance: "0.125 x multiplier x GetIntellect", unfloored.
 #[test]
 fn magic_resistance_pays_for_every_fraction_of_intelligence() {
@@ -595,11 +610,13 @@ fn shadow_fiend_stands_at_dota_numbers_from_the_first_level_to_the_last() {
     // milliseconds between swings, and armor in thousandths. Health and mana show their whole
     // points. Dota 7.42: base health 200 ("increased from 120"), 20 health a point of strength
     // ("decreased from 22 to 20"), paid for whole points of strength and intelligence (56.8
-    // strength pays 56 points at level 15).
+    // strength pays 56 points at level 15). Attack speed pays for every fraction of agility,
+    // as the game's server code multiplies it unfloored (3.6 agility a level: 50.4 more at level
+    // 15, a swing of 912).
     for (level, hp, mana, damage, swing, armor) in [
         (1, 580, 267, 44, 1280, 4_166),
-        (15, 1320, 627, 94, 914, 12_565),
-        (30, 2140, 1023, 148, 698, 21_565),
+        (15, 1320, 627, 94, 912, 12_565),
+        (30, 2140, 1023, 148, 697, 21_565),
     ] {
         let mut world = World::new();
         let fiend = seated_hero(

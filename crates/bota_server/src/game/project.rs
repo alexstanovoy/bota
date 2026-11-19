@@ -683,7 +683,8 @@ impl World {
             attack_range: stats.attack_range,
             attack_time: bota_core::attack_duration(stats.attack_time, stats.attack_speed),
             attack_point: bota_core::attack_duration(stats.attack_point, stats.attack_speed),
-            attack_speed: stats.attack_speed,
+            // Shown in whole points, as Dota's panel shows it.
+            attack_speed: stats.attack_speed.to_int(),
             armor: stats.armor,
             magic_resist: Fixed::from_ratio(stats.magic_resist_bp, rules::NOMINAL_BP),
             status_resist: Fixed::from_ratio(stats.status_resist_bp, rules::NOMINAL_BP),
@@ -1054,7 +1055,11 @@ impl World {
         let point = self.cast_point_of(entity, point);
         Some(CastView {
             ability,
-            goes_off_in: phase_ticks_left(point, progress, rules::BASE_ATTACK_SPEED),
+            goes_off_in: phase_ticks_left(
+                point,
+                progress,
+                Fixed::from_int(rules::BASE_ATTACK_SPEED),
+            ),
         })
     }
 

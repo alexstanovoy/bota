@@ -160,14 +160,13 @@ fn a_butterfly_is_worth_its_agility_damage_and_attack_speed() {
     );
     // Thirty of its own; Pudge's primary is strength, so agility adds none.
     assert_eq!(with.damage - bare.damage, 30);
-    let agility_pace =
-        (with.attributes.agility * Fixed::from_int(rules::ATTACK_SPEED_PER_AGILITY)).to_int();
-    let base = rules::BASE_ATTACK_SPEED + agility_pace;
+    let agility_pace = with.attributes.agility * Fixed::from_int(rules::ATTACK_SPEED_PER_AGILITY);
+    let base = Fixed::from_int(rules::BASE_ATTACK_SPEED) + agility_pace;
     // 7.42: "No longer provides +20% Base Attack Speed Percentage", "Now also provides +30
     // Attack Speed".
     assert_eq!(
         with.attack_speed,
-        base + 30,
+        base + Fixed::from_int(30),
         "thirty attack speed besides its agility's, and nothing else"
     );
 }

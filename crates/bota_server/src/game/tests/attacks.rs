@@ -471,7 +471,7 @@ fn the_attack_cycle_keeps_dotas_timings() {
         (NeutralKind::GiantWolf.def(), 100, 8, 16, 48, '!'),
     ] {
         let (marks, speed) = creep(def, gap);
-        assert_eq!(speed, def.attack_speed);
+        assert_eq!(speed, Fixed::from_int(def.attack_speed));
         let runs = phase_runs(&marks);
         assert_eq!(runs[0], ('B', windup), "{:?} windup: {marks}", def.kind);
         assert_eq!(
@@ -524,7 +524,10 @@ fn the_attack_cycle_keeps_dotas_timings() {
         swinging(&world, fiend).is_some(),
         "the windup begins on the order's tick"
     );
-    assert_eq!(world.stats.get(fiend).expect("settled").attack_speed, 125);
+    assert_eq!(
+        world.stats.get(fiend).expect("settled").attack_speed,
+        Fixed::from_int(125)
+    );
     let marks = cycle_marks(&mut world, fiend, mark, 120);
     let runs = phase_runs(&marks);
     assert_eq!(runs[0], ('B', 11), "the rest of a 12-tick windup: {marks}");
@@ -560,7 +563,10 @@ fn pudge_recovers_from_a_swing_for_1_17_seconds() {
     );
     world.step();
     attack_click(&mut world, mark);
-    assert_eq!(world.stats.get(pudge).expect("settled").attack_speed, 113);
+    assert_eq!(
+        world.stats.get(pudge).expect("settled").attack_speed,
+        Fixed::from_int(113)
+    );
     let marks = cycle_marks(&mut world, pudge, mark, 120);
     let runs = phase_runs(&marks);
     // At 113 attack speed: 0.5 s is a 13-tick windup before the blow, 1.17 s

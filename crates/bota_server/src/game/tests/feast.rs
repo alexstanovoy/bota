@@ -39,7 +39,10 @@ fn the_feast_hastens_its_caster_at_once_and_for_eight_seconds() {
     cast(&mut world, FEAST_SLOT, Target::None);
     world.step();
     let during = *world.stats.get(fiend).expect("settled");
-    assert_eq!(during.attack_speed, before.attack_speed + 35);
+    assert_eq!(
+        during.attack_speed,
+        before.attack_speed + bota_proto::Fixed::from_int(35)
+    );
     assert_eq!(
         during.move_speed.raw,
         (i64::from(before.move_speed.raw) * 104 / 100) as i32

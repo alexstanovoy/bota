@@ -389,9 +389,9 @@ fn add_feast(now: &mut Stats, pace: &mut Pace, on_it: &Modifiers, book: Option<&
     }) else {
         return;
     };
-    now.attack_speed += rules::FEAST_ATTACK_SPEED[level];
+    now.attack_speed += Fixed::from_int(rules::FEAST_ATTACK_SPEED[level]);
     if book.is_some_and(|book| book.has_talent(Talent::FeastAttackSpeed)) {
-        now.attack_speed += rules::TALENT_FEAST_ATTACK_SPEED;
+        now.attack_speed += Fixed::from_int(rules::TALENT_FEAST_ATTACK_SPEED);
     }
     pace.change(rules::FEAST_MOVE_PCT[level]);
 }
@@ -407,8 +407,8 @@ fn add_carried_shares(now: &mut Stats, carried: &Carried, illusion: bool) {
         now.max_mana += now.max_mana * Fixed::from_ratio(carried.mana_pct, 100);
     }
     if carried.base_attack_speed_pct != 0 {
-        let base = rules::BASE_ATTACK_SPEED + agility_attack_speed(now.attributes);
-        now.attack_speed += base * carried.base_attack_speed_pct / 100;
+        let base = Fixed::from_int(rules::BASE_ATTACK_SPEED) + agility_attack_speed(now.attributes);
+        now.attack_speed += base * Fixed::from_ratio(carried.base_attack_speed_pct, 100);
     }
 }
 
@@ -500,7 +500,7 @@ fn add_carried(now: &mut Stats, sums: &mut Sums, carried: &Carried, illusion: bo
     now.max_mana += Fixed::from_int(carried.mana);
     sums.bonus_damage += kept(illusion, carried.damage);
     now.damage_to_creeps += kept(illusion, carried.damage_to_creeps);
-    now.attack_speed += carried.attack_speed;
+    now.attack_speed += Fixed::from_int(carried.attack_speed);
     now.armor += kept(illusion, carried.armor);
     now.move_speed += Fixed::from_int(carried.move_speed + carried.lace_speed);
     sums.pace.change(carried.move_speed_pct);
@@ -744,7 +744,7 @@ fn item_buff_outranked(
 fn add_buff(now: &mut Stats, sums: &mut Sums, buff: &Buff, level: u8, wearer: Wearer) {
     let of = |stat| buff.get(stat, level);
     sums.pace.change(of(Stat::MovePct));
-    now.attack_speed += of(Stat::AttackSpeed);
+    now.attack_speed += Fixed::from_int(of(Stat::AttackSpeed));
     now.move_speed += Fixed::from_int(of(Stat::MoveFlat));
     sums.restoration_keep_bp =
         sums.restoration_keep_bp * (100 - of(Stat::RestorationCutPct).clamp(0, 100)) / 100;
@@ -909,7 +909,7 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32, night: bool) -> Stats {
         attack_range: Fixed::from_int(kind.attack_range),
         acquisition: Fixed::from_int(kind.acquisition),
         attack_time: kind.attack_time,
-        attack_speed: kind.attack_speed + up.attack_speed,
+        attack_speed: Fixed::from_int(kind.attack_speed + up.attack_speed),
         attack_point: kind.attack_point,
         attack_backswing: kind.attack_backswing,
         projectile_speed: kind.projectile_speed.map(Fixed::from_int),
