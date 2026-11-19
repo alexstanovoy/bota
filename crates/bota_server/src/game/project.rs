@@ -847,9 +847,65 @@ fn visible_tether_spans(
     sees_head: bool,
     sees_point: impl Fn(bota_proto::Vec2) -> bool,
 ) -> Vec<TetherSpan> {
-    const CELL: i64 = (rules::GRID_CELL_SIZE as i64) << Fixed::FRAC_BITS;
     let raw = |point: bota_proto::Vec2| [i64::from(point.x.raw), i64::from(point.y.raw)];
     let (start, end) = (raw(source), raw(head));
+    let boundaries = tether_grid_crossings(start, end);
+    let point = |(numerator, denominator)| interpolate_tether(start, end, numerator, denominator);
+    let mut spans: Vec<TetherSpan> = Vec::new();
+    let last = boundaries.len() - 2;
+    for (index, pair) in boundaries.windows(2).enumerate() {
+        let (begin, end) = (point(pair[0]), point(pair[1]));
+        let begin_visible = sees_point(begin);
+        let end_visible = sees_point(end);
+        // Ground may be lit while an entity is hidden. Its cell must not
+        // expose the exact coordinate at which the chain would end.
+        if (index == 0 && !sees_source && begin_visible)
+            || (index == last && !sees_head && end_visible)
+        {
+            continue;
+        }
+        let sample = |weight| {
+            let at = interpolate_tether(raw(begin), raw(end), weight, 1024);
+            (at, sees_point(at))
+        };
+        let samples = [
+            (begin, begin_visible),
+            sample(1),
+            sample(512),
+            sample(1023),
+            (end, end_visible),
+        ];
+        for (left, right) in samples.into_iter().zip(samples.into_iter().skip(1)) {
+            let (begin, end) = match (left.1, right.1) {
+                (true, true) => (left.0, right.0),
+                (true, false) => (left.0, visible_tether_edge(left.0, right.0, &sees_point)),
+                (false, true) => (visible_tether_edge(right.0, left.0, &sees_point), right.0),
+                (false, false) => continue,
+            };
+            let reaches_head = index == last && sees_head && end == head;
+            if let Some(previous) = spans.last_mut()
+                && previous.end == begin
+            {
+                previous.end = end;
+                previous.reaches_head = reaches_head;
+            } else {
+                if spans.len() == bota_proto::game_limits::MAX_TETHER_SPANS {
+                    return spans;
+                }
+                spans.push(TetherSpan {
+                    start: begin,
+                    end,
+                    reaches_source: index == 0 && sees_source && begin == source,
+                    reaches_head,
+                });
+            }
+        }
+    }
+    spans
+}
+
+fn tether_grid_crossings(start: [i64; 2], end: [i64; 2]) -> Vec<(i64, i64)> {
+    const CELL: i64 = (rules::GRID_CELL_SIZE as i64) << Fixed::FRAC_BITS;
     let crosses = |axis: usize| {
         let delta = end[axis] - start[axis];
         let (low, high) = (start[axis].min(end[axis]), start[axis].max(end[axis]));
@@ -866,59 +922,34 @@ fn visible_tether_spans(
     boundaries.extend(crosses(1));
     boundaries.sort_unstable_by(cmp);
     boundaries.dedup_by(|a, b| cmp(a, b).is_eq());
-    let point = |(numerator, denominator)| interpolate_tether(start, end, numerator, denominator);
-    let mut spans: Vec<TetherSpan> = Vec::new();
-    let last = boundaries.len() - 2;
-    for (index, pair) in boundaries.windows(2).enumerate() {
-        let (mut begin, end) = (point(pair[0]), point(pair[1]));
-        let reaches_head = index == last && sees_head;
-        let reaches_source = index == 0 && sees_source;
-        let hides_source_here = index == 0 && !sees_source;
-        if (index == last && !sees_head)
-            || (hides_source_here && (!reaches_head || sees_point(source)))
-        {
-            continue;
+    boundaries
+}
+
+fn visible_tether_edge(
+    mut visible: bota_proto::Vec2,
+    mut hidden: bota_proto::Vec2,
+    sees_point: &impl Fn(bota_proto::Vec2) -> bool,
+) -> bota_proto::Vec2 {
+    let midpoint = |a: Fixed, b: Fixed| Fixed {
+        raw: ((i64::from(a.raw) + i64::from(b.raw)) / 2) as i32,
+    };
+    // Use coordinate precision so changing the cell's length cannot move the
+    // boundary by a fraction of the sampled interval on the next tick.
+    for _ in 0..i32::BITS {
+        let middle = bota_proto::Vec2 {
+            x: midpoint(visible.x, hidden.x),
+            y: midpoint(visible.y, hidden.y),
+        };
+        if middle == visible || middle == hidden {
+            break;
         }
-        let sample = |weight| sees_point(interpolate_tether(raw(begin), raw(end), weight, 1024));
-        let hidden = [1023, 512, 1]
-            .into_iter()
-            .find(|&weight| !sample(weight))
-            .or_else(|| hides_source_here.then_some(0));
-        if let Some(hidden) = hidden {
-            // Keep the witnessed suffix at entry. Search from the visible head
-            // toward the closest hidden sample within this cell.
-            if !reaches_head || !sees_point(end) {
-                continue;
-            }
-            let (mut low, mut high) = (hidden, 1024);
-            for _ in 0..10 {
-                let middle = (low + high) / 2;
-                if sample(middle) {
-                    high = middle;
-                } else {
-                    low = middle;
-                }
-            }
-            begin = interpolate_tether(raw(begin), raw(end), high, 1024);
-        }
-        if let Some(previous) = spans.last_mut()
-            && previous.end == begin
-        {
-            previous.end = end;
-            previous.reaches_head = reaches_head;
+        if sees_point(middle) {
+            visible = middle;
         } else {
-            if spans.len() == bota_proto::game_limits::MAX_TETHER_SPANS {
-                break;
-            }
-            spans.push(TetherSpan {
-                start: begin,
-                end,
-                reaches_source: reaches_source && begin == source,
-                reaches_head,
-            });
+            hidden = middle;
         }
     }
-    spans
+    visible
 }
 
 fn interpolate_tether(
@@ -1300,6 +1331,69 @@ fn per_second_view(per_tick: Fixed) -> Fixed {
 mod tether_tests {
     use super::*;
     use bota_proto::Vec2;
+
+    fn visible_entry(head_x: i32) -> TetherSpan {
+        let head = Vec2::from_ints(head_x, 0);
+        let spans = visible_tether_spans(Vec2::from_ints(-96, 0), head, false, true, |spot| {
+            spot.x >= Fixed::from_int(4)
+        });
+        let [span] = spans.as_slice() else {
+            panic!("expected one continuous visible span at {head_x}: {spans:?}");
+        };
+        assert!(span.reaches_head);
+        assert!(!span.reaches_source);
+        assert_eq!(span.end, head);
+        *span
+    }
+
+    #[test]
+    fn the_fog_endpoint_stays_put_as_the_outbound_head_crosses_a_cell() {
+        let before = visible_entry(60);
+        let after = visible_entry(68);
+        let length_change = (after.end.x - after.start.x) - (before.end.x - before.start.x);
+        assert_eq!(
+            (before.start.x, after.start.x, length_change),
+            (Fixed::from_int(4), Fixed::from_int(4), Fixed::from_int(8)),
+            "the chain should extend only by the head's travel"
+        );
+    }
+
+    #[test]
+    fn the_fog_endpoint_stays_put_as_the_returning_head_crosses_a_cell() {
+        let before = visible_entry(68);
+        let after = visible_entry(60);
+        let length_change = (after.end.x - after.start.x) - (before.end.x - before.start.x);
+        assert_eq!(
+            (before.start.x, after.start.x, length_change),
+            (Fixed::from_int(4), Fixed::from_int(4), Fixed::from_int(-8)),
+            "the chain should retract only by the head's travel"
+        );
+    }
+
+    #[test]
+    fn a_throw_into_fog_keeps_its_chain_up_to_the_visible_edge() {
+        let source = Vec2::from_ints(-96, 0);
+        let edge = Vec2::from_ints(4, 0);
+        let sees_point = |spot: Vec2| spot.x <= edge.x;
+        let mut ends = Vec::new();
+        for head_x in [0, 8, 60, 68, 60, 8, 0] {
+            let head = Vec2::from_ints(head_x, 0);
+            let spans = visible_tether_spans(source, head, true, sees_point(head), sees_point);
+            let [span] = spans.as_slice() else {
+                panic!("expected one continuous visible span at {head_x}: {spans:?}");
+            };
+            assert_eq!(span.start, source);
+            assert!(span.reaches_source);
+            assert_eq!(span.reaches_head, sees_point(head));
+            assert!(sees_point(span.end));
+            ends.push(span.end.x);
+        }
+        assert_eq!(
+            ends,
+            [0, 4, 4, 4, 4, 4, 0].map(Fixed::from_int),
+            "the chain ends where sight runs out"
+        );
+    }
 
     #[test]
     fn the_visible_suffix_of_the_heads_first_cell_keeps_its_chain() {
