@@ -550,7 +550,8 @@ pub struct TetherHead {
     pub speed: Fixed,
     pub returning: bool,
     pub caught: Option<EntityId>,
-    /// The return destination is known to the casting side.
+    /// The return destination is known to the casting side. An opponent sees
+    /// it only while the visible thrower is standing there.
     pub origin: Option<Vec2>,
 }
 

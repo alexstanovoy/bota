@@ -516,7 +516,9 @@ impl World {
                 .caught
                 .filter(|unit| self.alive(*unit) && self.carried(Some(viewer), *unit))
                 .map(wire_id),
-            origin: own.then_some(hook.from),
+            // An opponent may use the origin for the visible hand pose while the
+            // thrower is still standing there. This repeats a currently visible position.
+            origin: (own || (source && home == hook.from)).then_some(hook.from),
         });
         let spans = if own {
             vec![TetherSpan {
@@ -866,24 +868,44 @@ fn visible_tether_spans(
     boundaries.dedup_by(|a, b| cmp(a, b).is_eq());
     let point = |(numerator, denominator)| interpolate_tether(start, end, numerator, denominator);
     let mut spans: Vec<TetherSpan> = Vec::new();
-    let mut contiguous = false;
     let last = boundaries.len() - 2;
     for (index, pair) in boundaries.windows(2).enumerate() {
-        let (begin, end) = (point(pair[0]), point(pair[1]));
-        let sample = |weight| sees_point(interpolate_tether(raw(begin), raw(end), weight, 1024));
-        if (index == 0 && !sees_source)
-            || (index == last && !sees_head)
-            || ![1, 512, 1023].into_iter().all(sample)
+        let (mut begin, end) = (point(pair[0]), point(pair[1]));
+        let reaches_head = index == last && sees_head;
+        let reaches_source = index == 0 && sees_source;
+        let hides_source_here = index == 0 && !sees_source;
+        if (index == last && !sees_head)
+            || (hides_source_here && (!reaches_head || sees_point(source)))
         {
-            contiguous = false;
             continue;
         }
-        if contiguous {
-            let span = spans
-                .last_mut()
-                .expect("a visible interval immediately precedes this one");
-            span.end = end;
-            span.reaches_head = index == last;
+        let sample = |weight| sees_point(interpolate_tether(raw(begin), raw(end), weight, 1024));
+        let hidden = [1023, 512, 1]
+            .into_iter()
+            .find(|&weight| !sample(weight))
+            .or_else(|| hides_source_here.then_some(0));
+        if let Some(hidden) = hidden {
+            // Keep the witnessed suffix at entry. Search from the visible head
+            // toward the closest hidden sample within this cell.
+            if !reaches_head || !sees_point(end) {
+                continue;
+            }
+            let (mut low, mut high) = (hidden, 1024);
+            for _ in 0..10 {
+                let middle = (low + high) / 2;
+                if sample(middle) {
+                    high = middle;
+                } else {
+                    low = middle;
+                }
+            }
+            begin = interpolate_tether(raw(begin), raw(end), high, 1024);
+        }
+        if let Some(previous) = spans.last_mut()
+            && previous.end == begin
+        {
+            previous.end = end;
+            previous.reaches_head = reaches_head;
         } else {
             if spans.len() == bota_proto::game_limits::MAX_TETHER_SPANS {
                 break;
@@ -891,11 +913,10 @@ fn visible_tether_spans(
             spans.push(TetherSpan {
                 start: begin,
                 end,
-                reaches_source: index == 0,
-                reaches_head: index == last,
+                reaches_source: reaches_source && begin == source,
+                reaches_head,
             });
         }
-        contiguous = true;
     }
     spans
 }
@@ -1272,5 +1293,34 @@ impl World {
 fn per_second_view(per_tick: Fixed) -> Fixed {
     Fixed {
         raw: per_tick.raw.saturating_mul(rules::TICKS_PER_SECOND as i32),
+    }
+}
+
+#[cfg(test)]
+mod tether_tests {
+    use super::*;
+    use bota_proto::Vec2;
+
+    #[test]
+    fn the_visible_suffix_of_the_heads_first_cell_keeps_its_chain() {
+        let head = Vec2::from_ints(8, 0);
+        for source_x in [-96, 1] {
+            let spans =
+                visible_tether_spans(Vec2::from_ints(source_x, 0), head, false, true, |spot| {
+                    spot.x >= Fixed::from_int(4)
+                });
+            let [span] = spans.as_slice() else {
+                panic!("the visible head lost the four visible units behind it: {spans:?}")
+            };
+            assert!(span.reaches_head);
+            assert_eq!(span.end, head);
+            assert!(span.start.x >= Fixed::from_int(4));
+            assert!(span.start.x < Fixed::from_int(4) + Fixed::from_ratio(1, 100));
+        }
+        let invisible = visible_tether_spans(Vec2::from_ints(1, 0), head, false, true, |_| true);
+        assert!(
+            invisible.is_empty(),
+            "do not disclose an invisible source on lit ground"
+        );
     }
 }

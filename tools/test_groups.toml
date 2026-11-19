@@ -497,6 +497,7 @@ paths = [
     "crates/bota_server/src/game/tests/attack_launched.rs",
 ]
 tests = [{ crate = "bota_server", target = "lib", filters = [
+    "game::project::tether_tests::",
     "game::tests::vision::",
     "game::tests::wards::",
     "game::tests::ward_stacks::",
