@@ -506,7 +506,8 @@ and that `Think` would start a whole collection and pay for tracing the catalogu
 setup with one collection run by the host, outside any script's fuel (`Lua::collect`), and no script is billed for
 the host's setup. Measured minimum fuel per tick (measurement on or off alike), first `Think` and ticks 2 to 6:
 an empty `Think` 16 and 13; a loop of 100 additions 221 and 207; 100 reads of an undefined or of a defined global,
-then one move order, 591 and 567. Before the setup collection the first `Think` needed 284, 723, 1096 and 1095, and
+then one controller move request, 724 for the first `Think`. The move request includes
+the bounded controller price; the old direct-order price no longer applies. Before the setup collection the first `Think` needed 284, 723, 1096 and 1095, and
 before the constants were published 284, 596, 969 and 967. With the collection the numbers are identical for the
 185-name catalogue of before 4c-1 and for today's 437 names, so a published name costs a script no fuel, on the first
 tick or any later one. The default budget is 2,000,000 per tick.
@@ -638,13 +639,17 @@ Queued movement follows the impact. A continuous attack stays current through wi
 and backswing. Visible dead/missing targets and dead/replaced controlled bodies release
 their controller work. Direct moves finish within 10 units; MoveTo and attack-move finish
 within 25 units of their destinations. Spell actions use observed cast/channel identity
-and matching damage-impact events.
+and matching damage-impact events. Item-use actions also finish on a matching observed
+item application by the controlled unit, including uses that deal no damage.
 
 An ability or item whose effect cannot be identified from the received sheet releases
 its controller action after five seconds of simulation ticks. This is a safety bound;
 it does not invent a cast-completion fact. A following action then issues its own order.
 Controller request fuel pays for one roster scan, two bounded queue copies and the number
 of submitted entries: `16 + units + 2*32 + entries`, in addition to binding/argument costs.
+The shared controller operations prepay their roster lookup before checking control,
+including a declined receiver. Binding errors that need no controller lookup do not
+incur that controller work.
 
 Some action endings remain unsupported. Full bot waypoint planning, item cast identity
 and mute, nightmare state, zero-damage/missed attack notifications, and completion of
