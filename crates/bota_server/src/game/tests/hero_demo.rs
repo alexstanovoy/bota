@@ -2566,3 +2566,163 @@ fn with_cheats_on_a_player_cannot_control_buy_learn_or_cheat_another_players_her
         "Seat 1's gold untouched"
     );
 }
+
+#[test]
+fn a_full_queue_refuses_a_queued_order_for_a_controlled_hero_to_the_giver() {
+    use crate::game::{Command, RefusedOrder, wire_id};
+
+    let mut pair = Pair::on(HERO_DEMO_ID, true);
+    pair.dire_creates_an_ally();
+    let giver = SlotId(1);
+    let world = pair.local.world_mut();
+    let hero = world
+        .seats
+        .last()
+        .and_then(|seat| seat.unit)
+        .expect("the created hero");
+    assert!(
+        world.seats.last().is_some_and(|seat| seat.slot > giver),
+        "the hero belongs to a seat of its own"
+    );
+    let far = rules::DEMO_LANE_CORNERS[0];
+    let command = |seq: u32, queue: bool| Command {
+        slot: giver,
+        unit: Some(wire_id(hero)),
+        order: Order::Move {
+            target: Target::Pos(far),
+        },
+        queue,
+        seq,
+    };
+    // The trusted path does not check capacity beforehand, so the queue itself has to refuse.
+    let overflow = rules::MAX_QUEUED_ORDERS as u32 + 2;
+    let commands: Vec<Command> = (1..=overflow).map(|seq| command(seq, seq > 1)).collect();
+    world.advance_trusted(&commands);
+    assert_eq!(
+        world.refused,
+        [RefusedOrder {
+            slot: giver,
+            seq: overflow,
+            reason: RejectReason::QueueFull,
+        }]
+    );
+}
+
+#[test]
+fn unlearning_a_spell_the_hero_walks_to_cast_ends_the_walk() {
+    use bota_proto::AbilityId;
+
+    let mut demo = Demo::on(HERO_DEMO_ID);
+    let own = demo.me().unit.expect("own hero");
+    let pudge = demo.spawn_enemy(HeroId::PUDGE);
+    demo.cheat_at(pudge, Cheat::Levels { count: 10 });
+    let dismember = ability_slot_of(demo.unit(pudge), AbilityId::DISMEMBER);
+    demo.order(pudge, Order::Learn { slot: dismember });
+    let start = demo.unit(pudge).pos;
+    demo.order(
+        pudge,
+        Order::Cast {
+            slot: dismember,
+            target: Target::Unit(own),
+        },
+    );
+    demo.run(10);
+    let walking = demo.unit(pudge).pos;
+    assert_ne!(walking, start, "Pudge walks toward Dismember's target");
+
+    demo.cheat_at(pudge, Cheat::UnlearnAbilities);
+    let stopped = demo.unit(pudge).pos;
+    demo.run(30);
+    assert_eq!(
+        demo.unit(pudge).pos,
+        stopped,
+        "Pudge keeps walking to cast the spell it no longer knows"
+    );
+}
+
+#[test]
+fn removing_a_created_hero_that_a_hook_drags_takes_the_hook_away() {
+    use bota_proto::{AbilityId, Inflictor, StatusFlags};
+
+    let mut demo = Demo::on(HERO_DEMO_ID);
+    let hooker = demo.spawn_enemy(HeroId::PUDGE);
+    let hook = ability_slot_of(demo.unit(hooker), AbilityId::MEAT_HOOK);
+    demo.order(hooker, Order::Learn { slot: hook });
+    let spot = demo.unit(hooker).pos + Vec2::from_ints(400, 0);
+    demo.cheat(Cheat::CreateHero {
+        hero: HeroId::SHADOW_FIEND,
+        enemy: false,
+        at: spot,
+    });
+    let victim = demo
+        .view()
+        .players
+        .last()
+        .and_then(|row| row.unit)
+        .expect("the victim's hero");
+    assert_ne!(victim, hooker);
+    demo.order(
+        hooker,
+        Order::Cast {
+            slot: hook,
+            target: Target::Pos(demo.unit(victim).pos),
+        },
+    );
+    let chain = |demo: &Demo| {
+        demo.view()
+            .projectiles
+            .iter()
+            .any(|p| p.inflictor == Some(Inflictor::Ability(AbilityId::MEAT_HOOK)))
+    };
+    for _ in 0..2 * rules::TICKS_PER_SECOND {
+        demo.run(1);
+        if demo.unit(victim).statuses.bits & StatusFlags::STUNNED != 0 {
+            break;
+        }
+    }
+    assert_ne!(
+        demo.unit(victim).statuses.bits & StatusFlags::STUNNED,
+        0,
+        "the hook caught the victim"
+    );
+    assert!(chain(&demo), "the hook's chain is shown");
+
+    demo.cheat_at(victim, Cheat::RemoveHero);
+    assert!(
+        !chain(&demo),
+        "a hook that held the removed hero was still flying"
+    );
+}
+
+#[test]
+fn removing_a_created_hero_takes_away_the_bursts_it_left() {
+    use bota_proto::{AbilityId, Inflictor};
+
+    let mut demo = Demo::on(HERO_DEMO_ID);
+    let fiend = demo.spawn_enemy(HeroId::SHADOW_FIEND);
+    let raze = ability_slot_of(demo.unit(fiend), AbilityId::RAZE_NEAR);
+    demo.order(fiend, Order::Learn { slot: raze });
+    demo.order(
+        fiend,
+        Order::Cast {
+            slot: raze,
+            target: Target::None,
+        },
+    );
+    let burst = |demo: &Demo| {
+        demo.view()
+            .projectiles
+            .iter()
+            .any(|p| p.inflictor == Some(Inflictor::Ability(AbilityId::RAZE_NEAR)))
+    };
+    for _ in 0..rules::TICKS_PER_SECOND {
+        demo.run(1);
+        if burst(&demo) {
+            break;
+        }
+    }
+    assert!(burst(&demo), "the raze leaves a burst");
+
+    demo.cheat_at(fiend, Cheat::RemoveHero);
+    assert!(!burst(&demo), "the removed hero's burst was still shown");
+}

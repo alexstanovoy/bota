@@ -635,13 +635,15 @@ impl World {
             self.cancel_action(unit);
             self.rot_goes_out(unit);
             self.carry_fights_on(unit);
+            // A hook the unit threw lets go by itself on the next tick (its thrower stands nowhere);
+            // one holding the unit would go on dragging a handle that names nobody.
             let hooks: Vec<Entity> = self
                 .entities
                 .iter()
                 .filter(|&entity| {
                     self.hook
                         .get(entity)
-                        .is_some_and(|hook| hook.owner == unit || hook.caught == Some(unit))
+                        .is_some_and(|hook| hook.caught == Some(unit))
                 })
                 .collect();
             for hook in hooks {
@@ -753,6 +755,8 @@ impl World {
         {
             self.cancel_action(hero);
         }
+        // A cast still being walked to would otherwise carry the hero on to its target; an immediate
+        // cast needs no clearing, for it is refused at level zero when it goes off.
         let clear_pending = self
             .orders
             .get(hero)
@@ -764,24 +768,8 @@ impl World {
                         if unlearned(self.ability_in(hero, slot))
                 )
             });
-        let clear_immediate = self
-            .orders
-            .get(hero)
-            .and_then(|orders| orders.immediate)
-            .is_some_and(|cast| {
-                matches!(
-                    cast,
-                    crate::game::PendingCast::Ability { slot, .. }
-                        if unlearned(self.ability_in(hero, slot))
-                )
-            });
-        if let Some(orders) = self.orders.get_mut(hero) {
-            if clear_pending {
-                orders.pending = None;
-            }
-            if clear_immediate {
-                orders.immediate = None;
-            }
+        if clear_pending && let Some(orders) = self.orders.get_mut(hero) {
+            orders.pending = None;
         }
         let Some(book) = self.abilities.get_mut(hero) else {
             return;
