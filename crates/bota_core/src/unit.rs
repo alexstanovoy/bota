@@ -195,6 +195,18 @@ pub const fn upgraded_bounty_gold(base: GoldRange, growth: &Growth, steps: i32) 
     }
 }
 
+impl UnitDef {
+    /// The gold range and experience awarded for killing this creep after
+    /// `upgrades` intervals ([`upgraded_bounty_gold`]).
+    #[must_use]
+    pub fn upgraded_bounty(&self, upgrades: u32) -> (GoldRange, i32) {
+        let steps = i32::try_from(upgrades).expect("upgrade count fits an i32");
+        let gold = upgraded_bounty_gold(self.bounty_gold, &self.per_upgrade, steps);
+        let experience = self.bounty_xp + self.per_upgrade.xp * steps;
+        (gold, experience)
+    }
+}
+
 /// No gain at all.
 pub(crate) const NO_GROWTH: Growth = Growth {
     attributes: Attributes::ZERO,

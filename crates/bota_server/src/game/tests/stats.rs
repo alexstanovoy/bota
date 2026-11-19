@@ -677,6 +677,28 @@ fn shadow_fiend_stands_at_dota_numbers_from_the_first_level_to_the_last() {
 type Row = (&'static UnitDef, i32, (i32, i32), (i32, i32));
 
 #[test]
+fn a_spawned_creep_pays_its_definition_bounty_with_fractional_upgrades_rounded_once() {
+    static CREEP: UnitDef = UnitDef {
+        bounty_gold: bota_core::GoldRange::new(30, 37),
+        bounty_xp: 40,
+        per_upgrade: bota_core::Growth {
+            gold_halves: 3,
+            xp: 7,
+            ..MELEE_CREEP.per_upgrade
+        },
+        ..MELEE_CREEP
+    };
+    let mut world = World::new();
+    for (upgrades, min, max, xp) in [(0, 30, 37, 40), (1, 31, 38, 47), (3, 34, 41, 61)] {
+        let creep = world.spawn_creep(&CREEP, Team::Dire, Vec2::from_ints(5000, 5000), 0, upgrades);
+        let spawned = world.bounty.get(creep).expect("creep bounty");
+        let declared = CREEP.upgraded_bounty(upgrades);
+        assert_eq!(declared, (bota_core::GoldRange::new(min, max), xp));
+        assert_eq!((spawned.gold, spawned.xp), declared);
+    }
+}
+
+#[test]
 fn super_and_mega_creeps_match_the_table_at_fifteen_minutes() {
     // Installed 7.41f unit rows plus two upgrade cycles; Valve 7.33 changed bounty
     // growth, and 7.35 added five damage to super and mega creeps.
