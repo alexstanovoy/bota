@@ -254,7 +254,7 @@ fn measured_native_turn_reports_exhaustion_on_its_exact_tick() {
     assert_eq!(stats.turns, 1);
     assert_eq!(stats.fuel_exhaustions.ticks, [tick]);
     assert_eq!(stats.script_failures, 1);
-    assert_eq!(stats.discarded.ticks, [tick]);
+    assert!(stats.discarded.ticks.is_empty(), "a reported callback failure is not a discarded native turn");
     assert!(stats.first_error.is_some());
     assert_eq!(host.deadline_ticks(), 0);
 }

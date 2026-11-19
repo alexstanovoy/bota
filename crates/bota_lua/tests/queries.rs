@@ -213,7 +213,7 @@ fn crowd_query(limits: Limits) -> LuaTeam {
     lua.add_script(SlotId(0), ScriptKind::Takeover, "crowd_area", br#"
         function Think()
             local bot=GetBot()
-            bot:Action_MoveToLocation(bot:GetLocation())
+            bot:ActionImmediate_SwapItems(0,0)
             local ok,area=pcall(function() return bot:FindAoELocation(true,false,bot:GetLocation(),600,250,0,0) end)
             assert(ok, 'ordinary geometry does not fail')
             assert(area.count==40, 'the complete visible group is found')
@@ -241,7 +241,7 @@ fn forty_creeps_allow_an_aoe_query_and_following_orders_with_native_fuel() {
 }
 
 #[test]
-fn an_aoe_query_still_exhausts_a_small_budget_and_discards_the_whole_outbox() {
+fn an_aoe_query_exhausts_a_small_budget_after_preserving_the_accepted_prefix() {
     let session = creep_crowd_session(160);
     let mut lua = crowd_query(
         Limits::DEFAULT
@@ -258,8 +258,6 @@ fn an_aoe_query_still_exhausts_a_small_budget_and_discards_the_whole_outbox() {
         "{:?}",
         turn.failures
     );
-    assert!(
-        turn.bots[0].orders.is_empty(),
-        "fuel exhaustion remains uncatchable by pcall"
-    );
+    assert_eq!(turn.bots[0].orders,vec![bota_client_core::IssuedOrder::hero(Order::Swap {from:bota_proto::ItemSlot(0),to:bota_proto::ItemSlot(0)})],
+        "fuel exhaustion aborts pcall and later statements while retaining the earlier accepted order");
 }

@@ -48,7 +48,9 @@ fn attack_estimates_reject_out_of_range_observations_and_recover() {
     .expect("team");
     lua.add_script(SlotId(0), ScriptKind::Takeover, "projection", b"function Think() local b=GetBot() b:Action_MoveToLocation(Vector(10,20,0)) assert(b:GetEstimatedDamageToTarget(false,b,1,DAMAGE_TYPE_PHYSICAL)>=0) end").expect("script");
     let rejected = lua.think(session).expect("bounded projection failure");
-    assert!(rejected.bots[0].orders.is_empty());
+    assert_eq!(rejected.bots[0].orders, vec![bota_client_core::IssuedOrder::hero(bota_proto::Order::Move {
+        target: bota_proto::Target::Pos(bota_proto::Vec2::from_ints(9226,9236)),
+    })], "the valid order before the failing getter remains committed");
     assert_eq!(rejected.failures.len(), 1);
     assert!(
         matches!(&rejected.failures[0].error, luagee::Error::Runtime { message, .. } if message.contains("statistics"))

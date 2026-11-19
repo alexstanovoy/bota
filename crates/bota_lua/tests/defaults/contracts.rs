@@ -2,7 +2,7 @@ use super::*;
 use bota_proto::{StatusFlags, UnitKind};
 
 fn assert_order_limit(turn: &bota_lua::TeamTurn) {
-    assert!(turn.bots[0].orders.is_empty());
+    assert_eq!(turn.bots[0].orders.len(),64,"accepted prefixes fill the cap before the error");
     assert_eq!(turn.failures.len(), 1);
     assert!(
         matches!(&turn.failures[0].error,luagee::Error::Runtime{message,..} if message.contains("order limit exceeded")),
@@ -16,7 +16,7 @@ fn takeover_and_mode_plus_native_defaults_enforce_the_same_64_order_cap() {
     let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
     for n in [64, 70] {
         let source = format!(
-            "function Think() local b=GetBot() for i=1,{n} do b:Action_MoveToLocation(Vector(i,i,0)) end end"
+            "function Think() local b=GetBot() for i=1,{n} do b:ActionImmediate_SwapItems(0,0) end end"
         );
         let turn = team(&[("bot_nevermore", &source)])
             .think(&sessions[0])
@@ -30,7 +30,7 @@ fn takeover_and_mode_plus_native_defaults_enforce_the_same_64_order_cap() {
     }
     for n in [62, 63] {
         let source = format!(
-            "function GetDesire() return .99 end function Think() local b=GetBot() for i=1,{n} do b:Action_MoveToLocation(Vector(i,i,0)) end end"
+            "function GetDesire() return .99 end function Think() local b=GetBot() for i=1,{n} do b:ActionImmediate_SwapItems(0,0) end end"
         );
         let turn = team(&[("mode_laning_generic", &source)])
             .think(&sessions[0])
@@ -65,7 +65,9 @@ fn mode_desires_reject_boundary_values_and_accept_signed_zero() {
             .think(&sessions[0])
             .expect("mode");
         assert_eq!(turn.failures.len(), 1, "{expr}");
-        assert!(turn.bots[0].orders.is_empty());
+        assert_eq!(turn.bots[0].orders.len(),2,"the failed mode callback does not suppress native auxiliary hooks");
+        assert!(matches!(turn.bots[0].orders[0].order,Order::Learn {..}));
+        assert!(matches!(turn.bots[0].orders[1].order,Order::Buy {..}));
         assert!(
             matches!(&turn.failures[0].error,luagee::Error::Runtime{message,..} if message.contains("finite number between zero and one")),
             "{:?}",
