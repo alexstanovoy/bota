@@ -341,10 +341,11 @@ impl World {
         let (Some(next), Some(&slot)) = (rest.pop(), self.owner.get(entity)) else {
             return;
         };
-        match self.validate_order(slot, Some(wire_id(entity)), &next.order) {
-            Ok(()) => self.carry_out(slot, entity, next.order, next.seq, &mut Vec::new()),
+        let giver = next.giver.unwrap_or(slot);
+        match self.validate_order(giver, Some(wire_id(entity)), &next.order) {
+            Ok(()) => self.carry_out(slot, giver, entity, next.order, next.seq, &mut Vec::new()),
             Err(reason) => self.refused.push(RefusedOrder {
-                slot,
+                slot: giver,
                 seq: next.seq,
                 reason,
             }),

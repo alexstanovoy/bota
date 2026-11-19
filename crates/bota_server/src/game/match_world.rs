@@ -101,7 +101,7 @@ impl World {
                 });
                 continue;
             }
-            self.take_order(cmd, &mut events);
+            self.take_order(given.slot, cmd, &mut events);
             if inventory_transaction(cmd.order) {
                 // Stat-dependent uses and casts must see this transaction too,
                 // including pools rescaled by a changed attribute bonus.
@@ -138,7 +138,7 @@ impl World {
 
     /// Hands one order to the unit it is for: into its queue when it is
     /// queued behind something, else to be carried out now.
-    fn take_order(&mut self, cmd: &Command, events: &mut Vec<Event>) {
+    fn take_order(&mut self, giver: SlotId, cmd: &Command, events: &mut Vec<Event>) {
         if cmd.order == Order::Glyph {
             self.use_glyph(cmd.slot);
             return;
@@ -175,7 +175,7 @@ impl World {
             );
         }
         if cmd.queued() && !self.free_to_take_up(unit) {
-            self.enqueue(unit, cmd);
+            self.enqueue(unit, giver, cmd);
             return;
         }
         // An order to the body given unqueued replaces the queue; what goes
@@ -183,13 +183,15 @@ impl World {
         if bota_core::order_queues(cmd.order) && self.immediate_cast(unit, cmd.order).is_none() {
             self.queue.remove(unit);
         }
-        self.carry_out(cmd.slot, unit, cmd.order, cmd.seq, events);
+        self.carry_out(cmd.slot, giver, unit, cmd.order, cmd.seq, events);
     }
 
-    /// Carries one order out on a unit of the seat that gave it.
+    /// Carries one order out on a unit of the seat that acts for it, with
+    /// `giver` remembering the player who issued it for any deferred refusal.
     pub(crate) fn carry_out(
         &mut self,
         seat: SlotId,
+        giver: SlotId,
         unit: Entity,
         order: Order,
         seq: u32,
@@ -245,7 +247,7 @@ impl World {
             // again while the warp runs.
             order if self.is_channelling(unit) && self.keeps_channel(unit, &order) => {}
             order if bota_core::order_queues(order) && !is_halt(order) && self.is_casting(unit) => {
-                self.wait_for_cast(seat, unit, order, seq);
+                self.wait_for_cast(seat, giver, unit, order, seq);
             }
             order => {
                 self.interrupt(unit, order);
@@ -308,7 +310,14 @@ impl World {
     /// waiting, or replaces the one move, attack or the like waiting; any
     /// other order replaces whatever waits. Refused when the casts waiting
     /// fill [`MAX_QUEUED_ORDERS`](bota_core::rules::MAX_QUEUED_ORDERS).
-    fn wait_for_cast(&mut self, seat: SlotId, unit: Entity, order: Order, seq: u32) {
+    fn wait_for_cast(
+        &mut self,
+        seat: SlotId,
+        giver: SlotId,
+        unit: Entity,
+        order: Order,
+        seq: u32,
+    ) {
         let mut waiting = self.waiting.remove(unit).unwrap_or_default();
         if !bota_core::order_is_cast(order)
             || !waiting
@@ -317,9 +326,13 @@ impl World {
         {
             waiting = crate::game::OrderQueue::default();
         }
-        if !waiting.push(crate::game::Queued { order, seq }) {
+        if !waiting.push(crate::game::Queued {
+            order,
+            seq,
+            giver: (giver != seat).then_some(giver),
+        }) {
             self.refused.push(crate::game::RefusedOrder {
-                slot: seat,
+                slot: giver,
                 seq,
                 reason: RejectReason::QueueFull,
             });

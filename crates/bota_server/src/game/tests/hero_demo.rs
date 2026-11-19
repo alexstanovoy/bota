@@ -1917,3 +1917,164 @@ fn unlearning_abilities_cancels_an_active_dismember_channel() {
         }
     }
 }
+
+#[test]
+fn deferred_cast_point_wait_overflow_on_a_controlled_hero_refuses_to_the_giver() {
+    use bota_proto::AbilityId;
+
+    let mut demo = Demo::on(HERO_DEMO_ID);
+    let sf = demo.spawn_enemy(HeroId::SHADOW_FIEND);
+    demo.cheat_at(sf, Cheat::Levels { count: 10 });
+    let requiem = ability_slot_of(demo.unit(sf), AbilityId::REQUIEM);
+    let raze = ability_slot_of(demo.unit(sf), AbilityId::RAZE_NEAR);
+    demo.order(sf, Order::Learn { slot: requiem });
+    demo.order(sf, Order::Learn { slot: raze });
+    // Requiem of Souls has a 1.67 s (50-tick) cast point, long enough to overflow the
+    // cast-point wait queue (32 entries) at one order per tick through the delay line.
+    demo.order(
+        sf,
+        Order::Cast {
+            slot: requiem,
+            target: Target::None,
+        },
+    );
+    assert!(
+        demo.unit(sf).cast.is_some(),
+        "Shadow Fiend stands in Requiem's cast point"
+    );
+
+    let cast_raze = Order::Cast {
+        slot: raze,
+        target: Target::None,
+    };
+    for _ in 0..rules::MAX_QUEUED_ORDERS {
+        demo.order(sf, cast_raze);
+    }
+    assert!(
+        demo.unit(sf).cast.is_some(),
+        "still in Requiem's cast point when the 33rd cast arrives"
+    );
+    demo.step_naming(&[(Some(sf), cast_raze)]);
+    assert_eq!(
+        demo.rejected,
+        [RejectReason::QueueFull],
+        "the giver must receive QueueFull when overflowing a controlled hero's cast-point wait"
+    );
+}
+
+#[test]
+fn deferred_cast_point_wait_refusal_on_release_goes_to_the_giver() {
+    use bota_proto::AbilityId;
+
+    let mut pair = Pair::on(HERO_DEMO_ID, true);
+    let pudge = pair.dire_creates_an_ally();
+    let hook = ability_slot_of(
+        pair.view(1).unit(pudge).expect("pudge stands"),
+        AbilityId::MEAT_HOOK,
+    );
+    pair.give(1, Some(pudge), Order::Learn { slot: hook });
+    assert_eq!(pair.rejected[1], []);
+    let aim = pair.view(1).unit(pudge).expect("pudge").pos + Vec2::from_ints(400, 0);
+    let cast_hook = Order::Cast {
+        slot: hook,
+        target: Target::Pos(aim),
+    };
+    // Seat 1 casts Meat Hook on the created hero, then while in its cast point issues a second
+    // cast that waits for release; once the first cast fires, Meat Hook is on cooldown and the
+    // waiting cast must be refused to Seat 1 (not Seat 0 and not dropped on the created seat).
+    pair.give(1, Some(pudge), cast_hook);
+    assert_eq!(pair.rejected[1], []);
+    assert!(
+        pair.view(1).unit(pudge).expect("pudge").cast.is_some(),
+        "Pudge stands in Meat Hook's cast point"
+    );
+    pair.give(1, Some(pudge), cast_hook);
+    assert_eq!(pair.rejected[1], [], "second cast waited behind cast point");
+
+    let mut seat1_refusals = Vec::new();
+    let mut seat0_refusals = Vec::new();
+    for _ in 0..rules::TICKS_PER_SECOND {
+        pair.run(1);
+        seat0_refusals.extend_from_slice(&pair.rejected[0]);
+        seat1_refusals.extend_from_slice(&pair.rejected[1]);
+        if !seat1_refusals.is_empty() {
+            break;
+        }
+    }
+    assert_eq!(
+        seat1_refusals,
+        [RejectReason::OnCooldown],
+        "Seat 1 must hear OnCooldown when its waiting cast is released"
+    );
+    assert_eq!(seat0_refusals, [], "Seat 0 gave no order");
+}
+
+#[test]
+fn deferred_shift_queued_order_refusal_on_take_up_goes_to_the_giver() {
+    use bota_proto::AbilityId;
+
+    let mut pair = Pair::on(HERO_DEMO_ID, true);
+    let pudge = pair.dire_creates_an_ally();
+    let hook = ability_slot_of(
+        pair.view(1).unit(pudge).expect("pudge stands"),
+        AbilityId::MEAT_HOOK,
+    );
+    pair.give(1, Some(pudge), Order::Learn { slot: hook });
+    assert_eq!(pair.rejected[1], []);
+    let from = pair.view(1).unit(pudge).expect("pudge").pos;
+    let nearby = from + Vec2::from_ints(120, 0);
+    // Walk a short distance, then Shift-queue Meat Hook behind the walk from Seat 1.
+    pair.give(
+        1,
+        Some(pudge),
+        Order::Move {
+            target: Target::Pos(nearby),
+        },
+    );
+    assert_eq!(pair.rejected[1], []);
+
+    pair.seq += 1;
+    let queued = [OutgoingOrder {
+        seq: pair.seq,
+        unit: Some(pudge),
+        order: Order::Cast {
+            slot: hook,
+            target: Target::Pos(nearby + Vec2::from_ints(400, 0)),
+        },
+        seen: pair.local.tick(),
+        queue: true,
+    }];
+    let streams = pair.local.step(&[&[], &queued]).expect("a step");
+    pair.take(streams);
+    assert_eq!(pair.rejected[1], [], "queued cast was admitted");
+
+    // Empty the created hero's mana while it walks so the queued cast fails on take-up.
+    pair.give(
+        1,
+        Some(pudge),
+        Order::Cheat {
+            cheat: Cheat::SetPools {
+                health: 100,
+                mana: 0,
+            },
+        },
+    );
+    assert_eq!(pair.rejected[1], []);
+
+    let mut seat1_refusals = Vec::new();
+    let mut seat0_refusals = Vec::new();
+    for _ in 0..3 * rules::TICKS_PER_SECOND {
+        pair.run(1);
+        seat0_refusals.extend_from_slice(&pair.rejected[0]);
+        seat1_refusals.extend_from_slice(&pair.rejected[1]);
+        if !seat1_refusals.is_empty() {
+            break;
+        }
+    }
+    assert_eq!(
+        seat1_refusals,
+        [RejectReason::NotEnoughMana],
+        "Seat 1 must hear NotEnoughMana when its Shift-queued cast fails on take-up"
+    );
+    assert_eq!(seat0_refusals, [], "Seat 0 gave no order");
+}

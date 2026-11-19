@@ -3,7 +3,7 @@
 use std::collections::VecDeque;
 
 use bota_core::rules::MAX_QUEUED_ORDERS;
-use bota_proto::{EntityId, Order, Vec2};
+use bota_proto::{EntityId, Order, SlotId, Vec2};
 
 use crate::engine::{Fnv, StateHash, state_hash};
 use crate::game::{Entity, PendingCast};
@@ -81,6 +81,10 @@ pub struct Queued {
     /// The number its seat gave it, to answer a refusal with when it comes
     /// up.
     pub seq: u32,
+    /// The seat that gave the order when it differs from the unit's own seat
+    /// (a player ordering a controlled hero). Absent when the unit's own seat
+    /// gave it.
+    pub giver: Option<SlotId>,
 }
 
 /// The orders a unit takes up one after another once it is done with the one
@@ -172,8 +176,39 @@ state_hash!(Orders {
     pending,
     immediate
 });
-state_hash!(Queued { order, seq });
+/// Tag for hashing an explicit giver on a queued order.
+const QUEUED_GIVER_HASH_TAG: u8 = 0xB9;
+
+impl StateHash for Queued {
+    fn state_hash(&self, fnv: &mut Fnv) {
+        self.order.state_hash(fnv);
+        self.seq.state_hash(fnv);
+        if let Some(giver) = self.giver {
+            fnv.u8(QUEUED_GIVER_HASH_TAG);
+            giver.state_hash(fnv);
+        }
+    }
+}
 state_hash!(OrderQueue { waiting });
+
+#[cfg(test)]
+impl crate::engine::Specimen for Queued {
+    fn low() -> Self {
+        Queued {
+            order: crate::engine::Specimen::low(),
+            seq: crate::engine::Specimen::low(),
+            giver: None,
+        }
+    }
+
+    fn high() -> Self {
+        Queued {
+            order: crate::engine::Specimen::high(),
+            seq: crate::engine::Specimen::high(),
+            giver: Some(crate::engine::Specimen::high()),
+        }
+    }
+}
 
 #[cfg(test)]
 impl crate::engine::Specimen for UnitOrder {

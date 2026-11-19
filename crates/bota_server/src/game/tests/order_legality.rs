@@ -1275,7 +1275,8 @@ fn order_legality_shift_queue_accepts_the_last_place_but_refuses_overflow() {
                 order: Order::Move {
                     target: Target::Pos(Vec2::from_ints(7000, 7000))
                 },
-                seq
+                seq,
+                giver: None,
             }));
         }
         probe.world_mut().queue.insert(hero, queue);

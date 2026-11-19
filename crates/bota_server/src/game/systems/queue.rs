@@ -69,11 +69,12 @@ impl World {
 
     /// Puts a queued order last in its unit's queue, or refuses it when the
     /// queue is full.
-    pub(crate) fn enqueue(&mut self, unit: Entity, cmd: &Command) {
+    pub(crate) fn enqueue(&mut self, unit: Entity, giver: bota_proto::SlotId, cmd: &Command) {
         debug_assert!(cmd.queued());
         let queued = Queued {
             order: cmd.order,
             seq: cmd.seq,
+            giver: (giver != cmd.slot).then_some(giver),
         };
         let room = match self.queue.get_mut(unit) {
             Some(queue) => queue.push(queued),
@@ -86,7 +87,7 @@ impl World {
         };
         if !room {
             self.refused.push(RefusedOrder {
-                slot: cmd.slot,
+                slot: giver,
                 seq: cmd.seq,
                 reason: bota_proto::RejectReason::QueueFull,
             });
@@ -115,10 +116,11 @@ impl World {
                     .get_mut(unit)
                     .and_then(|queue| queue.pop())
                     .expect("the queue was just seen to hold an order");
-                match self.validate_order(slot, Some(wire_id(unit)), &next.order) {
-                    Ok(()) => self.carry_out(slot, unit, next.order, next.seq, events),
+                let giver = next.giver.unwrap_or(slot);
+                match self.validate_order(giver, Some(wire_id(unit)), &next.order) {
+                    Ok(()) => self.carry_out(slot, giver, unit, next.order, next.seq, events),
                     Err(reason) => self.refused.push(RefusedOrder {
-                        slot,
+                        slot: giver,
                         seq: next.seq,
                         reason,
                     }),
