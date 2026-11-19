@@ -14,6 +14,8 @@ use crate::{
 
 const MAX_SCRIPTS: usize = 128;
 const MAX_DIAGNOSTICS: usize = 64;
+// Keep bounded diagnostics, including with a hostile received minion roster.
+const MAX_CALLBACK_FAILURES: usize = 64;
 const MAX_DIAGNOSTIC_BYTES: usize = 2048;
 const MODE_INTERVAL: u32 = 9;
 const WARNING_INTERVAL: u32 = 30;
@@ -68,9 +70,14 @@ pub struct HookActivity {
     pub native: u64,
     /// Additional errors after the first reported team-hook error in each turn.
     pub suppressed_team_errors: u64,
+    /// Callback failures beyond the retained diagnostics. Included in match failure counts.
+    pub suppressed_callback_errors: u64,
 }
 impl std::ops::AddAssign for HookActivity {
     fn add_assign(&mut self, other: Self) {
+        self.suppressed_callback_errors = self
+            .suppressed_callback_errors
+            .saturating_add(other.suppressed_callback_errors);
         self.initializations = self.initializations.saturating_add(other.initializations);
         self.scripted = self.scripted.saturating_add(other.scripted);
         self.native = self.native.saturating_add(other.native);
@@ -82,6 +89,9 @@ impl std::ops::AddAssign for HookActivity {
 impl HookActivity {
     fn since(self, previous: Self) -> Self {
         Self {
+            suppressed_callback_errors: self
+                .suppressed_callback_errors
+                .saturating_sub(previous.suppressed_callback_errors),
             initializations: self
                 .initializations
                 .saturating_sub(previous.initializations),
@@ -100,6 +110,11 @@ pub struct TeamTurn {
     pub hook_activity: HookActivity,
     pub bots: Vec<BotTurn>,
     pub failures: Vec<ScriptFailure>,
+}
+
+impl TeamTurn {
+    /// Every failed callback, including diagnostics omitted from the bounded retained list.
+    pub fn failure_count(&self)->u64 {(self.failures.len() as u64).saturating_add(self.hook_activity.suppressed_team_errors).saturating_add(self.hook_activity.suppressed_callback_errors)}
 }
 
 #[derive(Debug)]
@@ -144,6 +159,9 @@ pub struct LuaTeam {
     default_auxiliary: Value,
     lane_desire_reader: Value,
     hook_activity: HookActivity,
+    collect_callback_errors: bool,
+    callback_errors: Vec<(SlotId, Error)>,
+    failed_initializations: Vec<bool>,
 }
 
 impl LuaTeam {
@@ -278,6 +296,9 @@ impl LuaTeam {
             default_auxiliary,
             lane_desire_reader,
             hook_activity: HookActivity::default(),
+            collect_callback_errors: false,
+            callback_errors: Vec::with_capacity(MAX_CALLBACK_FAILURES),
+            failed_initializations: vec![false; MAX_SCRIPTS],
         })
     }
 
@@ -431,6 +452,8 @@ impl LuaTeam {
         }
     }
 
+
+
     pub(crate) fn think_snapshot(&mut self, snapshot: Snapshot) -> Result<TeamTurn, BindingError> {
         let statistics = self.state.borrow().statistics.clone();
         if let Some(stats) = &statistics {
@@ -490,60 +513,46 @@ impl LuaTeam {
         self.state.borrow_mut().orders.clear();
         self.state.borrow_mut().chat.clear();
         let _ = self.complete_once(0);
-        let first_host = self.state.borrow().bots[0].checkpoint();
-        let first_purchases = self.state.borrow().purchases.clone();
-        let mut team_error = self.run_team().err();
+        self.callback_errors.clear();
+        self.failed_initializations.fill(false);
+        self.collect_callback_errors = true;
+        if let Err(error) = self.run_team() {
+            self.record_callback_error(error);
+        }
         let mut result = TeamTurn::default();
         for (index, seat) in seats.iter().enumerate() {
             self.state.borrow_mut().current_slot = seat.slot;
             if index != 0 {
                 self.state.borrow_mut().orders.clear();
                 self.state.borrow_mut().chat.clear();
-            }
-            let host_before = if index == 0 {
-                first_host
-            } else {
                 let _ = self.complete_once(index);
-                self.state.borrow().bots[index].checkpoint()
-            };
-            let purchases_before = if index == 0 {
-                first_purchases.clone()
-            } else {
-                self.state.borrow().purchases.clone()
-            };
-            let ended = if index == 0 {
-                team_error
-                    .take()
-                    .map_or_else(|| self.run_seat(index, seat.slot, tick), Err)
-            } else {
-                self.run_seat(index, seat.slot, tick)
-            };
-            let orders = if let Err(error) = ended {
-                self.state.borrow_mut().orders.clear();
-                self.state.borrow_mut().chat.clear();
-                self.state.borrow_mut().bots[index].restore(host_before);
-                self.state.borrow_mut().purchases = purchases_before;
-                result
-                    .failures
-                    .push(self.failure(index, seat.slot, tick, error));
-                Vec::new()
-            } else {
-                let mut state = self.state.borrow_mut();
-                if state.bots[index]
-                    .pending_once
-                    .is_some_and(|pending| pending.launched)
-                {
-                    state.bots[index].pending_once = None;
-                }
-                std::mem::take(&mut state.orders)
-            };
-            let chat = std::mem::take(&mut self.state.borrow_mut().chat);
+            }
+            if let Err(error) = self.run_seat(index, seat.slot, tick) {
+                self.record_callback_error(error);
+            }
+            let mut state = self.state.borrow_mut();
+            if state.bots[index]
+                .pending_once
+                .is_some_and(|pending| pending.launched)
+            {
+                state.bots[index].pending_once = None;
+            }
             result.bots.push(BotTurn {
                 slot: seat.slot,
-                chat,
-                orders,
+                chat: std::mem::take(&mut state.chat),
+                orders: std::mem::take(&mut state.orders),
             });
         }
+        self.collect_callback_errors = false;
+        let mut errors = std::mem::take(&mut self.callback_errors);
+        for (slot, error) in errors.drain(..) {
+            let index = seats
+                .iter()
+                .position(|seat| seat.slot == slot)
+                .expect("configured callback seat");
+            result.failures.push(self.failure(index, slot, tick, error));
+        }
+        self.callback_errors = errors;
         result.hook_activity = self.hook_activity.since(activity_before);
         Ok(result)
     }
@@ -753,7 +762,56 @@ impl LuaTeam {
         Ok(())
     }
 
+    fn record_callback_error(&mut self, mut error: Error) {
+        truncate_error(&mut error);
+        let failure = (self.state.borrow().current_slot, error);
+        if self.callback_errors.len() < MAX_CALLBACK_FAILURES {
+            self.callback_errors.push(failure);
+        } else {
+            self.hook_activity.suppressed_callback_errors = self
+                .hook_activity
+                .suppressed_callback_errors
+                .saturating_add(1);
+            // Retain the first diagnostics and the final failure (often tick fuel exhaustion).
+            self.callback_errors[MAX_CALLBACK_FAILURES - 1] = failure;
+        }
+    }
+
     fn call_hook(
+        &mut self,
+        index: usize,
+        hook: &'static str,
+        args: &[Value],
+    ) -> Result<Vec<Value>, Error> {
+        if self.collect_callback_errors && self.failed_initializations[index] {
+            return Ok(Vec::new());
+        }
+        let result = self.call_hook_inner(index, hook, args);
+        match result {
+            Err(error) if self.collect_callback_errors => {
+                if !self.scripts[index].initialized {
+                    self.failed_initializations[index] = true;
+                }
+                if matches!(
+                    hook,
+                    "GetDesire"
+                        | "TeamThink"
+                        | "UpdatePushLaneDesires"
+                        | "UpdateDefendLaneDesires"
+                        | "UpdateFarmLaneDesires"
+                        | "UpdateRoamDesire"
+                        | "UpdateRoshanDesire"
+                ) {
+                    return Err(error);
+                }
+                self.record_callback_error(error);
+                Ok(Vec::new())
+            }
+            other => other,
+        }
+    }
+
+    fn call_hook_inner(
         &mut self,
         index: usize,
         hook: &'static str,
@@ -850,7 +908,9 @@ impl LuaTeam {
             if !self.schedules[seat].modes_loaded && self.modules.is_some() {
                 self.load_modes(slot).map_err(binding_error)?;
             }
-            self.run_mode(seat, slot, tick)?;
+            if let Err(error) = self.run_mode(seat, slot, tick) {
+                self.record_callback_error(error);
+            }
         }
         let usage = self
             .scripts
@@ -905,11 +965,17 @@ impl LuaTeam {
 
     fn call_auxiliary(&mut self, hook: crate::default_bot::AuxiliaryHook) -> Result<(), Error> {
         self.hook_activity.native = self.hook_activity.native.saturating_add(1);
-        self.lua.call(
+        let result = self.lua.call(
             self.default_auxiliary,
             &[Value::Number(f64::from(hook as u8))],
-        )?;
-        Ok(())
+        );
+        match result {
+            Err(error) if self.collect_callback_errors => {
+                self.record_callback_error(error);
+                Ok(())
+            }
+            other => other.map(|_| ()),
+        }
     }
 
     fn run_mode(&mut self, seat: usize, slot: SlotId, tick: u32) -> Result<(), Error> {
@@ -924,7 +990,13 @@ impl LuaTeam {
                     script.slot == slot && script.kind == ScriptKind::Mode(mode)
                 });
                 let values = if let Some(index) = index {
-                    self.call_hook(index, "GetDesire", &[])?
+                    match self.call_hook(index, "GetDesire", &[]) {
+                        Ok(values) => values,
+                        Err(error) => {
+                            self.record_callback_error(error);
+                            continue;
+                        }
+                    }
                 } else {
                     Vec::new()
                 };
@@ -977,7 +1049,17 @@ impl LuaTeam {
     }
 
     fn has_hook(&mut self, index: usize, hook: &str) -> Result<bool, Error> {
-        self.initialize(index)?;
+        if self.collect_callback_errors && self.failed_initializations[index] {
+            return Ok(true);
+        }
+        if let Err(error) = self.initialize(index) {
+            if !self.collect_callback_errors {
+                return Err(error);
+            }
+            self.failed_initializations[index] = true;
+            self.record_callback_error(error);
+            return Ok(true);
+        }
         let environment = self.scripts[index].environment;
         let key = self.lua.string(hook.as_bytes())?;
         Ok(self
@@ -1129,6 +1211,7 @@ fn truncate(message: &mut String, limit: usize) {
             end -= 1;
         }
         message.truncate(end);
+        message.shrink_to_fit();
     }
 }
 

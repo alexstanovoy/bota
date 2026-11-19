@@ -362,7 +362,8 @@ pub(crate) struct NativeCourierCommand {
     pub issued_at: u32,
 }
 
-/// Host action continuations rewind when their outbox was not accepted; Lua-visible state does not.
+/// Only a discarded native reply rewinds host continuations; Lua-visible state does not.
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 #[derive(Clone, Copy)]
 pub(crate) struct HostCheckpoint {
     last_chat: Option<u32>,
@@ -370,6 +371,7 @@ pub(crate) struct HostCheckpoint {
     native_courier: Option<NativeCourierCommand>,
     native_laning: Option<crate::default_bot::LaningMovement>,
 }
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 impl BotState {
     pub fn checkpoint(&self) -> HostCheckpoint {
         HostCheckpoint {
@@ -500,6 +502,8 @@ impl State {
             .position(|seat| seat.slot == self.current_slot)
             .expect("active slot belongs to the team")
     }
+
+
 
     pub fn own_id(&self) -> Option<EntityId> {
         self.snapshot

@@ -57,6 +57,8 @@ MANUAL_RECORDERS = {
 # Local sources are explicitly optional and never fetched by the public gate. Only
 # these exact contracts may be omitted; ordinary ignored tests still fail the run.
 LOCAL_CONFORMANCE = {
+    ("bota_lua", "test:local_scripts", "local_pack_issues_a_body_order_through_the_host_before_the_first_minute"):
+        ("BOTA_LUA_LOCAL_PACK", "tools/test_lua_local.sh"),
     ("bota_lua", "test:local_scripts", "local_scripts_play_a_complete_match_without_script_failures"):
         ("BOTA_LUA_LOCAL_PACK", "tools/test_lua_local.sh"),
 }

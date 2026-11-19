@@ -49,7 +49,7 @@ fn chat_alias_has_the_same_bounded_rate_contract() {
     rate("Action_Chat");
 }
 #[test]
-fn hostile_text_is_rejected_and_a_failed_turn_does_not_consume_the_chat_slot() {
+fn hostile_text_is_rejected_and_a_callback_error_keeps_the_consumed_chat_slot() {
     let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
     let mut lua = host(
         r#"local failed=false
@@ -62,12 +62,23 @@ fn hostile_text_is_rejected_and_a_failed_turn_does_not_consume_the_chat_slot() {
     );
     let result = lua.think(&sessions[0]).unwrap();
     assert_eq!(result.failures.len(), 1);
-    assert!(result.bots[0].chat.is_empty());
+    assert_eq!(result.bots[0].chat.len(), 1);
     for (session, stream) in sessions.iter_mut().zip(local.step(&[&[], &[]]).unwrap()) {
         support::fold(session, stream);
     }
     let result = lua.think(&sessions[0]).unwrap();
     assert!(result.failures.is_empty(), "{:?}", result.failures);
+    assert!(
+        result.bots[0].chat.is_empty(),
+        "the committed line still consumes its rate slot"
+    );
+    for _ in 0..29 {
+        for (session, stream) in sessions.iter_mut().zip(local.step(&[&[], &[]]).unwrap()) {
+            support::fold(session, stream);
+        }
+    }
+    let result = lua.think(&sessions[0]).unwrap();
+    assert!(result.failures.is_empty());
     assert_eq!(result.bots[0].chat.len(), 1);
     assert_eq!(result.bots[0].chat[0].to, Audience::Team);
 }

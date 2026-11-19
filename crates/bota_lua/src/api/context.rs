@@ -76,7 +76,7 @@ impl ApiContext {
         state.order(vm, IssuedOrder::courier(receiver, order))
     }
 
-    /// This is a pending intent. The scheduler publishes it only after the bot's complete turn succeeds.
+    /// A validated intent survives later callback errors. The native publisher still drops late turns.
     pub fn issue_hero(
         &self,
         vm: &mut Vm,

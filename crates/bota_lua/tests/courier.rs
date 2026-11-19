@@ -96,21 +96,30 @@ fn missing_courier_hooks_fetch_and_deliver_with_bounded_retries() {
 }
 
 #[test]
-fn a_later_hook_error_does_not_consume_a_native_courier_request() {
+fn a_later_hook_error_keeps_its_published_native_courier_request() {
     let (mut local, mut sessions) = support::courier_delivery_setup();
     let mut lua = team(true);
     let rejected = lua.think(&sessions[0]).expect("first turn");
     assert_eq!(rejected.failures.len(), 1);
-    assert!(rejected.bots[0].orders.is_empty());
+    assert!(rejected.bots[0].orders.iter().any(|order| command(
+        &sessions[0],
+        order,
+        AbilityId::TAKE_STASH
+    )));
+    let outgoing: Vec<_> = rejected.bots[0]
+        .orders
+        .iter()
+        .map(|&order| sessions[0].issue(order).unwrap())
+        .collect();
     for (session, stream) in sessions
         .iter_mut()
-        .zip(local.step(&[&[], &[]]).expect("next tick"))
+        .zip(local.step(&[&outgoing, &[]]).expect("next tick"))
     {
         support::fold(session, stream);
     }
     let retried = lua.think(&sessions[0]).expect("retry");
     assert!(retried.failures.is_empty(), "{:?}", retried.failures);
-    assert!(retried.bots[0].orders.iter().any(|order| command(
+    assert!(!retried.bots[0].orders.iter().any(|order| command(
         &sessions[0],
         order,
         AbilityId::TAKE_STASH

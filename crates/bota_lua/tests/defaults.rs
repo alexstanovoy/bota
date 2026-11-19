@@ -140,7 +140,18 @@ fn out_of_range_observations_are_rejected_without_retiring_the_interpreter() {
     observation(&mut session, view);
     let mut lua = team(&[]);
     let rejected = lua.think(&session).expect("bounded input error");
-    assert!(rejected.bots[0].orders.is_empty());
+    assert_eq!(
+        rejected.bots[0].orders,
+        vec![
+            IssuedOrder::hero(Order::Learn {
+                slot: bota_proto::AbilitySlot(0)
+            }),
+            IssuedOrder::hero(Order::Buy {
+                item: bota_proto::ItemId::IRON_BRANCH
+            }),
+        ],
+        "a rejected body callback does not cancel valid auxiliary callbacks"
+    );
     assert_eq!(rejected.failures.len(), 1);
     assert!(
         matches!(&rejected.failures[0].error, luagee::Error::Runtime { message, .. } if message.contains("statistics"))
@@ -338,7 +349,7 @@ fn an_empty_think_is_an_override_and_full_takeovers_receive_no_default_actions()
 }
 
 #[test]
-fn default_work_uses_the_interpreters_tick_fuel_and_discards_its_orders_on_exhaustion() {
+fn default_callbacks_share_the_tick_fuel_and_each_report_exhaustion() {
     let limits = Limits::DEFAULT
         .with_fuel_per_call(2000)
         .with_fuel_per_tick(8);
@@ -358,7 +369,11 @@ fn default_work_uses_the_interpreters_tick_fuel_and_discards_its_orders_on_exhau
     let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
     let turn = lua.think(&sessions[0]).expect("turn");
     assert!(turn.bots[0].orders.is_empty());
-    assert_eq!(turn.failures.len(), 1);
+    assert_eq!(
+        turn.failures.len(),
+        6,
+        "mode and five auxiliary callbacks are independently attempted"
+    );
     assert!(matches!(
         turn.failures[0].error,
         luagee::Error::Limit(luagee::Limit::FuelPerTick)

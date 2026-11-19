@@ -226,7 +226,7 @@ fn purchases_in_one_think_reserve_the_last_inventory_space() {
 }
 
 #[test]
-fn a_failed_bot_turn_releases_purchase_reservations_for_its_allied_bot() {
+fn a_callback_error_keeps_its_purchase_reserved_for_the_allied_bot() {
     let (_, mut sessions) = support::local(&[Team::Radiant, Team::Dire, Team::Radiant]);
     let mut view = sessions[0].current().expect("view").clone();
     view.tick += 1;
@@ -261,7 +261,7 @@ fn a_failed_bot_turn_releases_purchase_reservations_for_its_allied_bot() {
         "function Think() assert(GetBot():ActionImmediate_PurchaseItem('{item}')==PURCHASE_ITEM_SUCCESS) error('cancel purchase turn') end"
     );
     let allied = format!(
-        "function Think() assert(GetBot():ActionImmediate_PurchaseItem('{item}')==PURCHASE_ITEM_SUCCESS,'failed turn released stock') end"
+        "function Think() assert(GetBot():ActionImmediate_PurchaseItem('{item}')==PURCHASE_ITEM_OUT_OF_STOCK,'issued purchase stays reserved') end"
     );
     lua.add_script(
         SlotId(0),
@@ -285,8 +285,8 @@ fn a_failed_bot_turn_releases_purchase_reservations_for_its_allied_bot() {
             .to_string()
             .contains("cancel purchase turn")
     );
-    assert!(turn.bots[0].orders.is_empty());
-    assert_eq!(turn.bots[1].orders.len(), 1);
+    assert_eq!(turn.bots[0].orders.len(), 1);
+    assert!(turn.bots[1].orders.is_empty());
 }
 
 fn run_script(session: &bota_client_core::ClientSession, source: &[u8]) -> bota_lua::TeamTurn {

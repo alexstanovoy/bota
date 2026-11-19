@@ -49,20 +49,13 @@ fn run_pack(directory: &std::path::Path, runtime: Option<&std::path::Path>, team
         ticks += 1;
         let turn = lua.think(&sessions[index]).expect("think");
         if !turn.failures.is_empty() {
-            let discarded = turn
+            let committed = turn
                 .bots
                 .iter()
-                .filter(|bot| turn.failures.iter().any(|failure| failure.slot == bot.slot))
+                .filter(|bot| !bot.orders.is_empty())
                 .count();
-            assert!(
-                turn.bots
-                    .iter()
-                    .filter(|bot| { turn.failures.iter().any(|failure| failure.slot == bot.slot) })
-                    .all(|bot| bot.orders.is_empty()),
-                "a failed turn cannot leak orders"
-            );
             eprintln!(
-                "pack_first_failure team={team:?} tick={ticks} reported_errors={} additional_team_errors={} discarded_bot_turns={discarded} deadline_ticks={} retired={}",
+                "pack_first_failure team={team:?} tick={ticks} reported_errors={} additional_team_errors={} bots_with_committed_orders={committed} deadline_ticks={} retired={}",
                 turn.failures.len(),
                 turn.hook_activity.suppressed_team_errors,
                 lua.deadline_ticks(),
@@ -109,4 +102,103 @@ fn run_pack(directory: &std::path::Path, runtime: Option<&std::path::Path>, team
         activity.suppressed_team_errors,
         lua.deadline_ticks()
     );
+}
+
+#[test]
+#[ignore = "requires BOTA_LUA_LOCAL_PACK; optional local source conformance"]
+fn local_pack_issues_a_body_order_through_the_host_before_the_first_minute() {
+    let directory =
+        std::env::var_os("BOTA_LUA_LOCAL_PACK").expect("BOTA_LUA_LOCAL_PACK is required");
+    let runtime = std::env::var_os("BOTA_LUA_RUNTIME_SCRIPTS").map(std::path::PathBuf::from);
+    for side in [Team::Radiant, Team::Dire] {
+        let index = usize::from(side == Team::Dire);
+        let limits = NativeConfig::new(
+            side,
+            vec![BotSeat {
+                slot: SlotId(index as u8),
+                hero: HeroId::SHADOW_FIEND,
+            }],
+            bota_lua::Keys {
+                hash: [17, 19],
+                random: 23,
+            },
+        )
+        .limits;
+        let modules = load_modules(std::path::Path::new(&directory), runtime.as_deref(), limits)
+            .expect("bounded local sources");
+        let mut lua = bota_lua::LuaTeam::new_measured(
+            side,
+            &[BotSeat {
+                slot: SlotId(index as u8),
+                hero: HeroId::SHADOW_FIEND,
+            }],
+            limits,
+            bota_lua::Keys {
+                hash: [17, 19],
+                random: 23,
+            },
+            true,
+        )
+        .unwrap();
+        lua.set_modules(modules).unwrap();
+        lua.load_pack().unwrap();
+        let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+        let mut first_error = None;
+        let mut issued = false;
+        // Pack objectives contain clock gates. Observe the real Solo Mid pregame
+        // plus one bounded game minute; no pack source is changed.
+        for _ in 0..bota_core::map_of(bota_core::MAP2_ID).pregame_ticks
+            + 60 * bota_core::rules::TICKS_PER_SECOND
+        {
+            let turn = lua.think(&sessions[index]).expect("script host turn");
+            if first_error.is_none() {
+                first_error = turn
+                    .failures
+                    .first()
+                    .map(|failure| failure.error.to_string());
+            }
+            let outgoing: Vec<_> = turn.bots[0]
+                .orders
+                .iter()
+                .map(|&order| sessions[index].issue(order).unwrap())
+                .collect();
+            let scripted = turn.statistics.as_ref().unwrap().api.iter().any(|api| {
+                api.calls > 0
+                    && (api.name.starts_with("Action_Move")
+                        || api.name.starts_with("Action_Attack")
+                        || api.name.starts_with("Action_UseAbility"))
+            });
+            issued |= scripted
+                && turn.bots[0].orders.iter().any(|order| {
+                    order.unit.is_none()
+                        && matches!(
+                            order.order,
+                            Order::Move { .. }
+                                | Order::Attack { .. }
+                                | Order::Cast { .. }
+                                | Order::Use { .. }
+                        )
+                });
+            let mut commands = [Vec::new(), Vec::new()];
+            commands[index] = outgoing;
+            for (session, stream) in sessions
+                .iter_mut()
+                .zip(local.step(&[&commands[0], &commands[1]]).unwrap())
+            {
+                support::fold(session, stream);
+            }
+            if issued {
+                println!(
+                    "pack_first_order side={side:?} tick={} failures_so_far={:?}",
+                    sessions[index].current().unwrap().tick,
+                    first_error
+                );
+                break;
+            }
+        }
+        assert!(
+            issued,
+            "side={side:?}: no script body order through the host; first_error={first_error:?}"
+        );
+    }
 }

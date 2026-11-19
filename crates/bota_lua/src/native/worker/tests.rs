@@ -494,3 +494,30 @@ fn live_and_recorded_calls_share_a_panic_guard() {
     );
     assert!(guarded_call(|| Ok(TeamTurn::default())).is_ok());
 }
+
+#[test]
+fn callback_failures_with_committed_orders_are_not_reported_as_discarded_turns() {
+    let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let mut lua = LuaTeam::new_measured(
+        Team::Radiant,
+        &[BotSeat {
+            slot: SlotId(0),
+            hero: bota_proto::HeroId::SHADOW_FIEND,
+        }],
+        SCRIPT_LIMITS,
+        Keys {
+            hash: [17, 19],
+            random: 23,
+        },
+        true,
+    )
+    .unwrap();
+    lua.add_script(SlotId(0),crate::ScriptKind::Takeover,"callback_failure",b"function Think() GetBot():Action_MoveToLocation(Vector(1,2,0)); error('after committed move') end").unwrap();
+    let turn = lua.think(&sessions[0]).unwrap();
+    assert_eq!(turn.failures.len(), 1);
+    assert_eq!(turn.bots[0].orders.len(), 1);
+    let mut summary = crate::statistics::RunStatistics::default();
+    record_turn(&mut summary, &turn);
+    assert_eq!(summary.script_failures, 1);
+    assert_eq!(summary.discarded.total, 0);
+}

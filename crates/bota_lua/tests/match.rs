@@ -65,20 +65,25 @@ fn lua_shadow_fiend_plays_a_complete_match_through_real_orders() {
 }
 
 #[test]
-fn script_failure_discards_only_its_own_orders_and_scopes_are_isolated() {
+fn script_failure_keeps_its_issued_orders_and_scopes_are_isolated() {
     let (_, sessions) = support::local(&[Team::Radiant, Team::Dire, Team::Radiant]);
     let mut lua = team(&[0, 2], Limits::DEFAULT);
     lua.add_script(SlotId(0), ScriptKind::Takeover, "first", b"own = 11 function Think() assert(own == 11) GetBot():Action_MoveToLocation(Vector(1,2,0)) error('failed think') end").expect("script");
     lua.add_script(SlotId(2), ScriptKind::Takeover, "second", b"own = 22 function Think() assert(own == 22) GetBot():Action_MoveToLocation(Vector(3,4,0)) end").expect("script");
     let turn = lua.think(&sessions[0]).expect("tick");
-    assert!(turn.bots[0].orders.is_empty());
+    assert_eq!(
+        turn.bots[0].orders,
+        vec![IssuedOrder::hero(Order::Move {
+            target: Target::Pos(bota_proto::Vec2::from_ints(9217, 9218))
+        })]
+    );
     assert_eq!(turn.bots[1].orders.len(), 1);
     assert_eq!(turn.failures.len(), 1);
     assert!(turn.failures[0].error.to_string().contains("failed think"));
 }
 
 #[test]
-fn fuel_exhaustion_discards_orders_and_counts_without_stalling_other_seats() {
+fn fuel_exhaustion_keeps_valid_prefix_orders_and_does_not_stall_other_seats() {
     let (_, sessions) = support::local(&[Team::Radiant, Team::Dire, Team::Radiant]);
     let mut lua = team(
         &[0, 2],
@@ -101,7 +106,12 @@ fn fuel_exhaustion_discards_orders_and_counts_without_stalling_other_seats() {
     )
     .expect("script");
     let turn = lua.think(&sessions[0]).expect("tick");
-    assert!(turn.bots[0].orders.is_empty());
+    assert_eq!(
+        turn.bots[0].orders,
+        vec![IssuedOrder::hero(Order::Move {
+            target: Target::Pos(bota_proto::Vec2::from_ints(9217, 9218))
+        })]
+    );
     assert_eq!(turn.bots[1].orders.len(), 1);
     assert_eq!(turn.failures[0].fuel_exhaustions, 1);
 }

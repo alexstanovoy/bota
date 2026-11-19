@@ -493,12 +493,10 @@ mod tests;
 pub(super) fn record_turn(summary: &mut crate::statistics::RunStatistics, turn: &TeamTurn) {
     if let Some(data) = &turn.statistics {
         summary.record(data);
-        if !turn.failures.is_empty() || turn.hook_activity.suppressed_team_errors > 0 {
-            summary.discarded.record_once_recent(data.tick);
-        }
         summary.script_failures = summary
             .script_failures
-            .saturating_add(turn.hook_activity.suppressed_team_errors);
+            .saturating_add(turn.hook_activity.suppressed_team_errors)
+            .saturating_add(turn.hook_activity.suppressed_callback_errors);
         for failure in &turn.failures {
             summary.failure(&failure.error.to_string());
             if matches!(

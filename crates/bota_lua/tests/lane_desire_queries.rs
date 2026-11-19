@@ -179,7 +179,7 @@ fn lane_desire_queries_keep_previous_pairs_on_lane_failure_and_publish_before_un
                     .to_string()
                     .contains("unrelated team error")
             );
-            assert!(turn.bots[0].orders.is_empty());
+            assert_move(&turn, 0, 100 + frame);
             assert_eq!(turn.bots[1].slot, slots[1]);
             assert_move(&turn, 1, 100 + frame);
             advance(&mut local, &mut sessions);
