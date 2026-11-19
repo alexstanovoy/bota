@@ -163,6 +163,12 @@ const _: () = {
     assert!(MAX_SNAPSHOT_LOOT * size_of::<crate::LootView>() <= MAX_DECODED_BYTES);
     assert!(MAX_SNAPSHOT_RUNES * size_of::<crate::RuneView>() <= MAX_DECODED_BYTES);
     assert!(MAX_PROJECTILES * size_of::<crate::ProjectileView>() <= MAX_DECODED_BYTES);
+    assert!(
+        crate::game_limits::MAX_TETHERS
+            * crate::game_limits::MAX_TETHER_SPANS
+            * size_of::<crate::TetherSpan>()
+            <= MAX_DECODED_BYTES
+    );
     assert!(MAX_LAIRS * size_of::<crate::LairView>() <= MAX_DECODED_BYTES);
     assert!(MAX_SCAN_RADARS * size_of::<crate::RadarView>() <= MAX_DECODED_BYTES);
     assert!(MAX_SHOP_ENTRIES * size_of::<crate::ShopEntry>() <= MAX_DECODED_BYTES);

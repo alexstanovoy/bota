@@ -4,7 +4,7 @@ use bota_core::{ModifierKind, ability_mana_cost, effect_def, kind_def, phase_tic
 use bota_proto::{
     AbilityId, AbilityView, AggroView, CastView, CreepTier, EffectView, Fixed, Inflictor,
     PlayerView, ProjectileView, StatusFlags, SwingView, TalentSlot, TalentView, Talents, Team,
-    UnitKind, UnitView, WorldView,
+    TetherHead, TetherSpan, TetherView, UnitKind, UnitView, WorldView,
 };
 
 use crate::game::{ActionPhase, ActionState, Entity, Seat, Stats, World, item_view, item_views};
@@ -44,7 +44,15 @@ impl World {
         let mut loot = Vec::new();
         let mut runes = Vec::new();
         let mut aggro = Vec::new();
+        let mut tethers = Vec::new();
         for entity in self.entities.iter() {
+            if let (Some(hook), Some(at)) = (self.hook.get(entity), self.pos(entity)) {
+                for side in [Team::Radiant, Team::Dire] {
+                    if viewer.is_none_or(|viewer| viewer == side) {
+                        tethers.extend(self.project_tether(entity, hook, at, side));
+                    }
+                }
+            }
             let seen = self.viewer_sees(viewer, entity);
             if !(seen || self.own_to(viewer, entity)) {
                 continue;
@@ -86,6 +94,20 @@ impl World {
             }
         }
         projectiles.truncate(bota_proto::game_limits::MAX_PROJECTILES);
+        tethers.truncate(bota_proto::game_limits::MAX_TETHERS);
+        for tether in &mut tethers {
+            let carried = |id| units.binary_search_by_key(&id, |unit| unit.id).is_ok();
+            tether.source = tether.source.filter(|id| carried(*id));
+            if projectiles
+                .binary_search_by_key(&tether.id, |p| p.id)
+                .is_err()
+            {
+                tether.head = None;
+            }
+            if let Some(head) = &mut tether.head {
+                head.caught = head.caught.filter(|id| carried(*id));
+            }
+        }
         debug_assert!(aggro.iter().all(|entry| {
             let carried = |id| units.binary_search_by_key(&id, |unit| unit.id).is_ok();
             let target_kept =
@@ -131,6 +153,7 @@ impl World {
             runes,
             pools: self.project_pools(),
             lairs: self.project_lairs(viewer),
+            tethers,
         };
         debug_assert!(within_limits(&view), "a view past the protocol's bounds");
         view
@@ -440,6 +463,13 @@ impl World {
             let target = Some(missile.target);
             (missile.inflictor, missile.source, target, missile.model)
         } else if let Some(mark) = self.mark.get(entity) {
+            // Chain links have a fixed fractional spacing that would disclose the chain's
+            // hidden endpoints. Opponents receive only the visible spans.
+            if mark.ability == AbilityId::MEAT_HOOK
+                && viewer.is_some_and(|viewer| self.team.get(mark.owner) != Some(&viewer))
+            {
+                return None;
+            }
             (ability(mark.ability), Some(mark.owner), None, None)
         } else if let Some(line) = self.requiem_line.get(entity) {
             (ability(AbilityId::REQUIEM), Some(line.owner), None, None)
@@ -464,6 +494,52 @@ impl World {
             inflictor,
             seen_by: self.seen_by_sides(viewer, entity, true),
             model,
+        })
+    }
+
+    fn project_tether(
+        &self,
+        entity: Entity,
+        hook: &crate::game::Hook,
+        at: bota_proto::Vec2,
+        viewer: Team,
+    ) -> Option<TetherView> {
+        let home = self.pos(hook.owner)?;
+        let own = self.own_to(Some(viewer), entity);
+        let source = self.carried(Some(viewer), hook.owner);
+        let sees_head = own || self.shows(viewer, entity);
+        let head = sees_head.then(|| TetherHead {
+            cast_direction: bota_core::facing_towards(hook.from, hook.aim),
+            speed: hook.speed,
+            returning: hook.returning,
+            caught: hook
+                .caught
+                .filter(|unit| self.alive(*unit) && self.carried(Some(viewer), *unit))
+                .map(wire_id),
+            origin: own.then_some(hook.from),
+        });
+        let spans = if own {
+            vec![TetherSpan {
+                start: home,
+                end: at,
+                reaches_source: source,
+                reaches_head: true,
+            }]
+        } else {
+            visible_tether_spans(home, at, source, sees_head, |point| {
+                self.sight_reaches_point(viewer, point)
+            })
+        };
+        if head.is_none() && spans.is_empty() && !source {
+            return None;
+        }
+        Some(TetherView {
+            id: wire_id(entity),
+            inflictor: Inflictor::Ability(AbilityId::MEAT_HOOK),
+            viewer,
+            source: source.then(|| wire_id(hook.owner)),
+            head,
+            spans,
         })
     }
 
@@ -759,12 +835,97 @@ impl World {
     }
 }
 
+/// Walk the map's sight cells in order along the tether. Only consecutive intervals
+/// of sight may be joined, and an endpoint inside a cell shrouded by invisibility is
+/// never used to terminate a span.
+fn visible_tether_spans(
+    source: bota_proto::Vec2,
+    head: bota_proto::Vec2,
+    sees_source: bool,
+    sees_head: bool,
+    sees_point: impl Fn(bota_proto::Vec2) -> bool,
+) -> Vec<TetherSpan> {
+    const CELL: i64 = (rules::GRID_CELL_SIZE as i64) << Fixed::FRAC_BITS;
+    let raw = |point: bota_proto::Vec2| [i64::from(point.x.raw), i64::from(point.y.raw)];
+    let (start, end) = (raw(source), raw(head));
+    let crosses = |axis: usize| {
+        let delta = end[axis] - start[axis];
+        let (low, high) = (start[axis].min(end[axis]), start[axis].max(end[axis]));
+        (low.div_euclid(CELL) + 1..=(high - 1).div_euclid(CELL))
+            .map(move |cell| ((cell * CELL - start[axis]).abs(), delta.abs()))
+    };
+    // Each crossing is an exact rational fraction of the whole line. Cross
+    // multiplication uses i128 because a map coordinate already occupies 32 bits.
+    let cmp = |a: &(i64, i64), b: &(i64, i64)| {
+        (i128::from(a.0) * i128::from(b.1)).cmp(&(i128::from(b.0) * i128::from(a.1)))
+    };
+    let mut boundaries = Vec::from([(0, 1), (1, 1)]);
+    boundaries.extend(crosses(0));
+    boundaries.extend(crosses(1));
+    boundaries.sort_unstable_by(cmp);
+    boundaries.dedup_by(|a, b| cmp(a, b).is_eq());
+    let point = |(numerator, denominator)| interpolate_tether(start, end, numerator, denominator);
+    let mut spans: Vec<TetherSpan> = Vec::new();
+    let mut contiguous = false;
+    let last = boundaries.len() - 2;
+    for (index, pair) in boundaries.windows(2).enumerate() {
+        let (begin, end) = (point(pair[0]), point(pair[1]));
+        let sample = |weight| sees_point(interpolate_tether(raw(begin), raw(end), weight, 1024));
+        if (index == 0 && !sees_source)
+            || (index == last && !sees_head)
+            || ![1, 512, 1023].into_iter().all(sample)
+        {
+            contiguous = false;
+            continue;
+        }
+        if contiguous {
+            let span = spans
+                .last_mut()
+                .expect("a visible interval immediately precedes this one");
+            span.end = end;
+            span.reaches_head = index == last;
+        } else {
+            if spans.len() == bota_proto::game_limits::MAX_TETHER_SPANS {
+                break;
+            }
+            spans.push(TetherSpan {
+                start: begin,
+                end,
+                reaches_source: index == 0,
+                reaches_head: index == last,
+            });
+        }
+        contiguous = true;
+    }
+    spans
+}
+
+fn interpolate_tether(
+    start: [i64; 2],
+    end: [i64; 2],
+    numerator: i64,
+    denominator: i64,
+) -> bota_proto::Vec2 {
+    let axis = |axis: usize| {
+        let delta = i128::from(end[axis] - start[axis]);
+        let offset = delta * i128::from(numerator) / i128::from(denominator);
+        Fixed {
+            raw: (i128::from(start[axis]) + offset) as i32,
+        }
+    };
+    bota_proto::Vec2 {
+        x: axis(0),
+        y: axis(1),
+    }
+}
+
 /// Whether every collection of the view is within the protocol's bounds
 /// ([`bota_proto::game_limits`]): what a client refuses a view for.
 fn within_limits(view: &WorldView) -> bool {
     use bota_proto::game_limits::*;
     view.units.len() <= MAX_VIEW_UNITS
         && view.projectiles.len() <= MAX_PROJECTILES
+        && view.tethers.len() <= MAX_TETHERS
         && view.players.len() <= MAX_SEATS
         && view.loot.len() <= MAX_SNAPSHOT_LOOT
         && view.runes.len() <= MAX_SNAPSHOT_RUNES

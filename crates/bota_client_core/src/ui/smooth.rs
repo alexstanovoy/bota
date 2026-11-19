@@ -150,28 +150,30 @@ pub fn body_of<'b, 'a>(bodies: &'b [Body<'a>], id: EntityId) -> Option<&'b Body<
         .map(|at| &bodies[at])
 }
 
+/// Draws a projectile between consecutive observations.
+pub fn interpolate_flight(
+    missile: &ProjectileView,
+    previous: Option<&ProjectileView>,
+    fraction: f32,
+) -> Flight {
+    let to = (missile.pos.x.to_f32(), missile.pos.y.to_f32());
+    let from = previous.map_or(to, |old| (old.pos.x.to_f32(), old.pos.y.to_f32()));
+    let (x, y) = between(from, to, fraction);
+    Flight {
+        missile: *missile,
+        x,
+        y,
+        tail_x: x - (to.0 - from.0),
+        tail_y: y - (to.1 - from.1),
+    }
+}
+
 /// Every missile of `view` as drawn `k` of the way from `prev`.
 pub fn flights(view: &WorldView, prev: Option<&WorldView>, k: f32) -> Vec<Flight> {
     view.projectiles
         .iter()
         .map(|missile| {
-            let to = (missile.pos.x.to_f32(), missile.pos.y.to_f32());
-            let from = prev
-                .and_then(|prev| {
-                    prev.projectiles
-                        .binary_search_by_key(&missile.id, |p| p.id)
-                        .ok()
-                        .map(|at| &prev.projectiles[at])
-                })
-                .map_or(to, |old| (old.pos.x.to_f32(), old.pos.y.to_f32()));
-            let (x, y) = between(from, to, k);
-            Flight {
-                missile: *missile,
-                x,
-                y,
-                tail_x: x - (to.0 - from.0),
-                tail_y: y - (to.1 - from.1),
-            }
+            interpolate_flight(missile, prev.and_then(|old| old.projectile(missile.id)), k)
         })
         .collect()
 }

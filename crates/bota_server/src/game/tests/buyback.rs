@@ -208,6 +208,7 @@ fn empty_view() -> WorldView {
         clock: None,
         runes: Vec::new(),
         pools: Vec::new(),
+        tethers: Vec::new(),
         lairs: Vec::new(),
     }
 }

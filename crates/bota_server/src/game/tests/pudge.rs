@@ -1932,3 +1932,50 @@ fn an_aether_lens_lengthens_the_hooks_flight_by_its_cast_range_bonus() {
         "the hook flies {reach} from where he stood"
     );
 }
+
+#[test]
+fn a_tether_tells_opponents_only_the_positions_in_their_sight() {
+    let (mut world, pudge, _) = pudge_and_a_mark(4000);
+    let origin = world.pos(pudge).expect("the thrower stands");
+    let centre = origin + Vec2::from_ints(850, 0);
+    let radius = 350;
+    world.add_fow_viewer(Team::Dire, centre, radius, 90);
+    world.settle();
+    cast(&mut world, 0, Target::Pos(centre));
+    let mut first_tip = None;
+    let mut last_tip = None;
+    let mut clip_seen = false;
+    for _ in 0..45 {
+        world.step();
+        let view = world.view(Team::Dire);
+        for tether in &view.tethers {
+            for span in &tether.spans {
+                assert!(span.start.x > origin.x && span.end.x > origin.x);
+                assert!(span.start.within(centre, Fixed::from_int(radius)));
+                assert!(span.end.within(centre, Fixed::from_int(radius)));
+                assert_eq!(span.start.y, origin.y);
+                assert_eq!(span.end.y, origin.y);
+                clip_seen |= span.start != span.end;
+            }
+            if let Some(head) = tether.head {
+                assert_eq!(head.origin, None, "the observer has no return destination");
+                let next = view
+                    .projectile(tether.id)
+                    .expect("the visible head carries its position")
+                    .pos;
+                last_tip = Some(next);
+                first_tip.get_or_insert(next);
+            }
+        }
+    }
+    assert!(
+        clip_seen,
+        "the observer's sight overlaps the travelling chain"
+    );
+    assert!(
+        first_tip
+            .zip(last_tip)
+            .is_some_and(|(first, last)| first != last),
+        "the observer saw the real head move"
+    );
+}

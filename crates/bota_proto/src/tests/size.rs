@@ -168,8 +168,8 @@ fn an_empty_view_costs_almost_nothing() {
     };
     let len = encoded_len(&msg);
     // The clock shift's absence is its one byte, and the runes' list its
-    // length's, as are the pools' and public lairs' lists.
-    assert!(len <= 24, "an empty snapshot cost {len} bytes");
+    // length's, as are the pools', public lairs' and tether observations' lists.
+    assert!(len <= 25, "an empty snapshot cost {len} bytes");
 }
 
 /// The prior active-field budget gains the absent action-phase tag.

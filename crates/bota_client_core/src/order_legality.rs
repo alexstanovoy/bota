@@ -29,7 +29,7 @@
 //! #     players: vec![player.clone()], felled_trees: vec![], planted_trees: vec![],
 //! #     loot: vec![], aggro: vec![], order_delays: vec![], skipped_ticks: vec![],
 //! #     stock: vec![], talents: vec![], teleports: vec![], clock: None, runes: vec![],
-//! #     pools: vec![], lairs: vec![],
+//! #     pools: vec![], lairs: vec![], tethers: vec![],
 //! #     glyphs: vec![GlyphView { team: Team::Radiant, ready_in: 0, active_for: 0, ready_after: Some(0), charges: Some(1) }],
 //! # };
 //! // Use the seat's received view and the match's public map/catalogue parameters.

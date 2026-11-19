@@ -102,6 +102,13 @@ impl WorldView {
             shot.source.iter_mut().for_each(&mut *visit);
             shot.target.iter_mut().for_each(&mut *visit);
         }
+        for tether in &mut self.tethers {
+            visit(&mut tether.id);
+            tether.source.iter_mut().for_each(&mut *visit);
+            if let Some(head) = &mut tether.head {
+                head.caught.iter_mut().for_each(&mut *visit);
+            }
+        }
         for player in &mut self.players {
             player.unit.iter_mut().for_each(&mut *visit);
         }

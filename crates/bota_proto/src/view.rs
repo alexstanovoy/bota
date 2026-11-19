@@ -534,6 +534,42 @@ pub struct ProjectileView {
     pub model: Option<ProjectileModel>,
 }
 
+/// A visible part of the line between the source and head of a tethered projectile.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TetherSpan {
+    pub start: Vec2,
+    pub end: Vec2,
+    pub reaches_source: bool,
+    pub reaches_head: bool,
+}
+
+/// The motion of a tethered projectile, available while its head is in sight.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TetherHead {
+    pub cast_direction: Angle,
+    pub speed: Fixed,
+    pub returning: bool,
+    pub caught: Option<EntityId>,
+    /// The return destination is known to the casting side.
+    pub origin: Option<Vec2>,
+}
+
+/// A tether as seen by one side, even when both its head and source are hidden.
+/// A whole-map stream carries the two observations independently.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct TetherView {
+    pub id: EntityId,
+    pub inflictor: Inflictor,
+    pub viewer: Team,
+    /// The source when it is visible to this viewer.
+    pub source: Option<EntityId>,
+    pub head: Option<TetherHead>,
+    #[serde(
+        deserialize_with = "crate::bounded::seq::<_, _, { crate::game_limits::MAX_TETHER_SPANS }>"
+    )]
+    pub spans: Vec<TetherSpan>,
+}
+
 /// The abilities and items of a seat whose hero is dead.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Kit {
@@ -862,6 +898,9 @@ pub struct WorldView {
     /// Public death times and persistent sightings of enabled map lairs, sorted by map index.
     #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::limits::MAX_LAIRS }>")]
     pub lairs: Vec<LairView>,
+    #[serde(deserialize_with = "crate::bounded::seq::<_, _, { crate::game_limits::MAX_TETHERS }>")]
+    /// Position and motion of the parts of each tether authorized for this snapshot.
+    pub tethers: Vec<TetherView>,
 }
 
 /// How far cheats moved the clocks of a match: the game clock (`-startgame`)
@@ -876,6 +915,14 @@ pub struct ClockShift {
 }
 
 impl WorldView {
+    /// A projectile by its stable handle.
+    pub fn projectile(&self, id: EntityId) -> Option<&ProjectileView> {
+        self.projectiles
+            .binary_search_by_key(&id, |projectile| projectile.id)
+            .ok()
+            .map(|index| &self.projectiles[index])
+    }
+
     /// The tick of the game clock: the view's tick, moved on by
     /// `-startgame`. The game time a clock shows is this less
     /// [`MatchInfo::pregame_ticks`](crate::MatchInfo::pregame_ticks).

@@ -280,18 +280,22 @@ impl SightScratch {
         let Some(at) = row.at else {
             return false;
         };
-        let seen = self.viewers.iter().any(|viewer| {
-            serves(viewer.side, team)
-                && viewer.from.within(at, viewer.vision)
-                && bota_core::pit_sight_clear(self.pits, viewer.from, at)
-                && (viewer.flying
-                    || (viewer.tier >= row.tier && sight_block.clear(viewer.from, viewer.tier, at)))
-        });
+        let seen = self.reaches(team, at, row.tier, sight_block);
         seen && (!row.hides
             || row.team.is_none()
             || self.true_viewers.iter().any(|viewer| {
                 serves(viewer.side, team) && viewer.from.within(at, viewer.true_sight)
             }))
+    }
+
+    fn reaches(&self, team: Team, at: Vec2, tier: u8, sight_block: &SightBlock) -> bool {
+        self.viewers.iter().any(|viewer| {
+            serves(viewer.side, team)
+                && viewer.from.within(at, viewer.vision)
+                && bota_core::pit_sight_clear(self.pits, viewer.from, at)
+                && (viewer.flying
+                    || (viewer.tier >= tier && sight_block.clear(viewer.from, viewer.tier, at)))
+        })
     }
 
     /// Every circle a strike still shows, as a viewer of the side struck at.
@@ -500,6 +504,12 @@ impl World {
                 seen.add(Team::Dire);
             }
         }
+    }
+
+    /// Ground sight from the same witnesses that authorize positions in a snapshot.
+    pub(crate) fn sight_reaches_point(&self, viewer: Team, at: Vec2) -> bool {
+        self.sight_scratch
+            .reaches(viewer, at, self.ground.tier(at), &self.sight_block)
     }
 
     /// Whether a side sees a point on the map, worked out live from its
