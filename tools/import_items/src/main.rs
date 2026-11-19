@@ -50,7 +50,7 @@ fn heroes_path() -> PathBuf {
 /// The client build the committed tables were read from, as their `Read from` line names it:
 /// the install the checks hold them to. A run on another build writes that build's name;
 /// update this with the tables.
-const TABLES_BUILD: &str = "client 6980 (Nov 18 2026)";
+const TABLES_BUILD: &str = "client 6983 (Nov 18 2026)";
 
 /// The heroes whose numbers bota reads from the install. A hero not named here keeps its
 /// numbers in its own module until it moves over.
