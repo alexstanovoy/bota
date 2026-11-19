@@ -112,8 +112,7 @@ pub const OUTPOST: UnitDef = UnitDef {
 };
 
 /// Every hero's hidden `ability_capture`: a channel at an Outpost of the
-/// other side, from [`CAPTURE_RANGE`]; no `IGNORE_SILENCE`, so a silence
-/// keeps it from starting.
+/// other side, from [`CAPTURE_RANGE`].
 pub const CAPTURE: AbilityDef = AbilityDef {
     id: AbilityId::CAPTURE,
     key: "ability_capture",
@@ -130,6 +129,7 @@ pub const CAPTURE: AbilityDef = AbilityDef {
     hidden: true,
     targets: TargetFilter::of(&[UnitKind::Outpost], false),
     // Objective interactions charge no Magic Stick (ValveSoftware/Dota2-Gameplay issue 32850).
+    cast_while_silenced: crate::wave_data::OUTPOST_CAPTURE_IGNORES_SILENCE,
     procs_magic_stick: false,
     ..BARE_ABILITY
 };

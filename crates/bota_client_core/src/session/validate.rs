@@ -802,6 +802,9 @@ fn lairs(expect: &Expect<'_>, view: &WorldView) -> Result<(), SessionError> {
         if lair.fell_at.is_some_and(|tick| tick > view.game_tick()) {
             return Err(SessionError::LairTimeOutOfRange(lair.lair));
         }
+        if lair.fell_at.is_some() != (lair.falls != 0) {
+            return Err(SessionError::Stream("lair fall count and time disagree"));
+        }
         if view.viewer.is_some_and(|team| match team {
             Team::Radiant => lair.alive_known_by.dire,
             Team::Dire => lair.alive_known_by.radiant,

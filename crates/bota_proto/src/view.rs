@@ -960,4 +960,6 @@ pub struct LairView {
     pub fell_at: Option<u32>,
     /// Teams that have seen or heard him alive since that death. A side receives only its bit.
     pub alive_known_by: SeenBy,
+    /// Number of public deaths, used to resolve the next respawn bounds.
+    pub falls: u32,
 }

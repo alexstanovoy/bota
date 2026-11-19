@@ -17,7 +17,6 @@
 
 mod ability;
 mod boss;
-mod units;
 mod creeps;
 mod dec;
 mod emit;
@@ -28,6 +27,8 @@ mod item;
 mod name;
 mod overrides;
 mod registry;
+mod units;
+mod wave_rules;
 mod zones;
 
 use std::path::{Path, PathBuf};
@@ -177,6 +178,8 @@ fn run() -> Result<(), String> {
     } else {
         std::fs::write(&zones_path, zones).map_err(|e| e.to_string())?;
     }
+    let waves = rustfmt(&wave_rules::table(args.dota.as_deref())?)?;
+    let wave_path = repo().join("crates/bota_core/src/wave_data.rs");
     let source = install::read(args.dota.as_deref())?;
     let registry_path = registry_path();
     let mut registry =
@@ -193,7 +196,11 @@ fn run() -> Result<(), String> {
         args.dota.as_deref(),
         HEROES,
     )?)?)?;
-    for (path, made) in [(table_path(), table), (heroes_path(), heroes)] {
+    for (path, made) in [
+        (table_path(), table),
+        (heroes_path(), heroes),
+        (wave_path, waves),
+    ] {
         if args.check {
             let committed = std::fs::read_to_string(&path).map_err(|e| format!("{path:?}: {e}"))?;
             if !emit::same_items(&committed, &made) {

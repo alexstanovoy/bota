@@ -896,3 +896,4 @@ variant Cheat 33 Restore {}
 field Cheat::Restore 0 health_bp: u16
 field Cheat::Restore 1 mana_bp: u16
 field Cheat::Restore 2 ticks: u32
+field LairView 3 falls: u32

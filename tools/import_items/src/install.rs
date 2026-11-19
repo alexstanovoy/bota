@@ -67,6 +67,29 @@ pub fn read(dota: Option<&Path>) -> Result<Source, String> {
     Source::new(package.build, &items)
 }
 
+/// The localized patch notes shipped alongside the numeric scripts.
+pub fn read_patch_notes(dota: Option<&Path>) -> Result<(String, Kv), String> {
+    const PATH: &str = "resource/localization/patchnotes/patchnotes_english.txt";
+    let package = Package::open(dota)?;
+    let notes = parse_kv(&package.text(PATH)?).map_err(|error| format!("{PATH}: {error}"))?;
+    Ok((package.build, notes))
+}
+
+/// Ability behavior flags from the shared ability script.
+pub fn ability_has_behavior(dota: Option<&Path>, key: &str, flag: &str) -> Result<bool, String> {
+    const PATH: &str = "scripts/npc/npc_abilities.txt";
+    let package = Package::open(dota)?;
+    let abilities = parse_kv(&package.text(PATH)?).map_err(|error| format!("{PATH}: {error}"))?;
+    match abilities
+        .get("DOTAAbilities")
+        .and_then(|abilities| abilities.get(key))
+        .and_then(|ability| ability.get("AbilityBehavior"))
+    {
+        Some(Kv::Text(text)) => Ok(text.split('|').any(|part| part.trim() == flag)),
+        _ => Err(format!("{PATH}: {key} is missing AbilityBehavior")),
+    }
+}
+
 /// The hero scripts of one client build: the base hero every hero falls back on, each hero
 /// asked for, and the shared ability list the generic talents stand in.
 pub struct HeroSource {

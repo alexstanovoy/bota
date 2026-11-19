@@ -87,6 +87,7 @@ mod unit_definition;
 mod unit_kind;
 mod unit_neutral;
 mod wave;
+mod wave_data;
 
 #[cfg(test)]
 mod tests;

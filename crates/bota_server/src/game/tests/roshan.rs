@@ -3273,3 +3273,26 @@ fn spells_and_item_actives_reach_roshan_walking_between_pits() {
         "an item active at him is accepted"
     );
 }
+
+// “Base respawn timer now decreases by 1 minute every time Roshan is defeated”.
+#[test]
+fn roshan_respawn_reaches_the_patch_lower_bounds_by_the_ninth_fall() {
+    use bota_core::rules::TICKS_PER_SECOND;
+    use bota_proto::DamageKind;
+
+    let mut world = match_with_roshan();
+    let roshan = boss(&world);
+    world.lairs[0].falls = 8;
+    world.push_hit(None, roshan, 100000, DamageKind::Pure, None);
+    world.step();
+    for viewer in [bota_proto::Team::Radiant, bota_proto::Team::Dire] {
+        let lair = public_lair(&world, viewer);
+        assert_eq!(lair.falls, 9);
+        assert_eq!(lair.fell_at, Some(world.clock()));
+    }
+    let delay = world.lairs[0].respawn_at - world.clock();
+    assert!(
+        (180 * TICKS_PER_SECOND..=300 * TICKS_PER_SECOND).contains(&delay),
+        "ninth respawn delay in ticks: {delay}"
+    );
+}

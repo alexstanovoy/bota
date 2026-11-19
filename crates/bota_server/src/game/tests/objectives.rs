@@ -915,3 +915,26 @@ fn a_glyph_fortifies_the_buildings_and_leaves_a_held_outpost_bare() {
         assert!(!world.wears(it, ModifierKind::Fortified), "{kind:?}");
     }
 }
+
+#[test]
+fn an_outpost_can_be_captured_while_silenced() {
+    // “Outposts can now be captured while silenced”.
+    let (mut world, outpost) = dire_at_the_radiant_outpost(&[Team::Radiant, Team::Dire], true);
+    let captor = hero(&world, 1);
+    world.put_modifier(
+        captor,
+        crate::game::Modifier::new(
+            ModifierKind::Control {
+                control: bota_core::Control::Silence,
+                effect: bota_proto::EffectId::SILENCED,
+            },
+            None,
+            None,
+            Some(world.tick + 3 * CAPTURE_TICKS),
+        ),
+    );
+    assert!(world.silenced(captor));
+    assert!(capture_by(&mut world, &[(1, attack(outpost))]).is_some());
+    assert_eq!(world.team.get(outpost), Some(&Team::Dire));
+    assert!(world.silenced(captor));
+}

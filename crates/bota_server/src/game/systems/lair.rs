@@ -125,7 +125,8 @@ impl World {
             },
             index as u8,
         );
-        let delay = def.respawn[0] + random.below(def.respawn[1] - def.respawn[0] + 1);
+        let [early, late] = def.respawn_bounds(falls);
+        let delay = early + random.below(late - early + 1);
         self.lairs[index].unit = None;
         self.lairs[index].travelling = false;
         self.lairs[index].journey = None;
@@ -222,6 +223,7 @@ impl World {
                         && viewer.is_none_or(|t| t == bota_proto::Team::Radiant),
                     dire: lair.known_alive[1] && viewer.is_none_or(|t| t == bota_proto::Team::Dire),
                 },
+                falls: lair.falls,
             })
             .collect()
     }

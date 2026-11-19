@@ -341,6 +341,7 @@ fn a_snapshot_lair_list_is_bounded_before_it_is_folded() {
     let lair = LairView {
         lair: 0,
         fell_at: None,
+        falls: 0,
         alive_known_by: SeenBy {
             radiant: false,
             dire: false,

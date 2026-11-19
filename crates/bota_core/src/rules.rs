@@ -453,16 +453,11 @@ pub const WAVE_PERIOD_TICKS: u32 = 900;
 pub const MELEE_PER_WAVE: u32 = 3;
 /// Ranged creeps in a wave before the count grows.
 pub const RANGED_PER_WAVE: u32 = 1;
-/// Waves from which the melee count takes each value.
-pub const MELEE_GROWTH: [(u32, u32); 3] = [(31, 4), (61, 5), (91, 6)];
-/// Wave from which a second ranged creep joins.
-pub const RANGED_GROWTH_WAVE: u32 = 81;
+/// Original waves at which one melee creep is added. The patch can omit an interval.
+pub const MELEE_GROWTH: [u32; 3] = [31, 61, 91];
 /// First wave to bring a siege creep.
-pub const FIRST_SIEGE_WAVE: u32 = 11;
-/// Waves between siege creeps after the first.
-pub const SIEGE_WAVE_PERIOD: u32 = 10;
-/// Wave from which a second siege creep joins.
-pub const SIEGE_GROWTH_WAVE: u32 = 71;
+pub const FIRST_SIEGE_WAVE: u32 =
+    1 + crate::wave_data::SIEGE[0].1 * TICKS_PER_SECOND / WAVE_PERIOD_TICKS;
 /// First wave to carry a flagbearer.
 pub const FIRST_FLAGBEARER_WAVE: u32 = 5;
 /// Waves between flagbearers after the first.

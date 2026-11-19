@@ -353,6 +353,7 @@ pub fn world_view(creeps: u32) -> WorldView {
         lairs: vec![LairView {
             lair: 0,
             fell_at: Some(1200),
+            falls: 7,
             alive_known_by: SeenBy {
                 radiant: true,
                 dire: false,

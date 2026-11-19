@@ -1,12 +1,12 @@
 //! What a creep wave is made of, and how it grows with the clock.
 //!
-//! The spawn schedule, the composition and the upgrades are those of the Dota
-//! 2 Wiki's and Liquipedia's *Lane Creeps* pages, at Dota 7.41.
+//! The composition follows the installed Dota 7.42 wave rules.
 
 use bota_proto::Vec2;
 
 use crate::isqrt64;
 use crate::rules::{self, Schedule};
+use crate::wave_data;
 
 /// The make-up of one wave.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -62,24 +62,30 @@ pub fn wave_upgrades(wave: u32) -> u32 {
 
 /// What the given wave is made of.
 pub fn wave_plan(wave: u32) -> WavePlan {
-    let mut melee = rules::MELEE_PER_WAVE;
-    for &(from, count) in &rules::MELEE_GROWTH {
-        if wave >= from {
-            melee = count;
-        }
-    }
-    let ranged = rules::RANGED_PER_WAVE + u32::from(wave >= rules::RANGED_GROWTH_WAVE);
-    let siege = if wave < rules::FIRST_SIEGE_WAVE
-        || !(wave - rules::FIRST_SIEGE_WAVE).is_multiple_of(rules::SIEGE_WAVE_PERIOD)
-    {
-        0
-    } else if wave >= rules::SIEGE_GROWTH_WAVE {
-        2
+    let seconds = (wave - 1).saturating_mul(rules::WAVE_PERIOD_TICKS / rules::TICKS_PER_SECOND);
+    let melee = rules::MELEE_PER_WAVE
+        + rules::MELEE_GROWTH
+            .iter()
+            .filter(|&&from| {
+                from <= wave
+                    && (from - 1) * (rules::WAVE_PERIOD_TICKS / rules::TICKS_PER_SECOND)
+                        != wave_data::OMITTED_MELEE_GROWTH_SECONDS
+            })
+            .count() as u32;
+    let ranged = rules::RANGED_PER_WAVE + u32::from(seconds >= wave_data::RANGED_GROWTH_SECONDS);
+    let (_, siege_interval, siege_count) = wave_data::SIEGE
+        .into_iter()
+        .rev()
+        .find(|&(from, _, _)| seconds >= from)
+        .expect("siege schedule starts at the horn");
+    let siege = if seconds != 0 && seconds.is_multiple_of(siege_interval) {
+        siege_count
     } else {
-        1
+        0
     };
     let flagbearer = wave >= rules::FIRST_FLAGBEARER_WAVE
-        && (wave - rules::FIRST_FLAGBEARER_WAVE).is_multiple_of(rules::FLAGBEARER_WAVE_PERIOD);
+        && (seconds >= wave_data::FLAG_EVERY_WAVE_SECONDS
+            || (wave - rules::FIRST_FLAGBEARER_WAVE).is_multiple_of(rules::FLAGBEARER_WAVE_PERIOD));
     WavePlan {
         melee,
         flagbearer,
@@ -171,6 +177,53 @@ mod tests {
                 let due = (first..=tick).rev().find_map(|t| wave_at(t, schedule));
                 assert_eq!(Some(latest), due);
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod patch_742_tests {
+    use super::*;
+
+    // “Number of melee creeps spawned no longer increases at 30:00”.
+    #[test]
+    fn melee_waves_gain_creeps_at_fifteen_and_forty_five_minutes() {
+        for (wave, count) in [(30, 3), (31, 4), (61, 4), (90, 4), (91, 5)] {
+            assert_eq!(wave_plan(wave).melee, count, "wave {wave}");
+        }
+    }
+
+    // “Time at which 1 Ranged creep is added changed from 40:00 to 35:00”.
+    #[test]
+    fn ranged_waves_gain_a_creep_at_thirty_five_minutes() {
+        assert_eq!(wave_plan(70).ranged, 1);
+        assert_eq!(wave_plan(71).ranged, 2);
+    }
+
+    // “Reworked Siege creep spawn count after the 30:00 mark”.
+    #[test]
+    fn siege_waves_double_in_frequency_then_in_size() {
+        for (wave, count) in [
+            (1, 0),
+            (11, 1),
+            (56, 0),
+            (61, 1),
+            (65, 0),
+            (66, 1),
+            (116, 1),
+            (120, 0),
+            (121, 2),
+            (126, 2),
+        ] {
+            assert_eq!(wave_plan(wave).siege, count, "wave {wave}");
+        }
+    }
+
+    // “Flagbearer creep spawn every wave after the 30:00 mark”.
+    #[test]
+    fn every_wave_after_thirty_minutes_has_a_flagbearer() {
+        for (wave, has_flag) in [(4, false), (5, true), (60, false), (61, true), (62, true)] {
+            assert_eq!(wave_plan(wave).flagbearer, has_flag, "wave {wave}");
         }
     }
 }

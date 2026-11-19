@@ -34,8 +34,9 @@ impl ClientSession {
             None => LairState::Alive,
             Some(fall) => {
                 let since = now.saturating_sub(fall);
-                let early = def.respawn[0].saturating_mul(bota_core::rules::TICKS_PER_SECOND);
-                let late = def.respawn[1].saturating_mul(bota_core::rules::TICKS_PER_SECOND);
+                let [early, late] = def
+                    .respawn_bounds(known.falls)
+                    .map(|seconds| seconds.saturating_mul(bota_core::rules::TICKS_PER_SECOND));
                 if since < early {
                     LairState::Dead {
                         remaining: early - since,

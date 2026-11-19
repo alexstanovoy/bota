@@ -872,28 +872,80 @@ fn public_lair_timer_uses_death_relative_game_time_and_only_public_team_evidence
     use crate::game::World;
     use bota_client_core::LairState;
     use bota_proto::{DamageKind, MapId, ObjectiveKind, ObjectiveSet};
-    for (seconds, expected) in [
+    let ticks = |seconds| seconds * rules::TICKS_PER_SECOND;
+    for (falls, seconds, expected) in [
         (
+            1,
             0,
             LairState::Dead {
-                remaining: 480 * 30,
+                remaining: ticks(480),
             },
         ),
-        (479, LairState::Dead { remaining: 30 }),
         (
+            1,
+            479,
+            LairState::Dead {
+                remaining: ticks(1),
+            },
+        ),
+        (
+            1,
             480,
             LairState::Possible {
-                remaining: 180 * 30,
+                remaining: ticks(180),
             },
         ),
-        (659, LairState::Possible { remaining: 30 }),
-        (660, LairState::Alive),
+        (
+            1,
+            659,
+            LairState::Possible {
+                remaining: ticks(1),
+            },
+        ),
+        (1, 660, LairState::Alive),
+        (
+            2,
+            0,
+            LairState::Dead {
+                remaining: ticks(420),
+            },
+        ),
+        (
+            7,
+            299,
+            LairState::Dead {
+                remaining: ticks(1),
+            },
+        ),
+        (7, 300, LairState::Alive),
+        (
+            8,
+            239,
+            LairState::Dead {
+                remaining: ticks(1),
+            },
+        ),
+        (
+            8,
+            240,
+            LairState::Possible {
+                remaining: ticks(60),
+            },
+        ),
+        (
+            9,
+            0,
+            LairState::Dead {
+                remaining: ticks(180),
+            },
+        ),
     ] {
         let mut cfg = mid_config();
         cfg.map = MapId(0);
         cfg.objectives = ObjectiveSet::of(ObjectiveKind::Roshan);
         let mut world = World::for_match(&cfg, cfg.rng());
         world.creeps_halted = true;
+        world.lairs[0].falls = falls - 1;
         let boss = world.lairs[0].unit.expect("boss");
         world.push_hit(world.seats[0].unit, boss, 100000, DamageKind::Pure, None);
         world.step();
@@ -909,7 +961,10 @@ fn public_lair_timer_uses_death_relative_game_time_and_only_public_team_evidence
         let status = session
             .lair_status(0, Some(Team::Radiant))
             .expect("lair status");
-        assert_eq!(status.state, expected, "{seconds}s after a pregame death");
+        assert_eq!(
+            status.state, expected,
+            "{seconds}s after pregame fall {falls}"
+        );
         assert_eq!(status.home, bota_core::ROSHAN_DAY_PIT);
     }
 }
@@ -925,7 +980,11 @@ fn public_lair_snapshot_validation_rejects_unknown_future_and_private_evidence_i
     let world = World::for_match(&cfg, cfg.rng());
     let valid = world.view(Team::Radiant);
     type Edit = fn(&mut WorldView);
-    let cases: [(Edit, SessionError); 4] = [
+    let cases: [(Edit, SessionError); 5] = [
+        (
+            |v| v.lairs[0].falls = 1,
+            SessionError::Stream("lair fall count and time disagree"),
+        ),
         (|v| v.lairs[0].lair = 255, SessionError::LairOutOfRange(255)),
         (
             |v| v.lairs[0].fell_at = Some(v.game_tick() + 1),

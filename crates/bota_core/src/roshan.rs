@@ -99,6 +99,11 @@ pub const ROSHAN_LAIR: LairDef = LairDef {
     night: ROSHAN_NIGHT_PIT,
     move_after: 15 * 60,
     respawn: [8 * 60, 11 * 60],
+    respawn_decay: Some(crate::lair::RespawnDecay {
+        per_fall: crate::wave_data::ROSHAN_RESPAWN_DECAY_SECONDS,
+        // In client 6983 the random draw's second argument has its own floor.
+        floors: [crate::wave_data::ROSHAN_BASE_FLOOR_SECONDS, 3 * 60],
+    }),
     drops: &ROSHAN_DROPS,
     moving: Some(crate::NeutralAbility::StrengthOfTheImmortal),
 };
