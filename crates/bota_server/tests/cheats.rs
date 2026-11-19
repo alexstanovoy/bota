@@ -287,6 +287,15 @@ fn steps() -> Vec<Step> {
             },
         },
         Step {
+            asked: Button(Cheat::Stun {
+                target: bota_proto::Target::None,
+                ticks: 60,
+            }),
+            holds: |v| {
+                my_hero(v).is_some_and(|hero| hero.statuses.bits & StatusFlags::STUNNED != 0)
+            },
+        },
+        Step {
             asked: Button(Cheat::TimeOfDay { night: true }),
             holds: |v| v.clock.is_some_and(|clock| clock.day > 0),
         },

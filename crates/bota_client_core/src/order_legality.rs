@@ -566,6 +566,7 @@ impl OrderContext<'_> {
             && matches!(
                 cheat,
                 Cheat::ApplyModifier { .. }
+                    | Cheat::Stun { .. }
                     | Cheat::ClearModifiers { .. }
                     | Cheat::Teleport { .. }
                     | Cheat::RemoveHero

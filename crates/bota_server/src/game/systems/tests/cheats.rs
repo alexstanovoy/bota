@@ -300,6 +300,43 @@ fn a_modifier_duration_outside_its_bounds_is_refused_as_a_bad_cheat() {
 }
 
 #[test]
+fn a_stun_cheat_rejects_zero_and_above_bound_durations() {
+    let (world, _) = world_with(true);
+    for (ticks, expected) in [
+        (0, Err(RejectReason::BadCheat)),
+        (MAX_MODIFIER_TICKS, Ok(())),
+        (MAX_MODIFIER_TICKS + 1, Err(RejectReason::BadCheat)),
+    ] {
+        let order = Order::Cheat {
+            cheat: Cheat::Stun {
+                target: Target::None,
+                ticks,
+            },
+        };
+        assert_eq!(
+            world.validate_order(SlotId(0), None, &order),
+            expected,
+            "{ticks} ticks"
+        );
+    }
+}
+
+#[test]
+fn a_stun_cheat_rejects_a_dead_target() {
+    let (mut world, hero) = world_with(true);
+    let target = world.spawn_creep(&MELEE_CREEP, Team::Dire, Vec2::from_ints(400, 400), 0, 0);
+    world.health.get_mut(target).expect("the creep's health").hp = Fixed::ZERO;
+    let cheat = Cheat::Stun {
+        target: Target::Unit(wire_id(target)),
+        ticks: 1,
+    };
+    assert_eq!(
+        world.check_cheat(SlotId(0), Some(hero), &cheat),
+        Err(RejectReason::HeroDead)
+    );
+}
+
+#[test]
 fn a_modifier_cheat_must_be_aimed_at_a_standing_unit() {
     let (mut world, _hero) = world_with(true);
     let mark = world.spawn();

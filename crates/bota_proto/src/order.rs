@@ -295,6 +295,10 @@ pub enum Cheat {
     /// A simulator extension: every ability point the hero the order is for spent, and every
     /// talent it took, comes back to be spent again; its level stays.
     UnlearnAbilities,
+    /// A simulator extension: stuns a living unit for a bounded number of ticks,
+    /// regardless of its immunities and status resistance.
+    /// Nothing aimed means the addressed unit.
+    Stun { target: Target, ticks: u32 },
 }
 
 /// Whose creeps a [`Cheat::KillCreeps`] takes away.
@@ -541,7 +545,8 @@ impl Order {
                     Cheat::ApplyModifier { target, .. }
                     | Cheat::ClearModifiers { target }
                     | Cheat::Damage { target, .. }
-                    | Cheat::SpellImmunity { target, .. },
+                    | Cheat::SpellImmunity { target, .. }
+                    | Cheat::Stun { target, .. },
             } => target,
             Order::MoveDirection { toward: spot }
             | Order::Scan { at: spot }
@@ -613,7 +618,8 @@ impl Order {
                     Cheat::ApplyModifier { target, .. }
                     | Cheat::ClearModifiers { target }
                     | Cheat::Damage { target, .. }
-                    | Cheat::SpellImmunity { target, .. },
+                    | Cheat::SpellImmunity { target, .. }
+                    | Cheat::Stun { target, .. },
             } => target,
             Order::Cheat {
                 cheat:

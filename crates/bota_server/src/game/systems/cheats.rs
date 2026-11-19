@@ -43,6 +43,19 @@ impl World {
             Some(unit) => self.seats.iter().position(|seat| seat.unit == Some(unit)),
         };
         match cheat {
+            Cheat::Stun { target, ticks } => {
+                if let Some(mark) = unit.and_then(|unit| self.cheat_target(unit, target).ok()) {
+                    self.put_modifier(
+                        mark,
+                        crate::game::Modifier::new(
+                            bota_core::ModifierKind::Stunned,
+                            None,
+                            None,
+                            Some(ticks),
+                        ),
+                    );
+                }
+            }
             Cheat::SpellImmunity { target, ticks } => {
                 if let Some(mark) = unit.and_then(|unit| self.cheat_target(unit, target).ok()) {
                     self.put_modifier(
@@ -269,6 +282,10 @@ impl World {
             Ok(())
         };
         match cheat {
+            Cheat::Stun { target, .. } => {
+                let mark = self.cheat_target(living(unit)?, *target)?;
+                living(Some(mark))?;
+            }
             Cheat::SpellImmunity { target, ticks } => {
                 if !modifier_ticks_bounded(*ticks) {
                     return Err(RejectReason::BadCheat);

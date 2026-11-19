@@ -860,3 +860,6 @@ field EventKind::Damaged 6 critical: bool
 field ModifierSpec 11 attack_speed: i32
 field UnitView 50 attack_speed_fraction: u16
 field GlyphView 4 charges: Option<u8>
+variant Cheat 30 Stun {}
+field Cheat::Stun 0 target: Target
+field Cheat::Stun 1 ticks: u32

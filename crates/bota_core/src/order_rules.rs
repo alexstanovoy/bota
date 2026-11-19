@@ -318,6 +318,7 @@ pub fn cheat_refusal(
         Cheat::ApplyModifier { spec, ticks, .. } => {
             spec.is_bounded() && bota_proto::modifier_ticks_bounded(ticks)
         }
+        Cheat::Stun { ticks, .. } => bota_proto::modifier_ticks_bounded(ticks),
         Cheat::Item { item } => catalogue.item(item).is_some(),
         Cheat::CreateHero { hero, .. } => crate::hero_def(hero).is_some(),
         Cheat::SpawnRune { .. } => has_rune_spots,
