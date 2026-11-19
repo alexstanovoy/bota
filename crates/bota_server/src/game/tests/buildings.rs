@@ -290,15 +290,15 @@ fn the_fountains_shots_stack_three_more_each_hold_twelve_seconds_and_splash_a_qu
     );
 }
 
-/// Dota's fountain reveals what hides within 1200 (Liquipedia, *Fountain*:
-/// True Sight, "Reveal Radius: 1200"): an enemy observer ward planted in its
-/// reach is seen by its side and shot down; one beyond is not seen.
+/// Dota's fountain reveals what hides within 1800 (7.42: "Fountain's True Sight radius increased
+/// from 1200 to 1800"): an enemy observer ward planted in its reach is seen by its side and,
+/// within its 1200 attack range, shot down; one beyond is not seen.
 #[test]
 fn the_fountain_sees_a_hidden_ward_in_its_reach_and_shoots_it_down() {
     let mut world = World::on_map(map_of(MapId(2)));
     let fountain_at = world.map.fountains[0];
     let near = fountain_at + bota_proto::Vec2::from_ints(900, 0);
-    let far = fountain_at + bota_proto::Vec2::from_ints(1500, 0);
+    let far = fountain_at + bota_proto::Vec2::from_ints(rules::FOUNTAIN_TRUE_SIGHT + 300, 0);
     let plant = |world: &mut World, at| {
         world.spawn_ward(
             &bota_core::OBSERVER_WARD,
@@ -312,26 +312,30 @@ fn the_fountain_sees_a_hidden_ward_in_its_reach_and_shoots_it_down() {
     assert!(world.can_see(Team::Radiant, inside), "true sight finds it");
     assert!(
         !world.can_see(Team::Radiant, outside),
-        "beyond 1200 it hides"
+        "beyond 1800 it hides"
     );
     for _ in 0..90 {
         world.step();
     }
     assert!(!world.alive(inside), "the fountain shoots it down");
     assert!(world.alive(outside));
-    // Dota's fountain reveals within 1200 (Liquipedia, Fountain): a shade
-    // inside it is found, a shade beyond it hides, out along the diagonal
-    // where its ordinary sight reaches further.
+    // The reveal ends at 1800 out along the diagonal too: a shade inside it is found, a shade
+    // beyond it hides. The fountain's ordinary sight reaches as far since 7.42, so what does not
+    // hide is seen where the found shade stands, and no further.
     let mut world = World::on_map(map_of(MapId(2)));
     let edge =
         |far: i32| fountain_at + bota_proto::Vec2::from_ints(far * 707 / 1000, far * 707 / 1000);
-    let (edge_in, edge_out) = (plant(&mut world, edge(1180)), plant(&mut world, edge(1220)));
-    let plain = world.spawn_unit(&STANDING_TARGET, Team::Dire, edge(1240));
+    let reach = rules::FOUNTAIN_TRUE_SIGHT;
+    let (edge_in, edge_out) = (
+        plant(&mut world, edge(reach - 20)),
+        plant(&mut world, edge(reach + 20)),
+    );
+    let plain = world.spawn_unit(&STANDING_TARGET, Team::Dire, edge(reach - 20));
     world.settle();
     assert!(
         world.can_see(Team::Radiant, plain),
-        "what does not hide is seen past 1200 there"
+        "what does not hide is seen there"
     );
-    assert!(world.can_see(Team::Radiant, edge_in), "inside 1200: found");
+    assert!(world.can_see(Team::Radiant, edge_in), "inside 1800: found");
     assert!(!world.can_see(Team::Radiant, edge_out), "beyond: hidden");
 }

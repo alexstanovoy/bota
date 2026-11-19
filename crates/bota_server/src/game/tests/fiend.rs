@@ -819,7 +819,7 @@ fn a_requiem_line_tears_no_magic_resistance() {
     let own = world.stats.get(foe).expect("settled").magic_resist_bp;
     // A hero's quarter and its 16 intelligence's, of which his level-one presence lets 4% more
     // through.
-    let resisted = 2_500 + 16 * rules::MAGIC_RESIST_BP_PER_INTELLIGENCE;
+    let resisted = 2_500 + (Fixed::from_int(16) * rules::MAGIC_RESIST_BP_PER_INTELLIGENCE).to_int();
     let in_presence = rules::NOMINAL_BP
         - (rules::NOMINAL_BP - resisted) * (100 + rules::PRESENCE_MAGIC_PCT[0]) / 100;
     assert_eq!(own, in_presence, "a hero's own resistance, in his presence");

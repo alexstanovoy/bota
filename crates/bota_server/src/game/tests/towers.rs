@@ -83,8 +83,9 @@ fn every_tier_stands_and_shoots_as_in_seven_forty_one() {
 
 #[test]
 fn a_fallen_tower_pays_its_side_and_its_striker_and_a_deny_pays_both_sides_half() {
-    // Liquipedia, Tower (Tier 1): last hit 110-130 on top of a 90 team
-    // bounty to every hero of the side; denying grants 45 to both teams.
+    // Dota 7.42, Tier 1: a fixed last hit of 100 ("Buildings no longer have variable last hit
+    // bounties") on top of a 75 team bounty to every hero of the side; a deny pays half of it,
+    // 37, to every seat of both sides (the game's server code pays the denying side too).
     let range = rules::TOWER_TIER_BOUNTY[0];
     let team = rules::TOWER_TIER_TEAM_BOUNTY[0];
     let (mut world, _) = a_tower_and_three_seats();
@@ -104,13 +105,14 @@ fn a_fallen_tower_pays_its_side_and_its_striker_and_a_deny_pays_both_sides_half(
             .map(|(seat, was)| seat.gold - was)
             .collect();
         let last_hit = gold[0] - team;
-        assert!((range.min..=range.max).contains(&last_hit), "{gold:?}");
+        assert_eq!((range.min, range.max), (100, 100));
+        assert_eq!(last_hit, 100, "{gold:?}");
         assert_eq!(paid(&events), Some(gold[0]), "the event tells both");
         assert_eq!(gold[1], team, "an ally anywhere gets the team bounty");
         assert_eq!(gold[2], 0, "the side that lost it gets nothing");
         seen.push(last_hit);
     }
-    assert!(seen.iter().any(|&g| g != seen[0]), "the last hit is drawn");
+    assert!(seen.iter().all(|&g| g == seen[0]), "the last hit is fixed");
     let (mut world, tower) = a_tower_and_three_seats();
     world.health.insert(tower, health(0));
     let denier = world.seats[2].unit.expect("seated");

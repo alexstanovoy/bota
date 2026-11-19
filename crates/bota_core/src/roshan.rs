@@ -20,7 +20,7 @@ use crate::{GoldRange, HomeDef, LairDef, NeutralKind, UnitDef, rules};
 /// armor 30 and magic resistance 55, a melee attack of 75 every 2.0 s with
 /// its point at 0.6 s (0.3 s after it [LIQ Roshan]) and 150 reach, moving at
 /// 270 and turning at 1.0, seeing 1400 by day and night, a hero's hull, and
-/// a fall worth 200-290 gold and 400 experience to his killer, and 135 gold
+/// a fall worth 200-290 gold and 400 experience to his killer, and 125 gold
 /// to every hero of the killing side [LIQ Roshan]. Attacks reach him only
 /// from inside a pit [LIQ Roshan], and he is ancient [U:12100].
 pub const ROSHAN: UnitDef = UnitDef {
@@ -55,7 +55,8 @@ pub const ROSHAN: UnitDef = UnitDef {
         U.first("BountyGoldMin").int(),
         U.first("BountyGoldMax").int(),
     ),
-    bounty_team: 135,
+    // Dota 7.42: "Roshan gold per player decreased from 135 to 125".
+    bounty_team: 125,
     bounty_xp: U.first("BountyXP").int(),
     pit_attacked: true,
     per_upgrade: crate::Growth {

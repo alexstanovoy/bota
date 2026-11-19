@@ -507,13 +507,13 @@ fn health_and_mana_are_paid_for_whole_points_of_strength_and_intelligence() {
 fn shadow_fiend_stands_at_dota_numbers_from_the_first_level_to_the_last() {
     // With nothing bought: level, health, mana, attack damage (the middle of the spread),
     // milliseconds between swings, and armor in thousandths. Health and mana show their whole
-    // points. Dota 7.42's base health (200, "increased from 120"), on the attribute rules of
-    // 7.41f (22 health a point of strength) until those move too; health and mana are paid for
-    // whole points of strength and intelligence (56.8 strength pays 56 points at level 15).
+    // points. Dota 7.42: base health 200 ("increased from 120"), 20 health a point of strength
+    // ("decreased from 22 to 20"), paid for whole points of strength and intelligence (56.8
+    // strength pays 56 points at level 15).
     for (level, hp, mana, damage, swing, armor) in [
-        (1, 618, 267, 44, 1280, 4_166),
-        (15, 1432, 627, 94, 914, 12_565),
-        (30, 2334, 1023, 148, 698, 21_565),
+        (1, 580, 267, 44, 1280, 4_166),
+        (15, 1320, 627, 94, 914, 12_565),
+        (30, 2140, 1023, 148, 698, 21_565),
     ] {
         let mut world = World::new();
         let fiend = seated_hero(
@@ -538,8 +538,9 @@ fn shadow_fiend_stands_at_dota_numbers_from_the_first_level_to_the_last() {
             armor,
             "level {level} armor"
         );
-        // A quarter, and a thousandth for each point of intelligence.
-        let int = (shown.attributes.intelligence * Fixed::from_int(10)).to_int();
+        // A quarter, and 0.125% for each point of intelligence (7.42: "increased from 0.1% to
+        // 0.125%").
+        let int = (shown.attributes.intelligence * Fixed::from_ratio(25, 2)).to_int();
         assert_eq!(
             shown.magic_resist,
             Fixed::from_ratio(2_500 + int, rules::NOMINAL_BP),
@@ -666,7 +667,8 @@ fn intelligence_adds_base_magic_resistance() {
             .expect("settled")
             .attributes
             .intelligence;
-        let bp = kind.magic_resist_pct * 100 + (int * Fixed::from_int(10)).to_int();
+        // 0.125% a point since 7.42 ("increased from 0.1% to 0.125%").
+        let bp = kind.magic_resist_pct * 100 + (int * Fixed::from_ratio(25, 2)).to_int();
         Fixed::from_ratio(bp, rules::NOMINAL_BP)
     };
     let bare = shown(&world, Some(Team::Radiant), hero);

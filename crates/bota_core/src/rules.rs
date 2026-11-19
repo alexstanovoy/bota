@@ -492,8 +492,9 @@ pub const FLAGBEARER_BONUS_RADIUS: i32 = 1500;
 
 // What the three attributes are worth to whatever holds attributes.
 
-/// Health one point of strength adds.
-pub const HP_PER_STRENGTH: i32 = 22;
+/// Health one point of strength adds (Dota 7.42: "Health gained per point of Strength decreased
+/// from 22 to 20"; the game's attribute constants, STR HP 20).
+pub const HP_PER_STRENGTH: i32 = 20;
 /// Health per tick one point of strength mends.
 pub const HP_REGEN_PER_STRENGTH: Fixed = Fixed::from_ratio(1, 10 * TICKS_PER_SECOND as i32);
 /// Armor one point of agility adds.
@@ -506,11 +507,12 @@ pub const MANA_PER_INTELLIGENCE: i32 = 12;
 pub const MANA_REGEN_PER_INTELLIGENCE: Fixed = Fixed::from_ratio(1, 20 * TICKS_PER_SECOND as i32);
 /// Attack damage one point of the primary attribute adds.
 pub const DAMAGE_PER_PRIMARY: i32 = 1;
-/// Magic resistance one point of intelligence adds, in basis points: 0.1%,
-/// added to the unit's base resistance before anything that multiplies it
-/// (Dota 7.41, "Each point of Intelligence grants ... 0.1% Magic
-/// Resistance"; its stats tooltip calls the sum Base Magic Resistance).
-pub const MAGIC_RESIST_BP_PER_INTELLIGENCE: i32 = 10;
+/// Magic resistance one point of intelligence adds, in basis points: 0.125%, added to the
+/// unit's base resistance before anything that multiplies it (Dota 7.42: "Magic Resistance
+/// gained per point of Intelligence increased from 0.1% to 0.125%"; its stats tooltip calls the
+/// sum Base Magic Resistance). Paid for the whole intelligence, fractions too (the game's server
+/// code does not floor it).
+pub const MAGIC_RESIST_BP_PER_INTELLIGENCE: Fixed = Fixed::from_ratio(25, 2);
 
 // Attack speed. A unit swings at its own pace at [`BASE_ATTACK_SPEED`], and
 // twice that pace at twice the number.
@@ -767,17 +769,20 @@ pub const TOWER_ATTACK_SPEED: i32 = 110;
 /// How fast a tower turns, in brads per tick: a `MovementTurnRate` of 1.
 pub const TOWER_TURN_RATE_BRADS: u16 = 11_590;
 /// Gold paid to the hero that strikes a tower down, on top of its team
-/// bounty, indexed by tier minus one.
+/// bounty, indexed by tier minus one: fixed since Dota 7.42 ("Buildings no longer have variable
+/// last hit bounties"; Tier 1 "decreased from 110-130 to 100", Tier 2 "130-150 to 125", Tier 3
+/// "150-170 to 150", Tier 4 "rescaled from 170-190 to 175").
 pub const TOWER_TIER_BOUNTY: [GoldRange; 4] = [
-    GoldRange::new(110, 130),
-    GoldRange::new(130, 150),
-    GoldRange::new(150, 170),
-    GoldRange::new(170, 190),
+    GoldRange::exactly(100),
+    GoldRange::exactly(125),
+    GoldRange::exactly(150),
+    GoldRange::exactly(175),
 ];
 /// Gold a tower's fall pays every seat of the side that brought it down,
 /// indexed by tier minus one; a deny pays half of it to every seat of both
-/// sides.
-pub const TOWER_TIER_TEAM_BOUNTY: [i32; 4] = [90, 110, 125, 145];
+/// sides (Dota 7.42: Tier 1 "decreased from 90 to 75", Tier 2 "from 110 to 100", Tier 4
+/// "increased from 145 to 150"; the game's server code pays the deny's half to both sides).
+pub const TOWER_TIER_TEAM_BOUNTY: [i32; 4] = [75, 100, 125, 150];
 pub const TOWER_ATTACK_RANGE: i32 = 700;
 /// Milliseconds between tower attack starts at [`BASE_ATTACK_SPEED`].
 pub const TOWER_ATTACK_TIME: u32 = 900;
@@ -898,14 +903,14 @@ pub const RAX_RANGED_HP: i32 = 1300;
 /// Ranged barracks armor.
 pub const RAX_RANGED_ARMOR: i32 = 9;
 /// Gold paid to the hero that strikes a barracks down, on top of its team
-/// bounty.
-pub const RAX_BOUNTY: GoldRange = GoldRange::new(90, 135);
+/// bounty (Dota 7.42: "Barracks last hit gold rescaled from 90-135 to 100").
+pub const RAX_BOUNTY: GoldRange = GoldRange::exactly(100);
 /// Gold a melee barracks' fall pays every seat of the side that brought it
-/// down.
-pub const RAX_MELEE_TEAM_BOUNTY: i32 = 155;
+/// down (Dota 7.42: "decreased from 155 to 125").
+pub const RAX_MELEE_TEAM_BOUNTY: i32 = 125;
 /// Gold a ranged barracks' fall pays every seat of the side that brought it
-/// down.
-pub const RAX_RANGED_TEAM_BOUNTY: i32 = 90;
+/// down (Dota 7.42: "increased from 90 to 100").
+pub const RAX_RANGED_TEAM_BOUNTY: i32 = 100;
 /// Barracks collision size, the Dota barracks hull.
 pub const RAX_COLLISION: i32 = 160;
 /// Barracks bound radius, the Dota barracks hull.
@@ -961,9 +966,9 @@ pub const FOUNTAIN_ATTACK_TIME: u32 = 150;
 pub const FOUNTAIN_ATTACK_POINT: u32 = 0;
 /// Fountain attack projectile speed, world units per second.
 pub const FOUNTAIN_PROJECTILE_SPEED: i32 = 1400;
-/// How far the fountain reveals what hides: its True Sight (Liquipedia,
-/// *Fountain*: "Reveal Radius: 1200").
-pub const FOUNTAIN_TRUE_SIGHT: i32 = 1200;
+/// How far the fountain reveals what hides: its True Sight (Dota 7.42: "Fountain's True Sight
+/// radius increased from 1200 to 1800").
+pub const FOUNTAIN_TRUE_SIGHT: i32 = 1800;
 /// What each stack of the fountain's Fountain Damage adds to its shots
 /// (Liquipedia, *Fountain*: "Attack Damage Bonus per Stack: 3"; no most
 /// stacks). The stack is added before the shot deals its damage.

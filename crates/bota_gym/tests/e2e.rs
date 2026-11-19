@@ -377,8 +377,14 @@ fn recorded_metadata_agrees_with_the_scoreboard() {
         assert_eq!(value(stat::KILLS), Some(i64::from(scored.kills)));
         assert_eq!(value(stat::DEATHS), Some(i64::from(scored.deaths)));
     }
-    let farmed: u16 = scoreboard.slots.iter().map(|seat| seat.last_hits).sum();
-    assert!(farmed > 0, "ninety seconds in mid farm some creeps");
+    // The comparisons above are of something: ninety seconds in mid score last hits or kills
+    // (7.42's heroes, at 20 health a point of strength, fight each other there before they farm).
+    let scored: u32 = scoreboard
+        .slots
+        .iter()
+        .map(|seat| u32::from(seat.last_hits) + u32::from(seat.kills))
+        .sum();
+    assert!(scored > 0, "ninety seconds in mid score something");
 }
 
 /// The recorder reads the whole map every tick: a player-access game must not keep one.

@@ -99,7 +99,7 @@ const WHOLE_POINT_MARGIN: Fixed = Fixed::from_ratio(1, 100);
 
 /// The magic resistance intelligence is worth, in basis points.
 pub fn intelligence_magic_resist_bp(has: Attributes) -> i32 {
-    (has.intelligence * Fixed::from_int(rules::MAGIC_RESIST_BP_PER_INTELLIGENCE)).to_int()
+    (has.intelligence * rules::MAGIC_RESIST_BP_PER_INTELLIGENCE).to_int()
 }
 
 /// The armor agility is worth.

@@ -236,8 +236,9 @@ pub const SHRINE_PERIOD_TICKS: u32 = 420 * rules::TICKS_PER_SECOND;
 /// Experience of the first activation [PN 7.41: "200 base and 300 per
 /// subsequent shrine (200/500/800 etc)"].
 pub const SHRINE_XP_FIRST: i32 = 200;
-/// Experience each later activation adds.
-pub const SHRINE_XP_STEP: i32 = 300;
+/// Experience each later activation adds (Dota 7.42: "Wisdom Shrine experience decreased from
+/// 200 + 300 per subsequent use to 200 + 200 per subsequent use").
+pub const SHRINE_XP_STEP: i32 = 200;
 
 /// The Dota map's two Shrines of Wisdom.
 pub const DOTA_SHRINES: [Vec2; 2] = [
@@ -273,7 +274,7 @@ pub const fn shrine_activations(clock: u32, schedule: rules::Schedule) -> u32 {
 }
 
 /// Experience a Shrine gathered on its `activation`, counted from one,
-/// gives: 200, 500, 800 and on, the activation read off the game clock.
+/// gives: 200, 400, 600 and on, the activation read off the game clock.
 pub const fn shrine_xp(activation: u32) -> i32 {
     let later = activation.saturating_sub(1);
     SHRINE_XP_FIRST + SHRINE_XP_STEP * later as i32

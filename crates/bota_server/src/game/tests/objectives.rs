@@ -690,7 +690,7 @@ fn a_shrines_countdown_is_told_to_both_sides_as_it_runs() {
 }
 
 #[test]
-fn a_shrine_gathered_in_three_seconds_gives_two_hundred_then_five_hundred() {
+fn a_shrine_gathered_in_three_seconds_gives_two_hundred_then_four_hundred() {
     let ahead = SHRINE_COUNTDOWN_TICKS + 10;
     let (mut world, shrine) = the_shrine_before(1, ahead, &[Team::Radiant, Team::Dire]);
     let at = world.transform.get(shrine).expect("standing").pos;
@@ -740,7 +740,8 @@ fn a_shrine_gathered_in_three_seconds_gives_two_hundred_then_five_hundred() {
     place_hero(&mut world, 0, at + Vec2::from_ints(200, 0));
     let (_, events) =
         until(&mut world, 2 * SHRINE_COUNTDOWN_TICKS + 2, is_gathered).expect("gathered");
-    assert_eq!(gathered(&events).map(|(_, xp, _)| xp), Some(500), "14:00");
+    // 7.42: "200 + 300 per subsequent use to 200 + 200 per subsequent use".
+    assert_eq!(gathered(&events).map(|(_, xp, _)| xp), Some(400), "14:00");
     assert!(world.zone.get(shrine).is_some());
 }
 
