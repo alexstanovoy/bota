@@ -157,10 +157,9 @@ impl World {
 
     /// The target an entity acquires within `range`, or nothing.
     ///
-    /// The best class decides first. Inside it the closest candidate sets the
-    /// mark, and everything within [`bota_core::rules::AGGRO_TIE_RANGE`] of that mark
-    /// counts as equally close; among those, what a hero is doing decides,
-    /// then the distance itself, then the entity.
+    /// The best class decides first. Siege units prefer enemies attacking them,
+    /// then those attacking an ally, then the nearest eligible target by hull edge.
+    /// Other units compare the actions of enemies within the ordinary distance tie range.
     pub fn acquire(
         &self,
         seeker: Entity,
@@ -228,8 +227,36 @@ impl World {
                 continue;
             };
             let class = class_rank(kind_def(kind).target_class, order);
-            let distance = isqrt64(at.distance_squared(their_at));
+            let mut distance = isqrt64(at.distance_squared(their_at));
+            if order == PriorityOrder::SiegeFirst {
+                distance -= i64::from(self.hull.get(other).map_or(0, |hull| hull.bound.raw));
+            }
             found.push((class, distance, other));
+        }
+        if order == PriorityOrder::SiegeFirst {
+            return found
+                .into_iter()
+                .map(|(class, distance, other)| {
+                    // An attack order sets the victim during the approach. Pending spells
+                    // have a separate target and do not enter attack acquisition.
+                    let victim = match self.orders.get(other).map(|orders| orders.current) {
+                        Some(UnitOrder::Attack { target, .. }) => Some(target),
+                        _ => self.target_of(other),
+                    };
+                    let aggression = match victim {
+                        Some(victim) if victim == seeker => 0,
+                        Some(victim) if self.team.get(victim) == Some(&side) => 1,
+                        _ => 2,
+                    };
+                    ((class, aggression, distance), other)
+                })
+                .min_by(|(left, first), (right, second)| {
+                    left.cmp(right).then_with(|| {
+                        (self.tie_rank(seeker, *first), first)
+                            .cmp(&(self.tie_rank(seeker, *second), second))
+                    })
+                })
+                .map(|(_, other)| other);
         }
         pick_target(&found, |other| self.behaviour_rank(side, other))
     }

@@ -62,6 +62,9 @@ impl World {
         candidates: &Candidates,
     ) -> Option<Entity> {
         let order = self.priority_of(seeker);
+        if order == PriorityOrder::SiegeFirst {
+            return self.acquire(seeker, reach, order, candidates);
+        }
         let at = self.pos(seeker)?;
         let _profile = self.scope(Phase::TargetQuery);
         let mut best: Option<((u8, u8, i64), Entity)> = None;
@@ -130,6 +133,7 @@ impl World {
         }
         if self.reachable(seeker, reach, held) {
             let order = self.priority_of(seeker);
+            // The top class already holds. For a siege creep this is a barracks.
             if self.class_priority(held, order) == 0 {
                 return Some(held);
             }

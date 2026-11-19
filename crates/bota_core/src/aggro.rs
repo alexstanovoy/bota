@@ -8,23 +8,25 @@ use crate::{kind_def, rules};
 /// The class order a unit ranks its targets by.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PriorityOrder {
-    /// Heroes and ordinary units, then siege creeps, then buildings, then
-    /// wards. What everything but a siege creep uses.
+    /// Heroes and ordinary units, then siege creeps, barracks, buildings, wards and couriers.
     Normal,
-    /// Buildings, then siege creeps, then everything else, then wards.
+    /// Barracks, buildings, ordinary units, siege creeps, heroes, wards, then couriers.
     SiegeFirst,
 }
 
 /// The priority class of a target, before the class order is applied.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TargetClass {
-    /// Anything not in another class, a barracks included.
+    /// Ordinary units.
     Unit,
     /// A siege creep.
     Siege,
     /// A tower, an ancient or a fountain.
     Building,
     Ward,
+    Barracks,
+    Hero,
+    Courier,
 }
 
 /// Where a class sits in an order. Lower is taken first.
@@ -32,16 +34,21 @@ pub enum TargetClass {
 pub const fn class_rank(class: TargetClass, order: PriorityOrder) -> u8 {
     match order {
         PriorityOrder::Normal => match class {
-            TargetClass::Unit => 0,
+            TargetClass::Unit | TargetClass::Hero => 0,
             TargetClass::Siege => 1,
-            TargetClass::Building => 2,
-            TargetClass::Ward => 3,
+            TargetClass::Barracks => 2,
+            TargetClass::Building => 3,
+            TargetClass::Ward => 4,
+            TargetClass::Courier => 5,
         },
         PriorityOrder::SiegeFirst => match class {
-            TargetClass::Building => 0,
-            TargetClass::Siege => 1,
+            TargetClass::Barracks => 0,
+            TargetClass::Building => 1,
             TargetClass::Unit => 2,
-            TargetClass::Ward => 3,
+            TargetClass::Siege => 3,
+            TargetClass::Hero => 4,
+            TargetClass::Ward => 5,
+            TargetClass::Courier => 6,
         },
     }
 }

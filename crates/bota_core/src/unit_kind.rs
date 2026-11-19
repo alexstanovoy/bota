@@ -165,6 +165,7 @@ pub const UNIT_KINDS: [KindDef; 20] = [
     KindDef {
         kind: UnitKind::Hero,
         attack_class: AttackClass::Hero,
+        target_class: TargetClass::Hero,
         death_announced: true,
         killer_announced: true,
         breaks_regen: true,
@@ -192,7 +193,7 @@ pub const UNIT_KINDS: [KindDef; 20] = [
     building(UnitKind::Ancient, TargetClass::Building, true),
     KindDef {
         killer_announced: true,
-        ..building(UnitKind::Barracks, TargetClass::Unit, true)
+        ..building(UnitKind::Barracks, TargetClass::Barracks, true)
     },
     building(UnitKind::Fountain, TargetClass::Building, true),
     KindDef {
@@ -210,6 +211,7 @@ pub const UNIT_KINDS: [KindDef; 20] = [
     KindDef {
         kind: UnitKind::Courier,
         hit_count: Some(rules::COURIER_HITS),
+        target_class: TargetClass::Courier,
 
         death_announced: true,
         ..PLAIN
@@ -217,7 +219,7 @@ pub const UNIT_KINDS: [KindDef; 20] = [
     // Dota announces no filler building's fall.
     KindDef {
         death_announced: false,
-        ..building(UnitKind::Filler, TargetClass::Unit, false)
+        ..building(UnitKind::Filler, TargetClass::Building, false)
     },
     // A side teleports to the Outposts it holds [LIQ Outpost].
     KindDef {

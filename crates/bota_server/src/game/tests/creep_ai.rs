@@ -74,6 +74,142 @@ fn a_unit_is_taken_before_a_building_and_a_siege_creep_takes_the_building_first(
 }
 
 #[test]
+fn siege_creeps_take_barracks_then_buildings_then_creeps_before_heroes() {
+    let mut world = World::new();
+    let at = Vec2::from_ints(5000, 5000);
+    let siege = world.spawn_unit(&SIEGE_CREEP, Team::Radiant, at);
+    let ally = hero_at(&mut world, at + Vec2::from_ints(90, 0));
+    let enemy = |distance| at + Vec2::from_ints(distance, 0);
+    let barracks = world.spawn_unit(&bota_core::BARRACKS_MELEE, Team::Dire, enemy(550));
+    let tower = world.spawn_unit(tower_def(1), Team::Dire, enemy(400));
+    let creep = world.spawn_unit(&MELEE_CREEP, Team::Dire, enemy(340));
+    let catapult = world.spawn_unit(&SIEGE_CREEP, Team::Dire, enemy(280));
+    let hero = world.spawn_hero(Team::Dire, enemy(190), SlotId(1), HeroId::SHADOW_FIEND);
+    world.settle();
+    world.set_target(tower, ally);
+    for expected in [barracks, tower, creep, catapult, hero] {
+        let candidates = world.candidates();
+        assert_eq!(world.select_target(siege, &candidates), Some(expected));
+        world.despawn(expected);
+    }
+}
+
+#[test]
+fn normal_acquisition_prefers_siege_creeps_then_barracks_fillers_wards_and_couriers() {
+    const VISIBLE_WARD: bota_core::UnitDef = bota_core::UnitDef {
+        hides: false,
+        ..bota_core::OBSERVER_WARD
+    };
+    let mut world = World::new();
+    let at = Vec2::from_ints(5000, 5000);
+    let normal = world.spawn_unit(&MELEE_CREEP, Team::Radiant, at);
+    let siege = world.spawn_unit(&SIEGE_CREEP, Team::Radiant, at);
+    let enemy = |distance| at + Vec2::from_ints(distance, 0);
+    let catapult = world.spawn_unit(&SIEGE_CREEP, Team::Dire, enemy(470));
+    let barracks = world.spawn_unit(&bota_core::BARRACKS_MELEE, Team::Dire, enemy(400));
+    let filler = world.spawn_unit(&bota_core::FILLER, Team::Dire, enemy(300));
+    let ward = world.spawn_unit(&VISIBLE_WARD, Team::Dire, enemy(200));
+    let courier = world.spawn_unit(&COURIER, Team::Dire, enemy(100));
+    world.settle();
+    let candidates = world.candidates();
+    assert_eq!(world.select_target(siege, &candidates), Some(barracks));
+    for expected in [catapult, barracks, filler, ward, courier] {
+        assert_eq!(
+            world.select_target(normal, &world.candidates()),
+            Some(expected)
+        );
+        world.despawn(expected);
+    }
+}
+
+#[test]
+fn a_siege_creep_prefers_the_hero_approaching_to_attack_it() {
+    let mut world = World::new();
+    let at = Vec2::from_ints(5000, 5000);
+    let siege = world.spawn_unit(&SIEGE_CREEP, Team::Radiant, at);
+    let nearer = world.spawn_hero(
+        Team::Dire,
+        at + Vec2::from_ints(160, 0),
+        SlotId(0),
+        HeroId::PUDGE,
+    );
+    let further = world.spawn_hero(
+        Team::Dire,
+        at + Vec2::from_ints(450, 0),
+        SlotId(1),
+        HeroId::PUDGE,
+    );
+    world.settle();
+    assert_eq!(
+        world.select_target(siege, &world.candidates()),
+        Some(nearer)
+    );
+    world.set_order(
+        further,
+        UnitOrder::Attack {
+            target: siege,
+            last_seen: at,
+        },
+    );
+    assert_eq!(
+        world.target_of(further),
+        None,
+        "the ordered hero is still approaching"
+    );
+    assert_eq!(
+        world.select_target(siege, &world.candidates()),
+        Some(further)
+    );
+}
+
+#[test]
+fn a_siege_creep_uses_seeded_rank_for_exactly_equal_targets() {
+    let mut world = World::new();
+    let at = Vec2::from_ints(5000, 5000);
+    let siege = world.spawn_unit(&SIEGE_CREEP, Team::Radiant, at);
+    let candidates: Vec<_> = (0..12)
+        .map(|_| world.spawn_unit(&MELEE_CREEP, Team::Dire, at + Vec2::from_ints(300, 0)))
+        .collect();
+    world.settle();
+    let winner = *candidates
+        .iter()
+        .min_by_key(|&&creep| (world.tie_rank(siege, creep), creep))
+        .unwrap();
+    assert_ne!(
+        winner, candidates[0],
+        "the fixture distinguishes spawn order from the seeded draw"
+    );
+    assert_eq!(
+        world.select_target(siege, &world.candidates()),
+        Some(winner)
+    );
+}
+
+#[test]
+fn siege_creeps_prefer_same_class_targets_attacking_them_then_their_allies() {
+    let mut world = World::new();
+    let at = Vec2::from_ints(5000, 5000);
+    let siege = world.spawn_unit(&SIEGE_CREEP, Team::Radiant, at);
+    let ally = hero_at(&mut world, at + Vec2::from_ints(90, 0));
+    let spawn = |world: &mut World, distance| {
+        world.spawn_unit(&MELEE_CREEP, Team::Dire, at + Vec2::from_ints(distance, 0))
+    };
+    let close = spawn(&mut world, 180);
+    let wider = spawn(&mut world, 220);
+    let attacking_ally = spawn(&mut world, 400);
+    let attacking_siege = spawn(&mut world, 550);
+    world.settle();
+    world.hull.get_mut(wider).expect("target hull").bound = rules::units(100);
+    world.set_target(attacking_ally, ally);
+    world.set_target(attacking_siege, siege);
+    for expected in [attacking_siege, attacking_ally, wider, close] {
+        let candidates = world.candidates();
+        assert_eq!(world.select_target(siege, &candidates), Some(expected));
+        world.despawn(expected);
+    }
+}
+
+#[test]
 fn a_building_never_shoots_the_jungle_and_a_creep_only_at_a_pull_camp() {
     let mut world = World::new();
     let tower = world.spawn_unit(tower_def(1), Team::Radiant, Vec2::from_ints(1000, 1000));
@@ -353,18 +489,18 @@ fn a_hero_laying_into_your_side_is_taken_before_a_nearer_courier() {
 }
 
 #[test]
-fn an_idle_hero_and_a_courier_go_by_nearness() {
+fn an_idle_hero_outranks_a_closer_courier() {
     let (mut world, creep, _, courier, hero) = a_courier_and_a_hero_before_a_creep();
     world.set_order(hero, UnitOrder::Stand);
+    let reach = Fixed::from_int(600);
     assert_eq!(
-        world.best_valid_in_range(creep, Fixed::from_int(600), &world.candidates()),
-        Some(courier),
-        "equally idle, the nearer one"
+        world.best_valid_in_range(creep, reach, &world.candidates()),
+        Some(hero)
     );
-    world.transform.get_mut(hero).expect("standing").pos = Vec2::from_ints(5050, 5000);
+    world.despawn(hero);
     assert_eq!(
-        world.best_valid_in_range(creep, Fixed::from_int(600), &world.candidates()),
-        Some(hero),
+        world.best_valid_in_range(creep, reach, &world.candidates()),
+        Some(courier)
     );
 }
 
