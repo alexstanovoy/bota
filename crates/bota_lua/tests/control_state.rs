@@ -297,12 +297,49 @@ fn hidden_control_changes_never_change_the_other_seats_script_results() {
 #[test]
 fn ethereal_item_use_sets_the_cannot_attack_fact_for_every_client() {
     use bota_client_core::IssuedOrder;
-    use bota_proto::{Cheat,Order,Target,ItemId,ItemSlot,StatusFlags};
-    let (mut local,mut sessions)=support::local_with_cheats(&[Team::Radiant,Team::Dire],bota_core::MAP2_ID);
-    let give=sessions[0].issue(IssuedOrder::hero(Order::Cheat {cheat:Cheat::Item {item:ItemId::GHOST_SCEPTER}})).unwrap();step(&mut local,&mut sessions,&[vec![give],vec![]]);
-    let cast=sessions[0].issue(IssuedOrder::hero(Order::Use {slot:ItemSlot(0),target:Target::None})).unwrap();step(&mut local,&mut sessions,&[vec![cast],vec![]]);
-    let hero=local.hero_of(0).unwrap();assert!(local.world().attack_immune(hero));assert!(local.world().disarmed(hero));
-    let received=sessions[0].own_hero().unwrap();assert_ne!(received.statuses.bits&StatusFlags::DISARMED,0);assert!(bota_client_core::unit_state::is_disarmed(received));
-    let mut lua=LuaTeam::new(Team::Radiant,&[BotSeat {slot:SlotId(0),hero:HeroId::SHADOW_FIEND}],Limits::DEFAULT,Keys {hash:[17,19],random:23}).unwrap();
-    lua.add_script(SlotId(0),ScriptKind::Takeover,"ethereal_state",b"function Think() assert(GetBot():IsDisarmed()) end").unwrap();assert!(lua.think(&sessions[0]).unwrap().failures.is_empty());
+    use bota_proto::{Cheat, ItemId, ItemSlot, Order, StatusFlags, Target};
+    let (mut local, mut sessions) =
+        support::local_with_cheats(&[Team::Radiant, Team::Dire], bota_core::MAP2_ID);
+    let give = sessions[0]
+        .issue(IssuedOrder::hero(Order::Cheat {
+            cheat: Cheat::Item {
+                item: ItemId::GHOST_SCEPTER,
+            },
+        }))
+        .unwrap();
+    step(&mut local, &mut sessions, &[vec![give], vec![]]);
+    let cast = sessions[0]
+        .issue(IssuedOrder::hero(Order::Use {
+            slot: ItemSlot(0),
+            target: Target::None,
+        }))
+        .unwrap();
+    step(&mut local, &mut sessions, &[vec![cast], vec![]]);
+    let hero = local.hero_of(0).unwrap();
+    assert!(local.world().attack_immune(hero));
+    assert!(local.world().disarmed(hero));
+    let received = sessions[0].own_hero().unwrap();
+    assert_ne!(received.statuses.bits & StatusFlags::DISARMED, 0);
+    assert!(bota_client_core::unit_state::is_disarmed(received));
+    let mut lua = LuaTeam::new(
+        Team::Radiant,
+        &[BotSeat {
+            slot: SlotId(0),
+            hero: HeroId::SHADOW_FIEND,
+        }],
+        Limits::DEFAULT,
+        Keys {
+            hash: [17, 19],
+            random: 23,
+        },
+    )
+    .unwrap();
+    lua.add_script(
+        SlotId(0),
+        ScriptKind::Takeover,
+        "ethereal_state",
+        b"function Think() assert(GetBot():IsDisarmed()) end",
+    )
+    .unwrap();
+    assert!(lua.think(&sessions[0]).unwrap().failures.is_empty());
 }

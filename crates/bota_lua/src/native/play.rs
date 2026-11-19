@@ -146,7 +146,7 @@ fn decide(
     let tick = session.current().expect("a complete tick").tick;
     match worker.think(session) {
         Ok(turn) => {
-            accumulate_turn(result,&turn);
+            accumulate_turn(result, &turn);
             for failure in &turn.failures {
                 if failure.report {
                     eprintln!(
@@ -329,9 +329,9 @@ impl<'a> Recording<'a> {
         Ok(())
     }
 }
-fn accumulate_turn(result:&mut TeamOutcome,turn:&TeamTurn) {
-    result.hook_activity+=turn.hook_activity;
-    result.script_failures=result.script_failures.saturating_add(turn.failure_count());
+fn accumulate_turn(result: &mut TeamOutcome, turn: &TeamTurn) {
+    result.hook_activity += turn.hook_activity;
+    result.script_failures = result.script_failures.saturating_add(turn.failure_count());
 }
 
 #[cfg(test)]
@@ -374,11 +374,35 @@ mod tests {
     use super::*;
     #[test]
     fn standalone_and_worker_failure_totals_include_omitted_callback_diagnostics() {
-        let mut turn=TeamTurn {statistics:Some(crate::statistics::TurnStatistics::default()),hook_activity:HookActivity {suppressed_team_errors:3,suppressed_callback_errors:7,..Default::default()},..Default::default()};
-        for _ in 0..2 {turn.failures.push(crate::ScriptFailure {slot:bota_proto::SlotId(0),error:luagee::Error::Limit(luagee::Limit::FuelPerCall),fuel_exhaustions:0,report:false});}
-        let mut result=TeamOutcome {hook_activity:HookActivity::default(),outcomes:Vec::new(),orders_sent:0,script_failures:0,retired:false};
-        accumulate_turn(&mut result,&turn);
-        let mut summary=crate::statistics::RunStatistics::default();crate::native::worker::record_turn(&mut summary,&turn);
-        assert_eq!(turn.failure_count(),12);assert_eq!(summary.script_failures,12);assert_eq!(result.script_failures,12);
+        let mut turn = TeamTurn {
+            statistics: Some(crate::statistics::TurnStatistics::default()),
+            hook_activity: HookActivity {
+                suppressed_team_errors: 3,
+                suppressed_callback_errors: 7,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        for _ in 0..2 {
+            turn.failures.push(crate::ScriptFailure {
+                slot: bota_proto::SlotId(0),
+                error: luagee::Error::Limit(luagee::Limit::FuelPerCall),
+                fuel_exhaustions: 0,
+                report: false,
+            });
+        }
+        let mut result = TeamOutcome {
+            hook_activity: HookActivity::default(),
+            outcomes: Vec::new(),
+            orders_sent: 0,
+            script_failures: 0,
+            retired: false,
+        };
+        accumulate_turn(&mut result, &turn);
+        let mut summary = crate::statistics::RunStatistics::default();
+        crate::native::worker::record_turn(&mut summary, &turn);
+        assert_eq!(turn.failure_count(), 12);
+        assert_eq!(summary.script_failures, 12);
+        assert_eq!(result.script_failures, 12);
     }
 }

@@ -7,7 +7,10 @@ use bota_proto::{HeroId, SlotId, Team};
 fn every_reference_constant_is_defined_with_its_exact_value() {
     let reference: serde_json::Value =
         serde_json::from_str(include_str!("data/reference_constants.json")).unwrap();
-    assert_eq!(reference.as_object().unwrap().keys().collect::<Vec<_>>(),vec!["constants"]);
+    assert_eq!(
+        reference.as_object().unwrap().keys().collect::<Vec<_>>(),
+        vec!["constants"]
+    );
     let constants = reference["constants"].as_object().unwrap();
     assert_eq!(constants.len(), 357);
     let mut source = String::from("function Think()\n");

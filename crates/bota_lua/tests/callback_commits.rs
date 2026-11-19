@@ -99,7 +99,6 @@ fn a_team_callback_error_does_not_cancel_the_heros_think() {
     assert_eq!(turn.bots[0].orders, vec![movement(1), movement(2)]);
 }
 
-
 #[test]
 fn callback_error_summaries_are_bounded_without_losing_the_failure_count() {
     let teams = [
@@ -150,8 +149,6 @@ fn callback_error_summaries_are_bounded_without_losing_the_failure_count() {
     );
     assert_eq!(turn.bots.len(), 5, "every configured seat still executes");
 }
-
-
 
 #[test]
 fn a_retained_callback_error_does_not_keep_the_scripts_large_string_allocation() {

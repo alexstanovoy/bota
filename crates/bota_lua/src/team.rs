@@ -114,7 +114,11 @@ pub struct TeamTurn {
 
 impl TeamTurn {
     /// Every failed callback, including diagnostics omitted from the bounded retained list.
-    pub fn failure_count(&self)->u64 {(self.failures.len() as u64).saturating_add(self.hook_activity.suppressed_team_errors).saturating_add(self.hook_activity.suppressed_callback_errors)}
+    pub fn failure_count(&self) -> u64 {
+        (self.failures.len() as u64)
+            .saturating_add(self.hook_activity.suppressed_team_errors)
+            .saturating_add(self.hook_activity.suppressed_callback_errors)
+    }
 }
 
 #[derive(Debug)]
