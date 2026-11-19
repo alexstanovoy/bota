@@ -41,9 +41,11 @@ must fit the host reserve or a rooted charged userdata allocation.
 `IssuedOrder`. `context.issue_move` additionally accepts that seat's currently
 visible, living courier and emits an ordinary courier movement order. It checks
 current kind, owner and side; a remembered handle alone grants no control.
-The scheduler commits only after all callbacks for that bot succeed;
-on error or fuel exhaustion it discards the bot's entire outbox. The native worker
-discards late outputs. Actions must not change simulation state or call a `World`.
+Up to 64 callback diagnostics are retained per turn (the first 63 and the last); further failures
+increment `HookActivity::suppressed_callback_errors` and the end-of-match failure total.
+Each validated action is committed when issued. An error or fuel exhaustion aborts only
+that callback; preceding actions remain, and later callbacks run within the remaining fuel
+budget. The native worker still discards late outputs. Actions must not change simulation state or call a `World`.
 
 Three complete patterns are in `api/patterns.rs`:
 
@@ -149,8 +151,8 @@ zero to positive zero.
 Every team hook is attempted even after another fails; the first error is
 reported. Later errors increment `HookActivity::suppressed_team_errors`; native
 warnings include that count and match `script_failures` counts all errors.
-A team-hook error discards orders only for the first configured Lua seat, which
-need not have wire slot zero; other configured seats still run. The desire cache
+A team-hook error is attributed to the first configured Lua seat, which need not have
+wire slot zero. Its Think and the other seats still run, and issued orders remain. The desire cache
 is script decision state and is not rewound with rejected or late command
 continuations. Queries expose no other team's cache or server-only state.
 
@@ -288,8 +290,7 @@ protected metatables carry weak host-index entries charged to interpreter memory
 collection removes those entries and shrinks their capacity. Copying script fields
 or borrowing a method cannot create an engine identity.
 
-Explicit script attack-once
-requests have no native policy lease; only native last-hit requests expire after
+Explicit script attack-once requests have no native policy lease; only native last-hit requests expire after
 the bounded, windup-aware lease. A rejected or lost native order can therefore
 recover without requiring a launch event or a gap-free stream of snapshots.
 
@@ -436,7 +437,7 @@ retain their existing explicit charges.
 | `GetGameState()` | Init=0, selection=2, strategy=3, pregame=4, playing=5, completed=6, aborted=7. Uses received lifecycle facts and clock; the terminal snapshot may be processed once at the final tick. 8 fuel. |
 | `IsItemPurchasedFromSideShop(name)` | The current installed item data has no active SideShop flags, so false, including unknown names. 8 plus checked-string work. |
 
-locations and the current roster use the configured map and the receiving side's observations.
+Locations and the current roster use the configured map and the receiving side's observations.
 
 
 `GetNearbyTrees(radius)` returns a one-based Lua array of opaque tree ids from the client's
@@ -454,7 +455,8 @@ and each result, plus interpreter table/write charges. The scan and retained sto
 `ActionImmediate_Chat(text, allChat)` sends ordinary checked chat. `Action_Chat` is a host alias. `allChat=true` selects all players, false the team. The transport's UTF-8, control/bidi,
 byte and grapheme limits apply before enqueueing; malformed text errors rather than reaching any
 receiver. The host permits one line per bot every 30 simulation ticks and at most one per turn.
-A failed or discarded bot turn publishes no chat and restores that allowance. Chat does not
+Chat issued before a callback error remains committed and consumes its allowance.
+Only a discarded native reply restores the allowance without publishing it. Chat does not
 replace or interrupt the bot's body order. Cost: receiver, 8, checked string, and 2 per input byte
 for bounded UTF-8/text-policy work. No raw text is inserted into protocol diagnostics.
 
@@ -594,9 +596,21 @@ Per-player keys are wire seats, a client identity.
 
 No alias is provided for the non-API global `Glyph`; the supported action is `ActionImmediate_Glyph`.
 The host does not substitute animation ids for bot-controller action types, approximate movement-direction
-stability with a constant, or infer silence/courier controller state absent from the received facts.
+stability with a constant, or infer courier controller state absent from the received facts. Control queries read the received rule-predicate bits.
 
 Fuel: every call prices its whole scan before it runs, on every branch (including rejected ones): scalar queries charge
 the view and roster scans, nearby queries their scan and sort (handles are charged where they are made), visibility its
-bounded sight rays and, on a changed forest, the rebuild. These prices are independent of summary collection and are pinned
+bounded sight rays. The bounded forest cache rebuild runs once during received-view preparation outside script execution. These prices are independent of summary collection and are pinned
 by exact-minimum tests.
+
+
+Control queries `IsSilenced`, `IsRooted`, and `IsDisarmed` read their projected status bits
+through shared client queries, including disarm caused by ethereal state. A foreign body
+outside sight answers false and records a declined call, without fresh hidden facts.
+`GetModifierStackCount` returns -1 for an absent integer index, including the -1 result
+of `GetModifierByName`, and for a foreign body outside sight. Malformed or non-integer arguments remain errors.
+`Action_MoveDirectly` issues ordinary `Move{Pos}` with unit pathfinding;
+the controller action type is deferred to the client action-stack unit.
+Nearby-tree queries use a shared immutable x index and the seat's observed cuts; they
+retain original tree ids and ordering. Fuel covers two index searches, a fixed id bitset,
+candidate distance/cut tests, observed planted trees, and output construction.

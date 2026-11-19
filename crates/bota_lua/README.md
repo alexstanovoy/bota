@@ -7,7 +7,8 @@ The binding issues ordinary `IssuedOrder`s; it changes no simulation rules.
 One `LuaTeam` owns a team's state. Each override has its own environment, while
 `require` shares the team's module cache. Takeovers run every tick; otherwise modes
 arbitrate every nine ticks with transition hooks. Team, ability/item, purchase and
-courier hooks use the same scheduler. A failed bot turn discards that bot's orders.
+courier hooks use the same scheduler. Errors end only their callback: previously issued
+orders and chat stay committed, and later callbacks run within the remaining fuel budget.
 Repeated fuel diagnostics are eligible once per thirty ticks.
 
 Team push/defend hooks return a table containing exactly numeric keys 1, 2 and 3
@@ -20,9 +21,8 @@ or nil lane hook resets its own value to native policy when the pair succeeds.
 Every team hook is attempted independently, including farm, roam and Roshan after
 an earlier error. The first error is reported; later errors increment
 `HookActivity::suppressed_team_errors`, included in warnings and match totals.
-A team-hook error discards only
-the first configured Lua seat's orders (index 0,
-which need not be wire slot 0); other seats still run under the shared tick budget.
+A team-hook error is attributed to the first configured Lua seat (which need not be
+wire slot zero), without cancelling its orders or its Think. All seats share the tick fuel budget.
 These are script decisions, so late output does not rewind published desires with
 command continuations. Typed lane access translates core MID=0/TOP=1/BOT=2 into
 the engine order rather than indexing the stored values with a core id.
