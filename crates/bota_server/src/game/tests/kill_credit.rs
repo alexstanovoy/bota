@@ -125,9 +125,18 @@ fn kill_credit_distinguishes_the_single_damager_from_a_debuff_only_contributor()
     assert_eq!(world.seats[2].hero_damage, 0);
     let source = finisher(&mut world, false);
     let before: Vec<_> = world.seats.iter().map(|seat| seat.gold).collect();
+    let unreliable_before = [0, 2].map(|index| world.seats[index].unreliable_gold());
     finish(&mut world, victim, source);
     assert_eq!(world.seats[0].kills, 1);
     assert_eq!(world.seats[2].kills, 0);
+    // Recorded 7.42 matches credit both the killer and the assistant as unreliable.
+    for (index, unreliable) in [0, 2].into_iter().zip(unreliable_before) {
+        let seat = &world.seats[index];
+        assert_eq!(
+            seat.unreliable_gold() - unreliable,
+            seat.gold - before[index]
+        );
+    }
     // Both contributors receive 15 + (50 + 0.037 * 2000) / 2 = 77; only the damager gets 245 kill gold.
     assert_eq!(world.seats[0].gold - before[0], 322);
     assert_eq!(world.seats[2].gold - before[2], 77);
@@ -619,7 +628,7 @@ fn kill_credit_ratio_payout_preserves_balance_limits_and_actual_receipts() {
     let (mut world, ours, victim) = scene(2);
     for seat in &mut world.seats {
         seat.gold = if seat.team == Team::Dire {
-            1_000_000_000
+            bota_core::rules::MAX_HELD_GOLD
         } else {
             1
         };
@@ -628,7 +637,7 @@ fn kill_credit_ratio_payout_preserves_balance_limits_and_actual_receipts() {
     let before: Vec<_> = world.seats.iter().map(|seat| seat.gold).collect();
     let events = finish(&mut world, victim, ours[0]);
     for index in [0, 2] {
-        assert_eq!(world.seats[index].gold, i32::MAX);
+        assert_eq!(world.seats[index].gold, bota_core::rules::MAX_HELD_GOLD);
         let reported: i64 = death_awards(&events, victim)
             .iter()
             .filter(|award| award.recipient == world.seats[index].slot)

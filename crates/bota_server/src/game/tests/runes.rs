@@ -881,7 +881,22 @@ fn a_bounty_rune_pays_every_hero_of_the_side_that_takes_it_and_nobody_else() {
     // The jungle rune of 8:00 is worth 52; the opening ones are 40.
     let before: Vec<i32> = world.seats.iter().map(|seat| seat.gold).collect();
     let nw: Vec<i32> = world.seats.iter().map(|seat| seat.net_worth).collect();
+    let unreliable: Vec<_> = world
+        .seats
+        .iter()
+        .map(|seat| seat.unreliable_gold())
+        .collect();
     let taker = hero(&world, 0);
+    let mut applied = crate::game::AppliedModifiers::default();
+    applied.push(crate::game::AppliedModifier {
+        spec: bota_proto::ModifierSpec {
+            gold_income: 20_000,
+            ..bota_proto::ModifierSpec::NOMINAL
+        },
+        ticks_left: None,
+        origin: crate::game::AppliedOrigin::Cheat,
+    });
+    world.applied.insert(taker, applied);
     let jungle = spots()[RADIANT_JUNGLE];
     let fresh = lying(&world)
         .into_iter()
@@ -906,6 +921,10 @@ fn a_bounty_rune_pays_every_hero_of_the_side_that_takes_it_and_nobody_else() {
     // before 8:00 in this world), so exactly the 52 of the 8:00 one.
     assert_eq!(paid[0] - passive, 52, "the taker is paid");
     assert_eq!(paid[1] - passive, 52, "so is its ally, wherever it stands");
+    // Recorded 7.42 matches pay only reliable gold to both taker and teammates.
+    for (seat, before) in world.seats.iter().zip(unreliable) {
+        assert_eq!(seat.unreliable_gold(), before);
+    }
     let worth: Vec<i32> = world
         .seats
         .iter()

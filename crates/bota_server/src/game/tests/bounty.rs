@@ -34,6 +34,8 @@ fn spread(def: &'static UnitDef, upgrades: u32, kills: i32) -> (i32, i32, i32, i
     seat_hero(&mut world, 0, Team::Radiant, Vec2::from_ints(5000, 5000));
     let (mut low, mut high, mut sum, mut xp) = (i32::MAX, i32::MIN, 0, 0);
     for _ in 0..kills {
+        // Keep room in the purse for every draw of the bounty.
+        world.seats[0].gold = 0;
         let (gold, gained_xp) = one_kill(&mut world, def, upgrades);
         low = low.min(gold);
         high = high.max(gold);

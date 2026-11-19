@@ -365,10 +365,9 @@ impl World {
         let Some(side) = self.team.get(hero).copied() else {
             return;
         };
-        let seats: Vec<usize> = (0..self.seats.len())
-            .filter(|&index| self.seats[index].team == side)
-            .collect();
-        self.pay_seats(seats, gold, None);
+        for seat in self.seats.iter_mut().filter(|seat| seat.team == side) {
+            seat.earn_gold(gold, crate::game::GoldPool::Reliable);
+        }
     }
 
     /// Uses a Bottle: it lets out the rune it holds on its user, or it is

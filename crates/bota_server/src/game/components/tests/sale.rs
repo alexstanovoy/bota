@@ -8,11 +8,14 @@ use super::fixtures::*;
 #[test]
 fn fresh_stack_refunds_sixty_five_per_remaining_charge() {
     let (mut world, hero) = fixture();
+    world.seats[0].earn_gold(50, crate::game::GoldPool::Reliable);
     for charges in 1..=3 {
         put(&mut world, hero, 0, mango(charges));
         let before = world.seats[0].gold;
         assert!(world.sell_item(OWNER, hero, 0));
         assert_eq!(world.seats[0].gold - before, 65 * i32::from(charges));
+        // Recorded 7.42 sales add to the unreliable pool alone.
+        assert_eq!(world.seats[0].gold - world.seats[0].unreliable_gold(), 50);
         assert!(world.inventory.get(hero).unwrap().slots[0].is_none());
     }
 }

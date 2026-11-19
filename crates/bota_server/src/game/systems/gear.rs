@@ -1371,7 +1371,7 @@ impl World {
             return false;
         }
         let back = self.sale_price(&stack);
-        self.seats[seat].gold += back;
+        self.seats[seat].adjust_gold(back);
         true
     }
 
@@ -1423,7 +1423,7 @@ impl World {
             return;
         };
         let back = self.sale_price(&stack);
-        self.seats[seat].gold += back;
+        self.seats[seat].adjust_gold(back);
     }
 
     fn sale_price(&self, stack: &ItemStack) -> i32 {
@@ -1471,7 +1471,7 @@ impl World {
                 let back = self.sale_price(&stack);
                 self.seats[seat].stash.slots[at] = None;
                 if let Some(owner) = self.seats.iter().position(|s| s.slot == stack.owner) {
-                    self.seats[owner].gold += back;
+                    self.seats[owner].adjust_gold(back);
                 }
             }
         }
@@ -1501,7 +1501,7 @@ impl World {
                 };
                 let back = self.sale_price(&stack);
                 self.take_from_bag(holder, at);
-                self.seats[owner].gold += back;
+                self.seats[owner].adjust_gold(back);
             }
         }
         self.recycle_entity_snapshot(entities);

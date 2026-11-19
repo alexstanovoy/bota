@@ -45,7 +45,7 @@ impl World {
             return;
         }
         for seat in self.seats.iter_mut() {
-            seat.earn_gold(due, GoldPool::Unreliable);
+            seat.earn_gold(due, GoldPool::Reliable);
         }
     }
 

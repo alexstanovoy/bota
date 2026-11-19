@@ -55,7 +55,7 @@ fn consumables_add_up_their_charges_and_sell_at_the_price_of_each() {
         (ItemId::HEALING_SALVE, 1),
         (ItemId::TANGO, 3),
     ] {
-        let (mut world, hero) = a_hero_with_gold(100_000);
+        let (mut world, hero) = a_hero_with_gold(bota_core::rules::MAX_HELD_GOLD);
         for _ in 0..3 {
             assert!(world.buy(bota_proto::SlotId(0), item, &mut Vec::new()));
         }

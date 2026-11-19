@@ -276,8 +276,8 @@ impl Seat {
             (0..=self.gold).contains(&self.reliable_gold),
             "reliable gold must fit the purse"
         );
-        let capacity = i32::MAX
-            .saturating_sub(self.gold)
+        let capacity = self
+            .gold_headroom()
             .min(i32::MAX.saturating_sub(self.net_worth));
         let paid = amount.min(capacity);
         self.gold += paid;
@@ -303,13 +303,16 @@ impl Seat {
         self.gold -= amount;
     }
 
-    /// A scripted gold adjustment or cheat changes the purse without counting as a bounty.
+    fn gold_headroom(&self) -> i32 {
+        bota_core::rules::MAX_HELD_GOLD
+            .saturating_sub(self.gold)
+            .max(0)
+    }
+
+    /// Sales, refunds and scripted gold change only the unreliable pool and do not earn a bounty.
     pub(crate) fn adjust_gold(&mut self, amount: i32) {
-        if amount < 0 {
-            self.spend_gold(amount.saturating_neg().min(self.gold));
-        } else {
-            self.gold = self.gold.saturating_add(amount);
-        }
+        let adjustment = amount.clamp(-self.unreliable_gold(), self.gold_headroom());
+        self.gold += adjustment;
     }
 
     /// Whether its hero lies dead, waiting to stand again.

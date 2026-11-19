@@ -1088,3 +1088,143 @@ fn a_side_that_cannot_see_the_killer_is_told_no_assists() {
         "the fallen's side knows neither"
     );
 }
+
+/// Recorded 7.42 matches start each hero with 600 unreliable gold and pay
+/// each post-horn passive tick into the reliable pool.
+#[test]
+fn the_starting_purse_is_unreliable_and_passive_gold_is_reliable() {
+    let cfg = config();
+    let mut world = World::for_match(&cfg, cfg.rng());
+    for seat in &world.seats {
+        assert_eq!(seat.gold, 600);
+        assert_eq!(seat.unreliable_gold(), 600);
+    }
+    let hero = world.seats[0].unit.unwrap();
+    world.tick = world.schedule().horn + 19;
+    world.bury(vec![(hero, None)], &mut Vec::new());
+    let before: Vec<_> = world
+        .seats
+        .iter()
+        .map(|seat| (seat.gold, seat.unreliable_gold()))
+        .collect();
+    world.step();
+    for (seat, (gold, unreliable)) in world.seats.iter().zip(before) {
+        assert_eq!(
+            seat.gold,
+            gold + 1,
+            "both the alive and dead seats get the clock's gold"
+        );
+        assert_eq!(
+            seat.unreliable_gold(),
+            unreliable,
+            "the clock only adds reliable gold"
+        );
+    }
+}
+
+/// In recorded 7.42 matches creep, neutral, building, Roshan, courier and
+/// ward awards all went to the vulnerable pool, even with reliable gold held.
+#[test]
+fn last_hits_and_objectives_pay_only_unreliable_gold() {
+    use crate::game::GoldPool;
+    use bota_core::{
+        BARRACKS_MELEE, COURIER, FLAGBEARER_CREEP, MELEE_CREEP, NeutralKind, OBSERVER_WARD, ROSHAN,
+        tower_def,
+    };
+    use bota_proto::UnitKind;
+
+    for (def, side) in [
+        (&MELEE_CREEP, Team::Dire),
+        (&FLAGBEARER_CREEP, Team::Dire),
+        (NeutralKind::Kobold.def(), Team::Neutral),
+        (tower_def(1), Team::Dire),
+        (&BARRACKS_MELEE, Team::Dire),
+        (&ROSHAN, Team::Neutral),
+        (&COURIER, Team::Dire),
+        (&OBSERVER_WARD, Team::Dire),
+    ] {
+        let mut world = World::new();
+        let at = Vec2::from_ints(5000, 5000);
+        let winner = seated_hero(&mut world, at, HeroId::SHADOW_FIEND);
+        seat_hero(&mut world, 1, Team::Radiant, at + Vec2::from_ints(100, 0));
+        let victim = at + Vec2::from_ints(50, 0);
+        let fallen = if def.kind == UnitKind::CreepFlagbearer {
+            world.spawn_creep(def, side, victim, rules::LANE_MID, 0)
+        } else {
+            world.spawn_unit(def, side, victim)
+        };
+        if def.kind == UnitKind::Ward {
+            // The ward's award normally depends on when it was placed.
+            world.bounty.insert(
+                fallen,
+                crate::game::Bounty {
+                    gold: bota_core::GoldRange::exactly(50),
+                    bonus: 0,
+                    team: 0,
+                    xp: 0,
+                },
+            );
+        }
+        world.settle();
+        for seat in &mut world.seats {
+            seat.earn_gold(60, GoldPool::Reliable);
+        }
+        let before = world.seats[0].gold;
+        let ally = world.seats[1].gold;
+        world.pay_for(fallen, Some(winner), &mut Vec::new());
+        assert!(
+            world.seats[0].gold > before,
+            "{:?} awarded a bounty",
+            def.kind
+        );
+        if def.kind == UnitKind::CreepFlagbearer {
+            assert!(
+                world.seats[1].gold > ally,
+                "the nearby ally receives the banner bonus"
+            );
+        }
+        for seat in &world.seats {
+            assert_eq!(
+                seat.gold - seat.unreliable_gold(),
+                60,
+                "{:?} awards stay vulnerable",
+                def.kind
+            );
+        }
+    }
+}
+
+/// The installed gold cap covers both pools and credits leave it intact.
+#[test]
+fn the_two_gold_pools_share_the_installed_purse_cap() {
+    let mut world = World::new();
+    seated_hero(
+        &mut world,
+        Vec2::from_ints(5000, 5000),
+        HeroId::SHADOW_FIEND,
+    );
+    let seat = &mut world.seats[0];
+    seat.gold = 99_990;
+    assert_eq!(seat.earn_gold(50, crate::game::GoldPool::Reliable), 9);
+    assert_eq!(seat.gold, 99_999);
+    assert_eq!(seat.unreliable_gold(), 99_990);
+    seat.adjust_gold(5);
+    assert_eq!(seat.gold, 99_999);
+}
+
+/// Recorded negative non-purchase gold never takes from the reliable balance.
+#[test]
+fn a_negative_nonspend_gold_adjustment_stops_at_the_unreliable_balance() {
+    let mut world = World::new();
+    seated_hero(
+        &mut world,
+        Vec2::from_ints(5000, 5000),
+        HeroId::SHADOW_FIEND,
+    );
+    let seat = &mut world.seats[0];
+    seat.gold = 10;
+    seat.earn_gold(20, crate::game::GoldPool::Reliable);
+    seat.adjust_gold(-50);
+    assert_eq!(seat.unreliable_gold(), 0);
+    assert_eq!(seat.gold, 20);
+}

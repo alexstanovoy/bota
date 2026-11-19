@@ -30,7 +30,7 @@ pub fn respawn_wait(level: u8, penalty: u32, by_neutrals: bool) -> u32 {
     }
 }
 
-/// Passive gold paid by `ticks` after the horn. Every interval pays one unreliable gold.
+/// Passive gold paid by `ticks` after the horn. Every interval pays one reliable gold.
 pub fn passive_gold_by(ticks: u32) -> i32 {
     (ticks / rules::PASSIVE_GOLD_INTERVAL) as i32
 }
