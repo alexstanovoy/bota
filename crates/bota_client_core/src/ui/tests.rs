@@ -137,6 +137,7 @@ pub(crate) fn a_unit() -> UnitView {
         attack_time: 1700,
         attack_point: 500,
         attack_speed: 100,
+        attack_speed_fraction: 0,
         armor: Fixed::from_int(3),
         magic_resist: Fixed::from_ratio(25, 100),
         collision: Fixed::from_int(27),

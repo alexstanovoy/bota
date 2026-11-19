@@ -380,6 +380,11 @@ pub struct UnitView {
     /// idle; units outside sight carry no observation either.
     /// Appended on the wire; no target identity or location is included.
     pub action_phase: Option<ActionPhaseView>,
+    /// What the server times the unit's attacks with past the whole [`UnitView::attack_speed`]
+    /// (the number Dota's panel shows): the fraction of a point, every fraction of agility
+    /// counted, in [`Fixed`]'s 65536ths. `bota_core::exact_attack_speed` puts the two together.
+    /// Appended on the wire: none for a unit at a whole speed, a byte.
+    pub attack_speed_fraction: u16,
 }
 
 /// A body's current action stage, with no information about whom it acts on.

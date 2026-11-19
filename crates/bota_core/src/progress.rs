@@ -41,6 +41,14 @@ const fn clamped_raw(attack_speed: Fixed) -> i64 {
     raw as i64
 }
 
+/// The attack speed the server times a viewed unit's attacks with: the whole number its view
+/// shows and the fraction it carries beside it.
+pub const fn exact_attack_speed(unit: &bota_proto::UnitView) -> Fixed {
+    Fixed {
+        raw: (unit.attack_speed << Fixed::FRAC_BITS) | unit.attack_speed_fraction as i32,
+    }
+}
+
 /// The overshoot past a mark, which the next phase starts at. Absent while
 /// the mark is not reached.
 #[inline]

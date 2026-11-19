@@ -41,7 +41,8 @@ pub(crate) struct UnitStatistics {
     pub attack_damage: i32,
     pub attack_range: bota_proto::Fixed,
     pub attack_time: u32,
-    pub attack_speed: i32,
+    /// The attack speed the server times with, its fraction included.
+    pub attack_speed: bota_proto::Fixed,
     pub move_speed: bota_proto::Fixed,
     pub bound: bota_proto::Fixed,
     pub evasion: bota_proto::Fixed,
@@ -61,7 +62,7 @@ impl From<&UnitView> for UnitStatistics {
             attack_damage: unit.attack_damage,
             attack_range: unit.attack_range,
             attack_time: unit.attack_time,
-            attack_speed: unit.attack_speed,
+            attack_speed: bota_core::exact_attack_speed(unit),
             move_speed: unit.move_speed,
             bound: unit.bound,
             evasion: unit.evasion,

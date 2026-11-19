@@ -105,7 +105,7 @@ fn read(context: &ApiContext, vm: &mut Vm, args: Args, name: &str) -> Result<usi
             ),
             1000.0,
         ),
-        "GetAttackSpeed" => scaled(f64::from(unit.attack_speed), 100.0),
+        "GetAttackSpeed" => scaled(fixed(unit.attack_speed), 100.0),
         "GetCurrentMovementSpeed" => f64::from(unit.move_speed.to_int()),
         "GetBoundingRadius" => fixed(unit.bound),
         "GetEvasion" => fixed(unit.evasion),

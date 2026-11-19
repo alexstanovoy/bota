@@ -553,6 +553,25 @@ fn attack_speed_pays_for_every_fraction_of_agility() {
     assert_ne!(stats.attack_speed, speed(Fixed::from_int(agility.to_int())));
 }
 
+/// The view tells the attack speed the server times with, fraction and all, beside the whole
+/// number the panel shows: a client that predicts swings from it predicts the server's.
+#[test]
+fn the_view_tells_the_exact_attack_speed_beside_the_whole_one() {
+    let (stats, level) = fiend_holding_fractions();
+    let mut world = World::new();
+    let fiend = seated_hero(
+        &mut world,
+        Vec2::from_ints(5000, 5000),
+        bota_proto::HeroId(1),
+    );
+    world.level.insert(fiend, Level(level));
+    world.settle();
+    let view = shown(&world, Some(Team::Radiant), fiend);
+    assert_eq!(bota_core::exact_attack_speed(&view), stats.attack_speed);
+    assert_eq!(view.attack_speed, stats.attack_speed.to_int());
+    assert_ne!(view.attack_speed_fraction, 0, "a fraction to tell");
+}
+
 /// And intelligence for magic resistance: "0.125 x multiplier x GetIntellect", unfloored.
 #[test]
 fn magic_resistance_pays_for_every_fraction_of_intelligence() {

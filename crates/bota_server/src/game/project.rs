@@ -683,8 +683,9 @@ impl World {
             attack_range: stats.attack_range,
             attack_time: bota_core::attack_duration(stats.attack_time, stats.attack_speed),
             attack_point: bota_core::attack_duration(stats.attack_point, stats.attack_speed),
-            // Shown in whole points, as Dota's panel shows it.
+            // Shown in whole points, as Dota's panel shows it; the exact one below times.
             attack_speed: stats.attack_speed.to_int(),
+            attack_speed_fraction: (stats.attack_speed.raw & 0xFFFF) as u16,
             armor: stats.armor,
             magic_resist: Fixed::from_ratio(stats.magic_resist_bp, rules::NOMINAL_BP),
             status_resist: Fixed::from_ratio(stats.status_resist_bp, rules::NOMINAL_BP),

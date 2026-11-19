@@ -27,6 +27,7 @@ pub const REGISTRY_DIGEST: u64 = fnv1a_values(
         ModifierSpec::MAX_STATUS_RESIST as u64,
         ModifierSpec::MIN_SCALE as u64,
         ModifierSpec::MAX_SCALE as u64,
+        ModifierSpec::MAX_ATTACK_SPEED as u64,
     ],
 );
 

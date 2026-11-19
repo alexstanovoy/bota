@@ -37,12 +37,13 @@ const TICK_RATE: usize = 30;
 /// Four physical item level bytes raise that budget to 292. The absent forced-movement
 /// and ability-channel option tags add two bytes; the absent creep tier adds one more.
 /// The absent action-phase observation adds one byte. Transport burst limits are unchanged.
+/// The attack speed's fraction adds up to three bytes to a hero (one at a whole speed).
 #[test]
-fn a_hero_with_an_active_item_lifetime_stays_under_296_bytes() {
+fn a_hero_with_an_active_item_lifetime_stays_under_299_bytes() {
     let mut hero = hero_unit();
     hero.items[0].as_mut().expect("fixture item").expires_in = Some(300 * TICK_RATE as u32);
     let len = encoded_len(&hero);
-    assert!(len <= 296, "hero unit grew to {len} bytes");
+    assert!(len <= 299, "hero unit grew to {len} bytes");
 }
 
 /// Absent cast rates, gathering, lit-side, forced-motion and channel tags bring this budget
@@ -173,7 +174,7 @@ fn an_empty_view_costs_almost_nothing() {
 
 /// The prior active-field budget gains the absent action-phase tag.
 #[test]
-fn a_hero_with_active_motion_channel_and_item_lifetime_stays_under_304_bytes() {
+fn a_hero_with_active_motion_channel_and_item_lifetime_stays_under_307_bytes() {
     let mut hero = hero_unit();
     hero.items[0].as_mut().expect("item").expires_in = Some(300 * TICK_RATE as u32);
     hero.forced = Some(crate::ForcedView {
@@ -186,7 +187,7 @@ fn a_hero_with_active_motion_channel_and_item_lifetime_stays_under_304_bytes() {
         elapsed: 80,
     });
     let len = encoded_len(&hero);
-    assert!(len <= 304, "active hero unit grew to {len} bytes");
+    assert!(len <= 307, "active hero unit grew to {len} bytes");
 }
 
 #[test]
