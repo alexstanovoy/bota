@@ -166,6 +166,7 @@ fn trace_wire() -> Registry {
     trace::<Order>(&mut tracer, &mut enums);
     trace::<Target>(&mut tracer, &mut enums);
     trace::<Cheat>(&mut tracer, &mut enums);
+    trace::<ControlKind>(&mut tracer, &mut enums);
     trace::<EventKind>(&mut tracer, &mut enums);
     trace::<GoldAwardKind>(&mut tracer, &mut enums);
     trace::<RejectReason>(&mut tracer, &mut enums);
