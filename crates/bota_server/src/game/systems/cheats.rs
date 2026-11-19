@@ -449,7 +449,19 @@ impl World {
         seat.created = true;
         let unit = self.spawn_hero(team, at, slot, hero);
         seat.unit = Some(unit);
-        self.seats.push(seat);
+        let at_index = self.seats.partition_point(|held| held.slot < slot);
+        for held in &mut self.seats {
+            for hurt in &mut held.hurt_by {
+                if hurt.by >= at_index {
+                    hurt.by += 1;
+                }
+            }
+        }
+        self.seats.insert(at_index, seat);
+        debug_assert!(
+            self.seats.windows(2).all(|pair| pair[0].slot < pair[1].slot),
+            "seats stay sorted by slot"
+        );
         self.settle();
     }
 

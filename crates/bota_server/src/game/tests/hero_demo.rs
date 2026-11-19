@@ -1216,3 +1216,218 @@ fn a_player_cannot_buy_back_a_hero_it_controls_for_it_is_another_seats() {
     pair.give(0, Some(pudge), Order::Buyback);
     assert_eq!(pair.rejected[0], [RejectReason::NotYourUnit]);
 }
+
+#[test]
+fn removing_a_non_last_created_hero_and_creating_another_keeps_seats_sorted_and_assists_intact() {
+    use bota_client_core::{ClientSession, MatchStatic, SessionOptions};
+
+    let cfg = MatchConfig {
+        map: HERO_DEMO_ID,
+        cheats: true,
+        objectives: map_of(HERO_DEMO_ID).default_objectives,
+        runes: map_of(HERO_DEMO_ID).default_runes,
+        ..config()
+    };
+    let (mut local, opening) = LocalMatch::new(&cfg, &[OrderDelay::NONE]).expect("a match");
+    let mut session: Option<ClientSession> = None;
+    let mut seq = 0u32;
+    let mut fold = |streams: Vec<Vec<ServerMsg>>| -> (WorldView, Vec<RejectReason>) {
+        let mut rejected = Vec::new();
+        for msg in streams.into_iter().flatten() {
+            if let ServerMsg::MatchStart { ref info } = msg {
+                let statics = MatchStatic::new(info).expect("valid match info");
+                session = Some(
+                    ClientSession::seat(statics, SlotId(0), None, SessionOptions::default())
+                        .expect("a client session"),
+                );
+                continue;
+            }
+            if let ServerMsg::OrderRejected { reason, .. } = msg {
+                rejected.push(reason);
+            }
+            session
+                .as_mut()
+                .expect("session started")
+                .ingest(msg, &mut ())
+                .expect("client session accepts every server message");
+        }
+        let view = session
+            .as_ref()
+            .and_then(|s| s.current())
+            .expect("a snapshot")
+            .clone();
+        (view, rejected)
+    };
+    let _ = fold(opening);
+    let mut step = |given: Option<(Option<EntityId>, Order)>| -> WorldView {
+        let out: Vec<OutgoingOrder> = given
+            .into_iter()
+            .map(|(unit, order)| {
+                seq += 1;
+                OutgoingOrder {
+                    seq,
+                    unit,
+                    order,
+                    seen: local.tick(),
+                    queue: false,
+                }
+            })
+            .collect();
+        let (next, rejected) = fold(local.step(&[&out]).expect("a step"));
+        assert_eq!(rejected, [], "{given:?} was refused");
+        next
+    };
+
+    let _ = step(Some((
+        None,
+        Order::Cheat {
+            cheat: Cheat::AllVision { on: true },
+        },
+    )));
+    let spot = rules::DEMO_LANE_CORNERS[1];
+    let view = step(Some((
+        None,
+        Order::Cheat {
+            cheat: Cheat::CreateHero {
+                hero: HeroId::PUDGE,
+                enemy: true,
+                at: spot,
+            },
+        },
+    )));
+    let hero_a = view
+        .player(SlotId(1))
+        .and_then(|row| row.unit)
+        .expect("hero A in slot 1");
+
+    let view = step(Some((
+        None,
+        Order::Cheat {
+            cheat: Cheat::CreateHero {
+                hero: HeroId::SHADOW_FIEND,
+                enemy: true,
+                at: spot + Vec2::from_ints(200, 0),
+            },
+        },
+    )));
+    let hero_b = view
+        .player(SlotId(2))
+        .and_then(|row| row.unit)
+        .expect("hero B in slot 2");
+
+    // Hero B hurts the player's hero so seat 0 records hero B's seat index in its assist ledger.
+    let own = view
+        .player(SlotId(0))
+        .and_then(|row| row.unit)
+        .expect("own hero");
+    let own_pos = view.unit(own).expect("own unit").pos;
+    let _ = step(Some((
+        Some(hero_b),
+        Order::Cheat {
+            cheat: Cheat::Teleport {
+                at: own_pos + Vec2::from_ints(150, 0),
+            },
+        },
+    )));
+    let mut view = step(Some((
+        Some(hero_b),
+        Order::Attack {
+            target: Target::Unit(own),
+        },
+    )));
+    let hp_before = view.unit(own).expect("own unit").hp;
+    for _ in 0..3 * rules::TICKS_PER_SECOND {
+        view = step(None);
+        if view.unit(own).is_some_and(|u| u.hp < hp_before) {
+            break;
+        }
+    }
+    assert!(
+        view.unit(own).expect("own unit").hp < hp_before,
+        "hero B damaged own hero"
+    );
+
+    // Remove the non-last created hero (slot 1), then create another hero that reuses slot 1.
+    let view = step(Some((
+        Some(hero_a),
+        Order::Cheat {
+            cheat: Cheat::RemoveHero,
+        },
+    )));
+    assert!(view.player(SlotId(1)).is_none(), "slot 1 is free");
+
+    let view = step(Some((
+        None,
+        Order::Cheat {
+            cheat: Cheat::CreateHero {
+                hero: HeroId::PUDGE,
+                enemy: true,
+                at: spot,
+            },
+        },
+    )));
+    assert!(
+        view.players.windows(2).all(|w| w[0].slot < w[1].slot),
+        "players must be sorted by slot: {:?}",
+        view.players.iter().map(|p| p.slot).collect::<Vec<_>>()
+    );
+    assert!(
+        view.talents.windows(2).all(|w| w[0].slot < w[1].slot),
+        "talents must be sorted by slot: {:?}",
+        view.talents.iter().map(|t| t.slot).collect::<Vec<_>>()
+    );
+    let hero_c = view
+        .player(SlotId(1))
+        .and_then(|row| row.unit)
+        .expect("hero C looked up via sorted players");
+
+    // Orders to hero C work.
+    let from = view.unit(hero_c).expect("hero C stands").pos;
+    let to = rules::DEMO_LANE_CORNERS[2];
+    let mut view = step(Some((
+        Some(hero_c),
+        Order::Move {
+            target: Target::Pos(to),
+        },
+    )));
+    for _ in 0..2 * rules::TICKS_PER_SECOND {
+        view = step(None);
+    }
+    let now = view.unit(hero_c).expect("hero C stands").pos;
+    assert!(
+        now.distance_squared(to) < from.distance_squared(to),
+        "hero C moved toward {to:?}, stayed at {now:?}"
+    );
+
+    // Kill the player's hero with sourceless cheat damage: hero B (slot 2) keeps its assist,
+    // and hero C (slot 1, newly inserted before hero B) gets none.
+    for _ in 0..10 {
+        if view.player(SlotId(0)).expect("own row").respawn_left > 0 {
+            break;
+        }
+        view = step(Some((
+            None,
+            Order::Cheat {
+                cheat: Cheat::Damage {
+                    target: Target::None,
+                    amount: 1000,
+                    kind: DamageKind::Pure,
+                },
+            },
+        )));
+    }
+    assert!(
+        view.player(SlotId(0)).expect("own row").respawn_left > 0,
+        "own hero died"
+    );
+    assert_eq!(
+        view.player(SlotId(2)).expect("hero B").assists,
+        1,
+        "hero B kept its assist credit across seat insertion"
+    );
+    assert_eq!(
+        view.player(SlotId(1)).expect("hero C").assists,
+        0,
+        "hero C did not inherit hero B's assist credit"
+    );
+}
