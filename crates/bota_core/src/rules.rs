@@ -453,7 +453,7 @@ pub const WAVE_PERIOD_TICKS: u32 = 900;
 pub const MELEE_PER_WAVE: u32 = 3;
 /// Ranged creeps in a wave before the count grows.
 pub const RANGED_PER_WAVE: u32 = 1;
-/// Original waves at which one melee creep is added. The patch can omit an interval.
+/// Candidate melee growth waves. The schedule can suppress a timed growth step.
 pub const MELEE_GROWTH: [u32; 3] = [31, 61, 91];
 /// First wave to bring a siege creep.
 pub const FIRST_SIEGE_WAVE: u32 =

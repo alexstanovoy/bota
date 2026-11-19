@@ -12,6 +12,7 @@ pub struct LairDef {
     pub move_after: u32,
     /// Delay after a death, inclusive, in seconds.
     pub respawn: [u32; 2],
+    /// How subsequent falls change the two independently bounded endpoints.
     pub respawn_decay: Option<RespawnDecay>,
     pub drops: &'static [LairDrop],
     /// The intrinsic ability describing this boss's journey between homes.
@@ -61,6 +62,7 @@ pub struct Contact {
 
 impl LairDef {
     /// Inclusive bounds in seconds after a public fall.
+    #[must_use]
     pub fn respawn_bounds(&self, falls: u32) -> [u32; 2] {
         let mut bounds = self.respawn;
         if let Some(decay) = self.respawn_decay {

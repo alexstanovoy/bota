@@ -20,8 +20,10 @@ shifted by 9,216 like all map coordinates. Their origins and hull names are besi
 The demo map has no pit; the full map and the full-geometry Solo Mid map have both. Solo Mid
 keeps objectives disabled unless the host enables them.
 
-The respawn distribution is not specified by Valve. The simulator draws uniformly among
-whole seconds in the inclusive 480–660 second window, independently for each death.
+The first respawn draws uniformly among whole seconds from 480 to 660, inclusive.
+Each subsequent fall subtracts 60 seconds from both original endpoints for each previous
+fall. The original 480-second endpoint stops at 300 seconds, and the original 660-second
+endpoint stops at 180 seconds. The simulator sorts the endpoints before drawing a delay.
 
 ## Loot and reincarnation
 

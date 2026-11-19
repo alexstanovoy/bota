@@ -1,6 +1,6 @@
 //! What a creep wave is made of, and how it grows with the clock.
 //!
-//! The composition follows the installed Dota 7.42 wave rules.
+//! Melee counts grow at 15 and 45 minutes. The second ranged creep arrives at 35 minutes.
 
 use bota_proto::Vec2;
 
