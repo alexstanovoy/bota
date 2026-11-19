@@ -90,6 +90,13 @@ pub fn ability_has_behavior(dota: Option<&Path>, key: &str, flag: &str) -> Resul
     }
 }
 
+/// The neutral crafting tiers, pools and enchantment choices.
+pub fn read_neutral_items(dota: Option<&Path>) -> Result<Kv, String> {
+    let package = Package::open(dota)?;
+    let script = package.text("scripts/npc/neutral_items.txt")?;
+    parse_kv(&script).map_err(|error| format!("neutral_items.txt: {error}"))
+}
+
 /// The hero scripts of one client build: the base hero every hero falls back on, each hero
 /// asked for, and the shared ability list the generic talents stand in.
 pub struct HeroSource {

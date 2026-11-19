@@ -25,6 +25,7 @@ mod hero;
 mod install;
 mod item;
 mod name;
+mod neutral_crafting;
 mod overrides;
 mod registry;
 mod units;
@@ -196,10 +197,18 @@ fn run() -> Result<(), String> {
         args.dota.as_deref(),
         HEROES,
     )?)?)?;
+    let neutral = rustfmt(&neutral_crafting::table(
+        &source,
+        &install::read_neutral_items(args.dota.as_deref())?,
+    )?)?;
     for (path, made) in [
         (table_path(), table),
         (heroes_path(), heroes),
         (wave_path, waves),
+        (
+            repo().join("crates/bota_core/src/neutral_item_data.rs"),
+            neutral,
+        ),
     ] {
         if args.check {
             let committed = std::fs::read_to_string(&path).map_err(|e| format!("{path:?}: {e}"))?;
@@ -477,4 +486,20 @@ mod tests {
             );
         }
     }
+}
+
+#[cfg(test)]
+#[test]
+#[ignore = "requires the pinned Dota install"]
+fn the_generated_neutral_crafting_table_matches_its_sources() {
+    let output = repo().join("crates/bota_core/src/neutral_item_data.rs");
+    let pinned = pinned_install();
+    let items = install::read(pinned.as_deref()).expect("the item table");
+    let script =
+        install::read_neutral_items(pinned.as_deref()).expect("the neutral crafting script");
+    let expected = rustfmt(&neutral_crafting::table(&items, &script).unwrap()).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(output).expect("the generated table"),
+        expected
+    );
 }
