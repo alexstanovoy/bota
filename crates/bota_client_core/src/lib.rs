@@ -71,9 +71,11 @@ mod seat;
 mod session;
 mod shop;
 mod sight;
+mod tree_query;
 mod unit_definition;
 mod unit_queries;
 pub mod unit_state;
+pub use tree_query::TreeQuery;
 pub use unit_definition::unit_definition;
 pub use unit_queries::*;
 #[cfg(not(target_arch = "wasm32"))]

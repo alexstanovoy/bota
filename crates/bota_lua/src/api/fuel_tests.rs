@@ -420,9 +420,17 @@ fn environment_queries_pay_exact_native_and_host_prices() {
     }
     let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
     let units = sessions[0].entities().len() as u64;
-    let trees = sessions[0].statics().trees().len() as u64;
+    let statics = sessions[0].statics();
+    let position = sessions[0].own_hero().unwrap().pos;
+    let candidates = statics
+        .trees()
+        .iter()
+        .filter(|tree| tree.x == position.x)
+        .count() as u64;
     let felled = sessions[0].current().unwrap().felled_trees.len();
-    let search = 1 + felled.max(1).ilog2() as u64;
+    let tree_work = 2 * (1 + u64::from(statics.trees().len().max(1).ilog2()))
+        + bota_proto::limits::MAX_STATIC_TREES.div_ceil(64) as u64
+        + candidates * (4 + u64::from(felled.max(1).ilog2()));
     let segments =
         bota_core::lane_polyline(sessions[0].map(), bota_core::rules::LANE_MID).len() - 1;
     let towers = sessions[0].map().radiant_towers.len();
@@ -436,10 +444,7 @@ fn environment_queries_pay_exact_native_and_host_prices() {
         ("DistanceFromSideShop", 9 + units / 8),
         ("ActionImmediate_Chat", 14 + units / 8),
         ("Action_Chat", 14 + units / 8),
-        (
-            "GetNearbyTrees",
-            13 + units + units / 8 + trees * (1 + search),
-        ),
+        ("GetNearbyTrees", 13 + units + units / 8 + tree_work),
         ("NumQueuedActions", 9 + units / 8),
         ("GetLaneFrontAmount", front_price),
     ] {
@@ -559,9 +564,21 @@ fn nonempty_tree_rows_pay_fuel_above_the_interpreters_table_storage_work() {
         .count();
     assert!(rows > 0, "real forest fixture must return tree rows");
     let units = snapshot.units.len() as u64;
-    let trees = snapshot.statics.trees().len() as u64;
-    let search = 1 + snapshot.felled_trees.len().max(1).ilog2() as u64;
-    let host = 1 + units / 8 + 8 + units + trees * (1 + search) + rows as u64;
+    let candidates = snapshot
+        .statics
+        .trees()
+        .iter()
+        .filter(|tree| {
+            (i64::from(tree.x.raw) - i64::from(position.x.raw)).abs()
+                <= i64::from(Fixed::from_int(256).raw)
+        })
+        .count() as u64;
+    let search = 2 * (1 + u64::from(snapshot.statics.trees().len().max(1).ilog2()));
+    let index_work = search
+        + bota_proto::limits::MAX_STATIC_TREES.div_ceil(64) as u64
+        + candidates * (4 + u64::from(snapshot.felled_trees.len().max(1).ilog2()));
+    let host =
+        1 + units / 8 + 8 + units + index_work + snapshot.planted_trees.len() as u64 + rows as u64;
     let minimum = support::bare_native_call_fuel() + storage(rows) + host;
     assert!(call(minimum).is_ok(), "exact populated minimum {minimum}");
     assert!(matches!(

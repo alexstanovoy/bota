@@ -42,6 +42,7 @@ pub struct MatchStatic {
     /// Sorted by slot.
     roster: Vec<Pick>,
     trees: Vec<Vec2>,
+    tree_index: bota_core::TreeIndex,
     terrain_rle: Vec<(u16, u8)>,
     opaque_cells: Vec<(u16, u16)>,
     terrain: Vec<u8>,
@@ -93,6 +94,8 @@ impl MatchStatic {
             },
             roster,
             trees: info.trees.clone(),
+            tree_index: bota_core::TreeIndex::new(&info.trees)
+                .expect("validated static tree count"),
             terrain_rle: info.terrain_rle.clone(),
             opaque_cells: info.opaque_cells.clone(),
             terrain: decode_terrain(info),
@@ -122,6 +125,11 @@ impl MatchStatic {
             .binary_search_by_key(&slot, |pick| pick.slot)
             .ok()
             .map(|index| &self.roster[index])
+    }
+
+    /// A bounded query over this map's public tree positions. Cuts are supplied from a seat's view.
+    pub fn tree_query(&self, at: Vec2, radius: bota_proto::Fixed) -> crate::TreeQuery<'_> {
+        crate::TreeQuery::new(&self.tree_index, at, radius)
     }
 
     /// Every tree the map starts with.

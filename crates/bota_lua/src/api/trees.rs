@@ -20,12 +20,7 @@ fn nearby(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaErr
         .as_ref()
         .ok_or_else(|| vm.error("a current view is required"))?;
     let originals = snapshot.statics.trees();
-    let lookup = 1 + snapshot.felled_trees.len().max(1).ilog2() as u64;
-    vm.charge_fuel(
-        8 + snapshot.units.len() as u64
-            + originals.len() as u64 * (1 + lookup)
-            + snapshot.planted_trees.len() as u64,
-    )?;
+    vm.charge_fuel(8 + snapshot.units.len() as u64)?;
     let owned = state
         .player(id)
         .is_some_and(|player| player.team == state.team);
@@ -41,17 +36,13 @@ fn nearby(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaErr
         .position(id)
         .ok_or_else(|| vm.error("unit is no longer known"))?;
     let radius = Fixed::from_int(radius);
-    let mut ids = Vec::new();
-    for (index, &tree) in originals.iter().enumerate() {
-        if snapshot
-            .felled_trees
-            .binary_search(&(index as u32))
-            .is_err()
-            && position.within(tree, radius)
-        {
-            ids.push(index as u32);
-        }
-    }
+    let search = bota_client_core::TreeQuery::search_work(originals.len());
+    vm.charge_fuel(search)?;
+    let query = snapshot.statics.tree_query(position, radius);
+    vm.charge_fuel(
+        query.work(snapshot.felled_trees.len()) - search + snapshot.planted_trees.len() as u64,
+    )?;
+    let mut ids = query.ids(&snapshot.felled_trees);
     let base = originals.len() as u32;
     let planted = snapshot
         .planted_trees
