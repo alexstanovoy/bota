@@ -43,7 +43,7 @@ pub struct Landed {
     pub inflictor: Option<Inflictor>,
     pub target: Entity,
     /// Health taken, after armor and resistance, at most one past what the
-    /// target had left.
+    /// target had left. A hit-count pool only reports the health it actually lost.
     pub amount: i32,
     pub kind: DamageKind,
     /// Where it happened.
@@ -258,13 +258,15 @@ pub fn hitting_system<const AMPLIFIED: bool>(cx: HitCx<'_>) {
         // Health counted in hits loses its striker's share, a fraction of a
         // hit as readily as a whole one; the blow tells the health it took,
         // a part of one as one.
-        let (lost, applied, stolen) = match stat.hit_count {
-            Some(count) => {
-                let lost = bite_share(hp, count.taken(blow.striker, stat.max_hp), spared);
-                let applied = (lost.raw + Fixed::from_int(1).raw - 1) >> Fixed::FRAC_BITS;
-                (lost, applied, applied)
+        let (lost, applied, stolen) = match (stat.hit_count, blow.striker) {
+            (Some(count), Some(striker)) => {
+                let lost = bite_share(hp, count.taken(striker, stat.max_hp), spared);
+                let point = i64::from(Fixed::ONE.raw);
+                let applied = ((i64::from(lost.raw) + point - 1) >> Fixed::FRAC_BITS) as i32;
+                (lost, applied, 0)
             }
-            None => {
+            (Some(_), None) => unreachable!("non-attack hits were skipped"),
+            (None, _) => {
                 // A magic block answers to an enemy's blow alone, carried by no illusion.
                 let enemy = blow.source.is_some_and(|by| {
                     by != blow.target && team.get(by).is_some_and(|&theirs| theirs != side)

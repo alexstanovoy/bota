@@ -59,6 +59,25 @@ fn ranged(unit: &UnitView) -> bool {
         .is_some_and(|hero| hero.unit.projectile_speed.is_some())
 }
 
+/// Health an attack takes from a hit-count unit, in its exact health units.
+pub fn hit_count_share(attacker: &UnitView, target: &UnitView) -> Option<Fixed> {
+    target.hit_health?;
+    let count = kind_def(target.kind).hit_count?;
+    let striker = if attacker
+        .effects
+        .iter()
+        .any(|effect| effect.id == bota_proto::EffectId::ILLUSION)
+    {
+        bota_core::Striker::Illusion
+    } else {
+        bota_core::Striker::of(attacker.kind, ranged(attacker))
+    };
+    Some(count.taken(
+        striker,
+        Fixed::from_int(target.max_hp.clamp(0, Fixed::MAX.to_int())),
+    ))
+}
+
 /// `amount` of magical damage after the magic resistance `target` shows.
 pub fn magic_taken(amount: i32, target: &UnitView) -> i32 {
     mitigate(

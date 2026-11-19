@@ -350,9 +350,17 @@ fn swings_to_fell_a_ward(hero: bool) -> usize {
 
 /// Attacks a Radiant hero (or creep) takes to bring down a full-health observer ward of `side`.
 fn swings_to_fell_a_ward_of(hero: bool, side: Team) -> usize {
+    swings_to_fell_a_ward_of_kind(hero, side, &OBSERVER_WARD)
+}
+
+fn swings_to_fell_a_ward_of_kind(
+    hero: bool,
+    side: Team,
+    def: &'static bota_core::UnitDef,
+) -> usize {
     let mut world = World::new();
     let at = Vec2::from_ints(5000, 5000);
-    let ward = world.spawn_ward(&OBSERVER_WARD, (side, at), 10_000, (None, None));
+    let ward = world.spawn_ward(def, (side, at), 10_000, (None, None));
     world.spawn_ward(
         &SENTRY_WARD,
         (Team::Radiant, at + Vec2::from_ints(100, 0)),
@@ -409,7 +417,73 @@ fn a_ward_falls_to_two_hero_attacks_or_eight_creep_attacks() {
 /// full-health ward in two attacks, as an enemy hero does.
 #[test]
 fn a_hero_puts_out_its_own_full_health_ward_in_two_attacks() {
-    assert_eq!(swings_to_fell_a_ward_of(true, Team::Radiant), 2);
+    for def in [&OBSERVER_WARD, &SENTRY_WARD] {
+        assert_eq!(swings_to_fell_a_ward_of_kind(true, Team::Radiant, def), 2);
+    }
+}
+
+/// 7.42: "Attacks from heroes, Roshan, towers, and the fountain deal 1 full pip per attack".
+/// With one quarter left the attack removes and reports only that quarter.
+#[test]
+fn a_pip_attack_reports_only_the_quarters_left_in_a_ward() {
+    let (mut world, hero, at) = a_hero_with_a_ward(ItemId::OBSERVER_WARD);
+    let ward = world.spawn_unit(&OBSERVER_WARD, Team::Dire, at);
+    world.settle();
+    world.health.get_mut(ward).expect("standing").hp = Fixed::from_int(1);
+    let amount = ward_blow(&mut world, hero, ward)
+        .into_iter()
+        .find_map(|event| match event.kind() {
+            bota_proto::EventKind::Damaged { target, amount, .. }
+                if target == crate::game::wire_id(ward) =>
+            {
+                Some(amount)
+            }
+            _ => None,
+        });
+    assert_eq!(
+        amount,
+        Some(1),
+        "the damage event reports just the last quarter"
+    );
+    assert!(!world.alive(ward));
+}
+
+/// 7.38: "Attack damage against wards, buildings, or couriers" gives no lifesteal.
+/// 7.42's whole pip from a hero attack still gives none.
+#[test]
+fn a_pip_attack_against_a_ward_grants_no_lifesteal() {
+    let (mut world, hero, at) = a_hero_with_a_ward(ItemId::OBSERVER_WARD);
+    hand_item(&mut world, hero, ItemId::MORBID_MASK, 1);
+    let ward = world.spawn_unit(&OBSERVER_WARD, Team::Dire, at);
+    world.settle();
+    let hp = Fixed::from_int(100);
+    world.health.get_mut(hero).expect("standing").hp = hp;
+    let regen = world.stats.get(hero).expect("derived").hp_regen;
+    assert!(world.stats.get(hero).expect("derived").lifesteal_pct > 0);
+    ward_blow(&mut world, hero, ward);
+    assert_eq!(
+        world.health.get(ward).expect("standing").hp,
+        Fixed::from_int(4)
+    );
+    assert_eq!(world.health.get(hero).expect("standing").hp, hp + regen);
+}
+
+fn ward_blow(
+    world: &mut World,
+    hero: crate::game::Entity,
+    ward: crate::game::Entity,
+) -> Vec<crate::game::Event> {
+    world.push_hit(
+        Some(hero),
+        ward,
+        100,
+        bota_proto::DamageKind::Physical,
+        None,
+    );
+    let hit = world.hits.back_mut().expect("attack");
+    hit.attack = true;
+    hit.striker = Some(bota_core::Striker::RangedHero);
+    world.step()
 }
 
 /// A ward's health is two pips, counted in quarter pips: a hero's attack takes a pip of it and
@@ -557,6 +631,8 @@ fn banner_levels_select_aura_and_hit_count_and_expire_after_two_minutes() {
         for (striker, hits) in [
             (bota_core::Striker::MeleeHero, melee),
             (bota_core::Striker::RangedHero, ranged),
+            (bota_core::Striker::Roshan, melee),
+            (bota_core::Striker::Structure, ranged),
             (bota_core::Striker::Other, other),
         ] {
             let mut world = World::new();

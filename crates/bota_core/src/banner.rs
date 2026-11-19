@@ -58,9 +58,13 @@ const _: () = assert!(ITEM_ROSHANS_BANNER.first("max_level").int() == BANNERS.le
 // The client may draw hit-count health by kind; this combat quantity is level-independent.
 const _: () = {
     let mut level = 0;
-    let block = BANNERS[0].hit_count.expect("hits").ranged_hero.raw;
+    let block = crate::QUARTERS_A_PIP * bota_proto::Fixed::ONE.raw;
     while level < BANNERS.len() {
-        let share = BANNERS[level].hit_count.expect("hits").ranged_hero;
+        let banner = &BANNERS[level];
+        let share = banner.hit_count.expect("hits").taken(
+            crate::Striker::RangedHero,
+            bota_proto::Fixed::from_int(banner.max_hp),
+        );
         assert!(share.raw == block);
         assert!(share.raw & ((1 << bota_proto::Fixed::FRAC_BITS) - 1) == 0);
         level += 1;

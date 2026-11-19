@@ -50,7 +50,7 @@ pub(crate) fn stats() -> Stats {
         true_sight: Fixed::ZERO,
         hides: false,
         pit_blind: false,
-        ward_response: None,
+        neutral_ward_target: false,
         flies: false,
         tree_walking: false,
         forced_move_immune: false,

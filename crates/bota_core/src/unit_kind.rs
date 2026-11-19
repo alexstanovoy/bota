@@ -15,8 +15,8 @@ pub struct KindDef {
     pub kind: UnitKind,
     /// A fixed NPC model key; dynamic neutral and ward subtypes select their own.
     pub npc: Option<&'static str>,
-    /// Health taken by one ranged-hero attack, for hit-count units.
-    pub health_per_ranged_hit: Option<i32>,
+    /// The kind's hit-count rule, if its health is counted in hits.
+    pub hit_count: Option<crate::HitCount>,
     /// A building: it stands still and blocks the ground.
     pub structure: bool,
     /// Both sides always know where it is, whatever their vision.
@@ -91,7 +91,7 @@ const PLAIN: KindDef = KindDef {
     kind: UnitKind::Hero,
 
     npc: None,
-    health_per_ranged_hit: None,
+    hit_count: None,
     structure: false,
     always_seen: false,
     lane_creep: false,
@@ -197,7 +197,7 @@ pub const UNIT_KINDS: [KindDef; 20] = [
     building(UnitKind::Fountain, TargetClass::Building, true),
     KindDef {
         kind: UnitKind::Ward,
-        health_per_ranged_hit: Some(rules::WARD_HITS.ranged_hero.to_int()),
+        hit_count: Some(rules::WARD_HITS),
 
         fixed: true,
         leaves_a_death: false,
@@ -209,7 +209,7 @@ pub const UNIT_KINDS: [KindDef; 20] = [
     },
     KindDef {
         kind: UnitKind::Courier,
-        health_per_ranged_hit: Some(rules::COURIER_HITS.ranged_hero.to_int()),
+        hit_count: Some(rules::COURIER_HITS),
 
         death_announced: true,
         ..PLAIN
@@ -253,10 +253,7 @@ pub const UNIT_KINDS: [KindDef; 20] = [
     },
     KindDef {
         kind: UnitKind::Banner,
-        health_per_ranged_hit: Some(match crate::BANNERS[0].hit_count {
-            Some(count) => count.ranged_hero.to_int(),
-            None => panic!("banner hit count"),
-        }),
+        hit_count: crate::BANNERS[0].hit_count,
 
         npc: Some("npc_dota_unit_roshans_banner"),
         fixed: true,

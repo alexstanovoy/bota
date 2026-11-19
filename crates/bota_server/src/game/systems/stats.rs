@@ -948,7 +948,7 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32, night: bool) -> Stats {
         true_sight: Fixed::from_int(kind.true_sight),
         hides: kind.hides,
         pit_blind: kind.pit_blind,
-        ward_response: kind.ward_response,
+        neutral_ward_target: kind.neutral_ward_target,
         flies: kind.flies,
         tree_walking: kind.tree_walking,
         forced_move_immune: kind.forced_move_immune,

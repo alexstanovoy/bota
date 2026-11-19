@@ -433,6 +433,7 @@ fn a_courier_falls_to_one_melee_hero_swing_two_ranged_hero_missiles_or_tower_sho
         (&MELEE_CREEP, 8),
         (&RANGED_CREEP, 8),
         (&TOWERS[0], 2),
+        (&bota_core::FOUNTAIN, 2),
     ] {
         let (mut world, courier, by) = a_courier_and(attacker);
         assert_eq!(rules::COURIER_HP, 8);
@@ -447,6 +448,77 @@ fn a_courier_falls_to_one_melee_hero_swing_two_ranged_hero_missiles_or_tower_sho
             "{:?} brings it down in {blows}",
             attacker.kind
         );
+    }
+}
+
+/// Dota 7.42: "Attacks from illusions and creeps deal 1/4 pip per attack".
+#[test]
+fn an_illusion_and_a_summon_each_take_one_quarter_from_a_courier() {
+    let pudge = hero_def(HeroId::PUDGE).expect("a hero").unit;
+    let (mut world, courier, extra) = a_courier_and(pudge);
+    world.despawn(extra);
+    let at = world.pos(courier).expect("standing");
+    let hero = world.spawn_hero(
+        Team::Dire,
+        at + Vec2::from_ints(500, 0),
+        SlotId(1),
+        HeroId::PUDGE,
+    );
+    world.set_order(hero, UnitOrder::Stand);
+    let illusion =
+        super::illusions::stand_in_illusion(&mut world, hero, at + Vec2::from_ints(120, 0));
+    world.set_order(
+        illusion,
+        UnitOrder::Attack {
+            target: courier,
+            last_seen: at,
+        },
+    );
+    assert_eq!(blows_to_fell(&mut world, illusion, courier), 8);
+
+    let skeleton = bota_core::NeutralKind::SkeletonWarrior.def();
+    let (mut world, courier, summon) = a_courier_and(skeleton);
+    assert_eq!(blows_to_fell(&mut world, summon, courier), 8);
+}
+
+/// A count-based target keeps its hit count when its live maximum changes. The 7.42 rule
+/// "Attacks from illusions and creeps deal 1/4 pip per attack" instead fixes a pip target's share.
+#[test]
+fn a_max_health_modifier_rescales_hit_counts_but_keeps_pips_the_same_size() {
+    for (count, blows) in [
+        (bota_core::HitCount::hits(1, 2, 8), 8),
+        (rules::COURIER_HITS, 16),
+    ] {
+        let (mut world, courier, by) = a_courier_and(&MELEE_CREEP);
+        let at = world.pos(courier).expect("standing");
+        let hero = seated_hero(&mut world, at + Vec2::from_ints(0, 300), HeroId::PUDGE);
+        world.set_order(hero, UnitOrder::Stand);
+        let def = Box::leak(Box::new(UnitDef {
+            hit_count: Some(count),
+            ..bota_core::COURIER
+        }));
+        world.def.insert(courier, crate::game::Def(def));
+        world.cheats = true;
+        world.settle();
+        seat_order(
+            &mut world,
+            Order::Cheat {
+                cheat: bota_proto::Cheat::ApplyModifier {
+                    target: Target::Unit(wire_id(courier)),
+                    spec: bota_proto::ModifierSpec {
+                        max_hp: 20_000,
+                        ..bota_proto::ModifierSpec::NOMINAL
+                    },
+                    ticks: bota_proto::MAX_MODIFIER_TICKS,
+                },
+            },
+        );
+        world.step();
+        assert_eq!(
+            world.health.get(courier).expect("standing").hp,
+            Fixed::from_int(16)
+        );
+        assert_eq!(blows_to_fell(&mut world, by, courier), blows);
     }
 }
 

@@ -128,7 +128,7 @@ pub struct Stats {
     /// Whether the other side sees it only through true sight.
     pub hides: bool,
     pub pit_blind: bool,
-    pub ward_response: Option<bota_core::WardResponse>,
+    pub neutral_ward_target: bool,
     /// Whether it flies: closed ground is nothing to it.
     pub flies: bool,
     pub tree_walking: bool,

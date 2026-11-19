@@ -405,11 +405,7 @@ impl World {
             if !self.in_reach(seeker, other) || !self.hostile(seeker, other) {
                 continue;
             }
-            if self
-                .stats
-                .get(other)
-                .is_none_or(|s| s.ward_response.is_none())
-            {
+            if self.stats.get(other).is_none_or(|s| !s.neutral_ward_target) {
                 return None;
             }
             let key = (from.distance_squared(self.pos(other)?), other);
