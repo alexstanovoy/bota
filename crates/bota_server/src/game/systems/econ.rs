@@ -50,6 +50,21 @@ impl World {
         }
     }
 
+    /// Pays experience to each hero seat, including seats awaiting respawn.
+    pub(crate) fn passive_experience(&mut self, events: &mut Vec<Event>) {
+        let since = self.clock().saturating_sub(self.schedule().horn);
+        if since < rules::PASSIVE_XP_FIRST
+            || !(since - rules::PASSIVE_XP_FIRST).is_multiple_of(rules::PASSIVE_XP_INTERVAL)
+        {
+            return;
+        }
+        for index in 0..self.seats.len() {
+            if self.seats[index].unit.is_some() {
+                self.grant_xp(index, 1, events);
+            }
+        }
+    }
+
     /// Pays for one entity brought down, and says how much gold that paid.
     ///
     /// Gold goes to the credited killer: the last hero to strike, or the sole

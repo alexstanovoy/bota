@@ -709,7 +709,7 @@ fn a_shrine_gathered_in_three_seconds_gives_two_hundred_then_four_hundred() {
     );
     world.step();
     assert!(world.wears(shrine, ModifierKind::ShrineReady), "7:00");
-    let xp = world.seats[0].xp;
+    let xp_gap = world.seats[0].xp - world.seats[1].xp;
     let (ticks, events) =
         until(&mut world, 2 * SHRINE_COUNTDOWN_TICKS, is_gathered).expect("gathered");
     assert_eq!(ticks + 1, SHRINE_COUNTDOWN_TICKS, "three seconds standing");
@@ -717,7 +717,11 @@ fn a_shrine_gathered_in_three_seconds_gives_two_hundred_then_four_hundred() {
         gathered(&events),
         Some((Team::Radiant, 200, Some(wire_id(radiant))))
     );
-    assert_eq!(world.seats[0].xp - xp, 200, "the only Radiant hero, once");
+    assert_eq!(
+        world.seats[0].xp - world.seats[1].xp - xp_gap,
+        200,
+        "only the Radiant hero receives shrine XP alongside the common passive income"
+    );
     assert!(
         visible_events(&events, Some(Team::Dire))
             .iter()
@@ -752,10 +756,14 @@ fn a_shrine_rewards_a_gatherer_and_the_least_experienced_ally() {
     place_hero(&mut world, 0, at + Vec2::from_ints(200, 0));
     let mut events = Vec::new();
     world.grant_xp(0, 100, &mut events);
-    let before = [world.seats[0].xp, world.seats[1].xp];
+    let before = [world.seats[0].xp, world.seats[1].xp, world.seats[2].xp];
     until(&mut world, 3 * SHRINE_COUNTDOWN_TICKS, is_gathered).expect("gathered");
+    let passive = world.seats[2].xp - before[2];
     assert_eq!(
-        [world.seats[0].xp - before[0], world.seats[1].xp - before[1]],
+        [
+            world.seats[0].xp - before[0] - passive,
+            world.seats[1].xp - before[1] - passive
+        ],
         [200, 200],
         "the gatherer, and the ally with the least experience but it"
     );
@@ -783,7 +791,11 @@ fn an_enemy_in_the_shrine_runs_its_countdown_back() {
     place(&mut world, radiant, map_of(MapId(0)).fountains[0]);
     let remaining = half - half / 2;
     for progress in (0..remaining).rev() {
-        world.step();
+        let events = world.step();
+        assert!(
+            gathered(&events).is_none(),
+            "a rewinding shrine pays nobody"
+        );
         let zone = world.zone.get(shrine).expect("the shrine countdown");
         assert_eq!(
             zone.progress, progress,
@@ -791,8 +803,8 @@ fn an_enemy_in_the_shrine_runs_its_countdown_back() {
         );
         assert_eq!(zone.side, (progress > 0).then_some(Team::Radiant));
         assert_eq!(
-            world.seats[1].xp, 0,
-            "the new side cannot collect before rewinding"
+            world.seats[1].xp, world.seats[0].xp,
+            "both sides receive only passive XP before rewinding"
         );
     }
     let (ticks, events) =
@@ -802,8 +814,7 @@ fn an_enemy_in_the_shrine_runs_its_countdown_back() {
         ticks, SHRINE_COUNTDOWN_TICKS,
         "after rewinding, Dire gathers for its full three seconds"
     );
-    assert_eq!(world.seats[0].xp, 0);
-    assert_eq!(world.seats[1].xp, 200);
+    assert_eq!(world.seats[1].xp - world.seats[0].xp, 200);
 }
 
 #[test]

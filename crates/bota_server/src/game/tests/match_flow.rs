@@ -387,6 +387,31 @@ fn a_hero_neutral_creeps_brought_down_waits_at_least_twenty_six_seconds() {
     }
 }
 
+/// 7.42: "All heroes now passively receive 50 experience per minute after the starting horn".
+#[test]
+fn passive_experience_starts_one_second_after_the_horn_and_continues_while_dead() {
+    let cfg = config();
+    let mut world = World::for_match(&cfg, cfg.rng());
+    let hero = world.seats[0].unit.expect("the seat's hero");
+    world.tick = world.schedule().horn;
+    world.bury(vec![(hero, None)], &mut Vec::new());
+    assert!(world.seats[0].dead());
+    let gold = world.seats[0].gold;
+    run(&mut world, rules::TICKS_PER_SECOND - 1);
+    assert_eq!(world.seats[0].xp, 0, "no experience before the first tick");
+    world.step();
+    assert_eq!(world.seats[0].xp, 1, "first experience tick while dead");
+    assert_eq!(
+        world.seats[0].gold,
+        gold + 1,
+        "passive gold also arrives while dead"
+    );
+    run(&mut world, 35);
+    assert_eq!(world.seats[0].xp, 1, "still before the second tick");
+    world.step();
+    assert_eq!(world.seats[0].xp, 2, "second experience tick while dead");
+}
+
 /// 7.42: "Total amount of experience needed to reach level 30 increased from 64400 to 66600".
 #[test]
 fn level_thirty_requires_66600_experience() {

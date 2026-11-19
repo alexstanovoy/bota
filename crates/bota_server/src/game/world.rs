@@ -783,7 +783,7 @@ impl World {
         // tick takes them up or down the slots by a coin.
         self.backwards = self.rng.global(Purpose::TickOrder).below(2) == 1;
         let _profile = self.scope(Phase::Tick);
-        self.timed(Phase::Upkeep, World::step_upkeep);
+        self.timed(Phase::Upkeep, |world| world.step_upkeep(&mut events));
         self.timed(Phase::Effects, World::step_effects);
         self.timed(Phase::Stats, World::refresh_stats);
         self.timed(Phase::Targeting, World::tick_targeting);
@@ -807,7 +807,7 @@ impl World {
 
     /// Waves, camps, the Shrines, cooldowns, item builds, gold, shop stock,
     /// respawns, couriers, item errands, sales and what runs out.
-    fn step_upkeep(&mut self) {
+    fn step_upkeep(&mut self, events: &mut Vec<crate::game::Event>) {
         self.spawn_waves();
         self.fill_camps();
         self.tick_lairs();
@@ -818,6 +818,7 @@ impl World {
         self.tick_bottles();
         self.assemble_bags();
         self.passive_gold();
+        self.passive_experience(events);
         self.restock_shops();
         self.tick_respawns();
         self.tick_couriers();

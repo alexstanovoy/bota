@@ -1223,6 +1223,10 @@ pub const TACTICAL_SECS: u64 = 30;
 pub const PICK_PENALTY_GOLD_PER_SEC: i32 = 2;
 /// 7.42 awards one unreliable gold every two-thirds of a second after the horn.
 pub const PASSIVE_GOLD_INTERVAL: u32 = 2 * TICKS_PER_SECOND / 3;
+/// 7.42 awards its first passive experience one second after the horn.
+pub const PASSIVE_XP_FIRST: u32 = TICKS_PER_SECOND;
+/// One experience every 1.2 seconds, including while the hero is dead.
+pub const PASSIVE_XP_INTERVAL: u32 = 6 * TICKS_PER_SECOND / 5;
 /// A dying hero loses its net worth divided by this, never more gold than
 /// it holds.
 pub const DEATH_GOLD_LOSS_SHARE: i32 = 40;
