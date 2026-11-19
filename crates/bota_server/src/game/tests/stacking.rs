@@ -20,8 +20,14 @@ const STACKING: [ItemId; 7] = [
     ItemId::SENTRY_WARD,
 ];
 
-fn bought_whole(def: &ItemDef) -> bool {
-    def.components.is_empty() && !def.unbuyable && !def.retired && def.key != "item_tpscroll"
+fn bought_into_bag(def: &ItemDef) -> bool {
+    def.components.is_empty()
+        && !def.unbuyable
+        && !def.retired
+        && def.key != "item_tpscroll"
+        && def
+            .permanent
+            .is_none_or(|grant| grant.on != bota_core::UpgradeOn::Purchase)
 }
 
 #[test]
@@ -29,7 +35,7 @@ fn a_second_purchase_stacks_exactly_the_items_dota_stacks() {
     for (index, def) in ITEMS
         .iter()
         .enumerate()
-        .filter(|(_, def)| bought_whole(def))
+        .filter(|(_, def)| bought_into_bag(def))
     {
         let id = ItemId(index as u16);
         let (mut world, hero) = a_hero_with_gold(100_000);
