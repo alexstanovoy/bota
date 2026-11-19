@@ -73,6 +73,7 @@ mod shop;
 mod sight;
 mod unit_definition;
 mod unit_queries;
+pub mod unit_state;
 pub use unit_definition::unit_definition;
 pub use unit_queries::*;
 #[cfg(not(target_arch = "wasm32"))]

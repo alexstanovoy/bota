@@ -43,6 +43,26 @@ impl World {
             Some(unit) => self.seats.iter().position(|seat| seat.unit == Some(unit)),
         };
         match cheat {
+            Cheat::Control {
+                target,
+                control,
+                ticks,
+            } => {
+                if let Some(mark) = unit.and_then(|unit| self.cheat_target(unit, target).ok()) {
+                    self.put_modifier(
+                        mark,
+                        crate::game::Modifier::new(
+                            bota_core::ModifierKind::Control {
+                                control,
+                                effect: bota_core::control_effect(control),
+                            },
+                            None,
+                            None,
+                            Some(ticks),
+                        ),
+                    );
+                }
+            }
             Cheat::Stun { target, ticks } => {
                 if let Some(mark) = unit.and_then(|unit| self.cheat_target(unit, target).ok()) {
                     self.put_modifier(
@@ -282,7 +302,7 @@ impl World {
             Ok(())
         };
         match cheat {
-            Cheat::Stun { target, .. } => {
+            Cheat::Stun { target, .. } | Cheat::Control { target, .. } => {
                 let mark = self.cheat_target(living(unit)?, *target)?;
                 living(Some(mark))?;
             }

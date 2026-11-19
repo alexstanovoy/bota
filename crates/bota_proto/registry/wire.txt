@@ -880,3 +880,13 @@ field TetherSpan 0 start: Vec2
 field TetherSpan 1 end: Vec2
 field TetherSpan 2 reaches_source: bool
 field TetherSpan 3 reaches_head: bool
+
+# Bounded generic control for test/demo setup; a simulator extension.
+variant ControlKind 0 Stun
+variant ControlKind 1 Root
+variant ControlKind 2 Disarm
+variant ControlKind 3 Silence
+variant Cheat 31 Control {}
+field Cheat::Control 0 target: Target
+field Cheat::Control 1 control: ControlKind
+field Cheat::Control 2 ticks: u32

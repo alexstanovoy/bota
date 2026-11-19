@@ -1311,6 +1311,9 @@ impl World {
             (stats.spell_immune, StatusFlags::MAGIC_IMMUNE),
             (self.is_channelling(entity), StatusFlags::CHANNELLING),
             (self.cast_of(entity).is_some(), StatusFlags::CASTING),
+            (self.silenced(entity), StatusFlags::SILENCED),
+            (self.rooted(entity), StatusFlags::ROOTED),
+            (self.disarmed(entity), StatusFlags::DISARMED),
         ] {
             if set {
                 bits |= flag;

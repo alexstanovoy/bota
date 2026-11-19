@@ -392,6 +392,8 @@ impl EffectId {
     /// slowed and loses health on every whole second since the first one
     /// landed.
     pub const BLOOD_GRENADE: EffectId = EffectId(21);
+    /// The existing registered generic silence effect.
+    pub const SILENCED: EffectId = EffectId(92);
     /// Cannot walk.
     pub const ROOTED: EffectId = EffectId(22);
     /// Cannot attack.

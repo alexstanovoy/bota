@@ -299,6 +299,12 @@ pub enum Cheat {
     /// regardless of its immunities and status resistance.
     /// Nothing aimed means the addressed unit.
     Stun { target: Target, ticks: u32 },
+    /// A simulator extension: bounded control through the ordinary modifier machinery.
+    Control {
+        target: Target,
+        control: crate::ControlKind,
+        ticks: u32,
+    },
 }
 
 /// Whose creeps a [`Cheat::KillCreeps`] takes away.
@@ -546,7 +552,8 @@ impl Order {
                     | Cheat::ClearModifiers { target }
                     | Cheat::Damage { target, .. }
                     | Cheat::SpellImmunity { target, .. }
-                    | Cheat::Stun { target, .. },
+                    | Cheat::Stun { target, .. }
+                    | Cheat::Control { target, .. },
             } => target,
             Order::MoveDirection { toward: spot }
             | Order::Scan { at: spot }
@@ -619,7 +626,8 @@ impl Order {
                     | Cheat::ClearModifiers { target }
                     | Cheat::Damage { target, .. }
                     | Cheat::SpellImmunity { target, .. }
-                    | Cheat::Stun { target, .. },
+                    | Cheat::Stun { target, .. }
+                    | Cheat::Control { target, .. },
             } => target,
             Order::Cheat {
                 cheat:

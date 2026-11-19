@@ -32,4 +32,19 @@ impl StatusFlags {
     /// In the cast point of an ability or an item: a new order to the body
     /// breaks the cast off before anything is spent.
     pub const CASTING: u16 = 1 << 12;
+    /// Cannot cast abilities because a silence control is active.
+    pub const SILENCED: u16 = 1 << 13;
+    /// Cannot move because a root control is active.
+    pub const ROOTED: u16 = 1 << 14;
+    /// Cannot attack, including while ethereal.
+    pub const DISARMED: u16 = 1 << 15;
+}
+
+/// A bounded control applied by the simulator's test/demo cheat, through normal modifier rules.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ControlKind {
+    Stun,
+    Root,
+    Disarm,
+    Silence,
 }

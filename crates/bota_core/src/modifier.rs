@@ -4,13 +4,16 @@ use bota_proto::{DamageKind, EffectId, Fixed, ItemId, StatusFlags, Team};
 
 use crate::{Act, Buff, NeutralAbility, Spell, Strike, Then, Throe, WATER_BUBBLE_EFFECT, rules};
 
-/// What a registered control modifier prevents.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Control {
-    Stun,
-    Root,
-    Disarm,
-    Silence,
+/// What a registered control modifier prevents; shared with the bounded control cheat.
+pub use bota_proto::ControlKind as Control;
+/// O(1), the registered effect used by a generic control modifier.
+pub fn control_effect(control: Control) -> EffectId {
+    match control {
+        Control::Stun => EffectId::STUNNED,
+        Control::Root => EffectId::ROOTED,
+        Control::Disarm => EffectId::DISARMED,
+        Control::Silence => EffectId::SILENCED,
+    }
 }
 
 /// One kind of modifier, with what there is of it.
