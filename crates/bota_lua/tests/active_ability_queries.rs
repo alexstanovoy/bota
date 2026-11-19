@@ -284,7 +284,7 @@ fn channel_identity_unobserved_items_and_owned_death_have_distinct_results() {
                     local ok,reason=pcall(bot.GetCurrentActiveAbility,bot)
                     assert(not ok and string.find(tostring(reason),'active ability is not observed',1,true))
                 else assert(bot:GetCurrentActiveAbility()==nil) end
-                bot:Action_MoveToLocation(Vector(phase,200,0))
+                bot:ActionImmediate_SwapItems(phase,phase)
             end
         "#.replace("__KEY__",key);
         lua.add_script(
@@ -376,9 +376,7 @@ fn channel_identity_unobserved_items_and_owned_death_have_distinct_results() {
             assert!(turn.failures.is_empty(), "{:?}", turn.failures);
             assert_eq!(
                 turn.bots[0].orders,
-                vec![IssuedOrder::hero(Order::Move {
-                    target: Target::Pos(Vec2::from_ints(9216 + phase, 9416))
-                })]
+                vec![IssuedOrder::hero(Order::Swap {from:bota_proto::ItemSlot(phase as u8),to:bota_proto::ItemSlot(phase as u8)})]
             );
         }
     }

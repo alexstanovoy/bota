@@ -194,7 +194,7 @@ fn owned_statistics_remain_available_after_a_dead_body_track_expires() {
             turns = turns + 1
             assert(GetBot():GetMana() == 73 and GetBot():GetMaxMana() == 1000)
             assert(GetBot():GetAttackPoint() == 0.5 and GetBot():GetAttackSpeed() == 2.5)
-            GetBot():Action_MoveToLocation(Vector(turns,222,0))
+            GetBot():ActionImmediate_SwapItems(turns,turns)
         end
     "#,
     )
@@ -203,9 +203,7 @@ fn owned_statistics_remain_available_after_a_dead_body_track_expires() {
     assert!(turn.failures.is_empty(), "{:?}", turn.failures);
     assert_eq!(
         turn.bots[0].orders[0].order,
-        Order::Move {
-            target: Target::Pos(Vec2::from_ints(9217, 9438))
-        }
+        Order::Swap {from:bota_proto::ItemSlot(1),to:bota_proto::ItemSlot(1)}
     );
     let mut view = sessions[0].current().expect("view").clone();
     view.tick += 481;
@@ -232,9 +230,7 @@ fn owned_statistics_remain_available_after_a_dead_body_track_expires() {
     assert!(turn.failures.is_empty(), "{:?}", turn.failures);
     assert_eq!(
         turn.bots[0].orders[0].order,
-        Order::Move {
-            target: Target::Pos(Vec2::from_ints(9218, 9438))
-        }
+        Order::Swap {from:bota_proto::ItemSlot(2),to:bota_proto::ItemSlot(2)}
     );
 }
 

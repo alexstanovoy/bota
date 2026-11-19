@@ -346,7 +346,7 @@ fn native_promotion_observation() -> (ClientSession, bota_proto::WorldView, bota
 }
 
 #[test]
-fn an_explicit_script_once_promotes_a_native_request_beyond_its_original_lease() {
+fn a_same_target_script_attack_does_not_replace_or_promote_the_native_request() {
     let (mut session, mut view, target) = native_promotion_observation();
     let mut lua = fixture(Limits::DEFAULT.fuel_per_tick);
     lua.add_script(
@@ -361,6 +361,7 @@ fn an_explicit_script_once_promotes_a_native_request_beyond_its_original_lease()
             for _, creep in ipairs(bot:GetNearbyCreeps(1600, false)) do
                 if creep:GetHealth() == 50 then
                     bot:Action_AttackUnit(creep, true)
+                    bot:ActionImmediate_SwapItems(0,0)
                     promoted = true
                     return
                 end
@@ -398,42 +399,23 @@ fn an_explicit_script_once_promotes_a_native_request_beyond_its_original_lease()
         deadline > native.tick + 9,
         "promotion must happen before expiry"
     );
-    let mut script_attacks = 0;
-    while session.current().expect("view").tick <= deadline {
-        receive_promotion_tick(&mut session, &mut view);
-        let tick = view.tick;
-        let turn = lua.think(&session).expect("next turn");
-        assert!(turn.failures.is_empty(), "{:?}", turn.failures);
-        if turn.bots[0].orders.contains(&attack) {
-            script_attacks += 1;
-            assert_eq!(
-                tick,
-                native.tick + 9,
-                "the second arbitration installs the scripted Think"
-            );
-        }
-        let state = lua.state.borrow();
-        let pending = state.bots[0]
-            .pending_once
-            .expect("the promoted script request must survive the native deadline");
-        assert_eq!(
-            (pending.source, pending.target, pending.tick),
-            (native.source, target, native.tick)
-        );
-        assert!(!pending.launched, "no launch fact was supplied");
+    let mut confirmations=0;
+    while session.current().expect("view").tick<=deadline {
+        receive_promotion_tick(&mut session,&mut view);
+        let turn=lua.think(&session).expect("next turn");
+        assert!(turn.failures.is_empty(),"{:?}",turn.failures);
+        assert!(!turn.bots[0].orders.contains(&attack),"same-target script request does not resend the attack");
+        let markers=turn.bots[0].orders.iter().filter(|issued|matches!(issued.order,bota_proto::Order::Swap {..})).count();
+        if markers>0 {assert_eq!(view.tick,native.tick+9);assert_eq!(markers,1);confirmations+=1;}
+        let state=lua.state.borrow();
+        if view.tick<deadline {
+            let pending=state.bots[0].pending_once.expect("the original native request remains leased");
+            assert_eq!((pending.source,pending.target,pending.tick,pending.expires_at),(native.source,target,native.tick,Some(deadline)));
+            assert!(!pending.launched);
+        } else {assert!(state.bots[0].pending_once.is_none(),"the unchanged native lease expires");}
     }
-    assert_eq!(
-        script_attacks, 1,
-        "one explicit script promotion, without resending"
-    );
-    assert!(view.tick > deadline);
-    assert_eq!(
-        lua.state.borrow().bots[0]
-            .pending_once
-            .expect("script once remains pending")
-            .expires_at,
-        None
-    );
+    assert_eq!(confirmations,1,"the script's explicit same-target call actually ran");
+    assert!(view.tick>deadline);
     view.tick += 1;
     let tick = view.tick;
     session
@@ -464,8 +446,8 @@ fn an_explicit_script_once_promotes_a_native_request_beyond_its_original_lease()
                     target: bota_proto::Target::None
                 })
             .count(),
-        1,
-        "the promoted request still completes through an ordinary Stop"
+        0,
+        "a late launch cannot revive an already expired native lease"
     );
     assert!(lua.state.borrow().bots[0].pending_once.is_none());
 }

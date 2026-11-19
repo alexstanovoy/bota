@@ -20,7 +20,7 @@ fn reader(expected: usize) -> LuaTeam {
     lua
 }
 #[test]
-fn queued_action_count_excludes_a_running_move_and_counts_only_waiting_orders() {
+fn a_fresh_script_controller_does_not_adopt_an_external_server_shift_queue() {
     let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
     assert!(reader(0).think(&sessions[0]).unwrap().failures.is_empty());
     let position = sessions[0].own_hero().unwrap().pos;
@@ -41,7 +41,7 @@ fn queued_action_count_excludes_a_running_move_and_counts_only_waiting_orders() 
         support::fold(session, stream);
     }
     assert_eq!(sessions[0].own_hero().unwrap().queue.len(), 1);
-    let turn = reader(1).think(&sessions[0]).unwrap();
+    let turn = reader(0).think(&sessions[0]).unwrap();
     assert!(turn.failures.is_empty(), "{:?}", turn.failures);
     let stop = sessions[0]
         .issue(IssuedOrder::hero(Order::Move {

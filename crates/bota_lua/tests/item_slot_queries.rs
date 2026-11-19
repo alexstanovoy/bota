@@ -3,7 +3,7 @@ mod support;
 use bota_client_core::{ClientSession, IssuedOrder};
 use bota_lua::{BotSeat, GcStress, Keys, Limits, LuaTeam, ScriptKind};
 use bota_proto::{
-    Cheat, HeroId, ItemId, ItemSlot, Kit, Order, ServerMsg, SlotId, Target, Team, Vec2,
+    Cheat, HeroId, ItemId, ItemSlot, Kit, Order, ServerMsg, SlotId, Team,
 };
 use bota_server::local::LocalMatch;
 
@@ -52,13 +52,11 @@ fn step(local: &mut LocalMatch, sessions: &mut [ClientSession], index: usize, or
     }
 }
 
-fn assert_slot_move(turn: &bota_lua::TeamTurn, slot: i32) {
+fn assert_slot_marker(turn: &bota_lua::TeamTurn, slot: i32) {
     assert!(turn.failures.is_empty(), "{:?}", turn.failures);
     assert_eq!(
         turn.bots[0].orders,
-        vec![IssuedOrder::hero(Order::Move {
-            target: Target::Pos(Vec2::from_ints(9216 + slot, 9416))
-        })]
+        vec![IssuedOrder::hero(Order::Swap {from:ItemSlot(slot as u8),to:ItemSlot(slot as u8)})]
     );
 }
 
@@ -94,11 +92,11 @@ fn named_item_slots_follow_real_swaps_sales_and_the_owned_dead_kit() {
                     local ok,reason=pcall(bot.FindItemSlot,bot,bad)
                     assert(not ok and string.find(tostring(reason),'item name expected',1,true))
                 end
-                bot:Action_MoveToLocation(Vector(expected,200,0))
+                bot:ActionImmediate_SwapItems(expected,expected)
             end
         "#,
         );
-        assert_slot_move(&lua.think(&sessions[index]).expect("first view"), 0);
+        assert_slot_marker(&lua.think(&sessions[index]).expect("first view"), 0);
         step(
             &mut local,
             &mut sessions,
@@ -114,14 +112,14 @@ fn named_item_slots_follow_real_swaps_sales_and_the_owned_dead_kit() {
                 },
             ],
         );
-        assert_slot_move(&lua.think(&sessions[index]).expect("swapped view"), 6);
+        assert_slot_marker(&lua.think(&sessions[index]).expect("swapped view"), 6);
         step(
             &mut local,
             &mut sessions,
             index,
             &[Order::Sell { slot: ItemSlot(6) }],
         );
-        assert_slot_move(&lua.think(&sessions[index]).expect("sold view"), 9);
+        assert_slot_marker(&lua.think(&sessions[index]).expect("sold view"), 9);
         let mut view = sessions[index].current().expect("view").clone();
         view.tick += 481;
         let body = sessions[index].own_hero().expect("body");
@@ -156,7 +154,7 @@ fn named_item_slots_follow_real_swaps_sales_and_the_owned_dead_kit() {
             )
             .expect("events");
         assert!(sessions[index].entity(own).is_none());
-        assert_slot_move(&lua.think(&sessions[index]).expect("dead kit view"), 9);
+        assert_slot_marker(&lua.think(&sessions[index]).expect("dead kit view"), 9);
     }
 }
 
@@ -203,10 +201,10 @@ fn item_slot_queries_do_not_discover_a_hidden_enemy_purchase_or_use_an_expired_t
                 local ok,reason=pcall(enemy.FindItemSlot,enemy,'item_branches')
                 assert(not ok and string.find(tostring(reason),'unit inventory is not observed',1,true))
             end
-            GetBot():Action_MoveToLocation(Vector(phase,200,0))
+            GetBot():ActionImmediate_SwapItems(phase,phase)
         end
     "#);
-    assert_slot_move(&lua.think(&sessions[0]).expect("seen"), 1);
+    assert_slot_marker(&lua.think(&sessions[0]).expect("seen"), 1);
     local.world_mut().cheat(
         SlotId(0),
         None,
@@ -224,7 +222,7 @@ fn item_slot_queries_do_not_discover_a_hidden_enemy_purchase_or_use_an_expired_t
             .flatten()
             .any(|item| item.id == gloves)
     );
-    assert_slot_move(&lua.think(&sessions[0]).expect("hidden purchase"), 2);
+    assert_slot_marker(&lua.think(&sessions[0]).expect("hidden purchase"), 2);
     let mut view = sessions[0].current().expect("view").clone();
     view.tick += 481;
     let tick = view.tick;
@@ -241,5 +239,5 @@ fn item_slot_queries_do_not_discover_a_hidden_enemy_purchase_or_use_an_expired_t
         )
         .expect("events");
     assert!(sessions[0].entity(enemy).is_none());
-    assert_slot_move(&lua.think(&sessions[0]).expect("expired enemy"), 3);
+    assert_slot_marker(&lua.think(&sessions[0]).expect("expired enemy"), 3);
 }

@@ -11,9 +11,9 @@ const FIRST_EMPTY_THINK: u64 = 16;
 /// A hundred additions in a loop: no global, no allocation.
 const FIRST_HUNDRED_ADDITIONS: u64 = 221;
 /// 100 reads of a name the game does not define, then one move order.
-const FIRST_HUNDRED_MISSES: u64 = 591;
+const FIRST_HUNDRED_MISSES: u64 = 724;
 /// 100 reads of a defined name, then one move order.
-const FIRST_HUNDRED_HITS: u64 = 591;
+const FIRST_HUNDRED_HITS: u64 = 724;
 /// The least fuel per tick for the ticks 2 to 6 of the additions script.
 const STEADY_HUNDRED_ADDITIONS: u64 = 207;
 

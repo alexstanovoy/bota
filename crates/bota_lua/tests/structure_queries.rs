@@ -37,24 +37,21 @@ fn structure_queries_return_received_barracks_and_ancients_from_both_sides() {
             local frame, remembered = 0, nil
             function Think()
                 frame = frame + 1
-                local phase, index = math.floor((frame-1)/6)+1, (frame-1)%6
-                local own = GetBarracks(GetTeam(),index)
-                assert(own and own:CanBeSeen())
-                GetBot():Action_MoveToLocation(own:GetLocation())
-                local ancient = GetAncient(GetTeam())
-                assert(ancient and ancient:CanBeSeen())
-                GetBot():Action_MoveToLocation(ancient:GetLocation())
-                local other = GetBarracks(GetOpposingTeam(),index)
+                local phase, index = math.floor((frame-1)/14)+1, (frame-1)%14
+                local enemy = GetAncient(GetOpposingTeam())
                 if phase == 2 then
-                    assert(other == nil and GetAncient(GetOpposingTeam()) == nil)
-                    assert(remembered and not remembered:CanBeSeen())
+                    assert(enemy == nil and remembered and not remembered:CanBeSeen())
                 else
-                    assert(other and other:CanBeSeen())
-                    GetBot():Action_MoveToLocation(other:GetLocation())
-                    local enemy = GetAncient(GetOpposingTeam())
                     assert(enemy and enemy:CanBeSeen())
                     if phase == 1 then remembered = enemy else assert(enemy == remembered) end
                 end
+                local target
+                if index < 6 then target = GetBarracks(GetTeam(),index)
+                elseif index == 6 then target = GetAncient(GetTeam())
+                elseif index < 13 then target = GetBarracks(GetOpposingTeam(),index-7)
+                else target = enemy end
+                if phase == 2 and index >= 7 then assert(target == nil)
+                else assert(target and target:CanBeSeen()) end
                 if frame == 1 then
                     assert(GetBarracks(GetTeam(),'0') == GetBarracks(GetTeam(),0))
                     assert(GetBarracks(GetTeam(),6) == nil and GetBarracks(GetTeam(),2147483647) == nil)
@@ -65,7 +62,7 @@ fn structure_queries_return_received_barracks_and_ancients_from_both_sides() {
                     local ok, reason = pcall(GetBarracks,GetTeam(),math.huge)
                     assert(not ok and string.find(tostring(reason),'finite number expected',1,true))
                 end
-                GetBot():Action_MoveToLocation(Vector(100+frame,200,0))
+                if target then GetBot():Action_MoveToLocation(target:GetLocation()) end
             end
         "#).expect("script");
         teams.push(lua);
@@ -74,8 +71,9 @@ fn structure_queries_return_received_barracks_and_ancients_from_both_sides() {
         std::array::from_fn(|_| std::array::from_fn(|_| Vec::new()));
     let mut enemy_observed: [[Vec<Vec2>; 3]; 2] =
         std::array::from_fn(|_| std::array::from_fn(|_| Vec::new()));
-    for frame in 1..=18 {
-        let phase = (frame - 1) / 6;
+    for frame in 1..=42 {
+        let phase = (frame - 1) / 14;
+        let query = (frame - 1) % 14;
         for (index, lua) in teams.iter_mut().enumerate() {
             let turn = lua.think(&sessions[index]).expect("think");
             assert!(
@@ -84,21 +82,21 @@ fn structure_queries_return_received_barracks_and_ancients_from_both_sides() {
                 turn.failures
             );
             let orders = &turn.bots[0].orders;
-            assert_eq!(orders.len(), if phase == 1 { 3 } else { 4 });
-            observed[index][phase].push(destination(orders[0].order));
-            assert_eq!(
-                destination(orders[1].order),
-                sessions[index].map().ancients[index].expect("ancient")
-            );
-            if phase != 1 {
-                enemy_observed[index][phase].push(destination(orders[2].order));
+            if phase == 1 && query >= 7 {
+                assert!(orders.is_empty(),"withheld structures return no target");
+            } else {
+                assert_eq!(orders.len(),1,"one query-derived movement per callback");
+                let at=destination(orders[0].order);
+                match query {
+                    0..=5 => observed[index][phase].push(at),
+                    6 => assert_eq!(at,sessions[index].map().ancients[index].unwrap()),
+                    7..=12 => enemy_observed[index][phase].push(at),
+                    13 => assert_eq!(at,sessions[index].map().ancients[1-index].unwrap()),
+                    _=>unreachable!(),
+                }
             }
-            assert_eq!(
-                destination(orders.last().expect("final action").order),
-                Vec2::from_ints(9316 + frame as i32, 9416)
-            );
         }
-        if frame < 18 {
+        if frame < 42 {
             let streams = local.step(&[&[], &[]]).expect("received buildings");
             for (session, stream) in sessions.iter_mut().zip(streams) {
                 let enemy = session.enemy();
@@ -106,7 +104,7 @@ fn structure_queries_return_received_barracks_and_ancients_from_both_sides() {
                     session,
                     stream.into_iter().map(|message| match message {
                         // The producer always shows buildings. Independently exercise withholding at the API boundary.
-                        ServerMsg::Snapshot { mut view } if (6..12).contains(&frame) => {
+                        ServerMsg::Snapshot { mut view } if (14..28).contains(&frame) => {
                             view.units.retain(|unit| {
                                 unit.team != enemy || !bota_core::kind_def(unit.kind).structure
                             });

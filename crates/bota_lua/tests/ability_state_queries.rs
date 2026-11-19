@@ -72,7 +72,7 @@ fn ability_and_item_reads_follow_received_mana_cooldowns_charges_and_item_remova
                         assert(not ok and string.find(tostring(reason),'ability is no longer known',1,true))
                     end
                 end
-                GetBot():Action_MoveToLocation(Vector(100+phase,200,0))
+                GetBot():ActionImmediate_SwapItems(phase,phase)
             end
         "#.replace("__ABILITY__",key);
         lua.add_script(
@@ -148,9 +148,7 @@ fn ability_and_item_reads_follow_received_mana_cooldowns_charges_and_item_remova
             assert_eq!(turn.bots[0].orders.len(), 1);
             assert_eq!(
                 turn.bots[0].orders[0].order,
-                Order::Move {
-                    target: Target::Pos(Vec2::from_ints(9316 + phase, 9416))
-                }
+                Order::Swap {from:bota_proto::ItemSlot(phase as u8),to:bota_proto::ItemSlot(phase as u8)}
             );
         }
     }
