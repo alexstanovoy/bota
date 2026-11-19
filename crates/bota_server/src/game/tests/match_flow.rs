@@ -198,29 +198,28 @@ fn a_hero_kill_pays_dotas_bounty_first_blood_and_assist_gold() {
     assert_eq!(world.seats[0].gold - before, 133 + assist);
 }
 
+/// 7.42: "Passive gold per minute no longer scales over game time".
 #[test]
-fn passive_gold_is_ninety_a_minute_from_the_horn_and_more_from_twelve() {
+fn passive_gold_stays_at_ninety_a_minute_after_the_horn() {
     let cfg = config();
     let mut world = World::for_match(&cfg, cfg.rng());
     let start = world.seats[0].gold;
     let horn = world.schedule().horn;
     run(&mut world, horn);
-    assert_eq!(world.seats[0].gold, start, "nothing before the horn");
-    run(&mut world, 60 * rules::TICKS_PER_SECOND);
+    assert_eq!(world.seats[0].gold, start, "nothing before or on the horn");
+    run(&mut world, 19);
     assert_eq!(
-        world.seats[0].gold - start,
-        90,
-        "ninety in the first minute"
+        world.seats[0].gold, start,
+        "nothing before the first gold tick"
     );
+    world.step();
+    assert_eq!(world.seats[0].gold, start + 1, "first gold tick");
     let minute = 60 * rules::TICKS_PER_SECOND;
-    assert_eq!(passive_gold_by(20), 1, "one gold every 0.67 s");
-    assert_eq!(passive_gold_by(12 * minute), 12 * 90);
     assert_eq!(
         passive_gold_by(13 * minute) - passive_gold_by(12 * minute),
-        94,
-        "94.8 a minute from twelve, whole gold only"
+        90
     );
-    assert_eq!(passive_gold_by(15 * minute), 1080 + 3 * 948 / 10);
+    assert_eq!(passive_gold_by(15 * minute), 15 * 90);
 }
 
 #[test]
