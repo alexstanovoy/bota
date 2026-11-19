@@ -58,6 +58,7 @@ MANUAL_RECORDERS = {
     ("bota_server", "lib"): frozenset({
         "game::tests::determinism::print_pins",
         "game::tests::determinism::print_blind_pins",
+        "game::tests::stats::creep_bounty_fixture::capture_creep_bounty_fixture",
     }),
 }
 

@@ -532,16 +532,17 @@ class Running(unittest.TestCase):
 
     def test_manual_recorders_are_exempted_by_name_without_exempting_their_file(self):
         build = Partition.BUILD
-        names = ["game::tests::determinism::print_pins", "game::tests::determinism::print_blind_pins",
-                 "game::tests::determinism::new_contract"]
-        listed = test_groups.Listed({"lib": names}, {"lib": test_groups.ROOT / SERVER / "lib.rs"},
+        recorders = ["game::tests::determinism::print_pins", "game::tests::determinism::print_blind_pins",
+                     "game::tests::stats::creep_bounty_fixture::capture_creep_bounty_fixture"]
+        contracts = ["game::tests::determinism::new_contract",
+                     "game::tests::stats::upgraded_bounty_matches_the_previous_spawn_bounty_for_every_creep_and_step"]
+        listed = test_groups.Listed({"lib": recorders + contracts}, {"lib": test_groups.ROOT / SERVER / "lib.rs"},
                                     executables={"lib": Path("/test-binary")})
         target = test_groups.Target(build, "lib", (), (), ())
-        run = test_groups.invocation(CRATES, listed, target, {"game_determinism"}, {})
-        self.assertEqual(run.expected, 1)
+        run = test_groups.invocation(CRATES, listed, target, {"game_determinism", "game_abilities"}, {})
+        self.assertEqual(run.expected, len(contracts))
         skipped = [run.command[i + 1] for i, word in enumerate(run.command[:-1]) if word == "--skip"]
-        self.assertCountEqual(skipped, names[:2])
-        self.assertNotIn(names[2], skipped)
+        self.assertCountEqual(skipped, recorders)
 
     def test_manual_recorders_skip_only_exact_full_names_in_real_libtest(self):
         source = self.scratch / "contracts.rs"
