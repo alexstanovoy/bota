@@ -53,6 +53,22 @@ fn named_index(vm: &mut Vm, args: Args, unit: &UnitView) -> Result<Option<usize>
 fn read(context: &ApiContext, vm: &mut Vm, args: Args, name: &str) -> Result<usize, LuaError> {
     let id = context.receiver(vm, args)?;
     let state = context.state.borrow();
+    if name == "GetModifierStackCount" {
+        let index = bounded_integer(vm, args, 1, i32::MIN, i32::MAX)?;
+        let snapshot = state
+            .snapshot
+            .as_ref()
+            .ok_or_else(|| vm.error("a current view is required"))?;
+        vm.charge_fuel(16 + 2 * snapshot.units.len() as u64 + snapshot.players.len() as u64)?;
+        if !state.askable(id) {
+            state.decline("GetModifierStackCount_cannot_be_seen");
+            return vm.results(&[Value::Number(-1.0)]);
+        }
+        let count = state.unit(id).map_or(-1, |unit| {
+            bota_client_core::unit_state::modifier_stack_count(unit, index)
+        });
+        return vm.results(&[Value::Number(count as f64)]);
+    }
     let unit = state
         .unit(id)
         .ok_or_else(|| vm.error("unit is no longer known"))?;
@@ -73,7 +89,7 @@ fn read(context: &ApiContext, vm: &mut Vm, args: Args, name: &str) -> Result<usi
         "IsCastingAbility" => Value::Boolean(unit.statuses.bits & StatusFlags::CASTING != 0),
         "IsCreep" => Value::Boolean(bota_core::kind_def(unit.kind).creep),
         "IsTower" => Value::Boolean(unit.kind == UnitKind::Tower),
-        "GetModifierName" | "GetModifierRemainingDuration" | "GetModifierStackCount" => {
+        "GetModifierName" | "GetModifierRemainingDuration" => {
             let index =
                 bounded_integer(vm, args, 1, 0, bota_proto::MAX_EFFECTS_PER_UNIT as i32 - 1)?;
             let effect = unit

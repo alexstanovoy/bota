@@ -232,7 +232,7 @@ fn modifier_readers_charge_their_fixed_minimum_with_two_received_effects() {
         ("GetModifierByName", 35),
         ("GetModifierName", 38),
         ("GetModifierRemainingDuration", 33),
-        ("GetModifierStackCount", 33),
+        ("GetModifierStackCount", 23),
     ] {
         assert_budget(name, host_work);
     }

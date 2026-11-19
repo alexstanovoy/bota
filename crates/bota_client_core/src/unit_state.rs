@@ -13,3 +13,10 @@ pub fn is_disarmed(unit: &UnitView) -> bool {
     unit.statuses.bits & StatusFlags::DISARMED != 0
 }
 
+/// O(1). An absent received modifier index has the reference sentinel -1.
+pub fn modifier_stack_count(unit: &UnitView, index: i32) -> i64 {
+    usize::try_from(index)
+        .ok()
+        .and_then(|index| unit.effects.get(index))
+        .map_or(-1, |effect| i64::from(effect.stacks.unwrap_or(0)))
+}

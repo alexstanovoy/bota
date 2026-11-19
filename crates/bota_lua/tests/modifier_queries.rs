@@ -114,7 +114,9 @@ fn modifier_queries_reject_forged_receivers_and_malformed_names_and_indices() {
                 local method = unit[name]
                 assert(type(method) == 'function' and not pcall(method, {}, 0))
             end
-            for _, value in ipairs({-1,0.5,1e300,-1e300,0/0,math.huge,-math.huge,{}}) do
+            assert(unit:GetModifierStackCount(-1) == -1)
+            assert(not pcall(unit.GetModifierRemainingDuration, unit, -1))
+            for _, value in ipairs({0.5,1e300,-1e300,0/0,math.huge,-math.huge,{}}) do
                 for _, name in ipairs({'GetModifierName','GetModifierRemainingDuration','GetModifierStackCount'}) do
                     assert(not pcall(unit[name], unit, value))
                 end
@@ -148,6 +150,29 @@ fn visible_creeps_and_towers_have_their_received_unit_kinds() {
             local tower = GetTower(GetTeam(), TOWER_MID_1)
             assert(tower and tower:IsTower() and not tower:IsCreep())
             GetBot():Action_MoveToLocation(Vector(123,456,0))
+        end
+    "#,
+    )
+    .expect("script");
+    assert_script_ran(&lua.think(&sessions[0]).expect("think"));
+}
+
+#[test]
+fn an_absent_modifier_stack_sentinel_does_not_cancel_the_body_order() {
+    let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let mut lua = team();
+    lua.add_script(
+        SlotId(0),
+        ScriptKind::Takeover,
+        "absent_modifier",
+        br#"
+        function Think()
+            local unit = GetBot()
+            local absent = unit:GetModifierByName('modifier_not_reported')
+            assert(absent == -1 and unit:GetModifierStackCount(absent) == -1)
+            assert(unit:GetModifierStackCount(2147483647) == -1)
+            assert(unit:GetModifierStackCount(-2147483648) == -1)
+            unit:Action_MoveToLocation(Vector(123,456,0))
         end
     "#,
     )
