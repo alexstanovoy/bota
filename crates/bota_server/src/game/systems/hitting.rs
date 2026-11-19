@@ -767,7 +767,7 @@ fn frighten(
     let Some(on_it) = modifiers.get_mut(blow.target) else {
         return;
     };
-    let tear = rules::REQUIEM_MAGIC_BREAK_PCT[level];
+    let tear = fear.tear_pct;
     for kind in [
         ModifierKind::Slowed {
             pct: rules::REQUIEM_SLOW_PCT[level],

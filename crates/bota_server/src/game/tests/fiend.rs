@@ -817,8 +817,12 @@ fn a_requiem_line_tears_no_magic_resistance() {
     world.step();
     let resist = |world: &World| shown(world, None, foe).magic_resist;
     let own = world.stats.get(foe).expect("settled").magic_resist_bp;
-    // A hero's quarter and its intelligence's, less what his presence lets through.
-    assert!(own > 0, "a hero keeps some magic out");
+    // A hero's quarter and its 16 intelligence's, of which his level-one presence lets 4% more
+    // through.
+    let resisted = 2_500 + 16 * rules::MAGIC_RESIST_BP_PER_INTELLIGENCE;
+    let in_presence = rules::NOMINAL_BP
+        - (rules::NOMINAL_BP - resisted) * (100 + rules::PRESENCE_MAGIC_PCT[0]) / 100;
+    assert_eq!(own, in_presence, "a hero's own resistance, in his presence");
     assert_eq!(resist(&world), Fixed::from_ratio(own, rules::NOMINAL_BP));
     cast_through(&mut world, REQUIEM_SLOT, rules::REQUIEM_CAST_POINT_MS);
     run(&mut world, 10);
@@ -831,6 +835,41 @@ fn a_requiem_line_tears_no_magic_resistance() {
             .iter()
             .any(|effect| effect.id == EffectId::MAGIC_BROKEN)
     );
+}
+
+/// 7.41f's torn resistance stays in the rules, out of 7.42's requiem: a requiem blow that carries
+/// a tear (attached here as a test attaches retired content) tears it, 1 - (1 - own) * 1.05.
+#[test]
+fn a_requiem_blow_that_carries_a_tear_tears_magic_resistance_by_its_share() {
+    let (mut world, fiend, _mark) = fiend_and_a_mark(1500);
+    let foe = world.spawn_hero(
+        Team::Dire,
+        Vec2::from_ints(7000, 5000),
+        SlotId(1),
+        HeroId::SHADOW_FIEND,
+    );
+    world.settle();
+    world.step();
+    let own = world.stats.get(foe).expect("settled").magic_resist_bp;
+    let fear = crate::game::Fear {
+        first: 18,
+        line: 18,
+        most: 65,
+        tear_pct: 5,
+    };
+    world.push_hit_with_effect(
+        Some(fiend),
+        foe,
+        10,
+        bota_proto::DamageKind::Magical,
+        crate::game::HitEffect::Requiem { level: 0, fear },
+        Some(Inflictor::Ability(AbilityId::REQUIEM)),
+    );
+    world.step();
+    world.step();
+    let torn = rules::NOMINAL_BP - (rules::NOMINAL_BP - own) * 105 / 100;
+    assert_eq!(world.stats.get(foe).expect("settled").magic_resist_bp, torn);
+    assert!(carries(&world, foe, ModifierKind::MagicBroken { pct: 0 }));
 }
 
 #[test]

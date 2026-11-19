@@ -47,6 +47,11 @@ fn heroes_path() -> PathBuf {
     repo().join("crates/bota_core/src/heroes_data.rs")
 }
 
+/// The client build the committed tables were read from, as their `Read from` line names it:
+/// the install the checks hold them to. A run on another build writes that build's name;
+/// update this with the tables.
+const TABLES_BUILD: &str = "client 6978 (Nov 18 2026)";
+
 /// The heroes whose numbers bota reads from the install. A hero not named here keeps its
 /// numbers in its own module until it moves over.
 const HEROES: &[&str] = &["npc_dota_hero_pudge", "npc_dota_hero_nevermore"];
@@ -115,6 +120,17 @@ fn run() -> Result<(), String> {
     let game = install::game_dir(args.dota.as_deref())?;
     let build = install::build(&game.join("steam.inf"))?;
     println!("import_items: reading {} ({build})", game.display());
+    if build != TABLES_BUILD {
+        if args.check {
+            return Err(format!(
+                "the committed tables were read from {TABLES_BUILD}; the install at {} is {build}",
+                game.display()
+            ));
+        }
+        println!(
+            "import_items: the tables were read from {TABLES_BUILD}; set TABLES_BUILD to {build:?}"
+        );
+    }
     let creeps = rustfmt(&creeps::table(args.dota.as_deref())?)?;
     let path = repo().join("crates/bota_core/src/creep_data.rs");
     if args.check {
@@ -216,6 +232,39 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
+    /// Fails, naming both builds and the install, unless the install the checks read is the
+    /// build the committed tables were read from ([`TABLES_BUILD`](crate::TABLES_BUILD)).
+    fn assert_the_install_is_the_tables_build() {
+        let game =
+            crate::install::game_dir(crate::pinned_install().as_deref()).expect("an install");
+        let build = crate::install::build(&game.join("steam.inf")).expect("its build");
+        assert_eq!(
+            build,
+            crate::TABLES_BUILD,
+            "the committed tables were read from {}; the install at {} is {build}",
+            crate::TABLES_BUILD,
+            game.display()
+        );
+    }
+
+    /// Every committed table names the build [`TABLES_BUILD`](crate::TABLES_BUILD) says.
+    #[test]
+    fn every_committed_table_names_the_build_it_was_read_from() {
+        for file in [
+            "crates/bota_core/src/data/items.rs",
+            "crates/bota_core/src/heroes_data.rs",
+            "crates/bota_core/src/creep_data.rs",
+            "crates/bota_core/src/roshan_data.rs",
+        ] {
+            let text = std::fs::read_to_string(crate::repo().join(file)).expect("a table");
+            let named = text
+                .lines()
+                .find_map(|line| line.strip_prefix(crate::emit::BUILD_LINE))
+                .expect("its build line");
+            assert_eq!(named, format!("{}.", crate::TABLES_BUILD), "{file}");
+        }
+    }
+
     /// The values of bota's heroes' abilities an AoE bonus widens, as `bota_core`'s
     /// `AOE_ABILITY_VALUES` lists them: each `("ability", "value"),` line of `aoe.rs`'s table.
     fn bota_aoe_values() -> std::collections::BTreeSet<(String, String)> {
@@ -241,6 +290,7 @@ mod tests {
     #[test]
     #[ignore = "needs a Dota 2 install"]
     fn the_hero_values_an_aoe_bonus_widens_are_the_installs() {
+        assert_the_install_is_the_tables_build();
         use heatel::keyvalues::Kv;
         let mut marked = std::collections::BTreeSet::new();
         for hero in ["nevermore", "pudge"] {
@@ -273,6 +323,7 @@ mod tests {
     #[test]
     #[ignore = "needs a Dota 2 install"]
     fn the_committed_table_is_what_the_install_gives() {
+        assert_the_install_is_the_tables_build();
         let creeps = crate::rustfmt(
             &crate::creeps::table(crate::pinned_install().as_deref()).expect("lane creep scripts"),
         )
@@ -321,6 +372,7 @@ mod tests {
     #[test]
     #[ignore = "needs a Dota 2 install"]
     fn the_committed_hero_table_is_what_the_install_gives() {
+        assert_the_install_is_the_tables_build();
         let source = crate::install::read_heroes(crate::pinned_install().as_deref(), crate::HEROES)
             .expect("an install");
         let table = crate::emit_heroes::table(&source).expect("importable heroes");
@@ -337,6 +389,7 @@ mod tests {
     #[test]
     #[ignore = "needs a Dota 2 install"]
     fn registered_secret_items_match_the_installs_secret_shop_keys() {
+        assert_the_install_is_the_tables_build();
         use heatel::keyvalues::Kv;
         use std::collections::BTreeSet;
         let source = crate::install::read(crate::pinned_install().as_deref()).expect("an install");

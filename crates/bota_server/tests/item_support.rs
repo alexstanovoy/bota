@@ -342,6 +342,15 @@ fn item(key: &str) -> ItemId {
         .id
 }
 
+/// A regeneration of an item's value, a second, as a unit's view shows it: the server keeps it a
+/// tick and shows the tick's share thirty times.
+fn regen_shown(per_second: bota_core::Dec) -> bota_proto::Fixed {
+    let ticks = bota_core::rules::TICKS_PER_SECOND as i32;
+    bota_proto::Fixed {
+        raw: bota_proto::Fixed::from_ratio(per_second.hundredths(), 100 * ticks).raw * ticks,
+    }
+}
+
 fn source(key: &str, value: &str) -> bota_core::Dec {
     bota_core::item_def(item(key))
         .expect("catalogue row")
@@ -885,12 +894,10 @@ fn tranquil_boots_break_on_a_landed_attack_and_refresh_does_not_restore_the_pass
         },
     );
     // 7.42: Respite "now provides 2 Health Regen while on cooldown instead of 0".
-    let broken_regen = bota_proto::Fixed::from_ratio(
-        source("item_tranquil_boots", "broken_health_regen").hundredths(),
-        100,
-    );
-    assert!(
-        (game.hero(0).hp_regen.raw - regen.raw - broken_regen.raw).abs() < 64,
+    let broken_regen = regen_shown(source("item_tranquil_boots", "broken_health_regen"));
+    assert_eq!(
+        game.hero(0).hp_regen,
+        regen + broken_regen,
         "broken boots grant their broken regeneration alone"
     );
     let lost_speed = source("item_tranquil_boots", "bonus_movement_speed").int()
@@ -900,8 +907,9 @@ fn tranquil_boots_break_on_a_landed_attack_and_refresh_does_not_restore_the_pass
         bota_proto::Fixed::from_int(lost_speed)
     );
     game.cheat(0, Cheat::Refresh);
-    assert!(
-        (game.hero(0).hp_regen.raw - regen.raw - broken_regen.raw).abs() < 64,
+    assert_eq!(
+        game.hero(0).hp_regen,
+        regen + broken_regen,
         "refresh resets cooldowns without repairing boots"
     );
     game.advance(source("item_tranquil_boots", "break_time").secs().ticks());
@@ -2044,12 +2052,9 @@ fn tranquil_boots_remain_broken_on_rune_illusions_without_breaking_the_real_pair
     for &illusion in &illusions {
         let unit = game.views[0].unit(illusion).expect("illusion");
         // 7.42: broken boots keep their Respite's 2 regeneration.
-        let broken_regen = Fixed::from_ratio(
-            source("item_tranquil_boots", "broken_health_regen").hundredths(),
-            100,
-        );
-        assert!(
-            (unit.hp_regen.raw - base.hp_regen.raw - broken_regen.raw).abs() < 64,
+        assert_eq!(
+            unit.hp_regen,
+            base.hp_regen + regen_shown(source("item_tranquil_boots", "broken_health_regen")),
             "an illusion gets the broken boots' regeneration alone"
         );
         assert_eq!(
@@ -2064,17 +2069,13 @@ fn tranquil_boots_remain_broken_on_rune_illusions_without_breaking_the_real_pair
         "the real pair remains intact"
     );
     game.advance(source("item_tranquil_boots", "break_time").secs().ticks() + 1);
-    let broken_regen = Fixed::from_ratio(
-        source("item_tranquil_boots", "broken_health_regen").hundredths(),
-        100,
-    );
     for illusion in illusions {
-        let regen = game.views[0]
-            .unit(illusion)
-            .expect("illusion remains alive")
-            .hp_regen;
-        assert!(
-            (regen.raw - base.hp_regen.raw - broken_regen.raw).abs() < 64,
+        assert_eq!(
+            game.views[0]
+                .unit(illusion)
+                .expect("illusion remains alive")
+                .hp_regen,
+            base.hp_regen + regen_shown(source("item_tranquil_boots", "broken_health_regen")),
             "illusion passive stays broken beyond ordinary recovery"
         );
     }

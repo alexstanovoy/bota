@@ -209,9 +209,10 @@ pub enum HitEffect {
     ///
     /// [`rules::RAZE_STACK_DAMAGE`]: bota_core::rules::RAZE_STACK_DAMAGE
     Shadowraze { stack_damage: i32 },
-    /// Frightens, slows and tears the magic resistance of a target that
-    /// takes damage and survives, for `fear.line` ticks more, up to
-    /// `fear.most`. `level` is the requiem's, from zero.
+    /// Frightens, slows and tears the magic resistance (by `fear.tear_pct`, none since 7.42) of
+    /// a target that takes damage and survives: `fear.first` ticks for the requiem's first
+    /// line, `fear.line` more for each further one, up to `fear.most`. `level` is the
+    /// requiem's, from zero.
     Requiem { level: u8, fear: Fear },
     /// Stuns a target that survives for `ticks`, whether or not the blow
     /// took any health: a neutral's bolt that does no damage still holds.
@@ -236,8 +237,8 @@ impl HitEffect {
     }
 }
 
-/// How long a requiem line holds what it burns: ticks a line adds, and the
-/// most it may hold in all. Set as the requiem is let go, talents included.
+/// How long a requiem line holds what it burns, and how much magic resistance it tears. Set as
+/// the requiem is let go, talents included.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Fear {
     /// Ticks the first line holds a unit.
@@ -246,6 +247,9 @@ pub struct Fear {
     pub line: u32,
     /// The most ticks the hold reaches.
     pub most: u32,
+    /// Percent added to the share of magic damage a crossed unit lets through: the requiem's
+    /// torn resistance, none since 7.42 and kept to be offered again.
+    pub tear_pct: i32,
 }
 
 state_hash!(Hit {
@@ -269,7 +273,12 @@ state_hash!(Hit {
     riders,
     category
 });
-state_hash!(Fear { first, line, most });
+state_hash!(Fear {
+    first,
+    line,
+    most,
+    tear_pct
+});
 
 impl StateHash for HitEffect {
     fn state_hash(&self, fnv: &mut Fnv) {

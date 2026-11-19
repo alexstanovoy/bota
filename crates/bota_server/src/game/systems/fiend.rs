@@ -153,6 +153,7 @@ impl World {
             first: hold.first,
             line: hold.line,
             most: hold.most,
+            tear_pct: rules::REQUIEM_MAGIC_BREAK_PCT[level],
         };
         // How far the lines fly and how wide they catch both take the caster's AoE bonus.
         let aoe_bonus = self.aoe_bonus_of(caster);

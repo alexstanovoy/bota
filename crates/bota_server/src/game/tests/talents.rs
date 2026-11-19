@@ -350,6 +350,35 @@ fn the_stack_damage_talent_adds_thirty_a_stack() {
     }
 }
 
+/// 7.41f's level-10 talent, out of every 7.42 tree, keeps its rule: a tree that holds it (his
+/// 7.41f one, attached here as a test attaches retired content) adds its thirty to a feast.
+#[test]
+fn the_kept_feast_attack_speed_talent_adds_thirty_where_a_tree_holds_it() {
+    static TREE_741F: bota_core::TalentTree = [
+        bota_core::Talent::FeastAttackSpeed,
+        bota_core::Talent::RazeStackDamage,
+        bota_core::Talent::FeastSoulsPerHero,
+        bota_core::Talent::PresenceArmor,
+        bota_core::Talent::RequiemFear,
+        bota_core::Talent::NecroSoulCap,
+        bota_core::Talent::RazeAttackDamage,
+        bota_core::Talent::FeastCastSpeed,
+    ];
+    for (learned, added) in [(false, 35), (true, 35 + rules::TALENT_FEAST_ATTACK_SPEED)] {
+        let (mut world, fiend, _mark) = talented_fiend(1500, None);
+        let book = world.abilities.get_mut(fiend).expect("a kit");
+        book.tree = Some(&TREE_741F);
+        if learned {
+            book.talents = book.talents.with(TalentSlot(0));
+        }
+        let before = world.stats.get(fiend).expect("settled").attack_speed;
+        cast(&mut world, FEAST_SLOT, Target::None);
+        world.step();
+        let during = world.stats.get(fiend).expect("settled").attack_speed;
+        assert_eq!(during - before, added, "learned: {learned}");
+    }
+}
+
 /// No talent of his 7.42 tree adds to a feast's attack speed ("Level 10 Talent +30 Feast of Souls
 /// Attack Speed replaced with +2 Feast of Souls Collected"): the left level-10 slot leaves it.
 #[test]
@@ -427,8 +456,11 @@ fn the_feast_heal_talent_heals_twenty_five_a_soul() {
 
 #[test]
 fn the_requiem_talent_holds_a_line_longer_and_lifts_the_most() {
-    // 7.42: a level-one requiem holds 1.2 s and 0.1 s a line, with no most; the talent adds
-    // 0.5 s.
+    // 7.42: "a base Fear and Slow duration of 1.2/1.5/1.8s and no longer has a max duration",
+    // "Fear and Slow duration per soul decreased from 0.6s to 0.1s": a level-one requiem holds
+    // its base and 0.1 s for every line that crosses (1.3 s for one line, 1.7 s for five), up
+    // to the 20 lines one requiem lets go; the talent adds 0.5 s to the base. Bota's reading of
+    // "per soul" (a line is a soul), to confirm by replay.
     for (talent, held) in [(None, [39, 51]), (Some(4), [54, 66])] {
         for (lines, ticks) in [1, 5].into_iter().zip(held) {
             let (mut world, fiend, mark) = talented_fiend(60, talent);

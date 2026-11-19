@@ -1400,6 +1400,39 @@ fn an_aether_lens_lets_a_blink_dagger_land_1300_off() {
     assert_eq!(world.transform.get(hero).expect("standing").pos, aim);
 }
 
+/// 7.41f's Guardian Greaves low-health bonus (effect 112) stays in the rules, laid by no aura since
+/// 7.42: put on a hero (as a test attaches retired content), it mends 14.5 a second less the
+/// Guardian Aura's own share, as 7.41f's did on top of that aura.
+#[test]
+fn the_kept_greaves_low_health_bonus_mends_what_it_did_where_it_is_laid() {
+    // `item_guardian_greaves` in the id registry.
+    let greaves = ItemId(144);
+    let (mut world, hero) = hero_out_of_fountain(HeroId::SHADOW_FIEND);
+    let bare = world.stats.get(hero).expect("derived").hp_regen;
+    let bonus = ModifierKind::ItemBuff {
+        item: greaves,
+        index: 1,
+        amount: 0,
+        since: 0,
+    };
+    assert_eq!(bonus.effect_id(), bota_proto::EffectId(112));
+    put_on(&mut world, hero, bonus, 300);
+    world.step();
+    let aura = bota_core::item_def(greaves)
+        .expect("a row")
+        .values
+        .iter()
+        .find(|(key, _)| *key == "aura_health_regen")
+        .expect("the Guardian Aura's regeneration")
+        .1[0]
+        .hundredths();
+    let tenths = (1450 - aura) / 10;
+    assert_eq!(
+        world.stats.get(hero).expect("derived").hp_regen - bare,
+        Fixed::from_ratio(10 * tenths, 100 * rules::TICKS_PER_SECOND as i32)
+    );
+}
+
 /// Spell amplifications stack additively (Liquipedia, *Damage Manipulation*: spell damage
 /// amplification "stacks additively"): an Amplify Damage Rune's 15% and a Kaya's 6% (7.42) amplify
 /// a spell's magic by 21%, not 1.15 × 1.06.
