@@ -154,8 +154,8 @@ fn a_hero_kill_pays_dotas_bounty_first_blood_and_assist_gold() {
     world.bury(vec![(prey, Some(hunter))], &mut events);
 
     // 7.42: "Hero kill bounty rescaled". Level four pays 100 + 10 × 4 before streak
-    // and First Blood. At equal worth the assist still pays 83.
-    let head = 100 + 40 + 60 + 135 + 83;
+    // and First Blood. The shared assist component rounds 68.5 to 69 before adding 15.
+    let head = 100 + 40 + 60 + 135 + 84;
     assert_eq!(world.seats[0].gold, head, "Dota 7.42's head and assist");
     assert_eq!(world.seats[0].kills, 1);
     assert_eq!(

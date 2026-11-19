@@ -151,7 +151,7 @@ fn kill_credit_assist_gold_includes_distant_damage_or_debuff_and_nearby_nonparti
         world.transform.get_mut(ours[3]).unwrap().pos = FALL + Vec2::from_ints(3000, 0);
         let before: Vec<_> = world.seats.iter().map(|seat| seat.gold).collect();
         finish(&mut world, victim, ours[0]);
-        // Killer, distant participant, nearby observer: 15 + (50 + 0.037 * 2000) / 3 pays 56 gold.
+        // Killer, distant participant, nearby observer: 15 + (50 + 0.037 * 2000) / 3 gives 56 after the shared component is rounded.
         assert_eq!(world.seats[0].gold - before[0], 301);
         assert_eq!(
             world.seats[2].gold - before[2],
@@ -517,7 +517,7 @@ fn kill_credit_a_shared_hero_kill_spends_first_blood_once() {
 
 #[test]
 fn kill_credit_trailing_team_uses_the_victim_to_earner_worth_ratio() {
-    for (allies, victim_worth, assist) in [(2, 4000, 228), (3, 9000, 428)] {
+    for (allies, victim_worth, assist) in [(2, 4000, 228), (3, 9000, 429)] {
         let (mut world, ours, victim) = scene(allies);
         for seat in &mut world.seats {
             seat.gold = if seat.team == Team::Dire {

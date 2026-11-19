@@ -66,10 +66,9 @@ pub fn hero_bounty(level: i32, streak: i32, first_blood: bool) -> i32 {
     rules::HERO_KILL_GOLD_BASE + rules::HERO_KILL_GOLD_PER_LEVEL * level + streak_gold + first
 }
 
-/// Assist gold per eligible hero: 7.40's base share, multiplied by the victim
-/// team's net worth over the earning team's net worth [LIQ Gold, Assists].
-/// Wide intermediates retain the ratio for a trailing team; results fit the
-/// protocol's gold integer. When the earning team has no worth, retain the neutral factor.
+/// Assist gold per eligible hero. The installed 7.42 rules round the shared component, add the
+/// flat award, then apply the unclamped team net-worth ratio. A zero earning worth uses
+/// the neutral factor so a custom match can pay a reasonable amount.
 pub fn assist_gold(fallen_worth: i32, earners: usize, earning_side: i64, fallen_side: i64) -> i32 {
     if earners == 0 {
         return 0;
@@ -80,16 +79,12 @@ pub fn assist_gold(fallen_worth: i32, earners: usize, earning_side: i64, fallen_
     } else {
         (earning_side, fallen_side.max(0))
     };
-    let numerator = i128::from(fallen_side);
-    // Scale before splitting: truncating the unscaled share first can lose
-    // a whole gold after the trailing team's factor is applied.
-    let shared = (i128::from(rules::ASSIST_GOLD_SHARED_MILLI)
-        + i128::from(rules::ASSIST_GOLD_NET_WORTH_MILLI) * i128::from(fallen_worth.max(0)))
-        * numerator
-        / earners;
-    let gold = (i128::from(rules::ASSIST_GOLD_FLAT_MILLI) * numerator + shared)
-        / i128::from(earning_side.max(1))
-        / 1000;
+    let shared_milli = i128::from(rules::ASSIST_GOLD_SHARED_MILLI)
+        + i128::from(rules::ASSIST_GOLD_NET_WORTH_MILLI) * i128::from(fallen_worth.max(0));
+    let share_units = earners * 1000;
+    let shared = (shared_milli + share_units / 2) / share_units;
+    let base = shared + i128::from(rules::ASSIST_GOLD_FLAT);
+    let gold = base * i128::from(fallen_side) / i128::from(earning_side);
     gold.clamp(0, i128::from(i32::MAX)) as i32
 }
 
@@ -483,12 +478,15 @@ mod tests {
     fn assist_gold_zero_earning_worth_uses_a_neutral_multiplier() {
         assert_eq!(super::assist_gold(4000, 2, 0, 4000), 114);
         assert_eq!(super::assist_gold(4000, 2, -1000, 4000), 114);
-        assert_eq!(super::assist_gold(i32::MAX, 1, 0, i64::MAX), 79_456_959);
+        assert_eq!(super::assist_gold(i32::MAX, 1, 0, i64::MAX), 79_456_960);
     }
 
+    /// 7.42: "Hero kill bounty rescaled". The shared component is rounded before the
+    /// flat component and team net worth ratio are applied.
     #[test]
-    fn assist_gold_rounds_only_after_scaling_the_complete_share() {
-        assert_eq!(super::assist_gold(2000, 3, 1000, 3000), 169);
+    fn assist_gold_rounds_the_shared_component_before_scaling() {
+        assert_eq!(super::assist_gold(2000, 3, 1000, 3000), 168);
+        assert_eq!(super::assist_gold(500, 1, 500, 500), 84);
     }
 
     #[test]

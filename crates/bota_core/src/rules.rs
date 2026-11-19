@@ -1240,11 +1240,8 @@ pub const STREAK_GOLD: [i32; 8] = [60, 100, 150, 210, 280, 360, 450, 550];
 pub const STREAK_GOLD_FROM: i32 = 3;
 /// Gold the match's first hero kill pays its killer on top.
 pub const FIRST_BLOOD_GOLD: i32 = 135;
-/// Assist gold every earner of a hero kill is paid before the net worth
-/// factor, in thousandths: `ASSIST_GOLD_FLAT + (ASSIST_GOLD_SHARED +
-/// ASSIST_GOLD_NET_WORTH * the fallen's net worth) / earners`, Dota 7.40's
-/// "15 + ((50 + (VictimNetworth * 0.037)) / NumHeroes)".
-pub const ASSIST_GOLD_FLAT_MILLI: i64 = 15_000;
+/// Flat assist gold added after rounding the shared component.
+pub const ASSIST_GOLD_FLAT: i64 = 15;
 /// The part of the assist gold the earners share, in thousandths.
 pub const ASSIST_GOLD_SHARED_MILLI: i64 = 50_000;
 /// Thousandths of the fallen hero's net worth the earners share.
