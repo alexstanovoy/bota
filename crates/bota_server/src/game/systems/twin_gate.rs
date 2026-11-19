@@ -163,7 +163,7 @@ impl World {
     /// ([`bota_core::EffectDef::sighted_only`]), so a side watching the exit
     /// sees it light up for the whole channel, as Dota shows it, without
     /// seeing who channels at the other end.
-    fn light_gates(&mut self, gate: Entity) {
+    pub(crate) fn light_gates(&mut self, gate: Entity) {
         let Some(partner) = self.gate.get(gate).map(|held| held.partner) else {
             return;
         };

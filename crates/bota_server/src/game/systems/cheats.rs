@@ -570,13 +570,47 @@ impl World {
     fn remove_created_seat(&mut self, index: usize) {
         assert!(self.seats[index].created, "only a created seat is removed");
         let slot = self.seats[index].slot;
-        let driven: Vec<Entity> = self
+        let mut driven: Vec<Entity> = self
             .entities
             .iter()
             .filter(|&entity| self.owner.get(entity) == Some(&slot))
-            .chain(self.seats[index].unit)
             .collect();
+        if let Some(hero) = self.seats[index].unit
+            && !driven.contains(&hero)
+        {
+            driven.push(hero);
+        }
         for unit in driven {
+            self.cancel_action(unit);
+            self.rot_goes_out(unit);
+            self.carry_fights_on(unit);
+            let hooks: Vec<Entity> = self
+                .entities
+                .iter()
+                .filter(|&entity| {
+                    self.hook
+                        .get(entity)
+                        .is_some_and(|hook| hook.owner == unit || hook.caught == Some(unit))
+                })
+                .collect();
+            for hook in hooks {
+                self.let_go(hook);
+            }
+            let marks: Vec<Entity> = self
+                .entities
+                .iter()
+                .filter(|&entity| {
+                    self.mark
+                        .get(entity)
+                        .is_some_and(|mark| mark.owner == unit)
+                })
+                .collect();
+            for mark in marks {
+                self.take_mark(mark);
+            }
+            if let Some(warp) = self.warp.remove(unit) {
+                self.light_gates(warp.gate);
+            }
             self.despawn(unit);
         }
         self.seats.remove(index);

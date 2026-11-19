@@ -277,7 +277,7 @@ impl World {
     }
 
     /// Takes a hook and its chain out of the world.
-    fn let_go(&mut self, hook: Entity) {
+    pub(crate) fn let_go(&mut self, hook: Entity) {
         if let Some(flown) = self.hook.remove(hook) {
             if let Some(caught) = flown.caught.filter(|unit| self.hull.contains(*unit))
                 && let Some(at) = self.pos(caught)

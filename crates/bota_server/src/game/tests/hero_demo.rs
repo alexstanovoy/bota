@@ -1431,3 +1431,332 @@ fn removing_a_non_last_created_hero_and_creating_another_keeps_seats_sorted_and_
         "hero C did not inherit hero B's assist credit"
     );
 }
+
+/// The ability slot of `ability` on `unit`, as the view lists its book.
+fn ability_slot_of(unit: &UnitView, ability: bota_proto::AbilityId) -> AbilitySlot {
+    let idx = unit
+        .abilities
+        .iter()
+        .position(|a| a.id == ability)
+        .unwrap_or_else(|| panic!("{ability:?} missing from unit book"));
+    AbilitySlot(idx as u8)
+}
+
+#[test]
+fn removing_a_created_hero_with_rot_on_clears_the_rot_mark() {
+    use bota_proto::{AbilityId, Inflictor};
+
+    let mut demo = Demo::on(HERO_DEMO_ID);
+    let pudge = demo.spawn_enemy(HeroId::PUDGE);
+    let rot = ability_slot_of(demo.unit(pudge), AbilityId::ROT);
+    demo.order(pudge, Order::Learn { slot: rot });
+    demo.order(
+        pudge,
+        Order::Cast {
+            slot: rot,
+            target: Target::None,
+        },
+    );
+    demo.run(2);
+    assert!(
+        demo.view()
+            .projectiles
+            .iter()
+            .any(|p| p.inflictor == Some(Inflictor::Ability(AbilityId::ROT))),
+        "Rot mark is shown while Rot burns"
+    );
+
+    demo.cheat_at(pudge, Cheat::RemoveHero);
+    demo.run(1);
+    assert!(
+        demo.view()
+            .projectiles
+            .iter()
+            .all(|p| p.inflictor != Some(Inflictor::Ability(AbilityId::ROT))),
+        "Rot mark survived RemoveHero"
+    );
+}
+
+#[test]
+fn removing_a_created_hero_channelling_dismember_ends_stun_bites_and_mark() {
+    use bota_proto::{AbilityId, Inflictor, StatusFlags};
+
+    let mut demo = Demo::on(HERO_DEMO_ID);
+    let own = demo.me().unit.expect("own hero");
+    // Give own hero high max HP so Dismember bites never kill it and damage is cleanly observable.
+    demo.cheat(Cheat::Levels { count: 25 });
+    demo.cheat(Cheat::Refresh);
+    let pudge = demo.spawn_enemy(HeroId::PUDGE);
+    demo.cheat_at(pudge, Cheat::Levels { count: 10 });
+    let dismember = ability_slot_of(demo.unit(pudge), AbilityId::DISMEMBER);
+    demo.order(pudge, Order::Learn { slot: dismember });
+    let own_pos = demo.unit(own).pos;
+    demo.cheat_at(
+        pudge,
+        Cheat::Teleport {
+            at: own_pos + Vec2::from_ints(120, 0),
+        },
+    );
+    demo.order(
+        pudge,
+        Order::Cast {
+            slot: dismember,
+            target: Target::Unit(own),
+        },
+    );
+    // Advance until Dismember takes hold (cast point finishes and victim is stunned).
+    for _ in 0..rules::TICKS_PER_SECOND {
+        demo.run(1);
+        if demo.unit(own).statuses.bits & StatusFlags::STUNNED != 0 {
+            break;
+        }
+    }
+    assert_ne!(
+        demo.unit(own).statuses.bits & StatusFlags::STUNNED,
+        0,
+        "Dismember stunned the victim"
+    );
+    assert!(
+        demo.view()
+            .projectiles
+            .iter()
+            .any(|p| p.inflictor == Some(Inflictor::Ability(AbilityId::DISMEMBER))),
+        "Dismember mark is shown during channel"
+    );
+
+    demo.cheat_at(pudge, Cheat::RemoveHero);
+    assert_eq!(
+        demo.unit(own).statuses.bits & StatusFlags::STUNNED,
+        0,
+        "victim must not remain stunned after RemoveHero"
+    );
+    assert!(
+        demo.view()
+            .projectiles
+            .iter()
+            .all(|p| p.inflictor != Some(Inflictor::Ability(AbilityId::DISMEMBER))),
+        "Dismember mark must not survive RemoveHero"
+    );
+    let hp_after_removal = demo.unit(own).hp;
+    // Run through the rest of the channel duration: no phantom bites may reduce HP.
+    for _ in 0..4 * rules::TICKS_PER_SECOND {
+        demo.run(1);
+        let hp = demo.unit(own).hp;
+        assert!(
+            hp >= hp_after_removal,
+            "victim took post-removal Dismember bite: hp {hp} < {hp_after_removal}"
+        );
+    }
+}
+
+#[test]
+fn removing_a_created_hero_channelling_a_twin_gate_warp_puts_both_gates_out() {
+    use bota_core::DOTA_TWIN_GATES;
+    use bota_proto::{EffectId, ObjectiveKind, ObjectiveSet};
+
+    let cfg = MatchConfig {
+        map: MapId(2),
+        cheats: true,
+        objectives: ObjectiveSet::of(ObjectiveKind::TwinGates),
+        runes: bota_proto::RuneSet::NONE,
+        ..config()
+    };
+    let (local, opening) = LocalMatch::new(&cfg, &[OrderDelay::NONE]).expect("a match");
+    let mut demo = Demo {
+        local,
+        seq: 0,
+        view: None,
+        rejected: Vec::new(),
+        over: false,
+    };
+    demo.take(opening);
+    demo.cheat(Cheat::AllVision { on: true });
+
+    let gate_pos = DOTA_TWIN_GATES[0].at;
+    let far_gate_pos = DOTA_TWIN_GATES[1].at;
+    // Stand own hero near the far gate so Radiant sees both gates' glow.
+    demo.cheat(Cheat::Teleport {
+        at: far_gate_pos + Vec2::from_ints(0, 170),
+    });
+    let gate_id = demo
+        .view()
+        .units
+        .iter()
+        .find(|u| u.kind == UnitKind::TwinGate && near(u.pos, gate_pos, 100))
+        .expect("north-west Twin Gate")
+        .id;
+
+    demo.cheat(Cheat::CreateHero {
+        hero: HeroId::PUDGE,
+        enemy: false,
+        at: gate_pos + Vec2::from_ints(0, -170),
+    });
+    let created = demo
+        .view()
+        .player(SlotId(1))
+        .and_then(|row| row.unit)
+        .expect("created hero");
+    demo.order(
+        created,
+        Order::Move {
+            target: Target::Unit(gate_id),
+        },
+    );
+    for _ in 0..2 * rules::TICKS_PER_SECOND {
+        demo.run(1);
+        let lit = demo
+            .units(UnitKind::TwinGate)
+            .filter(|g| g.effects.iter().any(|e| e.id == EffectId::TWIN_GATE_ACTIVE))
+            .count();
+        if lit == 2 {
+            break;
+        }
+    }
+    assert_eq!(
+        demo.units(UnitKind::TwinGate)
+            .filter(|g| g.effects.iter().any(|e| e.id == EffectId::TWIN_GATE_ACTIVE))
+            .count(),
+        2,
+        "both Twin Gates glow while channelling warp"
+    );
+
+    demo.cheat_at(created, Cheat::RemoveHero);
+    demo.run(1);
+    let still_lit = demo
+        .units(UnitKind::TwinGate)
+        .filter(|g| g.effects.iter().any(|e| e.id == EffectId::TWIN_GATE_ACTIVE))
+        .count();
+    assert_eq!(still_lit, 0, "Twin Gates stayed lit after RemoveHero");
+}
+
+#[test]
+fn removing_a_created_hero_channelling_an_outpost_capture_releases_capture_progress() {
+    use bota_core::CAPTURE_TICKS;
+    use bota_proto::{ObjectiveKind, ObjectiveSet, StatusFlags};
+
+    let dota_map = MapId(0);
+    let cfg = MatchConfig {
+        map: dota_map,
+        cheats: true,
+        objectives: ObjectiveSet::of(ObjectiveKind::Outposts),
+        runes: bota_proto::RuneSet::NONE,
+        ..config()
+    };
+    let (local, opening) = LocalMatch::new(&cfg, &[OrderDelay::NONE]).expect("a match");
+    let mut demo = Demo {
+        local,
+        seq: 0,
+        view: None,
+        rejected: Vec::new(),
+        over: false,
+    };
+    demo.take(opening);
+    demo.cheat(Cheat::AllVision { on: true });
+    demo.cheat(Cheat::StartGame);
+    demo.run(2);
+
+    // Bring down Dire's mid tier-1 and tier-2 towers so Dire's Outpost loses its capture guard.
+    for tier in [1u8, 2u8] {
+        let (_, _, tower_pos) = *map_of(dota_map)
+            .dire_towers
+            .iter()
+            .find(|(lane, t, _)| *lane == rules::LANE_MID && *t == tier)
+            .expect("a Dire mid tower");
+        let tower = demo
+            .view()
+            .units
+            .iter()
+            .find(|u| u.kind == UnitKind::Tower && near(u.pos, tower_pos, 100))
+            .expect("Dire mid tower")
+            .id;
+        for _ in 0..20 {
+            if demo.view().unit(tower).is_none() {
+                break;
+            }
+            demo.cheat(Cheat::Damage {
+                target: Target::Unit(tower),
+                amount: 1000,
+                kind: DamageKind::Pure,
+            });
+        }
+        assert!(demo.view().unit(tower).is_none(), "Dire mid T{tier} fell");
+    }
+
+    let dire_outpost_pos = map_of(dota_map)
+        .outposts
+        .iter()
+        .find(|o| o.home == Team::Dire)
+        .expect("Dire outpost")
+        .at;
+    let outpost = demo
+        .view()
+        .units
+        .iter()
+        .find(|u| u.kind == UnitKind::Outpost && near(u.pos, dire_outpost_pos, 100))
+        .expect("Dire outpost unit")
+        .id;
+    assert_eq!(demo.unit(outpost).team, Team::Dire);
+
+    // Spawn a created Radiant hero beside Dire's Outpost and channel halfway through capture.
+    demo.cheat(Cheat::CreateHero {
+        hero: HeroId::PUDGE,
+        enemy: false,
+        at: dire_outpost_pos + Vec2::from_ints(120, 0),
+    });
+    let created = demo
+        .view()
+        .player(SlotId(1))
+        .and_then(|row| row.unit)
+        .expect("created hero");
+    demo.order(
+        created,
+        Order::Move {
+            target: Target::Unit(outpost),
+        },
+    );
+    for _ in 0..rules::TICKS_PER_SECOND {
+        demo.run(1);
+        if demo.unit(created).statuses.bits & StatusFlags::CHANNELLING != 0 {
+            break;
+        }
+    }
+    assert_ne!(
+        demo.unit(created).statuses.bits & StatusFlags::CHANNELLING,
+        0,
+        "created hero is channelling Outpost capture"
+    );
+    demo.run(CAPTURE_TICKS / 2);
+    assert_eq!(demo.unit(outpost).team, Team::Dire, "halfway, not yet captured");
+
+    // Remove the created hero mid-capture.
+    demo.cheat_at(created, Cheat::RemoveHero);
+
+    // Now the player's own Radiant hero channels the same Outpost: it must take a full
+    // CAPTURE_TICKS from scratch rather than inheriting the removed hero's progress.
+    demo.cheat(Cheat::Teleport {
+        at: dire_outpost_pos + Vec2::from_ints(120, 0),
+    });
+    demo.step(&[Order::Move {
+        target: Target::Unit(outpost),
+    }]);
+    assert_eq!(demo.rejected, []);
+    let mut channel_ticks = 0u32;
+    for _ in 0..2 * CAPTURE_TICKS {
+        demo.run(1);
+        if demo.unit(outpost).team == Team::Radiant {
+            break;
+        }
+        if demo.hero().is_some_and(|h| h.statuses.bits & StatusFlags::CHANNELLING != 0) {
+            channel_ticks += 1;
+        }
+    }
+    assert_eq!(
+        demo.unit(outpost).team,
+        Team::Radiant,
+        "player hero completed the capture"
+    );
+    assert!(
+        channel_ticks >= CAPTURE_TICKS - 1,
+        "player hero inherited removed hero's capture progress: completed in {channel_ticks} ticks (expected ~{CAPTURE_TICKS})"
+    );
+}
