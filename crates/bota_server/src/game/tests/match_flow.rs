@@ -449,6 +449,25 @@ fn a_negative_gold_credit_leaves_the_wallet_and_net_worth_intact() {
     assert_eq!(world.hash(), before);
 }
 
+#[test]
+fn a_death_penalty_cannot_draw_from_the_reliable_pool() {
+    let mut world = World::new();
+    let hero = seated_hero(
+        &mut world,
+        Vec2::from_ints(5000, 5000),
+        HeroId::SHADOW_FIEND,
+    );
+    let seat = &mut world.seats[0];
+    seat.gold = 10;
+    seat.earn_gold(500, crate::game::GoldPool::Reliable);
+    seat.net_worth = 4000;
+    world.bury(vec![(hero, None)], &mut Vec::new());
+    assert_eq!(
+        world.seats[0].gold, 500,
+        "only the available unreliable gold is lost"
+    );
+}
+
 /// 7.42: "Total amount of experience needed to reach level 30 increased from 64400 to 66600".
 #[test]
 fn level_thirty_requires_66600_experience() {

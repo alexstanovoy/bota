@@ -250,7 +250,7 @@ impl World {
             killer_side: self.side_worth(other_side(seat.team)),
         };
         let seat = &mut self.seats[index];
-        let loss = (seat.net_worth / rules::DEATH_GOLD_LOSS_SHARE).clamp(0, seat.gold);
+        let loss = (seat.net_worth / rules::DEATH_GOLD_LOSS_SHARE).clamp(0, seat.unreliable_gold());
         seat.spend_gold(loss);
         seat.net_worth -= loss;
         if counts_as_kill {
