@@ -396,3 +396,85 @@ pub fn local_for_heroes_with_cheats(heroes: &[(Team, HeroId)]) -> (LocalMatch, V
         ),
     )
 }
+
+#[allow(dead_code,reason="shared real-order fixture for attack and worker-completion tests")]
+pub fn stationary_creep_encounter(hero: HeroId) -> (LocalMatch, Vec<ClientSession>, bota_proto::EntityId) {
+    use bota_proto::{Cheat, ControlKind, Fixed, ModifierSpec, Vec2, Order, Target};
+    use bota_client_core::IssuedOrder;
+    let (mut local, mut sessions) = local_for_heroes_with_cheats(&[
+        (Team::Radiant, hero),
+        (Team::Dire, HeroId::SHADOW_FIEND),
+    ]);
+    let at = Vec2::from_ints(9216, 9216);
+    let orders: Vec<_> = [
+        Cheat::Teleport { at },
+        Cheat::CreateCreeps {
+            enemy: true,
+            at: at + Vec2::from_ints(224, 0),
+        },
+    ]
+    .into_iter()
+    .map(|cheat| {
+        sessions[0]
+            .issue(IssuedOrder::hero(Order::Cheat { cheat }))
+            .unwrap()
+    })
+    .collect();
+    let streams=local.step(&[&orders,&[]]).unwrap();
+    for (session,stream) in sessions.iter_mut().zip(streams) {fold(session,stream);}
+    let ids: Vec<_> = sessions[0]
+        .current()
+        .unwrap()
+        .units
+        .iter()
+        .filter(|unit| unit.team == Team::Dire && bota_core::kind_def(unit.kind).creep)
+        .map(|unit| unit.id)
+        .collect();
+    let mut orders = Vec::new();
+    for &id in &ids {
+        for cheat in [
+            Cheat::ApplyModifier {
+                target: Target::Unit(id),
+                spec: ModifierSpec {
+                    max_hp: 40000,
+                    ..ModifierSpec::NOMINAL
+                },
+                ticks: 3000,
+            },
+            Cheat::Control {
+                target: Target::Unit(id),
+                control: ControlKind::Stun,
+                ticks: 3000,
+            },
+        ] {
+            orders.push(
+                sessions[0]
+                    .issue(IssuedOrder::hero(Order::Cheat { cheat }))
+                    .unwrap(),
+            );
+        }
+    }
+    let streams=local.step(&[&orders,&[]]).unwrap();
+    for (session,stream) in sessions.iter_mut().zip(streams) {fold(session,stream);}
+    let own = sessions[0].own_hero().unwrap().pos;
+    let target = sessions[0]
+        .current()
+        .unwrap()
+        .units
+        .iter()
+        .filter(|unit| ids.contains(&unit.id))
+        .min_by_key(|unit| (unit.pos.distance_squared(own), unit.id))
+        .unwrap()
+        .id;
+    assert!(
+        sessions[0]
+            .current()
+            .unwrap()
+            .unit(target)
+            .unwrap()
+            .pos
+            .within(own, Fixed::from_int(800))
+    );
+    (local, sessions, target)
+}
+

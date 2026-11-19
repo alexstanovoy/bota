@@ -6,85 +6,9 @@ use bota_proto::{EntityId, EventKind, HeroId, Order, SlotId, Target, Team};
 use bota_server::local::LocalMatch;
 use std::collections::BTreeSet;
 
-fn stationary_creep_encounter(hero: HeroId) -> (LocalMatch, Vec<ClientSession>, EntityId) {
-    use bota_proto::{Cheat, ControlKind, Fixed, ModifierSpec, Vec2};
-    let (mut local, mut sessions) = support::local_for_heroes_with_cheats(&[
-        (Team::Radiant, hero),
-        (Team::Dire, HeroId::SHADOW_FIEND),
-    ]);
-    let at = Vec2::from_ints(9216, 9216);
-    let orders: Vec<_> = [
-        Cheat::Teleport { at },
-        Cheat::CreateCreeps {
-            enemy: true,
-            at: at + Vec2::from_ints(224, 0),
-        },
-    ]
-    .into_iter()
-    .map(|cheat| {
-        sessions[0]
-            .issue(IssuedOrder::hero(Order::Cheat { cheat }))
-            .unwrap()
-    })
-    .collect();
-    step(&mut local, &mut sessions, &orders);
-    let ids: Vec<_> = sessions[0]
-        .current()
-        .unwrap()
-        .units
-        .iter()
-        .filter(|unit| unit.team == Team::Dire && bota_core::kind_def(unit.kind).creep)
-        .map(|unit| unit.id)
-        .collect();
-    let mut orders = Vec::new();
-    for &id in &ids {
-        for cheat in [
-            Cheat::ApplyModifier {
-                target: Target::Unit(id),
-                spec: ModifierSpec {
-                    max_hp: 40000,
-                    ..ModifierSpec::NOMINAL
-                },
-                ticks: 3000,
-            },
-            Cheat::Control {
-                target: Target::Unit(id),
-                control: ControlKind::Stun,
-                ticks: 3000,
-            },
-        ] {
-            orders.push(
-                sessions[0]
-                    .issue(IssuedOrder::hero(Order::Cheat { cheat }))
-                    .unwrap(),
-            );
-        }
-    }
-    step(&mut local, &mut sessions, &orders);
-    let own = sessions[0].own_hero().unwrap().pos;
-    let target = sessions[0]
-        .current()
-        .unwrap()
-        .units
-        .iter()
-        .filter(|unit| ids.contains(&unit.id))
-        .min_by_key(|unit| (unit.pos.distance_squared(own), unit.id))
-        .unwrap()
-        .id;
-    assert!(
-        sessions[0]
-            .current()
-            .unwrap()
-            .unit(target)
-            .unwrap()
-            .pos
-            .within(own, Fixed::from_int(800))
-    );
-    (local, sessions, target)
-}
 
 fn attack_one_creep_then_stop(hero: HeroId, ranged: bool) {
-    let (mut local, mut sessions, target) = stationary_creep_encounter(hero);
+    let (mut local, mut sessions, target) = support::stationary_creep_encounter(hero);
     let own = sessions[0]
         .own_player()
         .expect("player")
@@ -261,7 +185,7 @@ fn attack_once_retains_damage_after_unrelated_events_evict_recent_history() {
 }
 
 fn attack_once_think_gap(evict: bool) {
-    let (mut local, mut sessions, target) = stationary_creep_encounter(HeroId::SHADOW_FIEND);
+    let (mut local, mut sessions, target) = support::stationary_creep_encounter(HeroId::SHADOW_FIEND);
     let source = sessions[0]
         .own_player()
         .expect("player")
@@ -378,7 +302,7 @@ fn attack_once_think_gap(evict: bool) {
 
 #[test]
 fn an_older_inflight_shot_can_complete_the_current_once_action_on_impact() {
-    let (mut local, mut sessions, target) = stationary_creep_encounter(HeroId::SHADOW_FIEND);
+    let (mut local, mut sessions, target) = support::stationary_creep_encounter(HeroId::SHADOW_FIEND);
     let source = sessions[0]
         .own_player()
         .expect("player")
@@ -443,7 +367,7 @@ fn an_older_inflight_shot_can_complete_the_current_once_action_on_impact() {
 
 #[test]
 fn a_same_target_attack_is_a_noop_even_when_the_once_argument_changes() {
-    let (mut local, mut sessions, _) = stationary_creep_encounter(HeroId::SHADOW_FIEND);
+    let (mut local, mut sessions, _) = support::stationary_creep_encounter(HeroId::SHADOW_FIEND);
     let source = sessions[0]
         .own_player()
         .expect("player")

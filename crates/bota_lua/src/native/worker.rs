@@ -82,11 +82,17 @@ pub(super) struct Request {
     previous_discarded: bool,
 }
 
+#[cfg(test)]
+type AfterSendDeadline = Box<dyn FnOnce(&mut Duration) + Send>;
+
 /// One request at a time on a dedicated stack. Late outputs are discarded; three consecutive
 /// missed ticks retire the worker. A successful timely reply resets that streak.
 /// Cleanup never waits on the caller. Retired workers finish bounded fuel asynchronously; a process-wide
 /// permit bounds active and retiring workers together to 32. Native limits cannot exceed the script host's.
 pub struct NativeTeam {
+    #[cfg(test)]
+    // Allows a test to expire a sent request after the worker reaches its reply barrier.
+    after_send: Option<AfterSendDeadline>,
     requests: Option<SyncSender<Request>>,
     replies: Option<Receiver<Reply>>,
     worker: Option<JoinHandle<()>>,
@@ -171,6 +177,8 @@ impl NativeTeam {
                 in_flight: false,
                 late_ticks: 0,
                 deadline_ticks: 0,
+                #[cfg(test)]
+                after_send: None,
                 discard_previous: false,
                 statistics: measured.then(Default::default),
             }),
@@ -248,6 +256,10 @@ impl NativeTeam {
         }
         self.discard_previous = false;
         self.in_flight = true;
+        #[cfg(test)]
+        if let Some(after_send) = self.after_send.take() {
+            after_send(&mut self.timeout);
+        }
         match self.receive(began) {
             Ok(turn) if began.elapsed() <= self.timeout => {
                 self.late_ticks = 0;

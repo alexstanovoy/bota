@@ -48,6 +48,7 @@ fn a_discarded_courier_turn_retries_its_unpublished_request() {
         .expect("worker");
     startup.recv_timeout(HANG_GUARD).expect("startup");
     let mut native = NativeTeam {
+        after_send: None,
         requests: Some(requests),
         replies: Some(replies),
         worker: Some(worker),
@@ -112,6 +113,7 @@ fn lifecycle_drop_returns_before_an_inflight_worker_is_released() {
     let (requests, _) = mpsc::sync_channel(1);
     let (_, replies) = mpsc::sync_channel(1);
     let native = NativeTeam {
+        after_send: None,
         requests: Some(requests),
         replies: Some(replies),
         worker: Some(worker),
@@ -222,6 +224,7 @@ fn one_late_reply_is_discarded_without_retiring_the_worker() {
         }
     });
     let mut native = NativeTeam {
+        after_send: None,
         requests: Some(requests),
         replies: Some(replies),
         worker: Some(worker),
@@ -308,6 +311,7 @@ fn consecutive_late_ticks_retire_a_still_busy_worker_without_queueing_more_work(
         );
     });
     let mut native = NativeTeam {
+        after_send: None,
         requests: Some(requests),
         replies: Some(replies),
         worker: Some(worker),
@@ -356,7 +360,7 @@ fn consecutive_late_ticks_retire_a_still_busy_worker_without_queueing_more_work(
 #[test]
 fn a_discarded_completion_turn_requeues_stop_until_a_turn_is_accepted() {
     use bota_proto::{HeroId, Order, SlotId, Target};
-    let (mut local, mut sessions, _) = support::durable_creep_encounter(HeroId::SHADOW_FIEND);
+    let (mut local, mut sessions, _) = support::stationary_creep_encounter(HeroId::SHADOW_FIEND);
     let source = sessions[0].own_hero().expect("hero").id;
     let (requests, input) = mpsc::sync_channel(1);
     let (output, replies) = mpsc::sync_channel(1);
@@ -406,13 +410,14 @@ fn a_discarded_completion_turn_requeues_stop_until_a_turn_is_accepted() {
         .expect("thread");
     startup.recv_timeout(HANG_GUARD).expect("ready");
     let mut native = NativeTeam {
+        after_send: None,
         requests: Some(requests),
         replies: Some(replies),
         worker: Some(worker),
         team: Team::Radiant,
         seats: Vec::new(),
         deterministic: false,
-        timeout: Duration::from_millis(33),
+        timeout: HANG_GUARD,
         last_tick: None,
         last_ended: false,
         in_flight: false,
@@ -421,10 +426,20 @@ fn a_discarded_completion_turn_requeues_stop_until_a_turn_is_accepted() {
         discard_previous: false,
         statistics: None,
     };
+    let mut waiting = Some(waiting);
     let mut late_completion = false;
     let mut stops = 0;
     let mut accepted_stop = None;
     for _ in 0..600 {
+        let completion_due=!late_completion && sessions[0].entity(source).and_then(|unit|unit.last_damage_dealt).is_some();
+        native.timeout=HANG_GUARD;
+        if completion_due {
+            let ready=waiting.take().expect("one withheld completion");
+            native.after_send=Some(Box::new(move |timeout| {
+                ready.recv_timeout(HANG_GUARD).expect("actual completion reaches the reply barrier");
+                *timeout=Duration::ZERO;
+            }));
+        }
         let orders = match native.think(&sessions[0]) {
             Ok(turn) => {
                 assert!(turn.failures.is_empty());
@@ -434,10 +449,9 @@ fn a_discarded_completion_turn_requeues_stop_until_a_turn_is_accepted() {
                     .collect::<Vec<_>>()
             }
             Err(NativeError::Deadline) => {
-                if waiting.try_recv().is_ok() {
-                    late_completion = true;
-                    release.send(()).expect("release");
-                }
+                assert!(completion_due,"only the deliberately expired completion deadline may elapse");
+                late_completion = true;
+                release.send(()).expect("release");
                 Vec::new()
             }
             Err(error) => panic!("unexpected worker error: {error}"),
@@ -472,7 +486,7 @@ fn a_discarded_completion_turn_requeues_stop_until_a_turn_is_accepted() {
     worker.join().expect("exit");
     assert!(
         late_completion,
-        "the actual completion reply was withheld beyond33ms"
+        "the actual completion reply was withheld across the expired deadline"
     );
     assert_eq!(
         stops, 1,
