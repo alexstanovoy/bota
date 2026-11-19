@@ -1028,7 +1028,8 @@ impl World {
             slots: self
                 .seats
                 .iter()
-                .map(|s| SlotStats {
+                .enumerate()
+                .map(|(index, s)| SlotStats {
                     slot: s.slot,
                     kills: s.kills,
                     deaths: s.deaths,
@@ -1038,6 +1039,7 @@ impl World {
                     net_worth: s.net_worth,
                     hero_damage: s.hero_damage,
                     structure_damage: s.structure_damage,
+                    current_net_worth: self.owned_net_worth(index),
                 })
                 .collect(),
         }

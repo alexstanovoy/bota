@@ -230,14 +230,13 @@ fn passive_gold_stays_at_ninety_a_minute_after_the_horn() {
 fn a_death_never_takes_more_gold_than_the_purse_holds() {
     let mut world = World::new();
     let prey = seat_hero(&mut world, 0, Team::Dire, Vec2::from_ints(5000, 5000));
-    // Fifty in the purse and the rest in items: a fortieth of the worth is
-    // a hundred, and only the fifty is there to take.
+    // Blink Dagger contributes enough for the death charge to exceed the purse.
+    // Only the fifty in the purse can be taken.
     world.seats[0].gold = 50;
     world.seats[0].net_worth = 4000;
-    world.inventory.get_mut(prey).unwrap().slots[0] = crate::game::ItemStack::bought(
-        bota_proto::ItemId::MONKEY_KING_BAR,
-        bota_proto::SlotId(0),
-        0,
+    world.inventory.get_mut(prey).unwrap().slots[0] = Some(
+        crate::game::ItemStack::bought(ItemId::BLINK_DAGGER, SlotId(0), 0)
+            .expect("a shop item with enough value to bind the cap"),
     );
     world.seats[0].level = 10;
     world.settle();
@@ -246,7 +245,7 @@ fn a_death_never_takes_more_gold_than_the_purse_holds() {
     assert_eq!(world.seats[0].gold, 0, "the purse is emptied, not owed");
     assert_eq!(
         world.seats[0].net_worth, 3950,
-        "and the items keep their worth"
+        "the lifetime ledger records only the applied debit"
     );
     assert_eq!(paid(&events), Some(0), "and nobody was paid for the fall");
 }
@@ -1257,7 +1256,6 @@ fn death_loss_prices_the_current_wallet_and_owned_remaining_charges() {
     let mut mangoes = ItemStack::bought(ItemId::MANGO, SlotId(0), 0).unwrap();
     mangoes.charges = 2;
     bag.slots[0] = Some(mangoes);
-    bag.slots[1] = ItemStack::bought(ItemId::MONKEY_KING_BAR, SlotId(1), 0);
     world.bury(vec![(hero, None)], &mut Vec::new());
     assert_eq!(
         world.seats[0].gold, 582,
@@ -1282,5 +1280,69 @@ fn ending_a_streak_pays_the_truncated_coefficient_per_victim_level() {
         hero_kill_xp(0, 0, 0),
         0,
         "a body without a level has no hero XP bounty"
+    );
+}
+
+#[test]
+fn death_loss_counts_a_whole_item_bought_at_the_shop() {
+    let item = ItemId::BLINK_DAGGER;
+    let cost = price_of(item);
+    let (mut world, hero) = a_hero_with_gold(600 + cost);
+    let _ = advance_validated(&mut world, None, Order::Buy { item });
+    assert_eq!(world.seats[0].gold, 600, "the shop charged the full price");
+    assert!(
+        world
+            .inventory
+            .get(hero)
+            .unwrap()
+            .held()
+            .any(|stack| stack.id == item)
+    );
+    let protected = 50;
+    world.seats[0].earn_gold(protected, crate::game::GoldPool::Reliable);
+    world.bury(vec![(hero, None)], &mut Vec::new());
+    // Recorded 7.42 death loss counts both pools and owned inventory.
+    let loss = (600 + protected + cost) / rules::DEATH_GOLD_LOSS_SHARE;
+    assert_eq!(world.seats[0].unreliable_gold(), 600 - loss);
+    assert_eq!(world.seats[0].gold, protected + 600 - loss);
+}
+
+#[test]
+fn scoreboard_net_worth_falls_when_an_owned_item_sells_at_half_price() {
+    let (mut world, hero) = a_hero_with_gold(1000);
+    world.seats[0].net_worth = 1000;
+    world.seats[0].earn_gold(200, crate::game::GoldPool::Reliable);
+    let item = ItemId::BOOTS;
+    let cost = price_of(item);
+    advance_validated(&mut world, None, Order::Buy { item });
+    assert_eq!(world.match_stats().slots[0].current_net_worth, 1200);
+    let index = world
+        .inventory
+        .get(hero)
+        .unwrap()
+        .slots
+        .iter()
+        .position(|slot| slot.is_some_and(|stack| stack.id == item))
+        .expect("bought boots");
+    world.inventory.get_mut(hero).unwrap().slots[index]
+        .as_mut()
+        .unwrap()
+        .touched = true;
+    advance_validated(
+        &mut world,
+        None,
+        Order::Sell {
+            slot: ItemSlot(index as u8),
+        },
+    );
+    let half = cost * rules::SELL_PCT / 100;
+    let worth = 1200 - cost + half;
+    assert_eq!(world.seats[0].gold, worth, "half-price sale completed");
+    // Recorded 7.42 NetWorth drops when an owned item is sold for less than its cost.
+    let stats = world.match_stats().slots[0];
+    assert_eq!(stats.current_net_worth, worth);
+    assert_eq!(
+        stats.net_worth, 1200,
+        "the lifetime income counter stays separate"
     );
 }

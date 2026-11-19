@@ -261,7 +261,7 @@ impl World {
     }
 
     /// The purse and the full value of the seat's owned inventory at this tick.
-    fn owned_net_worth(&self, index: usize) -> i32 {
+    pub(in crate::game) fn owned_net_worth(&self, index: usize) -> i32 {
         let seat = &self.seats[index];
         let hero_bag = seat.unit.and_then(|hero| self.inventory.get(hero));
         hero_bag

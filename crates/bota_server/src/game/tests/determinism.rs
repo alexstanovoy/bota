@@ -626,7 +626,7 @@ const PINS: [Pinned; 7] = [
             (16500, 0xff2c_8dd8_7708_e1f1, 0x93c6_86d5_064c_8ae0),
             (18000, 0x5a38_717d_e9e0_ea8a, 0x244a_a05d_3e44_6e68),
         ],
-        last: 0x4fcf_7da5_2b30_52e9,
+        last: 0x26f4_04ed_0a62_3602,
     },
     Pinned {
         map: MapId(0),
@@ -646,7 +646,7 @@ const PINS: [Pinned; 7] = [
             (16500, 0xb8dc_4175_9d8d_bcd5, 0x1357_fc2b_1443_7f48),
             (18000, 0xa033_76bd_8254_5bf6, 0xbe58_4be0_db14_c15e),
         ],
-        last: 0x05db_c4c4_6000_0ed9,
+        last: 0x31f1_e27e_a257_1892,
     },
     Pinned {
         map: MapId(1),
@@ -666,7 +666,7 @@ const PINS: [Pinned; 7] = [
             (16500, 0xeeea_a0de_36ac_372e, 0x7931_f98f_31ef_67cf),
             (18000, 0xa5ce_2d08_66ea_3248, 0x5c45_a0de_7abe_ba9b),
         ],
-        last: 0x3319_520f_853d_2c85,
+        last: 0x9706_3680_3793_088c,
     },
     Pinned {
         map: MapId(1),
@@ -686,7 +686,7 @@ const PINS: [Pinned; 7] = [
             (16500, 0x25a1_d9dd_39e0_2f31, 0xf38c_1b08_e7ee_d09c),
             (18000, 0x5e01_653b_46da_fc1b, 0x051a_801b_b38d_667c),
         ],
-        last: 0xe29d_8359_3138_7da1,
+        last: 0x0132_22c5_cf60_22b2,
     },
     Pinned {
         map: MapId(2),
@@ -700,7 +700,7 @@ const PINS: [Pinned; 7] = [
             (7500, 0x458e_9a97_976e_db2b, 0xaf59_9862_5957_d85f),
             (9000, 0x4cee_043d_524e_f7b2, 0xab28_b386_2248_b229),
         ],
-        last: 0x1edc_8b34_d04f_584b,
+        last: 0xf8c9_b747_f0b5_9e47,
     },
     Pinned {
         map: MapId(2),
@@ -714,7 +714,7 @@ const PINS: [Pinned; 7] = [
             (7500, 0x2b2f_2025_f22a_3f6d, 0x1854_016d_bdac_f518),
             (9000, 0x904b_2137_78ac_8713, 0x84f6_2735_9d6e_e691),
         ],
-        last: 0xce24_57a0_aa8e_289d,
+        last: 0x9702_66fa_b4e6_7cb6,
     },
     Pinned {
         map: MapId(2),
@@ -730,6 +730,6 @@ const PINS: [Pinned; 7] = [
             (10500, 0x4ba4_1cef_23c0_c3a8, 0x0137_a644_7f66_c10d),
             (12000, 0x87ba_df42_36be_a89f, 0xf7a4_923d_fbd3_e6a7),
         ],
-        last: 0xcef2_0753_eafa_4847,
+        last: 0x702f_8bac_cff2_dd8c,
     },
 ];

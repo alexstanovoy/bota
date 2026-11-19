@@ -520,16 +520,14 @@ fn a_marked_stack_sells_the_moment_it_reaches_the_shop() {
     world.inventory.get_mut(hero).expect("has a bag").slots[0] = Some(a_stack_of(ItemId::BOOTS, 0));
     world.transform.get_mut(hero).expect("standing").pos = Vec2::from_ints(8000, 8000);
     assert!(world.sell_item(SlotId(0), hero, 0), "marked");
-    let before = world.seats[0].gold;
+    world.seats[0].earn_gold(200, crate::game::GoldPool::Reliable);
+    let before = world.seats[0].unreliable_gold();
     world.transform.get_mut(hero).expect("standing").pos = fountain_pos(world.map, Team::Radiant);
     world.step();
     assert!(slot_of(&world, hero, 0).is_none(), "sold on arrival");
     let half = price_of(ItemId::BOOTS) * rules::SELL_PCT / 100;
-    let gained = world.seats[0].gold - before;
-    assert!(
-        gained >= half && gained <= half + 1,
-        "for its part of the price, {gained} against {half}"
-    );
+    // Recorded 7.42 sell proceeds go to the unreliable purse.
+    assert_eq!(world.seats[0].unreliable_gold() - before, half);
 }
 
 #[test]
@@ -1042,4 +1040,23 @@ fn an_item_pickup_order_obeys_dota_reach_of_150() {
         );
         assert!(world.pos(hero).unwrap().within(goal, Fixed::from_int(150)));
     }
+}
+
+#[test]
+fn a_marked_stash_stack_settles_into_the_unreliable_purse() {
+    let (mut world, _) = a_hero_with_gold(0);
+    world.seats[0].earn_gold(200, crate::game::GoldPool::Reliable);
+    world.seats[0].stash.slots[0] = Some(ItemStack {
+        for_sale: true,
+        ..a_stack_of(ItemId::BOOTS, 0)
+    });
+
+    world.step();
+    assert!(world.seats[0].stash.slots[0].is_none());
+    // Recorded 7.42 sell proceeds go to the unreliable purse.
+    assert_eq!(
+        world.seats[0].unreliable_gold(),
+        price_of(ItemId::BOOTS) * rules::SELL_PCT / 100
+    );
+    assert_eq!(world.seats[0].gold, 200 + world.seats[0].unreliable_gold());
 }

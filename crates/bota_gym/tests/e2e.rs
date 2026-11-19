@@ -376,6 +376,11 @@ fn recorded_metadata_agrees_with_the_scoreboard() {
         assert_eq!(value(stat::DENIES), Some(i64::from(scored.denies)));
         assert_eq!(value(stat::KILLS), Some(i64::from(scored.kills)));
         assert_eq!(value(stat::DEATHS), Some(i64::from(scored.deaths)));
+        assert_eq!(
+            value(stat::NET_WORTH),
+            Some(i64::from(scored.current_net_worth))
+        );
+        assert_eq!(value(stat::GOLD_EARNED), Some(i64::from(scored.net_worth)));
     }
     // The comparisons above are of something: ninety seconds in mid score last hits or kills
     // (7.42's heroes, at 20 health a point of strength, fight each other there before they farm).

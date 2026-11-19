@@ -475,8 +475,12 @@ impl Recorder {
         if let Some(stats) = stats {
             for earned in &stats.slots {
                 if let Some(at) = self.seat_of(earned.slot) {
-                    let value = i64::from(earned.net_worth);
-                    self.seats[at].stats.push((stat::GOLD_EARNED, value));
+                    let held = &mut self.seats[at];
+                    held.stats.retain(|(id, _)| *id != stat::NET_WORTH);
+                    held.stats.extend([
+                        (stat::NET_WORTH, i64::from(earned.current_net_worth)),
+                        (stat::GOLD_EARNED, i64::from(earned.net_worth)),
+                    ]);
                 }
             }
         }

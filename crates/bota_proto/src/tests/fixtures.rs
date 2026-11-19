@@ -474,6 +474,7 @@ pub fn match_stats() -> MatchStats {
             last_hits: 42,
             denies: 7,
             net_worth: 5400,
+            current_net_worth: 4150,
             hero_damage: 3100,
             structure_damage: 900,
         }],

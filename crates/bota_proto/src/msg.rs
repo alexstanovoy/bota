@@ -300,12 +300,14 @@ pub struct SlotStats {
     pub last_hits: u16,
     /// Friendly creeps denied.
     pub denies: u16,
-    /// Gold earned over the whole match, spent or not.
+    /// Lifetime credited gold less death losses. The original wire name is retained.
     pub net_worth: i32,
     /// Damage dealt to enemy heroes.
     pub hero_damage: i32,
     /// Damage dealt to enemy buildings.
     pub structure_damage: i32,
+    /// Current gold and the worth of owned inventory at the end of the match.
+    pub current_net_worth: i32,
 }
 
 /// Everything a match produced, sent once when it ends.

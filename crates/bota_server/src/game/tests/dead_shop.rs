@@ -98,6 +98,7 @@ fn a_dead_heros_purchases_enter_its_inventory_with_carried_parts_counting() {
 fn while_the_hero_lies_dead_only_what_was_bought_since_it_fell_sells_back() {
     let (mut world, hero) = match_hero();
     world.seats[0].gold = 1000;
+    world.seats[0].earn_gold(200, crate::game::GoldPool::Reliable);
     world.seats[0].stash.slots[0] = Some(fresh_stack(ItemId::CIRCLET, 0));
     world.inventory.get_mut(hero).expect("a bag").slots[0] = Some(fresh_stack(ItemId::BOOTS, 0));
     run(&mut world, 10);
@@ -135,6 +136,7 @@ fn while_the_hero_lies_dead_only_what_was_bought_since_it_fell_sells_back() {
         .position(|slot| slot.is_some_and(|stack| stack.id == ItemId::TANGO))
         .expect("bought into the dead hero's inventory");
     let gold = world.seats[0].gold;
+    let unreliable = world.seats[0].unreliable_gold();
     assert_eq!(world.validate_order(SlotId(0), None, &sell(at)), Ok(()));
     seat_order(&mut world, sell(at));
     assert_eq!(
@@ -142,6 +144,8 @@ fn while_the_hero_lies_dead_only_what_was_bought_since_it_fell_sells_back() {
         paid,
         "untouched and fresh: the whole price back"
     );
+    // Recorded 7.42 sell proceeds go to the unreliable purse.
+    assert_eq!(world.seats[0].unreliable_gold() - unreliable, paid);
     assert!(!stash_items(&world).contains(&ItemId::TANGO));
     assert!(
         stash_items(&world).contains(&ItemId::CIRCLET),
