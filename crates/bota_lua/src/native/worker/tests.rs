@@ -521,3 +521,11 @@ fn callback_failures_with_committed_orders_are_not_reported_as_discarded_turns()
     assert_eq!(summary.script_failures, 1);
     assert_eq!(summary.discarded.total, 0);
 }
+
+#[test]
+fn request_capture_does_not_overwrite_worker_view_preparation_cost() {
+    let mut turn=TeamTurn {statistics:Some(crate::statistics::TurnStatistics {capture_ns:7,..Default::default()}),..Default::default()};
+    account_request_capture(&mut turn,11);
+    let mut summary=crate::statistics::RunStatistics::default();record_turn(&mut summary,&turn);
+    assert_eq!(turn.statistics.as_ref().unwrap().capture_ns,18);assert_eq!(serde_json::to_value(&summary).unwrap()["capture_ns"]["max"].as_u64(),Some(18));
+}

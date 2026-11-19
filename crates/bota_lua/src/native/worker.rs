@@ -430,11 +430,7 @@ fn run_with_reply_hook(
         let checkpoint = lua.host_checkpoint();
         let mut reply = guarded_call(|| lua.think_snapshot(request.snapshot));
         let panicked = matches!(reply, Err(NativeError::Panicked));
-        if let Ok(turn) = &mut reply
-            && let Some(data) = &mut turn.statistics
-        {
-            data.capture_ns = request.capture_ns;
-        }
+        if let Ok(turn)=&mut reply {account_request_capture(turn,request.capture_ns);}
         previous = Some(checkpoint);
         before_reply(&reply);
         if output.send(reply).is_err() || panicked {
@@ -442,6 +438,10 @@ fn run_with_reply_hook(
         }
     }
 }
+fn account_request_capture(turn:&mut TeamTurn,request_ns:u64) {
+    if let Some(data)=&mut turn.statistics {data.capture_ns=data.capture_ns.saturating_add(request_ns);}
+}
+
 fn setup(error: crate::BindingError) -> NativeError {
     let mut message = error.to_string();
     if message.len() > 4096 {

@@ -266,3 +266,37 @@ fn a_direct_move_uses_unit_pathfinding_around_a_tree_and_arrives() {
         "unit pathfinding must route around the standing tree"
     );
 }
+#[cfg(all(feature = "native", target_os = "linux"))]
+#[test]
+fn the_first_visibility_query_fits_the_production_callback_budget() {
+    let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let limits = bota_lua::native::NativeConfig::new(
+        Team::Radiant,
+        vec![BotSeat {
+            slot: SlotId(0),
+            hero: HeroId::SHADOW_FIEND,
+        }],
+        Keys {
+            hash: [17, 19],
+            random: 23,
+        },
+    )
+    .limits;
+    let mut lua = LuaTeam::new(
+        Team::Radiant,
+        &[BotSeat {
+            slot: SlotId(0),
+            hero: HeroId::SHADOW_FIEND,
+        }],
+        limits,
+        Keys {
+            hash: [17, 19],
+            random: 23,
+        },
+    )
+    .unwrap();
+    lua.add_script(SlotId(0),ScriptKind::Takeover,"first_visibility",b"function Think() assert(IsLocationVisible(GetBot():GetLocation())); GetBot():Action_MoveDirectly(Vector(1,0,0)) end").unwrap();
+    let turn = lua.think(&sessions[0]).unwrap();
+    assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+    assert_eq!(turn.bots[0].orders, vec![movement(1)]);
+}

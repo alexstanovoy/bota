@@ -503,7 +503,14 @@ impl State {
             .expect("active slot belongs to the team")
     }
 
-
+    pub(crate) fn prepare_sight(&mut self, snapshot: &Snapshot) {
+        bota_client_core::SightGround::refresh_forest(
+            &mut self.sight,
+            &snapshot.statics,
+            &snapshot.felled_trees,
+            &snapshot.planted_trees,
+        );
+    }
 
     pub fn own_id(&self) -> Option<EntityId> {
         self.snapshot

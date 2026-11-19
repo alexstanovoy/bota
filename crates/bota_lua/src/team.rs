@@ -452,36 +452,7 @@ impl LuaTeam {
         }
     }
 
-
-
-    pub(crate) fn think_snapshot(&mut self, snapshot: Snapshot) -> Result<TeamTurn, BindingError> {
-        let statistics = self.state.borrow().statistics.clone();
-        if let Some(stats) = &statistics {
-            let mut data = stats.borrow_mut();
-            data.tick = snapshot.tick;
-            data.handles_ns = 0;
-            data.api_handles_ns = 0;
-            data.api_cpu_ns = 0;
-            data.api_depth = 0;
-            for entry in &mut data.api {
-                entry.calls = 0;
-                entry.cpu_ns = 0;
-            }
-        }
-        let began = statistics.as_ref().map(|_| crate::statistics::cpu_now());
-        let mut result = self.think_snapshot_inner(snapshot)?;
-        if let (Some(stats), Some(began)) = (statistics, began) {
-            let mut data = stats.borrow_mut();
-            data.cpu_ns = crate::statistics::cpu_now().saturating_sub(began);
-            data.fuel = self
-                .limits
-                .fuel_per_tick
-                .saturating_sub(self.lua.tick_fuel_left());
-            result.statistics = Some(data.clone());
-        }
-        Ok(result)
-    }
-    fn think_snapshot_inner(&mut self, snapshot: Snapshot) -> Result<TeamTurn, BindingError> {
+    fn validate_snapshot_tick(&self, snapshot: &Snapshot) -> Result<(), BindingError> {
         let terminal_transition = snapshot.ended.is_some()
             && self
                 .state
@@ -498,6 +469,45 @@ impl LuaTeam {
                 "think requires an increasing tick for this team",
             ));
         }
+        Ok(())
+    }
+
+    pub(crate) fn think_snapshot(&mut self, snapshot: Snapshot) -> Result<TeamTurn, BindingError> {
+        self.validate_snapshot_tick(&snapshot)?;
+        let statistics = self.state.borrow().statistics.clone();
+        if let Some(stats) = &statistics {
+            let mut data = stats.borrow_mut();
+            data.tick = snapshot.tick;
+            data.handles_ns = 0;
+            data.api_handles_ns = 0;
+            data.api_cpu_ns = 0;
+            data.api_depth = 0;
+            for entry in &mut data.api {
+                entry.calls = 0;
+                entry.cpu_ns = 0;
+            }
+        }
+        let capture_began = statistics.as_ref().map(|_| crate::statistics::cpu_now());
+        self.state.borrow_mut().prepare_sight(&snapshot);
+        if let (Some(stats), Some(began)) = (&statistics, capture_began) {
+            let elapsed = crate::statistics::cpu_now().saturating_sub(began);
+            let mut data = stats.borrow_mut();
+            data.capture_ns = data.capture_ns.saturating_add(elapsed);
+        }
+        let began = statistics.as_ref().map(|_| crate::statistics::cpu_now());
+        let mut result = self.think_snapshot_inner(snapshot)?;
+        if let (Some(stats), Some(began)) = (statistics, began) {
+            let mut data = stats.borrow_mut();
+            data.cpu_ns = crate::statistics::cpu_now().saturating_sub(began);
+            data.fuel = self
+                .limits
+                .fuel_per_tick
+                .saturating_sub(self.lua.tick_fuel_left());
+            result.statistics = Some(data.clone());
+        }
+        Ok(result)
+    }
+    fn think_snapshot_inner(&mut self, snapshot: Snapshot) -> Result<TeamTurn, BindingError> {
         let tick = snapshot.tick;
         let activity_before = self.hook_activity;
         self.last_tick = Some(tick);

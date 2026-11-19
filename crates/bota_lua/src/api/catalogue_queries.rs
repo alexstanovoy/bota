@@ -87,7 +87,7 @@ fn stock(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaErro
 
 fn visible(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaError> {
     let at = vector::position(vm, vm.arg(args, 0))?;
-    let mut state = context.state.borrow_mut();
+    let state = context.state.borrow();
     let snapshot = state
         .snapshot
         .as_ref()
@@ -98,34 +98,19 @@ fn visible(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaEr
             + snapshot.planted_trees.len() as u64
             + (snapshot.units.len() + snapshot.map.base_blockers.len()) as u64 * (grid + 1),
     )?;
-    let build = state
+    let snapshot = state.snapshot.as_ref().expect("current view");
+    let result = state
         .sight
         .as_ref()
-        .is_none_or(|ground| !ground.fits_forest(&snapshot.felled_trees, &snapshot.planted_trees));
-    if build {
-        vm.charge_fuel(
-            3 * grid * grid
-                + snapshot.statics.opaque_cells().len() as u64
-                + snapshot.statics.trees().len() as u64 * 16
-                + snapshot.planted_trees.len() as u64 * 16,
-        )?;
-        let ground = bota_client_core::SightGround::lay_forest(
-            &snapshot.statics,
-            &snapshot.felled_trees,
-            &snapshot.planted_trees,
-        )
-        .ok_or_else(|| vm.error("visibility grid is unavailable"))?;
-        state.sight = Some(ground);
-    }
-    let snapshot = state.snapshot.as_ref().expect("current view");
-    let result = state.sight.as_ref().expect("forest laid").sees_units(
-        snapshot
-            .units
-            .iter()
-            .filter(|known| known.visible)
-            .map(|known| &known.unit),
-        state.team,
-        at,
-    );
+        .ok_or_else(|| vm.error("visibility grid is unavailable"))?
+        .sees_units(
+            snapshot
+                .units
+                .iter()
+                .filter(|known| known.visible)
+                .map(|known| &known.unit),
+            state.team,
+            at,
+        );
     vm.results(&[Value::Boolean(result)])
 }

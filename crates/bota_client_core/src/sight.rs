@@ -28,6 +28,21 @@ pub struct SightGround {
 }
 
 impl SightGround {
+    /// Refresh a received-forest cache during view preparation, not inside script callbacks.
+    /// O(grid cells + trees) on a changed forest, O(forest changes) otherwise; no unit or hidden world state.
+    pub fn refresh_forest(
+        cache: &mut Option<Self>,
+        statics: &Arc<MatchStatic>,
+        felled: &[u32],
+        planted: &[Vec2],
+    ) {
+        if cache.as_ref().is_none_or(|ground| {
+            !Arc::ptr_eq(&ground.statics, statics) || !ground.fits_forest(felled, planted)
+        }) {
+            *cache = Self::lay_forest(statics, felled, planted);
+        }
+    }
+
     /// The ground with the forest as `view` tells it; the map's own forest
     /// untouched without a view. Absent for a match on a grid of another
     /// size than the sight rule's.

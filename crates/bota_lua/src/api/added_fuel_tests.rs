@@ -145,7 +145,7 @@ mod pins {
         let mut rig = Rig::new(|_, _| {});
         rig.run("me = GetBot(); ab = me:GetAbilityByName('nevermore_shadowraze1'); pt = Vector(0, 0, 0); path = {pt, pt, pt}")
             .expect("setup");
-        let (n, p, ability_count, stock, corners, felled, planted, blockers, trees, opaque) = {
+        let (n, p, ability_count, stock, corners, felled, planted, blockers) = {
             let state = rig.state.borrow();
             let snapshot = state.snapshot.as_ref().unwrap();
             (
@@ -162,8 +162,6 @@ mod pins {
                 snapshot.felled_trees.len() as u64,
                 snapshot.planted_trees.len() as u64,
                 snapshot.map.base_blockers.len() as u64,
-                snapshot.statics.trees().len() as u64,
-                snapshot.statics.opaque_cells().len() as u64,
             )
         };
         let units = rig.state.borrow().units.len() as u64;
@@ -310,16 +308,22 @@ mod pins {
             rig.state.borrow_mut().orders.clear();
         }
 
-        // Visibility pays its scan every call and the forest rebuild only when the forest changed.
+        // The received forest is prepared outside script execution, as in LuaTeam.
+        // Every visibility call still pays its bounded unit/ray scan in full.
+        {
+            let mut state = rig.state.borrow_mut();
+            let snapshot = state.snapshot.take().unwrap();
+            state.prepare_sight(&snapshot);
+            state.snapshot = Some(snapshot);
+        }
         let visible = global(&mut rig, "IsLocationVisible");
         let scan = 16 + felled + planted + (n + blockers) * (grid + 1);
-        let rebuild = 3 * grid * grid + opaque + trees * 16 + planted * 16;
         assert_exact(
             &mut rig,
-            "IsLocationVisible (first)",
+            "IsLocationVisible (prepared)",
             visible,
             &[pt],
-            scan + rebuild,
+            scan,
         );
         assert_exact(&mut rig, "IsLocationVisible (cached)", visible, &[pt], scan);
     }
