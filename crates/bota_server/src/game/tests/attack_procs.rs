@@ -373,10 +373,10 @@ fn a_crystalys_strikes_critically_on_dotas_thirty_percent_run_for_160_percent() 
 /// `by` attacks with `item` alone until 40 swings landed; the run of its 30% proc says which
 /// swings struck critically. The blows of the swings themselves (no inflictor), as told, with what
 /// the run expects of each.
-fn swings_with(attacker: HeroId, item: ItemId) -> (Vec<Blow>, Vec<bool>, Vec<Blow>) {
+fn swings_with(attacker: HeroId, item: ItemId, c: u64) -> (Vec<Blow>, Vec<bool>, Vec<Blow>) {
     let (mut world, hero, enemy) = duel(attacker, &[item], HeroId::PUDGE, Vec2::from_ints(150, 0));
     let place = item_place(slot_holding(&world, hero, item));
-    let mut run = Prd::new(&world, hero, place, C30);
+    let mut run = Prd::new(&world, hero, place, c);
     let all = attack_until(&mut world, hero, enemy, 40).blows;
     let swings = attack_blows(&all, enemy);
     let expected: Vec<bool> = swings.iter().map(|_| run.next()).collect();
@@ -400,7 +400,7 @@ fn a_critical_strike_is_told_as_critical_damage_and_a_plain_swing_is_not() {
         (HeroId::PUDGE, ItemId::DAEDALUS),
         (HeroId::SHADOW_FIEND, ItemId::DAEDALUS),
     ] {
-        let (swings, expected, _) = swings_with(attacker, item);
+        let (swings, expected, _) = swings_with(attacker, item, C30);
         let told: Vec<bool> = swings.iter().map(|blow| blow.critical).collect();
         assert_eq!(
             told, expected,
@@ -410,10 +410,11 @@ fn a_critical_strike_is_told_as_critical_damage_and_a_plain_swing_is_not() {
 }
 
 /// Revenant's Brooch's Phantom Critical is a critical strike landed as magic: the magic on top
-/// is its damage and is told as critical, while the swing it rides with is plain.
+/// is its damage and is told as critical, while the swing it rides with is plain. It rolls at
+/// the 7.42 artifact's 15% (C15), as the Brooch's other tests do.
 #[test]
 fn a_phantom_critical_is_told_as_critical_on_its_magic_and_not_on_its_plain_swing() {
-    let (swings, expected, magic) = swings_with(HeroId::PUDGE, ItemId::REVENANTS_BROOCH);
+    let (swings, expected, magic) = swings_with(HeroId::PUDGE, ItemId::REVENANTS_BROOCH, C15);
     assert!(
         swings.iter().all(|blow| !blow.critical),
         "the swings of a Phantom Critical are plain: {swings:?}"
