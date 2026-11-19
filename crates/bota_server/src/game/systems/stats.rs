@@ -726,15 +726,23 @@ fn item_buff_outranked(
         };
         Some((family, (template.priority, modifier.source, item.0, index)))
     };
-    let Some((family, ours)) = rank(held) else {
+    let Some(template) = bota_core::item_modifier(held.kind) else {
         return false;
     };
+    let ours = rank(held);
+    if ours.is_none() && template.superseded_by.is_empty() {
+        return false;
+    }
     on_it.is_some_and(|on_it| {
         on_it.active().any(|other| {
             !disabled_in(modifiers, other)
                 && super::support::item_works(other.kind, spell_immune)
-                && rank(other)
-                    .is_some_and(|(their_family, theirs)| family == their_family && theirs > ours)
+                && (template.superseded_by.contains(&other.kind.effect_id())
+                    || ours.zip(rank(other)).is_some_and(
+                        |((our_family, ours), (their_family, theirs))| {
+                            our_family == their_family && theirs > ours
+                        },
+                    ))
         })
     })
 }

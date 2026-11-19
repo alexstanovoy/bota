@@ -394,3 +394,92 @@ fn the_fountain_melts_whoever_steps_into_its_reach_and_spares_who_stays_out() {
         before - after
     );
 }
+
+#[test]
+fn buckler_armor_is_suppressed_when_vladmir_or_assault_reaches_the_ally() {
+    // “Buckler Aura no longer stacks with Vladmir's Aura or Assault Aura”.
+    use bota_core::{Stat, item_by_key, item_def};
+
+    let buckler = item_by_key("item_buckler").expect("catalogue");
+    let gear = |key| item_by_key(key).expect("catalogue");
+    for other in [gear("item_vladmir"), gear("item_assault")] {
+        for buckler_first in [false, true] {
+            let mut world = World::new();
+            let at = Vec2::from_ints(5500, 5500);
+            let ally = hero_at(&mut world, at);
+            let bearer = world.spawn_hero(
+                Team::Radiant,
+                at + Vec2::from_ints(120, 0),
+                SlotId(1),
+                HeroId::SHADOW_FIEND,
+            );
+            world.settle();
+            let base = world.stats.get(ally).unwrap().armor;
+            let first = if buckler_first { buckler } else { other };
+            let second = if buckler_first { other } else { buckler };
+            world.inventory.get_mut(bearer).unwrap().slots[0] = Some(fresh_stack(first, 1));
+            world.step();
+            world.inventory.get_mut(bearer).unwrap().slots[1] = Some(fresh_stack(second, 1));
+            world.step();
+            let expected = item_def(other).unwrap().modifiers[0]
+                .buff
+                .get(Stat::Armor, 1);
+            assert_eq!(
+                world.stats.get(ally).unwrap().armor,
+                base + Fixed::from_int(expected)
+            );
+        }
+    }
+}
+
+#[test]
+fn headdress_aura_reaches_owned_units_but_passes_over_ordinary_lane_creeps() {
+    // “Regeneration Aura now only applies to player controlled units”.
+    let mut world = World::new();
+    let at = Vec2::from_ints(5500, 5500);
+    let hero = hero_at(&mut world, at);
+    let lane = world.spawn_unit(&MELEE_CREEP, Team::Radiant, at + Vec2::from_ints(140, 0));
+    let controlled = world.spawn_unit(&MELEE_CREEP, Team::Radiant, at + Vec2::from_ints(-140, 0));
+    world.owner.insert(controlled, SlotId(0));
+    let item = bota_core::item_by_key("item_headdress").expect("catalogue");
+    let effect = bota_core::item_def(item).unwrap().modifiers[0].effect;
+    world.inventory.get_mut(hero).unwrap().slots[0] = Some(fresh_stack(item, 0));
+    world.settle();
+    world.step();
+    let wears = |unit| {
+        world.modifiers.get(unit).is_some_and(|modifiers| {
+            modifiers
+                .active()
+                .any(|held| held.kind.effect_id() == effect)
+        })
+    };
+    assert!(wears(hero));
+    assert!(wears(controlled));
+    assert!(!wears(lane));
+}
+
+#[test]
+fn pipe_barrier_is_removed_by_a_basic_dispel_of_buffs() {
+    // “Barrier is now dispellable”.
+    let mut world = World::new();
+    let hero = hero_at(&mut world, Vec2::from_ints(5500, 5500));
+    let item = bota_core::item_by_key("item_pipe").expect("catalogue");
+    let effect = bota_core::item_def(item).unwrap().modifiers[1].effect;
+    world.inventory.get_mut(hero).unwrap().slots[0] = Some(fresh_stack(item, 0));
+    world.settle();
+    assert!(world.use_item(hero, 0, bota_proto::Target::None, &mut Vec::new()));
+    let protected = |world: &World| {
+        world.modifiers.get(hero).is_some_and(|modifiers| {
+            modifiers
+                .active()
+                .any(|held| held.kind.effect_id() == effect)
+        })
+    };
+    assert!(protected(&world));
+    world.dispel(
+        hero,
+        crate::game::Dispel::Buffs,
+        crate::game::DispelPower::Basic,
+    );
+    assert!(!protected(&world));
+}

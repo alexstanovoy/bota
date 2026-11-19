@@ -34,6 +34,8 @@ pub enum Reach {
     CombatantsAndBuildings,
     /// Only the unit emitting this aura.
     Bearer,
+    /// Combatants under a player's control.
+    PlayerCombatants,
 }
 
 /// What an aura puts on whoever it reaches, as its carrier holds it.

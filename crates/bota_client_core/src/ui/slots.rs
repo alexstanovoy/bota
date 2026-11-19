@@ -276,13 +276,6 @@ pub fn decide(
             slot: AbilitySlot(at),
         });
     }
-    // The backpack and the stash are reached by dragging, not by pressing.
-    if let Slot::Item(at) = slot
-        && at >= INVENTORY_SLOTS
-        && at != TOWN_PORTAL_SLOT
-    {
-        return Press::Nothing;
-    }
     // An empty slot, and a passive: Dota answers a press of either with
     // nothing, no error and no sound.
     let Some(Some(aim)) = held else {
@@ -315,7 +308,11 @@ fn filled(app: &App, slot: Slot) -> Option<Option<Aim>> {
             .abilities
             .get(usize::from(at))
             .map(|held| Some(held.aim)),
-        Slot::Item(at) => app.item_in(at).map(|item| item.aim),
+        Slot::Item(at) => {
+            let item = app.item_in(at)?;
+            let def = bota_core::item_def(item.id)?;
+            bota_core::can_use_item_slot(usize::from(at), def).then_some(item.aim)
+        }
     }
 }
 

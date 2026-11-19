@@ -6,7 +6,7 @@ use bota_proto::{Aim, MatchStats, Order, RejectReason, SlotId, SlotStats, Target
 
 use crate::game::{
     ActionPhase, ActionState, Command, Entity, Event, MatchConfig, MatchRng, PendingCast, Seat,
-    UnitOrder, World, in_backpack, in_stash, wire_id,
+    UnitOrder, World, in_stash, wire_id,
 };
 
 pub use bota_core::aimed_right;
@@ -912,7 +912,7 @@ impl World {
         at: usize,
         target: &Target,
     ) -> Result<(), RejectReason> {
-        if in_stash(at) || in_backpack(at) {
+        if in_stash(at) {
             return Err(RejectReason::WrongTargetKind);
         }
         let stack = self
@@ -923,6 +923,9 @@ impl World {
             .flatten()
             .ok_or(RejectReason::EmptySlot)?;
         let def = item_def(stack.id).ok_or(RejectReason::EmptySlot)?;
+        if !bota_core::can_use_item_slot(at, def) {
+            return Err(RejectReason::WrongTargetKind);
+        }
         if self.muted(unit) {
             return Err(RejectReason::Disabled);
         }

@@ -93,7 +93,8 @@ fn adding_roshan_items_keeps_the_preexisting_catalogue_prefix_identical() {
         // orbs' attack passives open their part of the digest with a tag of their own; and by
         // Dota 7.42's numbers of items in it (the Wraith Band's attack speed, the Null
         // Talisman's mana, the Phase Boots' speeds and damage, the Blood Grenade's restock, ...).
-        digest: 0xcbff_5500_a209_fdf4,
+        // Poison Attack's hero-only target rule also belongs to this prefix.
+        digest: 0x9fee_2f6b_c972_af35,
     };
     assert_eq!(
         crate::Catalogue::first(previous.items)

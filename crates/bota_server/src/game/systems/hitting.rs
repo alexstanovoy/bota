@@ -430,16 +430,7 @@ impl Struck<'_> {
         if self.stat.spell_immune && !laid.pierces_immunity {
             return false;
         }
-        match laid.affects {
-            bota_core::Affects::Everything => true,
-            bota_core::Affects::EnemyUnits => {
-                self.foe
-                    && self.kind.is_some_and(|kind| {
-                        !kind_def(kind).structure
-                            && !matches!(kind, UnitKind::Ward | UnitKind::Courier)
-                    })
-            }
-        }
+        laid.affects.takes(self.foe, self.kind)
     }
 }
 

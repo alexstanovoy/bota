@@ -44,6 +44,8 @@ pub struct ItemModifier {
     pub priority: i32,
     pub pierces_immunity: bool,
     pub barrier: Option<ItemBarrier>,
+    /// The installed row permits a basic dispel of this modifier.
+    pub basic_dispel: bool,
     pub pulse: Option<DamagePulse>,
     pub restoration: Option<RestorationAura>,
     /// Ticks between payouts of restoration collected in the runtime modifier's amount.
@@ -56,6 +58,8 @@ pub struct ItemModifier {
     pub stacking: bool,
     /// Only the strongest live member contributes stats; weaker instances keep their timers.
     pub buff_family: Option<EffectId>,
+    /// An active buff of any of these effects takes precedence over this one.
+    pub superseded_by: &'static [EffectId],
 }
 
 impl ItemModifier {
@@ -67,6 +71,7 @@ impl ItemModifier {
             priority: 0,
             pierces_immunity: false,
             barrier: None,
+            basic_dispel: false,
             pulse: None,
             restoration: None,
             collection_period: None,
@@ -76,6 +81,7 @@ impl ItemModifier {
             movement_steal: None,
             stacking: false,
             buff_family: None,
+            superseded_by: &[],
         }
     }
 

@@ -746,3 +746,25 @@ fn a_hero_routes_around_a_planted_banner_and_its_expiry_removes_the_obstacle() {
     run(&mut world, 150);
     assert!(world.pos(hero).expect("hero").within(at, rules::units(20)));
 }
+
+#[test]
+fn roshans_banner_can_be_planted_directly_from_the_backpack() {
+    // “Place Banner can now be used out of the backpack”.
+    use bota_proto::{ItemSlot, Order, SlotId};
+
+    let (mut world, hero, spot) = a_hero_with_a_ward(ItemId::ROSHANS_BANNER);
+    let backpack = bota_core::rules::INVENTORY_SLOTS;
+    let bag = world.inventory.get_mut(hero).expect("hero's bag");
+    bag.slots.swap(0, backpack);
+    let at = spot + Vec2::from_ints(200, 0);
+    let order = Order::Use {
+        slot: ItemSlot(backpack as u8),
+        target: Target::Pos(at),
+    };
+    assert_eq!(world.validate_order(SlotId(0), None, &order), Ok(()));
+    advance_validated(&mut world, None, order);
+    assert!(world.entities.iter().any(|entity| {
+        world.kind.get(entity) == Some(&UnitKind::Banner) && world.pos(entity) == Some(at)
+    }));
+    assert!(world.inventory.get(hero).unwrap().slots[backpack].is_none());
+}

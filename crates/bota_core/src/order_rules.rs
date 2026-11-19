@@ -88,6 +88,13 @@ pub struct OrderItemFacts {
 pub const BAG_SLOTS: usize = crate::rules::INVENTORY_SLOTS + crate::rules::BACKPACK_SLOTS;
 const _: () = assert!(BAG_SLOTS + crate::rules::STASH_SLOTS == crate::rules::TOWN_PORTAL_SLOT);
 
+pub const fn can_use_item_slot(slot: usize, def: &crate::ItemDef) -> bool {
+    in_inventory(slot)
+        || in_town_portal(slot)
+        || (in_backpack(slot) && def.limits.used_from_backpack)
+}
+
+/// Whether a slot is in the active inventory.
 pub const fn in_inventory(slot: usize) -> bool {
     slot < crate::rules::INVENTORY_SLOTS
 }

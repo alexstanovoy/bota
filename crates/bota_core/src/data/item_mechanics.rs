@@ -913,10 +913,7 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
             slow_pct: 0,
             ranged_slow_pct: 0,
             restoration_cut_pct: 0,
-            // Liquipedia, Orb of Venom: it does not affect "Buildings", "Ward-type units", "Ally
-            // units" (Dota 2012-06-11: "Fixed Poison Attack working on denies"; 2011-07-01: "Fixed
-            // ability affecting buildings").
-            affects: Affects::EnemyUnits,
+            affects: Affects::EnemyHeroes,
             pierces_immunity: pierces_immunity(&ITEM_ORB_OF_VENOM),
         }),
         ..from(&ITEM_ORB_OF_VENOM)
@@ -1300,7 +1297,10 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
                 [ITEM_HEADDRESS.first("aura_health_regen").hundredths() / 10; 4],
             ),
         )],
-        auras: &[ItemAura::allies(0, int(&ITEM_HEADDRESS, "aura_radius"))],
+        auras: &[ItemAura {
+            reaches: Reach::PlayerCombatants,
+            ..ItemAura::allies(0, int(&ITEM_HEADDRESS, "aura_radius"))
+        }],
         ..from(&ITEM_HEADDRESS)
     },
     ItemDef {
@@ -1332,10 +1332,13 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
             armor: armor(&ITEM_BUCKLER, "armor"),
             ..NOTHING
         },
-        modifiers: &[ItemModifier::buff(
-            EffectId(103),
-            Buff::of(Stat::Armor, [int(&ITEM_BUCKLER, "bonus_aoe_armor"); 4]),
-        )],
+        modifiers: &[ItemModifier {
+            superseded_by: &[EffectId(113), EffectId(115)],
+            ..ItemModifier::buff(
+                EffectId(103),
+                Buff::of(Stat::Armor, [int(&ITEM_BUCKLER, "bonus_aoe_armor"); 4]),
+            )
+        }],
         auras: &[ItemAura::allies(0, int(&ITEM_BUCKLER, "bonus_aoe_radius"))],
         ..from(&ITEM_BUCKLER)
     },
@@ -1364,7 +1367,11 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         aim: Some(Aim::Own),
         immediate: true,
         effect: UseSpec::Support(AreaSupport {
-            lockout: Some(1),
+            lockout: if int(&ITEM_MEKANSM, "add_nostack_debuff") != 0 {
+                Some(1)
+            } else {
+                None
+            },
             lockout_margin: rules::TICKS_PER_SECOND,
             lockout_scope: crate::SupportLockout::Health,
             ..AreaSupport::recovery(
@@ -1473,6 +1480,7 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
             ),
             ItemModifier {
                 ticks: ticks(&ITEM_PIPE, "barrier_duration"),
+                basic_dispel: matches!(ITEM_PIPE.dispel, crate::item_data::Dispel::Basic),
                 barrier: Some(ItemBarrier {
                     kind: DamageKind::Magical,
                     amount: int(&ITEM_PIPE, "barrier_block"),
@@ -1555,7 +1563,11 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         aim: Some(Aim::Own),
         immediate: true,
         effect: UseSpec::Support(AreaSupport {
-            lockout: Some(2),
+            lockout: if int(&ITEM_GUARDIAN_GREAVES, "add_nostack_debuff") != 0 {
+                Some(2)
+            } else {
+                None
+            },
             lockout_margin: rules::TICKS_PER_SECOND,
             lockout_scope: crate::SupportLockout::Health,
             dispel_self: true,

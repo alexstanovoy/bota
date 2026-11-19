@@ -499,6 +499,7 @@ impl Fnv {
             priority,
             pierces_immunity,
             barrier,
+            basic_dispel,
             pulse,
             restoration,
             collection_period,
@@ -508,6 +509,7 @@ impl Fnv {
             movement_steal,
             stacking,
             buff_family,
+            superseded_by,
         } = value;
         let mut fnv = self
             .u64(effect.0 as u64)
@@ -531,10 +533,21 @@ impl Fnv {
                 fnv.u64(1).u64(kind as u64).int(amount as i64)
             }
         };
+        if basic_dispel {
+            fnv = fnv.u64(0xB8);
+        }
         fnv = match buff_family {
             None => fnv.u64(0),
             Some(effect) => fnv.u64(1).u64(effect.0 as u64),
         };
+        if !superseded_by.is_empty() {
+            fnv = fnv.u64(0xB7).u64(superseded_by.len() as u64);
+            let mut at = 0;
+            while at < superseded_by.len() {
+                fnv = fnv.u64(superseded_by[at].0 as u64);
+                at += 1;
+            }
+        }
         fnv = fnv.flag(stacking).u64(emitters.len() as u64);
         let mut emitter = 0;
         while emitter < emitters.len() {
@@ -866,7 +879,7 @@ pub(crate) const fn item_digest(def: &ItemDef) -> u64 {
             .int(laid.slow_pct as i64)
             .int(laid.ranged_slow_pct as i64)
             .int(laid.restoration_cut_pct as i64)
-            .flag(matches!(laid.affects, crate::Affects::EnemyUnits))
+            .u64(laid.affects as u64)
             .flag(laid.pierces_immunity),
     };
     let fnv = match magic_block {

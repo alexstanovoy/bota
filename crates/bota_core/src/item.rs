@@ -655,6 +655,24 @@ pub enum Affects {
     Everything,
     /// Enemy units alone: no ally, building, ward or courier.
     EnemyUnits,
+    /// Enemy hero bodies, including hero illusions.
+    EnemyHeroes,
+}
+
+impl Affects {
+    pub fn takes(self, foe: bool, kind: Option<bota_proto::UnitKind>) -> bool {
+        use bota_proto::UnitKind;
+        match self {
+            Self::Everything => true,
+            Self::EnemyUnits => {
+                foe && kind.is_some_and(|kind| {
+                    !crate::kind_def(kind).structure
+                        && !matches!(kind, UnitKind::Ward | UnitKind::Courier)
+                })
+            }
+            Self::EnemyHeroes => foe && kind == Some(UnitKind::Hero),
+        }
+    }
 }
 
 /// What a use of an item aimed at an allied unit does, where Dota lets it: the cast on a hero

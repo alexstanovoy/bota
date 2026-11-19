@@ -183,10 +183,10 @@ fn a_press_means_what_its_slot_and_its_state_settle() {
         // Control levels an ability, and is nothing to an item.
         (e, true, point, None, learn),
         (salve, true, own, None, drink(Target::None)),
-        // An empty slot, the backpack and the stash answer nothing.
+        // Empty slots and items that cannot be used arrive without an aim.
         (q, false, None, None, Press::Nothing),
-        (Slot::Item(7), false, own, None, Press::Nothing),
-        (Slot::Item(11), false, own, None, Press::Nothing),
+        (Slot::Item(7), false, None, None, Press::Nothing),
+        (Slot::Item(11), false, None, None, Press::Nothing),
         // A salve is taken up, and a second press drinks it; what is aimed
         // at the ground has no such shortcut.
         (salve, false, unit, None, Press::Aim(salve)),
@@ -3990,4 +3990,36 @@ fn the_attribute_bonus_says_why_it_takes_nothing() {
         None,
         "a point and the level, yet closed: the hero stands dead, and no reason is told"
     );
+}
+
+#[test]
+fn pressing_the_backpacked_banner_arms_placement_and_ordinary_items_stay_inactive() {
+    use crate::ui::intent::Intent;
+
+    let slot = crate::ui::slots::INVENTORY_SLOTS;
+    for (item, expected) in [
+        (ItemId::BLINK_DAGGER, None),
+        (ItemId::ROSHANS_BANNER, Some(Slot::Item(slot))),
+    ] {
+        let mut app = a_started_app();
+        let mut hero = owned(1, UnitKind::Hero, Some(SlotId(0)));
+        let def = bota_core::item_def(item).unwrap();
+        hero.items[usize::from(slot)] = Some(ItemView {
+            id: item,
+            aim: def.aim,
+            range: def.cast_range,
+            ..an_item(Some(1), 0, 0, None)
+        });
+        let hero_id = hero.id;
+        app.handle(snapshot_of(
+            10,
+            vec![hero],
+            vec![a_seat(SlotId(0), Some(hero_id))],
+        ));
+        app.act(Intent::Press {
+            slot: Slot::Item(slot),
+            ctrl: false,
+        });
+        assert_eq!(app.aiming, expected);
+    }
 }

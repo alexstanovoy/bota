@@ -735,7 +735,7 @@ impl World {
         let Some(def) = item_def(stack.id) else {
             return false;
         };
-        if !(in_inventory(slot) || in_town_portal(slot))
+        if !bota_core::can_use_item_slot(slot, def)
             || self.muted(entity)
             || self.usable(entity, &stack, def).is_err()
         {

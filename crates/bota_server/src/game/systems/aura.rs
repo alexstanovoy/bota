@@ -290,6 +290,10 @@ impl World {
             }),
             Reach::LaneCreeps => kind.is_some_and(|kind| kind_def(kind).lane_creep),
             Reach::Heroes => kind == Some(UnitKind::Hero),
+            Reach::PlayerCombatants => {
+                self.owner.get(target).is_some()
+                    && kind.is_some_and(|kind| kind == UnitKind::Hero || kind_def(kind).creep)
+            }
             Reach::Units => {
                 kind.is_some_and(|kind| kind != UnitKind::Hero && !kind_def(kind).fixed)
             }

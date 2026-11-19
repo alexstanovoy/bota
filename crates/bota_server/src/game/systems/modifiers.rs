@@ -97,6 +97,8 @@ impl World {
                 let remove = bota_core::effect_def(m.kind.effect_id()).is_some_and(|d| {
                     d.harmful == matches!(polarity, crate::game::Dispel::Debuffs)
                         && (d.dispellable
+                            || bota_core::item_modifier(m.kind)
+                                .is_some_and(|template| template.basic_dispel)
                             || (power == crate::game::DispelPower::Strong && d.strong_dispellable))
                 });
                 if remove {

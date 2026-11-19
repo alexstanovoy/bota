@@ -976,7 +976,7 @@ impl World {
             // The magic riding with a swing (a pierce's) takes spell amplification as a spell's.
             magical_amp_bp: stats.attack_rider_amp_bp(DamageKind::Magical),
             effect: self.attack_effect(attacker),
-            laid: self.laid_by(attacker),
+            laid: self.laid_by(attacker, on),
             riders,
         };
         match stats.projectile_speed {
@@ -1029,7 +1029,7 @@ impl World {
     /// waits, and the swing that does starts the wait of the stack it came
     /// from (Dota 7.38: "Poison Attack now has a 9s cooldown"; decided "upon
     /// reaching the attack point, not upon landing").
-    fn laid_by(&mut self, attacker: Entity) -> Laid {
+    fn laid_by(&mut self, attacker: Entity, target: Entity) -> Laid {
         let mut laid = Laid::NONE;
         if self.wears_illusion(attacker) {
             return laid;
@@ -1047,10 +1047,18 @@ impl World {
             .map(|(at, stack)| (at, stack.id, stack.cooldown))
             .collect();
         let mut waits = Vec::new();
+        let foe = self.team.get(attacker) != self.team.get(target);
+        let target_kind = self.kind.get(target).copied();
         for &(at, id, _) in &carried {
-            let Some(def) = item_def(id).filter(|def| def.on_attack.is_some()) else {
+            let Some(def) = item_def(id) else {
                 continue;
             };
+            if !def
+                .on_attack
+                .is_some_and(|attack| attack.affects.takes(foe, target_kind))
+            {
+                continue;
+            }
             let waiting = carried
                 .iter()
                 .any(|&(_, other, cooldown)| other == id && cooldown > 0);

@@ -86,12 +86,12 @@ pub(super) fn item_ready(unit: &UnitView, slot: ItemSlot, item: &ItemView, gives
     if unit.hp <= 0 {
         return Verdict::Illegal(RejectReason::HeroDead);
     }
-    if usize::from(slot.0) >= bota_core::rules::INVENTORY_SLOTS && slot != ItemSlot::TOWN_PORTAL {
-        return Verdict::Illegal(RejectReason::WrongTargetKind);
-    }
     let Some(def) = item_def(item.id) else {
         return Verdict::Illegal(RejectReason::EmptySlot);
     };
+    if !bota_core::can_use_item_slot(usize::from(slot.0), def) {
+        return Verdict::Illegal(RejectReason::WrongTargetKind);
+    }
     if let Err(reason) = bota_core::item_usability(def.aim, item.mute_left, illusion(unit)) {
         return Verdict::Illegal(reason);
     }

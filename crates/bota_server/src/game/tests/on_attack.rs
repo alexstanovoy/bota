@@ -351,13 +351,9 @@ fn an_orb_of_venom_poisons_once_each_cooldown() {
     assert!(again >= first + 9 * rules::TICKS_PER_SECOND);
 }
 
-/// The poison lands on enemy units alone (Liquipedia, Orb of Venom: not "Buildings", "Ward-type
-/// units", "Ally units"; Dota 2012-06-11: "Fixed Poison Attack working on denies", 2011-07-01:
-/// "Fixed ability affecting buildings"), and spell immunity keeps it off (no `SpellImmunityType`;
-/// 7.20: "no longer pierces spell immunity"): a tower, a ward, an allied creep and a courier
-/// struck wear none.
+/// Outside enemy hero bodies the poison has no target (Dota 7.42).
 #[test]
-fn an_orb_of_venom_poisons_enemy_units_alone() {
+fn an_orb_of_venom_leaves_buildings_wards_allies_and_couriers_unpoisoned() {
     let marks: [(&str, Put); 4] = [
         ("a tower", |world, at| {
             world.spawn_unit(bota_core::tower_def(1), Team::Dire, at)
@@ -383,23 +379,6 @@ fn an_orb_of_venom_poisons_enemy_units_alone() {
         world.step();
         assert_eq!(laid_on(&world, mark, ItemId::ORB_OF_VENOM).0, 0, "{case}");
     }
-    let (mut world, hero) = out_of_fountain_after_buying(&[ItemId::ORB_OF_VENOM]);
-    let at = world.transform.get(hero).expect("standing").pos;
-    let creep = world.spawn_unit(
-        &bota_core::MELEE_CREEP,
-        Team::Dire,
-        at + Vec2::from_ints(300, 0),
-    );
-    world.step();
-    world
-        .hits
-        .push_back(swing_laying(hero, creep, ItemId::ORB_OF_VENOM));
-    world.step();
-    assert_eq!(
-        laid_on(&world, creep, ItemId::ORB_OF_VENOM).0,
-        1,
-        "an enemy creep"
-    );
 }
 
 /// The poison removes health, so nothing that answers to damage answers to it (Dota 7.07: "flagged
@@ -475,7 +454,7 @@ fn the_poison_heals_its_carrier_no_spell_lifesteal() {
 
 /// However much a beat grows on its way, it never takes the last point (Dota 7.07: Poison Attack
 /// "is no longer lethal"): a beat of 12 from a carrier under an Amplify Damage Rune's spell
-/// amplification comes to 13, and an enemy creep with 13 health left keeps one of it.
+/// amplification cannot take the last point from an enemy hero.
 #[test]
 fn an_amplified_beat_of_poison_never_takes_the_last_point() {
     let (mut world, hero) = out_of_fountain_after_buying(&[ItemId::ORB_OF_VENOM]);
@@ -486,18 +465,14 @@ fn an_amplified_beat_of_poison_never_takes_the_last_point() {
         60 * rules::TICKS_PER_SECOND,
     );
     let at = world.transform.get(hero).expect("standing").pos;
-    let creep = world.spawn_unit(
-        &bota_core::MELEE_CREEP,
-        Team::Dire,
-        at + Vec2::from_ints(1500, 0),
-    );
-    world.set_order(creep, crate::game::UnitOrder::Stand);
+    let mark = foe_hero(&mut world, at + Vec2::from_ints(1500, 0));
+    world.set_order(mark, crate::game::UnitOrder::Stand);
     world.step();
     world
         .hits
-        .push_back(swing_laying(hero, creep, ItemId::ORB_OF_VENOM));
+        .push_back(swing_laying(hero, mark, ItemId::ORB_OF_VENOM));
     world.step();
-    let resist = world.stats.get(creep).expect("derived").magic_resist_bp;
+    let resist = world.stats.get(mark).expect("derived").magic_resist_bp;
     let amp = world
         .stats
         .get(hero)
@@ -509,14 +484,11 @@ fn an_amplified_beat_of_poison_never_takes_the_last_point() {
         Fixed::ZERO,
         resist,
     );
-    assert_eq!(
-        beat, 13,
-        "the amplified beat outgrows what is left above the last point"
-    );
-    world.health.get_mut(creep).expect("alive").hp = Fixed::from_int(13);
-    let beats = poison_beats(&mut world, creep, rules::TICKS_PER_SECOND);
-    assert_eq!(beats, vec![(rules::TICKS_PER_SECOND, 12)]);
-    assert!(world.alive(creep), "never the last point");
+    assert!(beat > 2);
+    run(&mut world, rules::TICKS_PER_SECOND - 1);
+    world.health.get_mut(mark).expect("alive").hp = Fixed::from_int(beat - 1);
+    assert_eq!(poison_beats(&mut world, mark, 1), vec![(1, beat - 2)]);
+    assert!(world.alive(mark), "never the last point");
 }
 
 /// The poison is told as magical damage that removes health (Liquipedia, Orb of Venom: "Spell /
@@ -871,4 +843,14 @@ fn frost_from_two_carriers_slows_once_and_adds_to_another_slow() {
         close(both, bare * Fixed::from_ratio(67, 100)),
         "{both:?} of {bare:?}"
     );
+}
+
+#[test]
+fn poison_attack_on_a_lane_creep_spends_no_cooldown_and_lays_no_poison() {
+    // “Poison Attack now only triggers when attacking heroes”.
+    let (world, hero, creep, _) = first_landing(&[ItemId::ORB_OF_VENOM], |world, at| {
+        world.spawn_unit(&bota_core::MELEE_CREEP, Team::Dire, at)
+    });
+    assert_eq!(slot_of(&world, hero, 0).expect("orb").cooldown, 0);
+    assert_eq!(laid_on(&world, creep, ItemId::ORB_OF_VENOM).0, 0);
 }
