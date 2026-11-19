@@ -698,7 +698,7 @@ pub fn validate_wire_view(root: &Path) -> Result<(), String> {
             let methods: &[&str] = match &*item.self_ty {
                 syn::Type::Path(ty) if path_is(&ty.path, "SeenBy") => &["by"],
                 syn::Type::Path(ty) if path_is(&ty.path, "WorldView") => {
-                    &["game_tick", "day_tick", "unit", "player"]
+                    &["game_tick", "day_tick", "unit", "player", "projectile"]
                 }
                 _ => {
                     self.0 = Some("manual impl belongs in a simulation helper module".into());
