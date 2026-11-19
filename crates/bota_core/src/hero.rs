@@ -77,6 +77,26 @@ pub fn primary_damage(has: Attributes, primary: Option<Attribute>) -> i32 {
     })
 }
 
+/// The whole points of an attribute that pay for health and mana: Dota's hero stat
+/// recalculation floors strength and intelligence, a hundredth added against rounding, before
+/// it multiplies them (read from the game's server code).
+pub const fn whole_points(attribute: Fixed) -> i32 {
+    (attribute.raw + WHOLE_POINT_MARGIN.raw) >> Fixed::FRAC_BITS
+}
+
+/// The health strength pays: [`rules::HP_PER_STRENGTH`] for each of its whole points.
+pub const fn strength_health(strength: Fixed) -> i32 {
+    rules::HP_PER_STRENGTH * whole_points(strength)
+}
+
+/// The mana intelligence pays: [`rules::MANA_PER_INTELLIGENCE`] for each of its whole points.
+pub const fn intelligence_mana(intelligence: Fixed) -> i32 {
+    rules::MANA_PER_INTELLIGENCE * whole_points(intelligence)
+}
+
+/// The hundredth a point that [`whole_points`] adds before it floors.
+const WHOLE_POINT_MARGIN: Fixed = Fixed::from_ratio(1, 100);
+
 /// The magic resistance intelligence is worth, in basis points.
 pub fn intelligence_magic_resist_bp(has: Attributes) -> i32 {
     (has.intelligence * Fixed::from_int(rules::MAGIC_RESIST_BP_PER_INTELLIGENCE)).to_int()

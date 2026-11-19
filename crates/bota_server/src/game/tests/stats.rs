@@ -473,16 +473,47 @@ fn attack_speed_shortens_the_wait_between_attacks() {
     );
 }
 
+/// Dota pays health and mana for whole points of strength and intelligence: the game's hero
+/// stat recalculation floors each (with a margin of a hundredth) before multiplying (read from
+/// the game's server code; real replays of 7.41f agree). Shadow Fiend at level two holds 21.7
+/// strength and 18.2 intelligence: 21 and 18 whole points pay.
+#[test]
+fn health_and_mana_are_paid_for_whole_points_of_strength_and_intelligence() {
+    let mut world = World::new();
+    let fiend = seated_hero(
+        &mut world,
+        Vec2::from_ints(5000, 5000),
+        bota_proto::HeroId(1),
+    );
+    world.level.insert(fiend, Level(2));
+    world.settle();
+    let stats = *world.stats.get(fiend).expect("settled");
+    assert_eq!(stats.attributes.strength, Fixed::from_ratio(217, 10));
+    assert_eq!(stats.attributes.intelligence, Fixed::from_ratio(182, 10));
+    let base = &bota_core::SHADOW_FIEND;
+    assert_eq!(
+        stats.max_hp,
+        Fixed::from_int(base.max_hp + 21 * rules::HP_PER_STRENGTH),
+        "21 whole points of strength"
+    );
+    assert_eq!(
+        stats.max_mana,
+        Fixed::from_int(base.max_mana + 18 * rules::MANA_PER_INTELLIGENCE),
+        "18 whole points of intelligence"
+    );
+}
+
 #[test]
 fn shadow_fiend_stands_at_dota_numbers_from_the_first_level_to_the_last() {
     // With nothing bought: level, health, mana, attack damage (the middle of the spread),
     // milliseconds between swings, and armor in thousandths. Health and mana show their whole
     // points. Dota 7.42's base health (200, "increased from 120"), on the attribute rules of
-    // 7.41f (22 health a point of strength) until those move too.
+    // 7.41f (22 health a point of strength) until those move too; health and mana are paid for
+    // whole points of strength and intelligence (56.8 strength pays 56 points at level 15).
     for (level, hp, mana, damage, swing, armor) in [
         (1, 618, 267, 44, 1280, 4_166),
-        (15, 1449, 636, 94, 914, 12_565),
-        (30, 2340, 1032, 148, 698, 21_565),
+        (15, 1432, 627, 94, 914, 12_565),
+        (30, 2334, 1023, 148, 698, 21_565),
     ] {
         let mut world = World::new();
         let fiend = seated_hero(

@@ -865,8 +865,8 @@ fn scaled_bp(value: Fixed, bp: i32) -> Fixed {
 /// what they pay for.
 fn from_attributes(now: &mut Stats) {
     let has = now.attributes;
-    now.max_hp += Fixed::from_int(rules::HP_PER_STRENGTH) * has.strength;
-    now.max_mana += Fixed::from_int(rules::MANA_PER_INTELLIGENCE) * has.intelligence;
+    now.max_hp += Fixed::from_int(bota_core::strength_health(has.strength));
+    now.max_mana += Fixed::from_int(bota_core::intelligence_mana(has.intelligence));
     // Into the base resistance, which what multiplies resistance reads; the
     // base with what is applied to it is held between none and all.
     now.magic_resist_bp = now
