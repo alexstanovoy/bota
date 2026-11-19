@@ -6,6 +6,13 @@
 //! to tell.
 
 use crate::rules::{SCAN_MAX_CHARGES, SCAN_RECHARGE_TICKS, Schedule};
+use crate::{ChargeRule, Charges};
+
+/// How a side's Scan charges come back.
+pub const SCAN_CHARGES: ChargeRule = ChargeRule {
+    max: SCAN_MAX_CHARGES,
+    recharge: SCAN_RECHARGE_TICKS,
+};
 
 /// What a side holds of its Scan.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -33,40 +40,37 @@ impl ScanLedger {
         ledger
     }
 
-    /// Lets the charges arrive that are due by `clock`, one a wait, as many as have fallen due
-    /// (a clock that jumped brings several at once). The wait for the next starts where the
-    /// last one ended, and none runs once every charge is held.
+    /// Lets the charges arrive that are due by `clock` ([`Charges::catch_up`]).
     pub fn catch_up(&mut self, clock: u32) {
-        assert!(
-            self.charges <= SCAN_MAX_CHARGES,
-            "more charges than Scan holds"
-        );
-        assert!(
-            self.next_charge.is_none() || self.charges < SCAN_MAX_CHARGES,
-            "a wait runs only below the most charges"
-        );
-        // Each round adds a charge and the loop ends at the most: SCAN_MAX_CHARGES rounds at
-        // the very most.
-        while let Some(due) = self.next_charge.filter(|due| clock >= *due) {
-            self.charges += 1;
-            self.next_charge = (self.charges < SCAN_MAX_CHARGES).then(|| due + SCAN_RECHARGE_TICKS);
-        }
+        let mut held = self.held();
+        held.catch_up(clock, SCAN_CHARGES);
+        self.keep(held);
     }
 
-    /// Spends one charge at `clock`, if there is one: the ledger must be caught up. A wait that
-    /// is not running starts; one that is running goes on.
+    /// Spends one charge at `clock`, if there is one ([`Charges::spend`]): the ledger must be
+    /// caught up.
     #[must_use]
     pub fn spend(&mut self, clock: u32) -> bool {
-        if self.charges == 0 {
-            return false;
-        }
-        self.charges -= 1;
-        self.next_charge.get_or_insert(clock + SCAN_RECHARGE_TICKS);
-        true
+        let mut held = self.held();
+        let spent = held.spend(clock, SCAN_CHARGES);
+        self.keep(held);
+        spent
     }
 
     /// Ticks until the next charge from `clock`; none while every charge is held.
     pub fn next_in(&self, clock: u32) -> Option<u32> {
-        self.next_charge.map(|due| due.saturating_sub(clock))
+        self.held().next_in(clock)
+    }
+
+    const fn held(&self) -> Charges {
+        Charges {
+            charges: self.charges,
+            next_charge: self.next_charge,
+        }
+    }
+
+    fn keep(&mut self, held: Charges) {
+        self.charges = held.charges;
+        self.next_charge = held.next_charge;
     }
 }
