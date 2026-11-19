@@ -1,6 +1,6 @@
 //! A blow on its way to being felt.
 
-use bota_core::rules;
+use bota_core::{ItemPotency, rules};
 use bota_proto::{DamageKind, Inflictor, ItemId};
 
 use crate::engine::{Fnv, StateHash, state_hash};
@@ -60,35 +60,54 @@ pub struct Hit {
 
 /// The items whose passive an attack's blow lays on the struck (Dota's
 /// attack modifiers), each item once.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Laid(pub [Option<ItemId>; rules::INVENTORY_SLOTS]);
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Laid {
+    items: [Option<ItemId>; rules::INVENTORY_SLOTS],
+    pub potency: ItemPotency,
+}
 
 impl Laid {
     /// Nothing laid.
-    pub const NONE: Laid = Laid([None; rules::INVENTORY_SLOTS]);
+    pub const NONE: Laid = Self::new(ItemPotency::FULL);
+
+    pub const fn new(potency: ItemPotency) -> Self {
+        Self {
+            items: [None; rules::INVENTORY_SLOTS],
+            potency,
+        }
+    }
 
     /// The items, in the order they were added.
     pub fn items(&self) -> impl Iterator<Item = ItemId> + '_ {
-        self.0.iter().flatten().copied()
+        self.items.iter().flatten().copied()
     }
 
     /// Adds `item` unless it is in already; past an inventory's worth, none.
     pub fn add(&mut self, item: ItemId) {
-        if self.0.contains(&Some(item)) {
+        if self.items.contains(&Some(item)) {
             return;
         }
-        if let Some(free) = self.0.iter_mut().find(|slot| slot.is_none()) {
+        if let Some(free) = self.items.iter_mut().find(|slot| slot.is_none()) {
             *free = Some(item);
         }
     }
 }
 
-/// Only the items laid: a blow that lays nothing hashes as one before the
-/// field was.
+impl Default for Laid {
+    fn default() -> Self {
+        Self::NONE
+    }
+}
+
+/// A blow that lays nothing or uses full potency keeps its existing hash.
 impl StateHash for Laid {
     fn state_hash(&self, fnv: &mut Fnv) {
         for item in self.items() {
             item.0.state_hash(fnv);
+        }
+        if self.items[0].is_some() && self.potency != ItemPotency::FULL {
+            u16::MAX.state_hash(fnv);
+            self.potency.state_hash(fnv);
         }
     }
 }
@@ -317,7 +336,7 @@ impl crate::engine::Specimen for Laid {
     }
 
     fn high() -> Self {
-        let mut laid = Laid::NONE;
+        let mut laid = Laid::new(ItemPotency::ILLUSION);
         laid.add(ItemId(1));
         laid
     }

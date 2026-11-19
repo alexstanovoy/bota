@@ -1,5 +1,7 @@
 //! What makes a unit an illusion of a hero.
 
+use bota_core::ItemPotency;
+
 use crate::engine::state_hash;
 use crate::game::Entity;
 
@@ -17,6 +19,8 @@ pub struct Illusion {
     /// The share of the damage it takes that lands on it, in basis points
     /// where 10_000 is all of it.
     pub taken_bp: i32,
+    /// Potency specified by the illusion's creator, independently of its attack damage.
+    pub item_potency: ItemPotency,
 }
 
 state_hash!(Illusion {
@@ -24,4 +28,4 @@ state_hash!(Illusion {
     made,
     dealt_bp,
     taken_bp
-});
+}; 0xDA => { item_potency: ItemPotency::ILLUSION_RUNE });

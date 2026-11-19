@@ -535,6 +535,8 @@ pub struct ItemDef {
     pub cast_range: i32,
     /// Dota's `AbilityBehavior` flags.
     pub behavior: Behavior,
+    /// Whether the pierce chance uses the attack's item potency.
+    pub pierce_uses_potency: bool,
     /// Dota's `AbilityValues`: each a number a level, by Dota's key.
     pub values: &'static [(&'static str, &'static [Dec])],
     /// Charges one use costs.
@@ -646,6 +648,66 @@ pub struct OnAttack {
     pub affects: Affects,
     /// Whether it goes through spell immunity: the item's `SpellImmunityType`.
     pub pierces_immunity: bool,
+    /// Whether an illusion can lay the effect with its attacks.
+    pub by_illusions: bool,
+    pub armor_uses_potency: bool,
+    pub melee_slow_uses_potency: bool,
+    pub ranged_slow_uses_potency: bool,
+    pub restoration_uses_potency: bool,
+}
+
+impl OnAttack {
+    /// Armor removed by this application of the debuff.
+    pub fn armor_at(self, potency: ItemPotency) -> Fixed {
+        Fixed {
+            raw: potency
+                .for_value(self.armor_uses_potency)
+                .scale(self.armor.raw),
+        }
+    }
+
+    /// Slow in basis points. An illusion's slow can be a fractional percent.
+    pub fn slow_bp_at(self, ranged: bool, potency: ItemPotency) -> i32 {
+        let (pct, marked) = if ranged {
+            (self.ranged_slow_pct, self.ranged_slow_uses_potency)
+        } else {
+            (self.slow_pct, self.melee_slow_uses_potency)
+        };
+        potency.for_value(marked).scale(pct * 100)
+    }
+
+    /// Health restoration lost, in basis points.
+    pub fn restoration_cut_bp_at(self, potency: ItemPotency) -> i32 {
+        potency
+            .for_value(self.restoration_uses_potency)
+            .scale(self.restoration_cut_pct * 100)
+    }
+}
+
+/// The share of potency-marked item values an attack applies, in basis points.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ItemPotency(u16);
+
+impl ItemPotency {
+    pub const FULL: Self = Self(rules::NOMINAL_BP as u16);
+    pub const ILLUSION: Self = Self(crate::potency_data::ILLUSION_BP);
+    pub const ILLUSION_RUNE: Self = Self(crate::potency_data::ILLUSION_RUNE_BP);
+
+    pub const fn basis_points(self) -> u16 {
+        self.0
+    }
+
+    pub const fn for_value(self, uses_potency: bool) -> Self {
+        if uses_potency { self } else { Self::FULL }
+    }
+
+    pub fn scale(self, amount: i32) -> i32 {
+        (i64::from(amount) * i64::from(self.0) / i64::from(rules::NOMINAL_BP)) as i32
+    }
+
+    pub fn odds(self, odds: Odds) -> Odds {
+        Odds::parts((self.scale(odds.get() as i32) as u32).min(Odds::WHOLE))
+    }
 }
 
 /// What an item's attack passive lands on, of what its carrier strikes.
@@ -898,6 +960,7 @@ pub(crate) const PLAIN: ItemDef = ItemDef {
     aim: None,
     cast_range: 0,
     behavior: Behavior::NONE,
+    pierce_uses_potency: false,
     values: &[],
     spends: Spends::Nothing,
     point: 0,
@@ -975,6 +1038,9 @@ pub struct Pierce {
     pub chance: Odds,
     /// The magical damage it lands.
     pub damage: i32,
+    /// A separate magic damage value also makes this pierce available to illusions.
+    pub illusion_damage: Option<i32>,
+    pub chance_uses_potency: bool,
     /// The item it is.
     pub item: ItemId,
 }
@@ -990,7 +1056,8 @@ pub fn carried_pierces(
 ) -> impl Iterator<Item = (usize, Pierce)> {
     let mut seen: Vec<ItemId> = Vec::new();
     items.into_iter().filter_map(move |(at, id)| {
-        let carried = item_def(id)?.carried_by(ranged);
+        let def = item_def(id)?;
+        let carried = def.carried_by(ranged);
         if carried.pierce == Odds::NEVER || (carried.pierce_unique && seen.contains(&id)) {
             return None;
         }
@@ -1000,6 +1067,11 @@ pub fn carried_pierces(
             Pierce {
                 chance: carried.pierce,
                 damage: carried.pierce_damage,
+                illusion_damage: def
+                    .value("bonus_chance_damage_illu")
+                    .and_then(|value| value.first())
+                    .map(|value| value.int()),
+                chance_uses_potency: def.pierce_uses_potency,
                 item: id,
             },
         ))

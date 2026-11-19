@@ -42,6 +42,7 @@ pub enum HitCount {
     /// Dota 7.42's health bar pips, counted in quarter pips.
     Pips { fragile: bool },
     /// Attacks needed from full health, using the unit's current maximum.
+    /// Only destructible ground items use this rule in production.
     Hits {
         melee_hero: NonZeroU8,
         ranged_hero: NonZeroU8,
@@ -66,6 +67,7 @@ impl HitCount {
     pub const fn taken(self, by: Striker, max_hp: Fixed) -> Fixed {
         match self {
             HitCount::Pips { fragile } => Fixed::from_int(match by {
+                // Fragile pips break twice as fast under melee heroes and Roshan.
                 Striker::MeleeHero | Striker::Roshan if fragile => 2 * QUARTERS_A_PIP,
                 Striker::MeleeHero | Striker::RangedHero | Striker::Roshan | Striker::Structure => {
                     QUARTERS_A_PIP

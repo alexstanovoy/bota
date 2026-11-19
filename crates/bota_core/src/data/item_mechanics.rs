@@ -581,6 +581,7 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
             pierce_damage: int(&ITEM_JAVELIN, "bonus_chance_damage"),
             ..NOTHING
         },
+        pierce_uses_potency: ITEM_JAVELIN.potent("bonus_chance"),
         ..from(&ITEM_JAVELIN)
     },
     ItemDef {
@@ -605,6 +606,7 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
             pierce_unique: true,
             ..NOTHING
         },
+        pierce_uses_potency: ITEM_MONKEY_KING_BAR.potent("bonus_chance"),
         ..from(&ITEM_MONKEY_KING_BAR)
     },
     // Wind Lace and Blood Grenade: also Liquipedia's *Blood Grenade* and *Movement Speed*.
@@ -899,6 +901,11 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
             // Liquipedia, Orb of Blight: it affects "Allied units", "Buildings", "Ward-type units".
             affects: Affects::Everything,
             pierces_immunity: pierces_immunity(&ITEM_BLIGHT_STONE),
+            by_illusions: true,
+            armor_uses_potency: ITEM_BLIGHT_STONE.potent("corruption_armor"),
+            melee_slow_uses_potency: false,
+            ranged_slow_uses_potency: false,
+            restoration_uses_potency: false,
         }),
         ..from(&ITEM_BLIGHT_STONE)
     },
@@ -916,6 +923,11 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
             restoration_cut_pct: 0,
             affects: Affects::EnemyHeroes,
             pierces_immunity: pierces_immunity(&ITEM_ORB_OF_VENOM),
+            by_illusions: false,
+            armor_uses_potency: false,
+            melee_slow_uses_potency: false,
+            ranged_slow_uses_potency: false,
+            restoration_uses_potency: false,
         }),
         ..from(&ITEM_ORB_OF_VENOM)
     },
@@ -935,6 +947,11 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
             affects: Affects::EnemyUnits,
             // 7.42 makes the passive pierce. Its item script leaves spell immunity unspecified.
             pierces_immunity: true,
+            by_illusions: true,
+            armor_uses_potency: false,
+            melee_slow_uses_potency: ITEM_ORB_OF_FROST.potent("slow_melee"),
+            ranged_slow_uses_potency: ITEM_ORB_OF_FROST.potent("slow_ranged"),
+            restoration_uses_potency: ITEM_ORB_OF_FROST.potent("heal_reduction"),
         }),
         ..from(&ITEM_ORB_OF_FROST)
     },

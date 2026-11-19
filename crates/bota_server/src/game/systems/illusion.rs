@@ -3,13 +3,25 @@
 
 use bota_core::{
     GoldRange, ILLUSION_DEALT_BP, ILLUSION_MELEE_TAKEN_BP, ILLUSION_RANGED_TAKEN_BP,
-    ILLUSION_RUNE_COUNT, ILLUSION_RUNE_TICKS, ModifierKind, effect_def, point_ahead,
+    ILLUSION_RUNE_COUNT, ILLUSION_RUNE_TICKS, ItemPotency, ModifierKind, effect_def, point_ahead,
 };
 use bota_proto::{Angle, Fixed, Team};
 
 use crate::game::{Bounty, Entity, Illusion, Modifier, PendingCast, UnitOrder, World, wire_id};
 
 impl World {
+    /// Item potency captured at the attack point.
+    pub(super) fn item_potency(&self, unit: Entity) -> ItemPotency {
+        if let Some(illusion) = self.illusion.get(unit) {
+            return illusion.item_potency;
+        }
+        if self.wears_illusion(unit) {
+            ItemPotency::ILLUSION
+        } else {
+            ItemPotency::FULL
+        }
+    }
+
     /// An Illusion Rune: two illusions of the hero stand beside it, dealing a
     /// share of its damage and taking more of what is dealt to them, for
     /// 75 s; the hero is stopped and loses its basic-dispellable debuffs, and the
@@ -109,6 +121,7 @@ impl World {
                     made: self.tick,
                     dealt_bp: ILLUSION_DEALT_BP,
                     taken_bp,
+                    item_potency: ItemPotency::ILLUSION_RUNE,
                 },
             );
             let price = 2 * i32::from(level.0);

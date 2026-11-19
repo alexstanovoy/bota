@@ -215,6 +215,7 @@ fn an_illusion_feeds_no_feast() {
             made: world.tick,
             dealt_bp: bota_core::rules::NOMINAL_BP,
             taken_bp: bota_core::rules::NOMINAL_BP,
+            item_potency: bota_core::ItemPotency::ILLUSION,
         },
     );
     world.put_modifier(

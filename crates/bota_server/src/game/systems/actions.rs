@@ -8,8 +8,9 @@
 //! is aimed at is in reach.
 
 use bota_core::{
-    BEATS_PER_TICK, Behavior, ModifierKind, Striker, Talent, ability_def, attack_gain, beats,
-    carried_pierces, cast_point_ms, cross, facing_gap, facing_towards, item_def, kind_def, rules,
+    BEATS_PER_TICK, Behavior, ItemPotency, ModifierKind, Striker, Talent, ability_def, attack_gain,
+    beats, carried_pierces, cast_point_ms, cross, facing_gap, facing_towards, item_def, kind_def,
+    rules,
 };
 use bota_proto::UnitKind;
 use bota_proto::{
@@ -935,6 +936,7 @@ impl World {
                 0
             };
         let class_pct = self.class_pct_of(attacker, on);
+        let potency = self.item_potency(attacker);
         let boost = self.boost_of(attacker, on, stats);
         let mut riders = Riders::NONE;
         // A critical strike landed as magic deals its share of the swing on top, amplified as
@@ -986,12 +988,13 @@ impl World {
             // A swing that lets loose chain lightning goes through evasion ("Lightning proc
             // pierces evasion").
             accurate: boost.accurate || boost.chain.is_some(),
-            pierced: self.roll_pierces(attacker, on, stats, class_pct),
+            pierced: self.roll_pierces(attacker, on, stats, class_pct, potency),
             physical_amp_bp: stats.damage_amp_bp(DamageKind::Physical),
             // The magic riding with a swing (a pierce's) takes spell amplification as a spell's.
-            magical_amp_bp: stats.attack_rider_amp_bp(DamageKind::Magical),
+            // Pierce stocks a separate base value for illusions.
+            magical_amp_bp: stats.spell_damage_amp_bp(DamageKind::Magical),
             effect: self.attack_effect(attacker),
-            laid: self.laid_by(attacker, on),
+            laid: self.laid_by(attacker, on, potency),
             riders,
         };
         match stats.projectile_speed {
@@ -1036,22 +1039,18 @@ impl World {
 
     /// The items whose passive an attacker's swing lays on what it strikes:
     /// every item of the inventory proper, none muted, that lays something,
-    /// each once however many are carried. An illusion's swing lays nothing
-    /// (Liquipedia, *Orb of Blight*, *Orb of Venom*, *Orb of Frost*: "This
-    /// ability is not bestowed by Illusions").
+    /// each once however many are carried. An illusion applies effects that allow it.
     ///
     /// An item with a cooldown lays its passive only while no stack of it
     /// waits, and the swing that does starts the wait of the stack it came
     /// from (Dota 7.38: "Poison Attack now has a 9s cooldown"; decided "upon
     /// reaching the attack point, not upon landing").
-    fn laid_by(&mut self, attacker: Entity, target: Entity) -> Laid {
-        let mut laid = Laid::NONE;
-        if self.wears_illusion(attacker) {
-            return laid;
-        }
+    fn laid_by(&mut self, attacker: Entity, target: Entity, potency: ItemPotency) -> Laid {
         let Some(bag) = self.inventory.get(attacker) else {
-            return laid;
+            return Laid::NONE;
         };
+        let illusion = self.wears_illusion(attacker);
+        let mut laid = Laid::new(potency);
         let carried: Vec<(usize, ItemId, u32)> = bag
             .slots
             .iter()
@@ -1071,7 +1070,9 @@ impl World {
             let Some(attack) = def.on_attack else {
                 continue;
             };
-            if def.cooldown > 0 && !attack.affects.takes(foe, target_kind) {
+            if (illusion && !attack.by_illusions)
+                || (def.cooldown > 0 && !attack.affects.takes(foe, target_kind))
+            {
                 continue;
             }
             let waiting = carried
@@ -1236,6 +1237,7 @@ impl World {
         on: Entity,
         stats: &Stats,
         class_pct: i32,
+        potency: ItemPotency,
     ) -> Vec<(i32, ItemId)> {
         let structure = self
             .kind
@@ -1247,15 +1249,27 @@ impl World {
         }
         let carried = self.carried_slots(attacker);
         let ranged = stats.projectile_speed.is_some();
+        let illusion = self.wears_illusion(attacker);
         let mut landed = Vec::new();
         for (at, pierce) in carried_pierces(carried, ranged) {
+            let damage = if illusion {
+                let Some(damage) = pierce.illusion_damage else {
+                    continue;
+                };
+                damage
+            } else {
+                pierce.damage
+            };
+            let chance = potency
+                .for_value(pierce.chance_uses_potency)
+                .odds(pierce.chance);
             let rng = &self.rng;
             let rolls = entity_slot(&mut self.pierce, attacker, Rolls::default);
             let source = rolls.at(at, || {
                 PseudoRandom::new(rng.for_unit(Purpose::Pierce, wire_id(attacker), at as u8))
             });
-            if source.roll(pierce.chance) {
-                landed.push((pierce.damage * class_pct / 100, pierce.item));
+            if source.roll(chance) {
+                landed.push((damage * class_pct / 100, pierce.item));
             }
         }
         landed

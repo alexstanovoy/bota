@@ -314,6 +314,8 @@ pub enum ModifierKind {
         /// The tick it was laid, kept when another blow freshens it: its
         /// beats fall on every whole second since.
         since: u32,
+        /// Attack potency that governs its marked values until it expires.
+        potency: crate::ItemPotency,
     },
     /// Ethereal form (Dota's Ghost Form, `modifier_ghost_state`): attacked by nothing and
     /// attacking nothing, no physical damage taken, and magic resistance letting through `pct`

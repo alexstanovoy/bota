@@ -49,6 +49,7 @@ pub(super) fn stand_in_illusion(world: &mut World, hero: Entity, at: Vec2) -> En
             made: world.tick,
             dealt_bp: rules::NOMINAL_BP,
             taken_bp: rules::NOMINAL_BP,
+            item_potency: bota_core::ItemPotency::ILLUSION,
         },
     );
     world.put_modifier(

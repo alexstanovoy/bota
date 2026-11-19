@@ -12,7 +12,7 @@ type Change = (&'static str, fn(&mut ItemDef));
 #[test]
 fn every_rule_of_an_item_moves_its_digest() {
     let bottle = *item_def(ItemId::BOTTLE).expect("the Bottle is in the catalogue");
-    let changes: [Change; 34] = [
+    let changes: [Change; 35] = [
         ("wait key", |d| d.wait_key = Some(ItemId::REFRESHER_SHARD)),
         ("inventory cooldown", |d| d.cooldown_in_inventory = true),
         ("public loot", |d| d.public_loot = true),
@@ -56,6 +56,7 @@ fn every_rule_of_an_item_moves_its_digest() {
         ("aim", |d| d.aim = Some(Aim::Point)),
         ("behavior", |d| d.behavior = d.behavior.and(Behavior::AOE)),
         ("values", |d| d.values = &[]),
+        ("pierce potency", |d| d.pierce_uses_potency = true),
         ("ally_target", |d| d.ally_target = !d.ally_target),
         ("ally", |d| d.ally = Some(AllyUse::Effect { percent: 50 })),
         ("effect kind", |d| d.effect = UseSpec::None),
@@ -94,7 +95,7 @@ fn adding_roshan_items_keeps_the_preexisting_catalogue_prefix_identical() {
         // Dota 7.42's numbers of items in it (the Wraith Band's attack speed, the Null
         // Talisman's mana, the Phase Boots' speeds and damage, the Blood Grenade's restock, ...).
         // Poison Attack's hero-only target rule also belongs to this prefix.
-        digest: 0x8477_890c_171c_6c6a,
+        digest: 0xc27c_0e10_0438_4097,
     };
     assert_eq!(
         crate::Catalogue::first(previous.items)

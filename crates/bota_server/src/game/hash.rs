@@ -127,6 +127,23 @@ impl StateHash for Order {
     }
 }
 
+impl StateHash for bota_core::ItemPotency {
+    fn state_hash(&self, fnv: &mut Fnv) {
+        self.basis_points().state_hash(fnv);
+    }
+}
+
+#[cfg(test)]
+impl crate::engine::Specimen for bota_core::ItemPotency {
+    fn low() -> Self {
+        Self::FULL
+    }
+
+    fn high() -> Self {
+        Self::ILLUSION
+    }
+}
+
 impl StateHash for ModifierKind {
     fn state_hash(&self, fnv: &mut Fnv) {
         match *self {
@@ -167,8 +184,16 @@ impl StateHash for ModifierKind {
             }
             ModifierKind::MagicBroken { pct } => hash_tagged(fnv, 16, &[pct]),
             ModifierKind::Ethereal { pct } => hash_tagged(fnv, 51, &[pct]),
-            ModifierKind::Laid { item, since } => {
-                hash_tagged(fnv, 50, &[i32::from(item.0), since as i32])
+            ModifierKind::Laid {
+                item,
+                since,
+                potency,
+            } => {
+                hash_tagged(fnv, 50, &[i32::from(item.0), since as i32]);
+                if potency != bota_core::ItemPotency::FULL {
+                    fnv.u8(0xDA);
+                    potency.state_hash(fnv);
+                }
             }
             ModifierKind::Burning {
                 amount,

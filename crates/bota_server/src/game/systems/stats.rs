@@ -195,7 +195,7 @@ pub fn derive_stats(cx: StatsCx<'_>) {
             night,
         };
         add_modifiers(&mut now, &mut sums, working(), wearer, modifiers);
-        sums.pace.change(-sums.laid_slow_pct);
+        sums.pace.change_bp(-sums.laid_slow_bp);
         // Ethereal form does nothing while its wearer is spell immune (Dota 7.39e: "Ghost Form is
         // no longer active while the wearer is Debuff Immune"); its cut stacks multiplicatively
         // with every other.
@@ -207,7 +207,9 @@ pub fn derive_stats(cx: StatsCx<'_>) {
         let restoration_amp_bp = carried
             .as_ref()
             .map_or(0, |carried| carried.restoration_amp_bp);
-        let restoration_keep_bp = sums.restoration_keep_bp * (100 - sums.restoration_cut_pct) / 100;
+        let restoration_keep_bp = sums.restoration_keep_bp
+            * (rules::NOMINAL_BP - sums.restoration_cut_bp)
+            / rules::NOMINAL_BP;
         let before_redirect =
             (restoration_keep_bp + restoration_amp_bp).clamp(0, 2 * rules::NOMINAL_BP);
         now.restoration_bp = (restoration_amp_bp
@@ -320,9 +322,12 @@ impl Pace {
     /// One more percent change: a haste added, a slow taken off unless the
     /// movement is hasted.
     fn change(&mut self, pct: i32) {
-        if pct >= 0 || !self.hasted {
-            let basis_points = pct * 100;
-            self.pct_bp += if pct < 0 {
+        self.change_bp(pct * 100);
+    }
+
+    fn change_bp(&mut self, basis_points: i32) {
+        if basis_points >= 0 || !self.hasted {
+            self.pct_bp += if basis_points < 0 {
                 basis_points * self.slow_keep_bp / rules::NOMINAL_BP
             } else {
                 basis_points
@@ -427,15 +432,14 @@ struct Sums {
     damage_pct: i32,
     /// Flat bonus attack damage: the items', the souls', the buffs'.
     bonus_damage: i32,
-    /// Percent of Health Restoration taken off by the strongest of what
+    /// Basis points of Health Restoration taken off by the strongest of what
     /// attacks laid: Dota's Frost-based items do not stack, "the highest
     /// values take priority" (7.39).
-    restoration_cut_pct: i32,
+    restoration_cut_bp: i32,
     restoration_keep_bp: i32,
     restoration_redirect_pct: i32,
-    /// Percent of the pace taken off by the strongest of what attacks laid,
-    /// on the same rule; it adds to every other slow.
-    laid_slow_pct: i32,
+    /// Basis points of pace lost to the strongest of what attacks laid, added to other slows.
+    laid_slow_bp: i32,
     /// The magic resistance cut of the strongest ethereal form worn: several do not stack
     /// (Liquipedia, Ghost Scepter: "the one with higher value takes priority"). Absent for one
     /// that wears none.
@@ -449,10 +453,10 @@ impl Sums {
             absolute_pace: None,
             damage_pct: 0,
             bonus_damage: 0,
-            restoration_cut_pct: 0,
+            restoration_cut_bp: 0,
             restoration_keep_bp: rules::NOMINAL_BP,
             restoration_redirect_pct: 0,
-            laid_slow_pct: 0,
+            laid_slow_bp: 0,
             ethereal_pct: None,
         }
     }
@@ -602,18 +606,14 @@ fn add_modifiers<'a>(
                     let_more_magic_through(now, magic_pct);
                 }
             }
-            ModifierKind::Laid { item, .. } => {
+            ModifierKind::Laid { item, potency, .. } => {
                 if let Some(laid) = item_def(item).and_then(|def| def.on_attack) {
-                    now.armor -= laid.armor;
-                    let slow = if wearer.ranged {
-                        laid.ranged_slow_pct
-                    } else {
-                        laid.slow_pct
-                    };
-                    sums.laid_slow_pct = sums.laid_slow_pct.max(slow.clamp(0, 100));
-                    sums.restoration_cut_pct = sums
-                        .restoration_cut_pct
-                        .max(laid.restoration_cut_pct.clamp(0, 100));
+                    now.armor -= laid.armor_at(potency);
+                    let slow = laid.slow_bp_at(wearer.ranged, potency);
+                    sums.laid_slow_bp = sums.laid_slow_bp.max(slow.clamp(0, rules::NOMINAL_BP));
+                    let cut = laid.restoration_cut_bp_at(potency);
+                    sums.restoration_cut_bp =
+                        sums.restoration_cut_bp.max(cut.clamp(0, rules::NOMINAL_BP));
                 }
             }
             ModifierKind::MagicBroken { pct } => let_more_magic_through(now, pct),

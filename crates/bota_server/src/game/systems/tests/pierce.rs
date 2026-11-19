@@ -108,6 +108,46 @@ fn a_monkey_king_bar_pierces_its_share_in_dotas_runs_and_lands_its_bonus() {
     }
 }
 
+/// Dota 7.42: "Pierce now works with illusions", "Pierce now has a separate bonus magic damage
+/// value of 30 for illusions" and "Pierce chance is now modified by Item Potency".
+#[test]
+fn a_rune_illusion_pierces_at_forty_percent_of_the_bars_chance() {
+    let mut world = World::new();
+    let hero = hero_holding(&mut world, HeroId::PUDGE, &[ItemId::MONKEY_KING_BAR]);
+    world.make_rune_illusions(hero);
+    let illusion = world
+        .entities
+        .iter()
+        .find(|&entity| {
+            world
+                .illusion
+                .get(entity)
+                .is_some_and(|made| made.of == hero)
+        })
+        .expect("the rune makes illusions");
+    let at = world.transform.get(illusion).expect("standing").pos;
+    let anvil = world.spawn_unit(&ANVIL, Team::Dire, at + Vec2::from_ints(110, 0));
+    swing_at(&mut world, illusion, rules::MAX_ATTACK_SPEED);
+    world.settle();
+    world.set_order(
+        illusion,
+        UnitOrder::Attack {
+            target: anvil,
+            last_seen: world.pos(anvil).expect("standing"),
+        },
+    );
+    let seen = swings(&mut world, illusion, anvil, 200);
+    assert_dota_runs(
+        &seen,
+        Odds::percent(32),
+        |told| !told.bonuses.is_empty(),
+        "the illusion",
+    );
+    for bonus in seen.into_iter().flat_map(|told| told.bonuses) {
+        assert_eq!(bonus, 30, "the illusion's separate damage value");
+    }
+}
+
 #[test]
 fn a_pierced_swing_is_never_evaded() {
     let mut world = World::new();

@@ -785,6 +785,7 @@ pub(crate) const fn item_digest(def: &ItemDef) -> u64 {
         aim,
         cast_range,
         behavior,
+        pierce_uses_potency,
         values,
         spends,
         point,
@@ -867,20 +868,42 @@ pub(crate) const fn item_digest(def: &ItemDef) -> u64 {
         None => fnv,
         Some(key) => fnv.u64(0xA1).u64(key.0 as u64),
     };
+    let fnv = if pierce_uses_potency {
+        fnv.u64(0xD0)
+    } else {
+        fnv
+    };
     let fnv = match on_attack {
         None => fnv,
-        Some(laid) => fnv
-            .u64(0xB1)
-            .u64(laid.effect.0 as u64)
-            .u64(laid.ticks as u64)
-            .fixed(laid.armor)
-            .int(laid.dps as i64)
-            .u64(laid.beat_ticks as u64)
-            .int(laid.slow_pct as i64)
-            .int(laid.ranged_slow_pct as i64)
-            .int(laid.restoration_cut_pct as i64)
-            .u64(laid.affects as u64)
-            .flag(laid.pierces_immunity),
+        Some(laid) => {
+            let fnv = fnv
+                .u64(0xB1)
+                .u64(laid.effect.0 as u64)
+                .u64(laid.ticks as u64)
+                .fixed(laid.armor)
+                .int(laid.dps as i64)
+                .u64(laid.beat_ticks as u64)
+                .int(laid.slow_pct as i64)
+                .int(laid.ranged_slow_pct as i64)
+                .int(laid.restoration_cut_pct as i64)
+                .u64(laid.affects as u64)
+                .flag(laid.pierces_immunity);
+            if laid.by_illusions
+                || laid.armor_uses_potency
+                || laid.melee_slow_uses_potency
+                || laid.ranged_slow_uses_potency
+                || laid.restoration_uses_potency
+            {
+                fnv.u64(0xD1)
+                    .flag(laid.by_illusions)
+                    .flag(laid.armor_uses_potency)
+                    .flag(laid.melee_slow_uses_potency)
+                    .flag(laid.ranged_slow_uses_potency)
+                    .flag(laid.restoration_uses_potency)
+            } else {
+                fnv
+            }
+        }
     };
     let fnv = match magic_block {
         None => fnv,

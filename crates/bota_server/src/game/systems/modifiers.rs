@@ -434,7 +434,7 @@ impl World {
                             );
                         }
                     }
-                    ModifierKind::Laid { item, since } => {
+                    ModifierKind::Laid { item, since, .. } => {
                         self.laid_beat(entity, modifier, item, since)
                     }
                     ModifierKind::BloodGrenade { since } => {

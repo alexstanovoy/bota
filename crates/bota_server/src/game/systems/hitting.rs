@@ -1,8 +1,8 @@
 //! Taking blows off the health they landed on.
 
 use bota_core::{
-    ModifierKind, Odds, amplify, bite, bite_share, cooldown_after, item_def, kind_def, mitigate,
-    rules,
+    ItemPotency, ModifierKind, Odds, amplify, bite, bite_share, cooldown_after, item_def, kind_def,
+    mitigate, rules,
 };
 use bota_proto::{DamageKind, Fixed, Inflictor, Team, UnitKind, Vec2};
 
@@ -393,15 +393,23 @@ fn lay(blow: Hit, struck: Struck<'_>, on_it: Option<&mut Modifiers>, tick: u32) 
             continue;
         }
         let worn = on_it.active().find_map(|held| match held.kind {
-            ModifierKind::Laid { item: had, since } if had == item => Some(since),
+            ModifierKind::Laid {
+                item: had,
+                since,
+                potency,
+            } if had == item => Some((since, potency)),
             _ => None,
         });
-        if worn.is_none() {
-            fresh_cut += laid.armor;
+        let potency = blow.laid.potency;
+        if !accepts_item_application(worn.map(|(_, potency)| potency), potency) {
+            continue;
         }
+        let previous_cut = worn.map_or(Fixed::ZERO, |(_, potency)| laid.armor_at(potency));
+        fresh_cut += laid.armor_at(potency) - previous_cut;
         let kind = ModifierKind::Laid {
             item,
-            since: worn.unwrap_or(tick),
+            since: worn.map_or(tick, |(since, _)| since),
+            potency,
         };
         on_it.put(Modifier::new(
             kind,
@@ -414,6 +422,12 @@ fn lay(blow: Hit, struck: Struck<'_>, on_it: Option<&mut Modifiers>, tick: u32) 
         ));
     }
     fresh_cut
+}
+
+/// The 7.42 note gives priority to the highest potency. Until the item-specific
+/// replacement is verified, a weaker application is discarded and a tie refreshes.
+fn accepts_item_application(worn: Option<ItemPotency>, incoming: ItemPotency) -> bool {
+    worn.is_none_or(|potency| incoming >= potency)
 }
 
 /// What a blow lands on, for what an attack lays.

@@ -239,10 +239,10 @@ fn a_basic_dispel_takes_corruption_off() {
     assert_eq!(laid_on(&world, mark, ItemId::BLIGHT_STONE).0, 0);
 }
 
-/// An illusion of a hero carrying an Orb of Blight lays nothing with its attacks (Liquipedia,
-/// *Orb of Blight*: "This ability is not bestowed by Illusions").
+/// Dota 7.42: "Lesser Corruption now works with illusions" and "Illusions created by Illusion
+/// Rune now have 40% Item Potency".
 #[test]
-fn an_illusion_lays_no_corruption() {
+fn a_rune_illusion_lays_corruption_at_forty_percent() {
     let (mut world, hero) = out_of_fountain_after_buying(&[ItemId::BLIGHT_STONE]);
     world.make_rune_illusions(hero);
     let illusion = world
@@ -253,6 +253,7 @@ fn an_illusion_lays_no_corruption() {
     let at = world.transform.get(illusion).expect("standing").pos;
     let mark = foe_hero(&mut world, at + Vec2::from_ints(120, 0));
     world.step();
+    let bare = armor(&world, mark);
     world.advance_trusted(&[crate::game::Command {
         slot: bota_proto::SlotId(0),
         unit: Some(wire_id(illusion)),
@@ -269,11 +270,250 @@ fn an_illusion_lays_no_corruption() {
                 if source == wire_id(illusion) && target == wire_id(mark))
         });
         if struck {
-            assert_eq!(laid_on(&world, mark, ItemId::BLIGHT_STONE).0, 0);
+            assert_eq!(laid_on(&world, mark, ItemId::BLIGHT_STONE).0, 1);
+            world.step();
+            assert_eq!(armor(&world, mark), bare - Fixed::from_ratio(4, 5));
             return;
         }
     }
     panic!("the illusion never struck")
+}
+
+/// Dota 7.42: "When debuffs are applied from multiple sources, whichever source had the
+/// highest Item Potency will be used" and "Illusions have a default Item Potency of 20%".
+#[test]
+fn corruption_keeps_the_highest_potency_in_either_attack_order() {
+    for illusion_first in [false, true] {
+        let (mut world, hero) = out_of_fountain_after_buying(&[ItemId::BLIGHT_STONE]);
+        let at = world.transform.get(hero).expect("standing").pos;
+        world.set_order(hero, crate::game::UnitOrder::Stand);
+        let illusion =
+            super::illusions::stand_in_illusion(&mut world, hero, at + Vec2::from_ints(0, 140));
+        let mark = foe_hero(&mut world, at + Vec2::from_ints(120, 70));
+        world.set_order(mark, crate::game::UnitOrder::Stand);
+        world.step();
+        let bare = armor(&world, mark);
+        let hitters = if illusion_first {
+            [illusion, hero]
+        } else {
+            [hero, illusion]
+        };
+        for (index, by) in hitters.into_iter().enumerate() {
+            land_attack(&mut world, by, mark);
+            world.step();
+            let reduction = if illusion_first && index == 0 {
+                Fixed::from_ratio(2, 5)
+            } else {
+                corruption().armor
+            };
+            assert_eq!(armor(&world, mark), bare - reduction);
+        }
+        assert_eq!(laid_on(&world, mark, ItemId::BLIGHT_STONE).0, 1);
+    }
+}
+
+/// Dota 7.42: "whichever source had the highest Item Potency will be used."
+/// The provisional rule discards the weaker application entirely.
+#[test]
+fn a_weaker_corruption_assumed_discarded_keeps_armor_expiry_and_source() {
+    let (mut world, hero, other, target) = corruption_sources();
+    let bare = armor(&world, target);
+    land_corruption(&mut world, hero, target, bota_core::ItemPotency::FULL);
+    let before = corruption_application(&world, target);
+    world.step();
+    land_corruption(&mut world, other, target, bota_core::ItemPotency::ILLUSION);
+    assert_eq!(armor(&world, target), bare - corruption().armor);
+    assert_eq!(corruption_application(&world, target), before);
+    assert_eq!(before.1, Some(hero));
+}
+
+/// Dota 7.42: "whichever source had the highest Item Potency will be used."
+#[test]
+fn a_stronger_corruption_assumed_to_replace_gets_a_full_duration_and_new_source() {
+    let (mut world, hero, other, target) = corruption_sources();
+    let bare = armor(&world, target);
+    land_corruption(&mut world, other, target, bota_core::ItemPotency::ILLUSION);
+    let weaker = corruption_application(&world, target);
+    world.step();
+    land_corruption(&mut world, hero, target, bota_core::ItemPotency::FULL);
+    assert_eq!(armor(&world, target), bare - corruption().armor);
+    let replacement = corruption_application(&world, target);
+    assert_eq!(replacement, (world.tick + corruption().ticks, Some(hero)));
+    assert!(replacement.0 > weaker.0);
+}
+
+/// Dota 7.42: "whichever source had the highest Item Potency will be used."
+/// The provisional rule allows the later application to win a tie.
+#[test]
+fn equal_corruption_assumed_to_replace_gets_a_full_duration_and_new_source() {
+    let (mut world, hero, other, target) = corruption_sources();
+    let bare = armor(&world, target);
+    land_corruption(&mut world, hero, target, bota_core::ItemPotency::FULL);
+    let before = corruption_application(&world, target);
+    world.step();
+    land_corruption(&mut world, other, target, bota_core::ItemPotency::FULL);
+    assert_eq!(armor(&world, target), bare - corruption().armor);
+    let replacement = corruption_application(&world, target);
+    assert_eq!(replacement, (world.tick + corruption().ticks, Some(other)));
+    assert!(replacement.0 > before.0);
+}
+
+fn corruption_sources() -> (World, Entity, Entity, Entity) {
+    let (mut world, hero) = out_of_fountain_after_buying(&[]);
+    let at = world.transform.get(hero).expect("standing").pos;
+    let other = world.spawn_hero(
+        Team::Radiant,
+        at + Vec2::from_ints(0, 140),
+        bota_proto::SlotId(2),
+        bota_proto::HeroId::SHADOW_FIEND,
+    );
+    let target = foe_hero(&mut world, at + Vec2::from_ints(120, 70));
+    for unit in [hero, other, target] {
+        world.set_order(unit, crate::game::UnitOrder::Stand);
+    }
+    world.step();
+    (world, hero, other, target)
+}
+
+fn land_corruption(
+    world: &mut World,
+    source: Entity,
+    target: Entity,
+    potency: bota_core::ItemPotency,
+) {
+    let mut attack = swing_laying(source, target, ItemId::BLIGHT_STONE);
+    attack.laid.potency = potency;
+    world.hits.push_back(attack);
+    world.step();
+}
+
+fn corruption_application(world: &World, target: Entity) -> (u32, Option<Entity>) {
+    let held = world
+        .modifiers
+        .get(target)
+        .expect("modifiers")
+        .active()
+        .find(|held| {
+            matches!(
+                held.kind,
+                ModifierKind::Laid {
+                    item: ItemId::BLIGHT_STONE,
+                    ..
+                }
+            )
+        })
+        .expect("Corruption");
+    (world.tick + held.ticks_left.expect("timed"), held.source)
+}
+
+#[test]
+fn a_queued_attacks_potency_changes_the_world_hash() {
+    let (mut world, hero, _, target) = corruption_sources();
+    let mut hit = swing_laying(hero, target, ItemId::BLIGHT_STONE);
+    hit.laid.potency = bota_core::ItemPotency::ILLUSION;
+    world.hits.push_back(hit);
+    let before = world.hash();
+    world.hits.back_mut().expect("queued strike").laid.potency =
+        bota_core::ItemPotency::ILLUSION_RUNE;
+    assert_ne!(world.hash(), before);
+}
+
+#[test]
+fn a_debuffs_attack_potency_changes_the_world_hash() {
+    let (mut world, hero, _, target) = corruption_sources();
+    land_corruption(&mut world, hero, target, bota_core::ItemPotency::ILLUSION);
+    let before = world.hash();
+    let held = world.modifiers.get_mut(target).expect("modifiers");
+    let potency = held
+        .0
+        .iter_mut()
+        .find_map(|held| match &mut held.kind {
+            ModifierKind::Laid {
+                item: ItemId::BLIGHT_STONE,
+                potency,
+                ..
+            } => Some(potency),
+            _ => None,
+        })
+        .expect("Corruption");
+    *potency = bota_core::ItemPotency::ILLUSION_RUNE;
+    assert_ne!(world.hash(), before);
+}
+
+#[test]
+fn an_illusions_attack_potency_changes_the_world_hash() {
+    let (mut world, hero, _, _) = corruption_sources();
+    let at = world.transform.get(hero).expect("standing").pos;
+    let illusion =
+        super::illusions::stand_in_illusion(&mut world, hero, at + Vec2::from_ints(0, 140));
+    let before = world.hash();
+    world
+        .illusion
+        .get_mut(illusion)
+        .expect("illusion")
+        .item_potency = bota_core::ItemPotency::FULL;
+    assert_ne!(world.hash(), before);
+}
+
+fn land_attack(world: &mut World, by: Entity, mark: Entity) {
+    world.advance_trusted(&[crate::game::Command {
+        slot: bota_proto::SlotId(0),
+        unit: Some(wire_id(by)),
+        order: bota_proto::Order::Attack {
+            target: bota_proto::Target::Unit(wire_id(mark)),
+        },
+        queue: false,
+        seq: 0,
+    }]);
+    for _ in 0..300 {
+        if world.step().iter().any(|event| {
+            matches!(event.kind(), EventKind::Damaged { source: Some(source), target, .. }
+                if source == wire_id(by) && target == wire_id(mark))
+        }) {
+            world.set_order(by, crate::game::UnitOrder::Stand);
+            return;
+        }
+    }
+    panic!("the attack never struck");
+}
+
+/// Dota 7.42: "Frost now works with illusions", and its slow and restoration cut use potency.
+#[test]
+fn an_illusion_applies_fractional_frost() {
+    frost_on_target(false);
+}
+
+/// Dota 7.42: "Frost now pierces debuff immunity", including an illusion's attack.
+#[test]
+fn an_illusion_applies_fractional_frost_through_debuff_immunity() {
+    frost_on_target(true);
+}
+
+fn frost_on_target(immune: bool) {
+    let (mut world, hero) = out_of_fountain_after_buying(&[ItemId::ORB_OF_FROST]);
+    let at = world.transform.get(hero).expect("standing").pos;
+    let illusion =
+        super::illusions::stand_in_illusion(&mut world, hero, at + Vec2::from_ints(0, 140));
+    let mark = foe_hero(&mut world, at + Vec2::from_ints(150, 140));
+    let original = world.def.get(mark).expect("has a body").0;
+    world.def.insert(
+        mark,
+        crate::game::Def(Box::leak(Box::new(bota_core::UnitDef {
+            spell_immune: immune,
+            ..*original
+        }))),
+    );
+    world.set_order(mark, crate::game::UnitOrder::Stand);
+    world.step();
+    let bare = world.stats.get(mark).expect("derived").move_speed;
+    assert_eq!(world.stats.get(mark).expect("derived").spell_immune, immune);
+    land_attack(&mut world, illusion, mark);
+    world.step();
+    let frosted = world.stats.get(mark).expect("derived");
+    assert_eq!(laid_on(&world, mark, ItemId::ORB_OF_FROST).0, 1);
+    assert_eq!(frosted.restoration_bp, 9_700);
+    let slowed = bare * Fixed::from_ratio(974, 1_000);
+    assert!((frosted.move_speed - slowed).raw.abs() <= Fixed::from_ratio(1, 100).raw);
 }
 
 /// The Orb of Venom's numbers, as the catalogue holds them from `item_orb_of_venom`.
@@ -358,7 +598,9 @@ fn an_orb_of_venom_poisons_once_each_cooldown() {
     let laid_at = |world: &World| {
         world.modifiers.get(mark).and_then(|on_it| {
             on_it.active().find_map(|held| match held.kind {
-                ModifierKind::Laid { item, since } if item == ItemId::ORB_OF_VENOM => Some(since),
+                ModifierKind::Laid { item, since, .. } if item == ItemId::ORB_OF_VENOM => {
+                    Some(since)
+                }
                 _ => None,
             })
         })

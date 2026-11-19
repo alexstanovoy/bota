@@ -31,6 +31,7 @@ mod neutral;
 mod neutral_crafting;
 mod neutral_overrides;
 mod overrides;
+mod potency;
 mod registry;
 mod units;
 mod wave_rules;
@@ -237,10 +238,13 @@ fn run() -> Result<(), String> {
         &source,
         &install::read_neutral_items(args.dota.as_deref())?,
     )?)?;
+    let potency = rustfmt(&potency::table(args.dota.as_deref())?)?;
+    let potency_path = repo().join("crates/bota_core/src/potency_data.rs");
     for (path, made) in [
         (table_path(), table),
         (heroes_path(), heroes),
         (wave_path, waves),
+        (potency_path, potency),
         (
             repo().join("crates/bota_core/src/neutral_item_data.rs"),
             neutral,
@@ -320,6 +324,7 @@ mod tests {
             "crates/bota_core/src/creep_data.rs",
             "crates/bota_core/src/roshan_data.rs",
             "crates/bota_core/src/unit_data.rs",
+            "crates/bota_core/src/potency_data.rs",
         ] {
             let text = std::fs::read_to_string(crate::repo().join(file)).expect("a table");
             let named = text
@@ -440,6 +445,15 @@ mod tests {
         assert!(
             crate::emit::same_items(&committed, &table),
             "the committed table is stale: run import_items"
+        );
+        let potency = crate::potency::table(crate::pinned_install().as_deref())
+            .expect("installed illusion potency");
+        let committed =
+            std::fs::read_to_string(crate::repo().join("crates/bota_core/src/potency_data.rs"))
+                .expect("committed potency data");
+        assert_eq!(
+            committed,
+            crate::rustfmt(&potency).expect("formatted potency data")
         );
     }
 

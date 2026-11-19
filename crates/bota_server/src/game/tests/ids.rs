@@ -139,6 +139,7 @@ fn every_modifier() -> Vec<ModifierKind> {
             .map(|def| ModifierKind::Laid {
                 item: def.id,
                 since: 0,
+                potency: bota_core::ItemPotency::FULL,
             }),
     );
     for item in bota_core::ITEMS.iter().filter(|item| !item.retired) {
