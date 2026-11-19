@@ -509,11 +509,12 @@ pub const HERO_HP_REGEN: Fixed = Fixed::from_ratio(1, 4 * TICKS_PER_SECOND as i3
 pub const HERO_MANA_REGEN: Fixed = Fixed::from_ratio(1, 4 * TICKS_PER_SECOND as i32);
 /// Highest hero level.
 pub const HERO_MAX_LEVEL: u8 = 30;
-/// Total experience required to sit at each level, indexed by `level - 1`.
+/// Total experience required at each level in 7.42, indexed by `level - 1`.
+/// Cumulative sums of the level increments in the installed game.
 pub const XP_THRESHOLDS: [i32; HERO_MAX_LEVEL as usize] = [
-    0, 240, 640, 1160, 1760, 2440, 3200, 4000, 4900, 5900, 7000, 8200, 9500, 10900, 12400, 14000,
-    15700, 17500, 19400, 21400, 23600, 26000, 28600, 31400, 34400, 38400, 43400, 49400, 56400,
-    63900,
+    0, 250, 650, 1200, 2000, 2850, 3775, 4825, 5975, 7200, 8500, 9875, 11325, 12850, 14450, 16125,
+    17875, 19700, 21600, 23600, 25800, 28200, 30800, 33600, 36600, 40600, 45600, 51600, 58600,
+    66600,
 ];
 /// Seconds a dead hero waits before respawning, indexed by `level - 1`.
 /// Past the last entry the wait is the last entry's (Dota 7.41f, Liquipedia

@@ -388,6 +388,41 @@ fn a_hero_neutral_creeps_brought_down_waits_at_least_twenty_six_seconds() {
     }
 }
 
+/// 7.42: "Total amount of experience needed to reach level 30 increased from 64400 to 66600".
+#[test]
+fn level_thirty_requires_66600_experience() {
+    let mut world = World::new();
+    seated_hero(
+        &mut world,
+        Vec2::from_ints(5000, 5000),
+        HeroId::SHADOW_FIEND,
+    );
+    let mut events = Vec::new();
+    world.grant_xp(0, 66_599, &mut events);
+    assert_eq!(world.seats[0].level, 29);
+    world.grant_xp(0, 1, &mut events);
+    assert_eq!(world.seats[0].level, 30);
+}
+
+/// 7.42: "Total amount of experience needed to reach level 30 increased from 64400 to 66600".
+#[test]
+fn all_level_thresholds_match_the_installed_experience_increments() {
+    let increments = [
+        0, 250, 400, 550, 800, 850, 925, 1050, 1150, 1225, 1300, 1375, 1450, 1525, 1600, 1675,
+        1750, 1825, 1900, 2000, 2200, 2400, 2600, 2800, 3000, 4000, 5000, 6000, 7000, 8000,
+    ];
+    let mut total = 0;
+    for (index, increment) in increments.into_iter().enumerate() {
+        total += increment;
+        assert_eq!(
+            rules::XP_THRESHOLDS[index],
+            total,
+            "hero level {}",
+            index + 1
+        );
+    }
+}
+
 #[test]
 fn a_heros_head_and_its_wait_are_priced_as_the_game_prices_them() {
     assert_eq!(hero_kill_xp(0, 0, 1), rules::HERO_KILL_XP_BASE);
@@ -404,9 +439,10 @@ fn a_heros_head_and_its_wait_are_priced_as_the_game_prices_them() {
 
 #[test]
 fn a_heads_experience_stops_growing_at_level_twenty_five() {
-    // Liquipedia, Experience: 100 + 0.13 × 34400 at level 25 and above.
-    assert_eq!(hero_kill_xp(34_400, 0, 25), 4572);
-    assert_eq!(hero_kill_xp(60_000, 0, 29), 4572);
+    // The 7.42 experience table puts level 25 at 36,600 XP. The existing level-25
+    // cap therefore pays 100 + 0.13 × 36,600 with or without extra experience.
+    assert_eq!(hero_kill_xp(36_600, 0, 25), 4858);
+    assert_eq!(hero_kill_xp(60_000, 0, 29), 4858);
 }
 
 #[test]
