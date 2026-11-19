@@ -603,13 +603,18 @@ fn a_match_without_cheats_refuses_the_hero_demos_cheats_and_control_of_other_her
     assert!(!cfg.cheats);
     let (mut local, opening) =
         LocalMatch::new(&cfg, &[OrderDelay::NONE, OrderDelay::NONE]).expect("a match");
-    let enemy = opening[1]
+    let enemy = opening[0]
         .iter()
         .find_map(|msg| match msg {
             ServerMsg::Snapshot { view } => view.player(SlotId(1)).and_then(|row| row.unit),
             _ => None,
         })
-        .expect("the other side's hero");
+        .expect("the other side's hero in Seat 0's opening snapshot");
+    assert_eq!(
+        local.handle_of(0, local.hero_of(1).expect("seat 1 hero")),
+        Some(enemy),
+        "handle must resolve to Seat 1's hero in Seat 0's wire namespace"
+    );
     let mut seq = 0;
     for cheat in PANEL_CHEATS {
         for (unit, why) in [
@@ -668,13 +673,18 @@ fn with_cheats_on_a_player_still_cannot_order_another_players_hero() {
     };
     let (mut local, opening) =
         LocalMatch::new(&cfg, &[OrderDelay::NONE, OrderDelay::NONE]).expect("a match");
-    let other = opening[1]
+    let other = opening[0]
         .iter()
         .find_map(|msg| match msg {
             ServerMsg::Snapshot { view } => view.player(SlotId(1)).and_then(|row| row.unit),
             _ => None,
         })
-        .expect("the other player's hero");
+        .expect("the other player's hero in Seat 0's opening snapshot");
+    assert_eq!(
+        local.handle_of(0, local.hero_of(1).expect("seat 1 hero")),
+        Some(other),
+        "handle must resolve to Seat 1's hero in Seat 0's wire namespace"
+    );
     for order in [
         Order::Move {
             target: Target::None,
