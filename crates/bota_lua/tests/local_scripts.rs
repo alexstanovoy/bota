@@ -107,6 +107,16 @@ fn run_pack(directory: &std::path::Path, runtime: Option<&std::path::Path>, team
 #[test]
 #[ignore = "requires BOTA_LUA_LOCAL_PACK; optional local source conformance"]
 fn local_pack_issues_a_body_order_through_the_host_before_the_first_minute() {
+    first_order_proof(false);
+}
+
+#[test]
+#[ignore = "requires BOTA_LUA_LOCAL_PACK; optional local source conformance"]
+fn local_pack_reads_its_controller_and_issues_orders_without_a_controller_api_failure() {
+    first_order_proof(true);
+}
+
+fn first_order_proof(require_controller: bool) {
     let directory =
         std::env::var_os("BOTA_LUA_LOCAL_PACK").expect("BOTA_LUA_LOCAL_PACK is required");
     let runtime = std::env::var_os("BOTA_LUA_RUNTIME_SCRIPTS").map(std::path::PathBuf::from);
@@ -142,15 +152,78 @@ fn local_pack_issues_a_body_order_through_the_host_before_the_first_minute() {
         .unwrap();
         lua.set_modules(modules).unwrap();
         lua.load_pack().unwrap();
-        let (mut local, mut sessions) = support::local(&[Team::Radiant, Team::Dire]);
+        let (mut local, mut sessions) = if require_controller {
+            support::local_with_cheats(&[Team::Radiant, Team::Dire], bota_core::MAP2_ID)
+        } else {
+            support::local(&[Team::Radiant, Team::Dire])
+        };
+        if require_controller {
+            let at = Vec2::from_ints(9216, 9216);
+            let setup = [
+                bota_proto::Cheat::Teleport { at },
+                bota_proto::Cheat::StartGame,
+                bota_proto::Cheat::CreateCreeps {
+                    enemy: true,
+                    at: at + Vec2::from_ints(224, 0),
+                },
+            ];
+            let outgoing: Vec<_> = setup
+                .into_iter()
+                .map(|cheat| {
+                    sessions[index]
+                        .issue(IssuedOrder::hero(Order::Cheat { cheat }))
+                        .unwrap()
+                })
+                .collect();
+            let mut commands = [Vec::new(), Vec::new()];
+            commands[index] = outgoing;
+            for (session, stream) in sessions
+                .iter_mut()
+                .zip(local.step(&[&commands[0], &commands[1]]).unwrap())
+            {
+                support::fold(session, stream);
+            }
+        }
         let mut first_error = None;
         let mut issued = false;
+        let mut saw_controller = !require_controller;
+        let mut gaps = Vec::new();
         // Pack objectives contain clock gates. Observe the real Solo Mid pregame
         // plus one bounded game minute; no pack source is changed.
         for _ in 0..bota_core::map_of(bota_core::MAP2_ID).pregame_ticks
             + 60 * bota_core::rules::TICKS_PER_SECOND
         {
             let turn = lua.think(&sessions[index]).expect("script host turn");
+            if require_controller {
+                gaps = turn
+                    .statistics
+                    .as_ref()
+                    .unwrap()
+                    .undefined_api_reads
+                    .names
+                    .clone();
+                for failure in &turn.failures {
+                    let message = failure.error.to_string();
+                    assert!(
+                        ![
+                            "GetCurrentActionType",
+                            "ActionQueue_AttackUnit",
+                            "GetQueuedActionType",
+                            "NumQueuedActions"
+                        ]
+                        .iter()
+                        .any(|name| message.contains(name)),
+                        "controller API failure: {message}"
+                    );
+                }
+                saw_controller |= turn
+                    .statistics
+                    .as_ref()
+                    .unwrap()
+                    .api
+                    .iter()
+                    .any(|api| api.name == "GetCurrentActionType" && api.calls > 0);
+            }
             if first_error.is_none() {
                 first_error = turn
                     .failures
@@ -187,7 +260,7 @@ fn local_pack_issues_a_body_order_through_the_host_before_the_first_minute() {
             {
                 support::fold(session, stream);
             }
-            if issued {
+            if issued && saw_controller {
                 println!(
                     "pack_first_order side={side:?} tick={} failures_so_far={:?}",
                     sessions[index].current().unwrap().tick,
@@ -197,8 +270,8 @@ fn local_pack_issues_a_body_order_through_the_host_before_the_first_minute() {
             }
         }
         assert!(
-            issued,
-            "side={side:?}: no script body order through the host; first_error={first_error:?}"
+            issued && saw_controller,
+            "side={side:?}: no script body order through the host; first_error={first_error:?}; gaps={gaps:?}"
         );
     }
 }

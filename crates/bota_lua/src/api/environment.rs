@@ -25,7 +25,6 @@ pub(super) fn install(lua: &mut Lua, context: &ApiContext) -> Result<(), Binding
     register_global(lua, context, "GetNumCouriers", courier_count)?;
     register_global(lua, context, "GetCourier", courier)?;
     register_global(lua, context, "GetGameState", game_state)?;
-    register_unit(lua, context, "NumQueuedActions", queued_actions)?;
     register_global(lua, context, "IsItemPurchasedFromSideShop", side_item)
 }
 fn shop_location(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaError> {
@@ -129,21 +128,4 @@ fn side_item(_context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, Lu
     vm.charge_fuel(super::CALL_FUEL)?;
     let _key = string(vm, args, 0)?;
     vm.results(&[Value::Boolean(false)])
-}
-
-fn queued_actions(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaError> {
-    let id = context.receiver(vm, args)?;
-    vm.charge_fuel(super::CALL_FUEL)?;
-    let state = context.state.borrow();
-    let count = if state.own_id() != Some(id) {
-        -1.0
-    } else if state
-        .player(id)
-        .is_some_and(|player| player.respawn_left > 0)
-    {
-        0.0
-    } else {
-        state.unit(id).map_or(0.0, |unit| unit.queue.len() as f64)
-    };
-    vm.results(&[Value::Number(count)])
 }

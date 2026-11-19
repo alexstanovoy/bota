@@ -470,7 +470,7 @@ Canonical configured lane geometry supplies the projection. Cost: 32 + 8 per lan
 per received body 4 + 8 per segment + the team's map tower rows. Hidden units never supply a front.
 `NumQueuedActions()` counts the active bot's waiting queue, excluding its running action;
 foreign/non-active receivers return -1. A publicly dead owned hero has no queued actions.
-Cost: checked receiver plus 8; no scan over the returned queue length.
+Cost: checked receiver plus 8 and the bounded actor lookup; no scan over the returned queue length.
 
 
 
@@ -614,3 +614,35 @@ the controller action type is deferred to the client action-stack unit.
 Nearby-tree queries use a shared immutable x index and the seat's observed cuts; they
 retain original tree ids and ordering. Fuel covers two index searches, a fixed id bitset,
 candidate distance/cut tests, observed planted trees, and output construction.
+
+
+### Client bot controller
+
+`GetCurrentActionType` reads this host's controller, independently of animation. A fresh
+controlled body is IDLE; a body with no controller in this host returns NONE. Waiting
+work is FIFO: `NumQueuedActions` excludes the current action, and `GetQueuedActionType`
+uses zero-based waiting indices (-1 for absent or foreign entries). Controller state is
+private to the running seat and its courier, never another seat's intentions.
+
+Actions use the reference's zero-delay level3/4 scheduling. A new request is
+visible to getters immediately, and starts after its callback, including one that errors.
+`Action_` replaces the controller work, `ActionQueue_` appends; same-target
+`Action_AttackUnit` is a complete no-op even when its `once` argument changes.
+`Action_ClearActions(false)` clears intentions without sending Stop; true also sends Stop.
+The shared client FIFO has a host safety bound of32 waiting entries: the reference warns
+at10 but is unbounded. Over-capacity requests and paths fail before partial mutation.
+Only the active head emits an ordinary server order; client tails are not Shift orders.
+
+Attack-once ends on **observed damage dealt** by the controlled unit while that action is
+current (any victim, including a previously launched projectile or spell/modifier damage),
+not on launch. Queued movement follows the impact. A continuous attack stays current
+through windup and backswing. Visible dead/missing targets and dead/replaced controlled
+bodies release their controller work. Direct moves finish within10units; the current
+MoveTo adapter uses the final25unit threshold without the reference bot waypoint planner.
+Spell actions use observed cast/channel identity and matching damage-impact events.
+
+Explicit reference gaps: Some engine-specific action endings are unsupported; they are not guessed from stopped motion. Full bot waypoint planning, item cast identity/mute, nightmare state, zero-damage
+and missed attack notifications, and never-started/instant cast completion without a damage impact are deferred. A body
+walking into cast range is not declared inactive just because no cast phase is visible. These limitations need source evidence, not new server state
+added for a bot. Controller substance lives in `bota_client_core::bot_actions`; bindings
+only map names, validate handles/arguments and charge fixed-capacity work.

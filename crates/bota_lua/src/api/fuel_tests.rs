@@ -445,7 +445,7 @@ fn environment_queries_pay_exact_native_and_host_prices() {
         ("ActionImmediate_Chat", 14 + units / 8),
         ("Action_Chat", 14 + units / 8),
         ("GetNearbyTrees", 13 + units + units / 8 + tree_work),
-        ("NumQueuedActions", 9 + units / 8),
+        ("NumQueuedActions", 9 + units / 8 + units),
         ("GetLaneFrontAmount", front_price),
     ] {
         let minimum = support::bare_native_call_fuel() + work;

@@ -209,7 +209,7 @@ fn fog_reader(side: Team, slot: SlotId) -> LuaTeam {
         },
     )
     .unwrap();
-    lua.add_script(slot,ScriptKind::Takeover,"fogged_controls",b"local enemy function Think() if not enemy then enemy=GetUnitList(UNIT_LIST_ENEMY_HEROES)[1]; assert(enemy) else assert(not enemy:IsSilenced()); assert(not enemy:IsRooted()); assert(not enemy:IsDisarmed()); assert(enemy:GetModifierStackCount(0)==-1); GetBot():Action_MoveToLocation(Vector(5,6,0)) end end").unwrap();
+    lua.add_script(slot,ScriptKind::Takeover,"fogged_controls",b"local enemy function Think() if not enemy then enemy=GetUnitList(UNIT_LIST_ENEMY_HEROES)[1]; assert(enemy) else assert(not enemy:IsSilenced()); assert(not enemy:IsRooted()); assert(not enemy:IsDisarmed()); assert(enemy:GetModifierStackCount(0)==-1); assert(enemy:GetCurrentActionType()==BOT_ACTION_TYPE_NONE); assert(enemy:NumQueuedActions()==-1); GetBot():Action_MoveToLocation(Vector(5,6,0)) end end").unwrap();
     lua
 }
 #[test]

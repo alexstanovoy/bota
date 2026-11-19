@@ -4,7 +4,6 @@ use super::{
     globals::bounded_integer,
     *,
 };
-use bota_client_core::IssuedOrder;
 use bota_proto::{ItemSlot, Order, Target};
 pub(super) fn install(lua: &mut Lua, context: &ApiContext) -> Result<(), BindingError> {
     register_unit(lua, context, "ActionImmediate_SwapItems", swap)?;
@@ -34,12 +33,18 @@ fn queue_move(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, Lu
     if Some(id) != state.own_id() {
         return Err(vm.error("action requires the active bot"));
     }
-    state.order(
+    state.request_action(
         vm,
-        IssuedOrder::hero(Order::Move {
-            target: Target::Pos(at),
-        })
-        .queued(),
+        id,
+        bota_client_core::bot_actions::BotAction {
+            kind: bota_client_core::bot_actions::BotActionType::MoveTo,
+            order: Order::Move {
+                target: Target::Pos(at),
+            },
+            once: false,
+            effect: None,
+        },
+        bota_client_core::bot_actions::BotActionMode::Queue,
     )?;
     Ok(0)
 }
@@ -72,11 +77,20 @@ fn path(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaError
     if Some(id) != state.own_id() {
         return Err(vm.error("action requires the active bot"));
     }
-    if orders.len() > crate::state::MAX_ORDERS.saturating_sub(state.orders.len()) {
-        return Err(vm.error("order limit exceeded"));
-    }
-    for order in orders {
-        state.order(vm, order)?;
-    }
+    let actions: Vec<_> = orders
+        .into_iter()
+        .map(|issued| bota_client_core::bot_actions::BotAction {
+            kind: bota_client_core::bot_actions::BotActionType::MoveTo,
+            order: issued.order,
+            once: false,
+            effect: None,
+        })
+        .collect();
+    state.request_actions(
+        vm,
+        id,
+        &actions,
+        bota_client_core::bot_actions::BotActionMode::Replace,
+    )?;
     Ok(0)
 }

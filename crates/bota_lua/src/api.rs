@@ -20,6 +20,7 @@ pub(crate) mod abilities;
 mod ability_extras;
 mod activities;
 mod additional_actions;
+mod bot_controller;
 mod buyback;
 mod catalogue_queries;
 mod chat;
@@ -123,6 +124,7 @@ pub(crate) fn install(lua: &mut Lua, state: Shared, vectors: Vectors) -> Result<
     };
     patterns::install(lua, &context)?;
     environment::install(lua, &context)?;
+    bot_controller::install(lua, &context)?;
     catalogue_queries::install(lua, &context)?;
     chat::install(lua, &context)?;
     additional_actions::install(lua, &context)?;
@@ -275,6 +277,15 @@ fn install_actions(
                 if Some(id) != state.own_id() {
                     return Err(vm.error("action requires the active bot"));
                 }
+                if name == "Action_ClearActions" {
+                    let stop = match vm.arg(args, 1) {
+                        Value::Nil => false,
+                        Value::Boolean(stop) => stop,
+                        _ => return Err(vm.arg_error(args, 1, "boolean expected")),
+                    };
+                    state.clear_actions(vm, id, stop)?;
+                    return Ok(0);
+                }
                 let once = if name == "Action_AttackUnit" {
                     match vm.arg(args, 2) {
                         Value::Nil => false,
@@ -337,53 +348,25 @@ fn install_actions(
                     },
                     _ => unreachable!("registered action"),
                 };
-                let index = state.bot_index();
-                let pending = match (once, order) {
-                    (
-                        true,
-                        Order::Attack {
-                            target: Target::Unit(target),
-                        },
-                    ) => Some(pending_once(vm, &state, id, target)?),
-                    _ => None,
-                };
-                state.order(vm, bota_client_core::IssuedOrder::hero(order))?;
-                if let Some(pending) = pending {
-                    state.bots[index].pending_once = Some(pending);
-                }
+                let mut action = bota_client_core::bot_actions::BotAction::ordinary(
+                    order,
+                    state
+                        .unit(id)
+                        .ok_or_else(|| vm.error("unit is no longer known"))?,
+                )
+                .ok_or_else(|| vm.error("unsupported controller order"))?;
+                action.once = once;
+                state.request_action(
+                    vm,
+                    id,
+                    action,
+                    bota_client_core::bot_actions::BotActionMode::Replace,
+                )?;
                 Ok(0)
             }),
         )?;
     }
     Ok(())
-}
-
-fn pending_once(
-    vm: &mut Vm,
-    state: &State,
-    source: bota_proto::EntityId,
-    target: bota_proto::EntityId,
-) -> Result<crate::state::PendingOnce, LuaError> {
-    if let Some(pending) = state.bots[state.bot_index()]
-        .pending_once
-        .filter(|pending| pending.source == source && pending.target == target && !pending.launched)
-    {
-        return Ok(crate::state::PendingOnce {
-            expires_at: None,
-            ..pending
-        });
-    }
-    let snapshot = state
-        .snapshot
-        .as_ref()
-        .ok_or_else(|| vm.error("a current view is required"))?;
-    Ok(crate::state::PendingOnce {
-        source,
-        target,
-        tick: snapshot.tick,
-        launched: false,
-        expires_at: None,
-    })
 }
 
 fn install_bot_state(lua: &mut Lua, methods: TableId, state: Shared) -> Result<(), BindingError> {

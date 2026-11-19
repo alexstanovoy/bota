@@ -527,6 +527,7 @@ impl LuaTeam {
         self.state.borrow_mut().orders.clear();
         self.state.borrow_mut().chat.clear();
         let _ = self.complete_once(0);
+        self.state.borrow_mut().flush_actions(0, true);
         self.callback_errors.clear();
         self.failed_initializations.fill(false);
         self.collect_callback_errors = true;
@@ -540,6 +541,7 @@ impl LuaTeam {
                 self.state.borrow_mut().orders.clear();
                 self.state.borrow_mut().chat.clear();
                 let _ = self.complete_once(index);
+                self.state.borrow_mut().flush_actions(index, true);
             }
             if let Err(error) = self.run_seat(index, seat.slot, tick) {
                 self.record_callback_error(error);
@@ -601,6 +603,7 @@ impl LuaTeam {
                 state.orders.is_empty(),
                 "the completion pass precedes this bot's hooks"
             );
+            state.bots[index].actions[0].clear(false);
             state
                 .orders
                 .push(IssuedOrder::hero(bota_proto::Order::Move {
@@ -754,7 +757,10 @@ impl LuaTeam {
         self.hook_activity.initializations = self.hook_activity.initializations.saturating_add(1);
         let values = self
             .lua
-            .call(self.scripts[index].function, &[self.scripts[index].name])?;
+            .call(self.scripts[index].function, &[self.scripts[index].name]);
+        let seat = self.state.borrow().bot_index();
+        self.state.borrow_mut().flush_actions(seat, false);
+        let values = values?;
         let environment = if let Some(Value::Table(table)) = values.first() {
             *table
         } else {
@@ -840,7 +846,10 @@ impl LuaTeam {
             return Ok(Vec::new());
         }
         self.hook_activity.scripted = self.hook_activity.scripted.saturating_add(1);
-        self.lua.call(function, args)
+        let result = self.lua.call(function, args);
+        let index = self.state.borrow().bot_index();
+        self.state.borrow_mut().flush_actions(index, false);
+        result
     }
 
     fn run_team(&mut self) -> Result<(), Error> {

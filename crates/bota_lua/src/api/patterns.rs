@@ -11,7 +11,7 @@ pub(super) fn install(lua: &mut Lua, context: &ApiContext) -> Result<(), Binding
     register_unit(lua, context, "Action_MoveToLocation", move_to_location)?;
     // This skips the bot pathfinder,
     // while its ordinary move order still uses the unit's pathfinder.
-    register_unit(lua, context, "Action_MoveDirectly", move_to_location)
+    register_unit(lua, context, "Action_MoveDirectly", move_directly)
 }
 
 fn get_location(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaError> {
@@ -56,6 +56,37 @@ fn get_health(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, Lu
 fn move_to_location(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaError> {
     let receiver = context.receiver(vm, args)?;
     let position = vector::position(vm, vm.arg(args, 1))?;
-    context.issue_move(vm, receiver, position)?;
+    context.state.borrow_mut().request_action(
+        vm,
+        receiver,
+        bota_client_core::bot_actions::BotAction {
+            kind: bota_client_core::bot_actions::BotActionType::MoveTo,
+            order: bota_proto::Order::Move {
+                target: bota_proto::Target::Pos(position),
+            },
+            once: false,
+            effect: None,
+        },
+        bota_client_core::bot_actions::BotActionMode::Replace,
+    )?;
+    Ok(0)
+}
+
+fn move_directly(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaError> {
+    let receiver = context.receiver(vm, args)?;
+    let position = vector::position(vm, vm.arg(args, 1))?;
+    context.state.borrow_mut().request_action(
+        vm,
+        receiver,
+        bota_client_core::bot_actions::BotAction {
+            kind: bota_client_core::bot_actions::BotActionType::MoveDirectly,
+            order: bota_proto::Order::Move {
+                target: bota_proto::Target::Pos(position),
+            },
+            once: false,
+            effect: None,
+        },
+        bota_client_core::bot_actions::BotActionMode::Replace,
+    )?;
     Ok(0)
 }

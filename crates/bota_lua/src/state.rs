@@ -81,6 +81,7 @@ pub(crate) struct KnownUnit {
     pub activity: bota_client_core::ActivityClock,
     pub recent_damage: bota_client_core::RecentDamage,
     pub attack_target: Option<EntityId>,
+    pub damage_dealt_at: Option<u32>,
 }
 
 pub(crate) struct AttackFact {
@@ -117,6 +118,7 @@ pub(crate) struct Snapshot {
     pub catalogue: bota_core::Catalogue,
     pub glyph_cooldown: Option<u32>,
     pub attacks: Vec<AttackFact>,
+    pub action_impacts: Vec<bota_client_core::bot_actions::BotActionImpact>,
     pub projectiles: Vec<bota_proto::ProjectileView>,
 }
 
@@ -183,6 +185,12 @@ impl Snapshot {
                         .checked_mul(std::mem::size_of::<AttackFact>())?,
                 )
         });
+        let players =
+            players.and_then(|bytes| {
+                bytes.checked_add(session.recent_events().len().checked_mul(
+                    std::mem::size_of::<bota_client_core::bot_actions::BotActionImpact>(),
+                )?)
+            });
         let players = players.and_then(|bytes| {
             bytes.checked_add(
                 view.projectiles
@@ -298,6 +306,16 @@ impl Snapshot {
                 .find(|glyph| glyph.team == session.team())
                 .and_then(|glyph| glyph.ready_after),
             attacks: attack_facts(session, view),
+            action_impacts: session
+                .recent_events()
+                .iter()
+                .filter_map(|event| {
+                    bota_client_core::bot_actions::BotActionImpact::observed(
+                        event.tick,
+                        &event.kind,
+                    )
+                })
+                .collect(),
             projectiles: view.projectiles.clone(),
             units: session
                 .entities()
@@ -313,6 +331,7 @@ impl Snapshot {
                     activity: track.activity,
                     recent_damage: track.recent_damage,
                     attack_target: track.attack_target(),
+                    damage_dealt_at: track.last_damage_dealt.map(|damage| damage.tick),
                 })
                 .collect(),
         })
@@ -353,6 +372,7 @@ pub(crate) struct BotState {
     pub pending_once: Option<PendingOnce>,
     pub native_courier: Option<NativeCourierCommand>,
     pub native_laning: Option<crate::default_bot::LaningMovement>,
+    pub actions: [bota_client_core::bot_actions::BotActions; 2],
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -370,6 +390,7 @@ pub(crate) struct HostCheckpoint {
     pending_once: Option<PendingOnce>,
     native_courier: Option<NativeCourierCommand>,
     native_laning: Option<crate::default_bot::LaningMovement>,
+    actions: [bota_client_core::bot_actions::BotActions; 2],
 }
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 impl BotState {
@@ -379,6 +400,7 @@ impl BotState {
             pending_once: self.pending_once,
             native_courier: self.native_courier,
             native_laning: self.native_laning,
+            actions: self.actions,
         }
     }
     pub fn restore(&mut self, checkpoint: HostCheckpoint) {
@@ -386,6 +408,7 @@ impl BotState {
         self.pending_once = checkpoint.pending_once;
         self.native_courier = checkpoint.native_courier;
         self.native_laning = checkpoint.native_laning;
+        self.actions = checkpoint.actions;
     }
 }
 
@@ -692,7 +715,7 @@ impl State {
     }
 
     pub fn order(&mut self, vm: &mut Vm, order: IssuedOrder) -> Result<(), LuaError> {
-        if self.orders.len() >= MAX_ORDERS {
+        if self.orders.len() + self.pending_action_orders() >= MAX_ORDERS {
             return Err(vm.error("order limit exceeded"));
         }
         if order.unit.is_none() && !order.queue && self.breaks_once(order.order) {
@@ -707,6 +730,23 @@ impl State {
                 .is_some_and(|command| command.unit == unit)
         }) {
             self.bots[index].native_courier = None;
+        }
+        if !order.queue && self.breaks_once(order.order) {
+            let body = usize::from(order.unit.is_some());
+            let source = order.unit.or_else(|| self.own_id());
+            let action = source
+                .and_then(|source| self.unit(source))
+                .and_then(|unit| {
+                    bota_client_core::bot_actions::BotAction::ordinary(order.order, unit)
+                });
+            let tick = self.snapshot.as_ref().map_or(0, |snapshot| snapshot.tick);
+            let controller = &mut self.bots[index].actions[body];
+            controller.bind(source);
+            if let Some(action) = action {
+                controller.adopt(action, tick);
+            } else {
+                controller.clear(false);
+            }
         }
         self.orders.push(order);
         Ok(())
@@ -727,6 +767,201 @@ impl State {
                 .and_then(|item| bota_core::item_def(item.id))
                 .is_none_or(|item| !item.immediate),
             _ => false,
+        }
+    }
+}
+
+impl bota_client_core::bot_actions::BotActionView for Snapshot {
+    fn deaths(&self, id: EntityId) -> Option<u16> {
+        self.players
+            .iter()
+            .find(|player| player.unit == Some(id))
+            .map(|player| player.deaths)
+    }
+    fn tick(&self) -> u32 {
+        self.tick
+    }
+    fn visible_unit(&self, id: EntityId) -> Option<&UnitView> {
+        self.units
+            .iter()
+            .find(|known| known.visible && known.unit.id == id)
+            .map(|known| &known.unit)
+    }
+    fn damage_dealt_at(&self, id: EntityId) -> Option<u32> {
+        self.units
+            .iter()
+            .find(|known| known.unit.id == id)
+            .and_then(|known| known.damage_dealt_at)
+    }
+    fn impacts(&self) -> impl Iterator<Item = bota_client_core::bot_actions::BotActionImpact> {
+        self.action_impacts.iter().copied()
+    }
+}
+impl State {
+    pub(crate) fn controller_body(&self, id: EntityId) -> Option<usize> {
+        if Some(id) == self.own_id() {
+            return Some(0);
+        }
+        self.snapshot
+            .as_ref()?
+            .units
+            .iter()
+            .any(|known| {
+                known.visible
+                    && known.unit.id == id
+                    && known.unit.kind == bota_proto::UnitKind::Courier
+                    && known.unit.owner == Some(self.current_slot)
+                    && known.unit.team == self.team
+                    && known.unit.hp > 0
+            })
+            .then_some(1)
+    }
+    pub(crate) fn request_action(
+        &mut self,
+        vm: &mut Vm,
+        id: EntityId,
+        action: bota_client_core::bot_actions::BotAction,
+        mode: bota_client_core::bot_actions::BotActionMode,
+    ) -> Result<(), LuaError> {
+        self.request_actions(vm, id, &[action], mode)
+    }
+    pub(crate) fn request_actions(
+        &mut self,
+        vm: &mut Vm,
+        id: EntityId,
+        actions: &[bota_client_core::bot_actions::BotAction],
+        mode: bota_client_core::bot_actions::BotActionMode,
+    ) -> Result<(), LuaError> {
+        use bota_client_core::bot_actions::{BOT_ACTION_CAPACITY, BotActionMode};
+        let body = self
+            .controller_body(id)
+            .ok_or_else(|| vm.error("action requires the active bot or its visible courier"))?;
+        let units = self
+            .snapshot
+            .as_ref()
+            .map_or(0, |snapshot| snapshot.units.len());
+        vm.charge_fuel(
+            16 + BOT_ACTION_CAPACITY as u64 * (units as u64 + 1 + actions.len() as u64),
+        )?;
+        if actions.len() > BOT_ACTION_CAPACITY {
+            return Err(vm.error("bot action queue limit exceeded"));
+        }
+        let index = self.bot_index();
+        let mut next = self.bots[index].actions[body];
+        next.bind(Some(id));
+        let mut changed = false;
+        for (at, &action) in actions.iter().enumerate() {
+            changed |= next
+                .request(action, if at == 0 { mode } else { BotActionMode::Queue })
+                .map_err(|_| vm.error("bot action queue limit exceeded"))?;
+        }
+        if !changed {
+            return Ok(());
+        }
+        let pending = usize::from(next.needs_start())
+            + usize::from(self.bots[index].actions[1 - body].needs_start());
+        if self.orders.len() + pending > MAX_ORDERS {
+            return Err(vm.error("order limit exceeded"));
+        }
+        self.bots[index].actions[body] = next;
+        if body == 0 && mode != BotActionMode::Queue {
+            self.bots[index].pending_once = None;
+            self.bots[index].native_laning = None;
+        }
+        if body == 1 {
+            self.bots[index].native_courier = None;
+        }
+        Ok(())
+    }
+    pub(crate) fn clear_actions(
+        &mut self,
+        vm: &mut Vm,
+        id: EntityId,
+        stop: bool,
+    ) -> Result<(), LuaError> {
+        let body = self
+            .controller_body(id)
+            .ok_or_else(|| vm.error("action requires the active bot or its visible courier"))?;
+        vm.charge_fuel(
+            16 + bota_client_core::bot_actions::BOT_ACTION_CAPACITY as u64
+                + self
+                    .snapshot
+                    .as_ref()
+                    .map_or(0, |snapshot| snapshot.units.len()) as u64,
+        )?;
+        let index = self.bot_index();
+        let mut next = self.bots[index].actions[body];
+        next.bind(Some(id));
+        let order = next.clear(stop);
+        if self.orders.len()
+            + usize::from(order.is_some())
+            + usize::from(self.bots[index].actions[1 - body].needs_start())
+            > MAX_ORDERS
+        {
+            return Err(vm.error("order limit exceeded"));
+        }
+        self.bots[index].actions[body] = next;
+        if body == 0 {
+            self.bots[index].pending_once = None;
+            self.bots[index].native_laning = None;
+        }
+        if body == 1 {
+            self.bots[index].native_courier = None;
+        }
+        if let Some(order) = order {
+            self.orders.push(IssuedOrder {
+                unit: if body == 0 { None } else { Some(id) },
+                order,
+                queue: false,
+            });
+        }
+        Ok(())
+    }
+    fn pending_action_orders(&self) -> usize {
+        self.bots[self.bot_index()]
+            .actions
+            .iter()
+            .filter(|controller| controller.needs_start())
+            .count()
+    }
+    pub(crate) fn flush_actions(&mut self, index: usize, observe: bool) {
+        let Some(snapshot) = &self.snapshot else {
+            return;
+        };
+        let slot = self.seats[index].slot;
+        let hero = snapshot
+            .players
+            .iter()
+            .find(|player| player.slot == slot)
+            .and_then(|player| player.unit);
+        let courier = snapshot
+            .units
+            .iter()
+            .find(|known| {
+                known.visible
+                    && known.unit.kind == bota_proto::UnitKind::Courier
+                    && known.unit.owner == Some(slot)
+            })
+            .map(|known| known.unit.id);
+        for (body, source) in [hero, courier].into_iter().enumerate() {
+            let controller = &mut self.bots[index].actions[body];
+            controller.bind(source);
+            let order = if observe {
+                controller.update(snapshot)
+            } else {
+                controller.start_ready(snapshot)
+            };
+            if let Some(order) = order {
+                assert!(
+                    self.orders.len() < MAX_ORDERS,
+                    "controller publication reserved at request time"
+                );
+                self.orders.push(IssuedOrder {
+                    unit: if body == 0 { None } else { source },
+                    order,
+                    queue: false,
+                });
+            }
         }
     }
 }

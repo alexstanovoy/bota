@@ -159,6 +159,7 @@ pub(super) fn add_body(
     unit.effects.clear();
     unit.pos = hero.unit.pos + Vec2::from_ints(by, 0);
     let known = KnownUnit {
+        damage_dealt_at: None,
         last_visible: (snapshot.tick, unit.pos),
         unit,
         visible: true,

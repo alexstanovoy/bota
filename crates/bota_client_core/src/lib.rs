@@ -46,6 +46,7 @@ use bota_core::{Dec, ScriptData};
 mod roshan_data;
 
 mod ability_read;
+pub mod bot_actions;
 mod catalog;
 mod chat;
 mod commands;

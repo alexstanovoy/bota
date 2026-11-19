@@ -6,8 +6,85 @@ use bota_proto::{EntityId, EventKind, HeroId, Order, SlotId, Target, Team};
 use bota_server::local::LocalMatch;
 use std::collections::BTreeSet;
 
+fn stationary_creep_encounter(hero: HeroId) -> (LocalMatch, Vec<ClientSession>, EntityId) {
+    use bota_proto::{Cheat, ControlKind, Fixed, ModifierSpec, Vec2};
+    let (mut local, mut sessions) = support::local_for_heroes_with_cheats(&[
+        (Team::Radiant, hero),
+        (Team::Dire, HeroId::SHADOW_FIEND),
+    ]);
+    let at = Vec2::from_ints(9216, 9216);
+    let orders: Vec<_> = [
+        Cheat::Teleport { at },
+        Cheat::CreateCreeps {
+            enemy: true,
+            at: at + Vec2::from_ints(224, 0),
+        },
+    ]
+    .into_iter()
+    .map(|cheat| {
+        sessions[0]
+            .issue(IssuedOrder::hero(Order::Cheat { cheat }))
+            .unwrap()
+    })
+    .collect();
+    step(&mut local, &mut sessions, &orders);
+    let ids: Vec<_> = sessions[0]
+        .current()
+        .unwrap()
+        .units
+        .iter()
+        .filter(|unit| unit.team == Team::Dire && bota_core::kind_def(unit.kind).creep)
+        .map(|unit| unit.id)
+        .collect();
+    let mut orders = Vec::new();
+    for &id in &ids {
+        for cheat in [
+            Cheat::ApplyModifier {
+                target: Target::Unit(id),
+                spec: ModifierSpec {
+                    max_hp: 40000,
+                    ..ModifierSpec::NOMINAL
+                },
+                ticks: 3000,
+            },
+            Cheat::Control {
+                target: Target::Unit(id),
+                control: ControlKind::Stun,
+                ticks: 3000,
+            },
+        ] {
+            orders.push(
+                sessions[0]
+                    .issue(IssuedOrder::hero(Order::Cheat { cheat }))
+                    .unwrap(),
+            );
+        }
+    }
+    step(&mut local, &mut sessions, &orders);
+    let own = sessions[0].own_hero().unwrap().pos;
+    let target = sessions[0]
+        .current()
+        .unwrap()
+        .units
+        .iter()
+        .filter(|unit| ids.contains(&unit.id))
+        .min_by_key(|unit| (unit.pos.distance_squared(own), unit.id))
+        .unwrap()
+        .id;
+    assert!(
+        sessions[0]
+            .current()
+            .unwrap()
+            .unit(target)
+            .unwrap()
+            .pos
+            .within(own, Fixed::from_int(800))
+    );
+    (local, sessions, target)
+}
+
 fn attack_one_creep_then_stop(hero: HeroId, ranged: bool) {
-    let (mut local, mut sessions, target) = support::durable_creep_encounter(hero);
+    let (mut local, mut sessions, target) = stationary_creep_encounter(hero);
     let own = sessions[0]
         .own_player()
         .expect("player")
@@ -174,17 +251,17 @@ fn an_attack_arrived(
 }
 
 #[test]
-fn attack_once_resolves_a_missed_snapshot_gap_from_the_retained_launch() {
+fn attack_once_resolves_a_missed_snapshot_gap_from_retained_damage() {
     attack_once_think_gap(false);
 }
 
 #[test]
-fn attack_once_retains_a_delivered_launch_after_unrelated_events_evict_recent_history() {
+fn attack_once_retains_damage_after_unrelated_events_evict_recent_history() {
     attack_once_think_gap(true);
 }
 
 fn attack_once_think_gap(evict: bool) {
-    let (mut local, mut sessions, target) = support::durable_creep_encounter(HeroId::SHADOW_FIEND);
+    let (mut local, mut sessions, target) = stationary_creep_encounter(HeroId::SHADOW_FIEND);
     let source = sessions[0]
         .own_player()
         .expect("player")
@@ -246,6 +323,14 @@ fn attack_once_think_gap(evict: bool) {
     assert!(
         delayed
             .entity(source)
+            .unwrap()
+            .last_damage_dealt
+            .is_some_and(|damage| damage.tick > started),
+        "completion is retained observed damage, not a launch proxy"
+    );
+    assert!(
+        delayed
+            .entity(source)
             .expect("tracked attacker")
             .last_attack_launched
             .is_some_and(|launch| launch.tick > started)
@@ -292,8 +377,8 @@ fn attack_once_think_gap(evict: bool) {
 }
 
 #[test]
-fn an_older_inflight_shot_cannot_complete_a_new_once_request() {
-    let (mut local, mut sessions, target) = support::durable_creep_encounter(HeroId::SHADOW_FIEND);
+fn an_older_inflight_shot_can_complete_the_current_once_action_on_impact() {
+    let (mut local, mut sessions, target) = stationary_creep_encounter(HeroId::SHADOW_FIEND);
     let source = sessions[0]
         .own_player()
         .expect("player")
@@ -335,33 +420,30 @@ fn an_older_inflight_shot_cannot_complete_a_new_once_request() {
     let turn = lua.think(&sessions[0]).expect("older impact");
     assert!(turn.failures.is_empty(), "{:?}", turn.failures);
     assert!(
-        turn.bots[0].orders.is_empty(),
-        "the older attack is not the requested attack"
+        turn.bots[0].orders.iter().any(|order| order.order
+            == Order::Move {
+                target: Target::None
+            }),
+        "the reference notifies the current once action for any damage dealt, including an older shot"
     );
-    let mut launched = false;
+    let orders = issued(&mut sessions[0], turn);
+    step(&mut local, &mut sessions, &orders);
     for _ in 0..120 {
-        if sessions[0]
-            .entity(source)
-            .and_then(|track| track.last_attack_launched)
-            .is_some_and(|launch| launch.tick > requested)
-        {
-            launched = true;
-            break;
-        }
         step(&mut local, &mut sessions, &[]);
     }
-    assert!(launched, "the requested new attack launched");
-    let turn = lua.think(&sessions[0]).expect("new launch");
-    assert!(turn.failures.is_empty(), "{:?}", turn.failures);
-    assert!(turn.bots[0].orders.iter().any(|order| order.order
-        == (Order::Move {
-            target: Target::None
-        })));
+    assert!(
+        sessions[0]
+            .entity(source)
+            .unwrap()
+            .last_attack_launched
+            .is_some_and(|launch| launch.tick <= requested),
+        "no new shot after the older impact ended the action"
+    );
 }
 
 #[test]
-fn a_continuous_attack_replaces_an_earlier_once_request() {
-    let (mut local, mut sessions, _) = support::durable_creep_encounter(HeroId::SHADOW_FIEND);
+fn a_same_target_attack_is_a_noop_even_when_the_once_argument_changes() {
+    let (mut local, mut sessions, _) = stationary_creep_encounter(HeroId::SHADOW_FIEND);
     let source = sessions[0]
         .own_player()
         .expect("player")
@@ -399,33 +481,39 @@ fn a_continuous_attack_replaces_an_earlier_once_request() {
     "#,
     )
     .expect("script");
-    let started = sessions[0].current().expect("view").tick;
+    let started = sessions[0].current().unwrap().tick;
     let mut launches = BTreeSet::new();
-    for _ in 0..600 {
-        let turn = lua.think(&sessions[0]).expect("think");
+    let mut stops = 0;
+    for _ in 0..180 {
+        let turn = lua.think(&sessions[0]).unwrap();
         assert!(turn.failures.is_empty(), "{:?}", turn.failures);
-        assert!(
-            !turn.bots[0].orders.iter().any(|order| order.order
-                == (Order::Move {
-                    target: Target::None
-                })),
-            "a replaced once request cannot stop the later continuous attack"
-        );
+        stops += turn.bots[0]
+            .orders
+            .iter()
+            .filter(|order| {
+                order.order
+                    == Order::Move {
+                        target: Target::None,
+                    }
+            })
+            .count();
         let orders = issued(&mut sessions[0], turn);
         step(&mut local, &mut sessions, &orders);
-        if let Some(observed) = sessions[0]
+        if let Some(launch) = sessions[0]
             .entity(source)
             .and_then(|track| track.last_attack_launched)
-            .filter(|observed| observed.tick > started)
+            .filter(|launch| launch.tick > started)
         {
-            launches.insert(observed.tick);
-        }
-        if launches.len() >= 2 {
-            break;
+            launches.insert(launch.tick);
         }
     }
-    assert!(
-        launches.len() >= 2,
-        "the replacement remains a continuous attack"
+    assert_eq!(
+        stops, 1,
+        "the same-target false argument cannot replace the reference's existing once action"
+    );
+    assert_eq!(
+        launches.len(),
+        1,
+        "the same-target request does not turn the existing once action into continuous attacks"
     );
 }

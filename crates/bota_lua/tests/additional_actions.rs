@@ -55,23 +55,25 @@ fn a_finite_path_has_an_interrupting_first_move_and_a_queued_tail() {
         },
     )
     .unwrap();
-    lua.add_script(SlotId(0),ScriptKind::Takeover,"path",b"function Think() GetBot():Action_MovePath({Vector(1,2,0),Vector(3,4,0)}); GetBot():ActionQueue_MoveToLocation(Vector(5,6,0)) end").unwrap();
+    lua.add_script(SlotId(0),ScriptKind::Takeover,"path",b"function Think() GetBot():Action_MovePath({Vector(1,2,0),Vector(3,4,0)}); GetBot():ActionQueue_MoveToLocation(Vector(5,6,0)); assert(GetBot():NumQueuedActions()==3); assert(GetBot():GetQueuedActionType(0)==BOT_ACTION_TYPE_MOVE_TO); assert(GetBot():GetQueuedActionType(2)==BOT_ACTION_TYPE_MOVE_TO); assert(GetBot():GetQueuedActionType(3)==-1) end").unwrap();
     let turn = lua.think(session).unwrap();
     assert!(turn.failures.is_empty(), "{:?}", turn.failures);
     let orders = &turn.bots[0].orders;
-    assert_eq!(orders.len(), 3);
-    for (index, point) in [(0, (1, 2)), (1, (3, 4)), (2, (5, 6))] {
-        assert_eq!(
-            orders[index].order,
-            Order::Move {
-                target: bota_proto::Target::Pos(bota_proto::Vec2::from_ints(
-                    9216 + point.0,
-                    9216 + point.1
-                ))
-            }
-        );
-        assert_eq!(orders[index].queue, index != 0);
-    }
+    assert_eq!(
+        orders.len(),
+        1,
+        "only the controller head is sent to the server"
+    );
+    assert_eq!(
+        orders[0].order,
+        Order::Move {
+            target: bota_proto::Target::Pos(bota_proto::Vec2::from_ints(9217, 9218))
+        }
+    );
+    assert!(
+        !orders[0].queue,
+        "waiting waypoints are client state, not server Shift orders"
+    );
 }
 #[test]
 fn oversized_paths_fail_without_publishing_a_partial_path() {
@@ -157,10 +159,10 @@ fn catching_a_path_order_limit_error_cannot_publish_its_partial_prefix() {
         },
     )
     .unwrap();
-    lua.add_script(SlotId(0),ScriptKind::Takeover,"path_capacity",b"function Think() local bot=GetBot(); for i=1,63 do bot:ActionImmediate_SwapItems(0,1) end local ok,why=pcall(bot.Action_MovePath,bot,{Vector(1,2,0),Vector(3,4,0)}); assert(not ok and string.find(tostring(why),'order limit exceeded',1,true)) end").unwrap();
+    lua.add_script(SlotId(0),ScriptKind::Takeover,"path_capacity",b"function Think() local bot=GetBot(); for i=1,64 do bot:ActionImmediate_SwapItems(0,1) end local ok,why=pcall(bot.Action_MovePath,bot,{Vector(1,2,0),Vector(3,4,0)}); assert(not ok and string.find(tostring(why),'order limit exceeded',1,true)) end").unwrap();
     let turn = lua.think(&sessions[0]).unwrap();
     assert!(turn.failures.is_empty(), "{:?}", turn.failures);
-    assert_eq!(turn.bots[0].orders.len(), 63);
+    assert_eq!(turn.bots[0].orders.len(), 64);
     assert!(
         turn.bots[0]
             .orders
