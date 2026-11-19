@@ -200,6 +200,42 @@ mod pins {
     }
 
     #[test]
+    fn declined_controller_requests_pay_for_the_roster_scan_before_the_ownership_error() {
+        let mut rig=Rig::new(|snapshot,own| {
+            snapshot.units.retain(|known|known.unit.id==own);
+            for index in 1..60 {crate::api::guard_tests::add_body(snapshot,own,70000+index,bota_proto::UnitKind::Hero,Team::Dire,100);}
+            assert_eq!(snapshot.units.len(),60);
+        });
+        rig.run("pt=Vector(0,0,0)").unwrap();
+        let id=rig.state.borrow().snapshot.as_ref().unwrap().units.iter().find(|known|known.unit.id.idx==70059).unwrap().unit.id;
+        let foreign=rig.state.borrow_mut().handle(rig.lua.vm(),Some(id)).unwrap();let pt=global(&mut rig,"pt");
+        // Error conversion has its own VM cost, independent of the host's lookup price.
+        let refusal=rig.lua.function("ownership_refusal",Rc::new(|vm,_|Err(vm.error("action requires the active bot or its visible living courier")))).unwrap();
+        rig.lua.begin_tick();let before=rig.lua.tick_fuel_left();
+        assert!(matches!(rig.lua.call(refusal,&[]),Err(luagee::Error::Runtime {..})));
+        let error_call=before-rig.lua.tick_fuel_left();
+        for (name,arg,work) in [("Action_MoveDirectly",pt,149u64),("State::clear_actions",Value::Boolean(false),108)] {
+            // The public clear binding rejects non-hero receivers before it reaches this
+            // shared controller operation. Exercise the operation itself for its scan price.
+            let function=if name=="State::clear_actions" {
+                let shared=rig.state.clone();
+                rig.lua.function("clear_controller",Rc::new(move |vm,_| {shared.borrow_mut().clear_actions(vm,id,false)?;Ok(0)})).unwrap()
+            } else {method(&mut rig,false,name)};rig.lua.begin_tick();let before=rig.lua.tick_fuel_left();
+            let result=rig.lua.call(function,&[foreign,arg]);
+            assert!(matches!(&result,Err(luagee::Error::Runtime {message,..}) if message.contains("action requires the active bot or its visible living courier")),"{name}: {result:?}");
+            let consumed=before-rig.lua.tick_fuel_left()-error_call;assert_eq!(consumed,work,"{name}: declined60-body lookup still pays its full price");
+            for (fuel,exhausts) in [(work+support::bare_native_call_fuel()-1,true),(work+error_call,false)] {
+                rig.lua.begin_tick();let spend=rig.lua.tick_fuel_left()-fuel-support::bare_native_call_fuel();
+                let drain=rig.lua.function("budget",Rc::new(move|vm,_|{vm.charge_fuel(spend)?;Ok(0)})).unwrap();rig.lua.call(drain,&[]).unwrap();
+                let result=rig.lua.call(function,&[foreign,arg]);
+                if exhausts {assert!(matches!(result,Err(luagee::Error::Limit(luagee::Limit::FuelPerTick))),"{name}: insufficient fuel must stop before ownership lookup: {result:?}");}
+                else {assert!(matches!(result,Err(luagee::Error::Runtime {..})),"{name}: exact floor reaches the ownership refusal: {result:?}");}
+            }
+            assert!(rig.state.borrow().orders.is_empty());assert_eq!(rig.state.borrow().bots[0].actions[0].queued_len(),0);
+        }
+    }
+
+    #[test]
     fn every_other_new_call_charges_its_documented_work_exactly() {
         let mut rig = Rig::new(|_, _| {});
         rig.run("me = GetBot(); ab = me:GetAbilityByName('nevermore_shadowraze1'); pt = Vector(0, 0, 0); path = {pt, pt, pt}")

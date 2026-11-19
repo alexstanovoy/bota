@@ -835,9 +835,6 @@ impl State {
         mode: bota_client_core::bot_actions::BotActionMode,
     ) -> Result<(), LuaError> {
         use bota_client_core::bot_actions::{BOT_ACTION_CAPACITY, BotActionMode};
-        let body = self
-            .controller_body(id)
-            .ok_or_else(|| vm.error("action requires the active bot or its visible courier"))?;
         let units = self
             .snapshot
             .as_ref()
@@ -845,6 +842,9 @@ impl State {
         // One roster lookup, a controller copy plus its possible shift/clear, and
         // one constant-time insertion per requested entry. The roster is not rescanned per slot.
         vm.charge_fuel(16 + units as u64 + 2 * BOT_ACTION_CAPACITY as u64 + actions.len() as u64)?;
+        let body = self
+            .controller_body(id)
+            .ok_or_else(|| vm.error("action requires the active bot or its visible living courier"))?;
         if actions.len() > BOT_ACTION_CAPACITY {
             return Err(vm.error("bot action queue limit exceeded"));
         }
@@ -881,9 +881,6 @@ impl State {
         id: EntityId,
         stop: bool,
     ) -> Result<(), LuaError> {
-        let body = self
-            .controller_body(id)
-            .ok_or_else(|| vm.error("action requires the active bot or its visible courier"))?;
         vm.charge_fuel(
             16 + bota_client_core::bot_actions::BOT_ACTION_CAPACITY as u64
                 + self
@@ -891,6 +888,9 @@ impl State {
                     .as_ref()
                     .map_or(0, |snapshot| snapshot.units.len()) as u64,
         )?;
+        let body = self
+            .controller_body(id)
+            .ok_or_else(|| vm.error("action requires the active bot or its visible living courier"))?;
         let index = self.bot_index();
         let mut next = self.bots[index].actions[body];
         next.bind(Some(id));
