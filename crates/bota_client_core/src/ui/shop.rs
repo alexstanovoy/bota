@@ -71,7 +71,7 @@ impl App {
     ) -> Option<bota_core::PurchaseContext<'_, bota_proto::ItemView>> {
         Some(crate::purchase_context(
             self.view()?,
-            self.player(self.my_slot?)?,
+            self.player(self.buyer_slot()?)?,
             self.statics()?,
         ))
     }
@@ -106,7 +106,7 @@ impl App {
     /// attribute. In the tactical phase it holds what it has queued.
     fn buyer(&self) -> (Vec<ItemId>, Option<bota_proto::Attribute>) {
         let buyer = || {
-            let p = self.player(self.my_slot?)?;
+            let p = self.player(self.buyer_slot()?)?;
             Some((held_items(self.view()?, p), primary_of(p)))
         };
         if self.in_tactical_phase() {
@@ -143,12 +143,12 @@ impl App {
     }
 
     /// The gold a purchase can use now: what the queued items leave in the tactical phase, the
-    /// seat's own gold in play, none to a watcher or before the seat has any.
+    /// buyer's reported gold in play, zero when it is unknown.
     pub fn spendable_gold(&self) -> i32 {
         if self.in_tactical_phase() {
             return self.gold_after_queue();
         }
-        self.my_slot
+        self.buyer_slot()
             .and_then(|slot| self.player(slot)?.gold)
             .unwrap_or(0)
     }
@@ -231,7 +231,8 @@ impl App {
                 PurchaseAvailability::Available
             };
         }
-        let (Some(view), Some(shops), Some(slot)) = (self.view(), self.statics(), self.my_slot)
+        let (Some(view), Some(shops), Some(slot)) =
+            (self.view(), self.statics(), self.buyer_slot())
         else {
             return PurchaseAvailability::NoBuyer;
         };
@@ -242,7 +243,11 @@ impl App {
         if parts.is_empty() {
             return PurchaseAvailability::NothingToBuy;
         }
-        if self.price_of(item).0 > self.spendable_gold() {
+        if !self
+            .session()
+            .is_some_and(|session| session.map().free_purchases)
+            && player.gold.is_some_and(|gold| self.price_of(item).0 > gold)
+        {
             return PurchaseAvailability::InsufficientGold;
         }
         if parts.iter().any(|part| !self.offers(part.0)) {

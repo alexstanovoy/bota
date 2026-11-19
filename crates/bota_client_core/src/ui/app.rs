@@ -852,7 +852,7 @@ impl App {
     /// What one's side's shop has left of an item sold from a limited
     /// stock; absent for an item without one.
     pub fn stock_of(&self, item: u16) -> Option<StockView> {
-        let team = self.my_team().or_else(|| self.fog_team())?;
+        let team = self.ordering_team().or_else(|| self.fog_team())?;
         self.view()?
             .stock
             .iter()
@@ -1162,29 +1162,46 @@ impl App {
 
     /// Whether a unit is one this seat drives.
     pub fn drives(&self, id: EntityId) -> bool {
-        let Some(view) = self.view() else {
+        let Some((mine, view)) = self.my_slot.zip(self.view()) else {
             return false;
         };
         view.unit(id)
-            .is_some_and(|unit| unit.owner.is_some() && unit.owner == self.my_slot)
+            .and_then(|unit| unit.owner)
+            .is_some_and(|owner| owner == mine || self.created_seat(owner))
     }
 
-    /// Which of our units an order goes to.
-    ///
-    /// Whatever of ours is selected takes it; with our own hero selected, or
-    /// nothing of ours at all, the order names nobody and the server sends it
-    /// to the hero.
+    /// In a cheat match, the live scoreboard includes spawned seats that were absent
+    /// from the initial roster. These are the seats every player may control.
+    pub fn created_seat(&self, slot: SlotId) -> bool {
+        self.statics()
+            .is_some_and(|statics| statics.metadata().cheats && statics.pick(slot).is_none())
+            && self.player(slot).is_some()
+    }
+
+    /// Which unit an order names. The server addresses unnamed orders to our own hero.
     pub fn ordering_unit(&self) -> Option<EntityId> {
         let id = self.selected?;
-        let view = self.view()?;
-        let mine = self.my_slot?;
-        let unit = view.unit(id)?;
-        (unit.owner == Some(mine) && Some(id) != self.my_hero()).then_some(id)
+        (Some(id) != self.my_hero() && self.drives(id)).then_some(id)
     }
 
     /// Which side this player is on, once the match has told us.
     pub fn my_team(&self) -> Option<Team> {
         Some(self.player(self.my_slot?)?.team)
+    }
+
+    /// The team of the commanded body, or the player's team for an unnamed order.
+    pub fn ordering_team(&self) -> Option<Team> {
+        self.ordering_unit()
+            .and_then(|id| Some(self.view()?.unit(id)?.team))
+            .or_else(|| self.my_team())
+    }
+
+    /// The seat whose economy backs purchases for the selected controlled hero.
+    pub fn buyer_slot(&self) -> Option<SlotId> {
+        self.ordering_unit()
+            .and_then(|id| self.view()?.unit(id)?.owner)
+            .filter(|&slot| self.created_seat(slot))
+            .or(self.my_slot)
     }
 
     /// Whether the current selection is a unit this seat drives, or nothing

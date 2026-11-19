@@ -310,7 +310,7 @@ impl App {
         let order = if let Some(id) = unit {
             let own = view
                 .unit(id)
-                .is_some_and(|unit| Some(unit.team) == self.my_team());
+                .is_some_and(|unit| Some(unit.team) == self.ordering_team());
             let target = Target::Unit(id);
             if own {
                 Order::Move { target }
@@ -535,7 +535,11 @@ impl App {
     /// Whether a click on the ground gives the hero an order now: the seat's hero stands, what is
     /// picked is the seat's to drive, the match is on and the stream is live.
     pub fn gives_orders(&self) -> bool {
-        self.my_standing_hero().is_some()
+        let drives_created = self
+            .ordering_unit()
+            .and_then(|id| self.view()?.unit(id)?.owner)
+            .is_some_and(|owner| self.created_seat(owner));
+        (self.my_standing_hero().is_some() || drives_created)
             && self.controls_selection()
             && self.over.is_none()
             && matches!(self.source, Source::Live(_))
