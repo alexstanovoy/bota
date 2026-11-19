@@ -1172,14 +1172,13 @@ const _: () = {
 
 // The courier.
 
-/// Health a courier stands up with, counted in hits: `npc_dota_courier`'s
-/// StatusHealth.
-pub const COURIER_HP: i32 = 6;
-/// The attacks that bring a courier down: one melee hero swing, two ranged
-/// hero missiles, six of a creep's or a building's (Dota 7.35: "Courier dies
-/// after 1 melee hero attack, 2 ranged hero attacks or 6 creep/tower
-/// attacks"; Liquipedia, *Courier*, the same in 7.41).
-pub const COURIER_HITS: crate::HitCount = crate::HitCount::hits(1, 2, 6, COURIER_HP);
+/// Health a courier stands up with, in quarter pips: `npc_dota_courier`'s StatusHealth (Dota
+/// 7.42: 8, two pips).
+pub const COURIER_HP: i32 = crate::unit_data::COURIER_UNIT.first("StatusHealth").int();
+/// What each attack takes of a courier: Fragile pip health (Dota 7.42: "Couriers now have
+/// fragile pip health"), so a melee hero's swing takes both its pips, a ranged hero's,
+/// Roshan's or a tower's one, a creep's a quarter.
+pub const COURIER_HITS: crate::HitCount = crate::HitCount::pips(true);
 /// World units a second a courier walks at its owner's first level:
 /// `npc_dota_courier`'s MovementSpeed, on the ground
 /// (`DOTA_UNIT_CAP_MOVE_GROUND`).
@@ -1371,20 +1370,27 @@ pub const ASSIST_GOLD_RADIUS: i32 = 1500;
 /// this percent of its maximum.
 pub const DENY_HP_PCT: i32 = 50;
 
-/// A ward's health, counted in hits: 2, a hero's attack taking 1 (checked
-/// in the Dota 2 client, 7.41, 2026-10-24).
-pub const WARD_HP: i32 = 2;
+/// A ward's health, in quarter pips: the wards' StatusHealth (Dota 7.42: 8, two pips; 100 in
+/// 7.41f's scripts, whose client counted 2 hits).
+pub const WARD_HP: i32 = crate::unit_data::OBSERVER_WARD_UNIT
+    .first("StatusHealth")
+    .int();
+const _: () = assert!(
+    crate::unit_data::SENTRY_WARD_UNIT
+        .first("StatusHealth")
+        .int()
+        == WARD_HP
+);
 
-/// An allied ward may be attacked when its health is strictly below this
-/// percent of its maximum (Dota 7.41f's ward deny range).
-pub const WARD_DENY_HP_PCT: i32 = 50;
+/// An allied ward may be attacked at any health: its deny share lies past its whole (Dota
+/// 7.42, both wards: "Still can be hit by allies while at full health").
+pub const WARD_DENY_HP_PCT: i32 = 101;
 
-/// The attacks that bring a ward down: two of a hero's, as its health is
-/// counted (the Dota 2 client), and ten of anything else's, a creep's, a
-/// tower's or an illusion's, each a fifth of a hit (Liquipedia, *Observer
-/// Ward*: "Hero Hit Count: 2 Non-Hero Hit Count: 10"; the Sentry Ward's the
-/// same).
-pub const WARD_HITS: crate::HitCount = crate::HitCount::hits(2, 2, 10, WARD_HP);
+/// What each attack takes of a ward: plain pip health (Dota 7.42: "Attacks from heroes,
+/// Roshan, towers, and the fountain deal 1 full pip per attack", "Attacks from illusions and
+/// creeps deal 1/4 pip per attack"), an ally's as much as an enemy's ("No longer has reduced
+/// damage taken from allies on the first pip of health").
+pub const WARD_HITS: crate::HitCount = crate::HitCount::pips(false);
 
 /// How much further a melee attacker reaches when it attacks a ward.
 pub const WARD_MELEE_RANGE_BONUS: i32 = 150;

@@ -494,6 +494,12 @@ fn ground_couriers_and_rune_illusions_obey_their_own_teams_at_all_four_base_fiel
                     !world.stats.get(unit).expect("stats").flies,
                     "ground fixture"
                 );
+                // Out of the shots of the field's towers and fountain, which since Dota 7.42
+                // take a pip a shot: a courier's two pips would fall before it crossed.
+                world.put_modifier(
+                    unit,
+                    crate::game::Modifier::new(bota_core::ModifierKind::Shielded, None, None, None),
+                );
                 let mut previous = at(&world, unit);
                 issue_to(
                     &mut world,

@@ -345,9 +345,14 @@ fn both_wards_hide_and_each_reveals_the_other_side() {
 /// How many of an attacker's swings bring down a Dire observer it stands
 /// beside, a Radiant sentry showing the ward to its side.
 fn swings_to_fell_a_ward(hero: bool) -> usize {
+    swings_to_fell_a_ward_of(hero, Team::Dire)
+}
+
+/// Attacks a Radiant hero (or creep) takes to bring down a full-health observer ward of `side`.
+fn swings_to_fell_a_ward_of(hero: bool, side: Team) -> usize {
     let mut world = World::new();
     let at = Vec2::from_ints(5000, 5000);
-    let ward = world.spawn_ward(&OBSERVER_WARD, (Team::Dire, at), 10_000, (None, None));
+    let ward = world.spawn_ward(&OBSERVER_WARD, (side, at), 10_000, (None, None));
     world.spawn_ward(
         &SENTRY_WARD,
         (Team::Radiant, at + Vec2::from_ints(100, 0)),
@@ -390,28 +395,34 @@ fn swings_to_fell_a_ward(hero: bool) -> usize {
     panic!("the ward never fell");
 }
 
+/// Dota 7.42, pip health: a ward's two pips (StatusHealth 8) fall to two hero attacks ("Attacks
+/// from heroes, Roshan, towers, and the fountain deal 1 full pip per attack") or eight of a
+/// creep's ("Attacks from illusions and creeps deal 1/4 pip per attack").
 #[test]
-fn a_ward_falls_to_two_hero_attacks_or_ten_of_anything_else() {
-    assert_eq!(swings_to_fell_a_ward(true), 2, "Dota's hero hit count");
-    assert_eq!(
-        swings_to_fell_a_ward(false),
-        10,
-        "and its non-hero hit count"
-    );
+fn a_ward_falls_to_two_hero_attacks_or_eight_creep_attacks() {
+    assert_eq!(swings_to_fell_a_ward(true), 2, "a pip a hero attack");
+    assert_eq!(swings_to_fell_a_ward(false), 8, "a quarter pip a creep's");
 }
 
-/// A ward's health is two hits (checked in the Dota 2 client, 7.41,
-/// 2026-10-24): a hero's attack takes one of them and anything else's a
-/// fifth (Liquipedia, *Observer Ward*: ten non-hero hits), so one hero
-/// attack and four of a creep leave it standing and a fifth brings it down.
+/// Dota 7.42, both wards: "No longer has reduced damage taken from allies on the first pip of
+/// health", "Still can be hit by allies while at full health": a hero puts out its own side's
+/// full-health ward in two attacks, as an enemy hero does.
 #[test]
-fn a_wards_two_hits_of_health_lose_one_to_a_hero_and_a_fifth_to_anything_else() {
+fn a_hero_puts_out_its_own_full_health_ward_in_two_attacks() {
+    assert_eq!(swings_to_fell_a_ward_of(true, Team::Radiant), 2);
+}
+
+/// A ward's health is two pips, counted in quarter pips: a hero's attack takes a pip of it and
+/// anything else's a quarter, so one hero attack and three of a creep leave it standing and a
+/// fourth brings it down.
+#[test]
+fn a_wards_two_pips_lose_one_to_a_hero_and_a_quarter_to_anything_else() {
     let mut world = World::new();
     let at = Vec2::from_ints(5000, 5000);
     let ward = world.spawn_ward(&OBSERVER_WARD, (Team::Dire, at), 10_000, (None, None));
     world.settle();
     let view = shown(&world, None, ward);
-    assert_eq!((view.hp, view.max_hp), (2, 2), "two hits of health");
+    assert_eq!((view.hp, view.max_hp), (8, 8), "two pips of health");
     let blow = |world: &mut World, striker| {
         world.push_hit(None, ward, 1, bota_proto::DamageKind::Physical, None);
         let hit = world.hits.back_mut().expect("just laid");
@@ -420,23 +431,21 @@ fn a_wards_two_hits_of_health_lose_one_to_a_hero_and_a_fifth_to_anything_else() 
         world.step();
     };
     blow(&mut world, bota_core::Striker::RangedHero);
-    assert_eq!(shown(&world, None, ward).hp, 1, "a hero's attack takes one");
-    for _ in 0..4 {
+    assert_eq!(
+        shown(&world, None, ward).hp,
+        4,
+        "a hero's attack takes a pip"
+    );
+    for _ in 0..3 {
         blow(&mut world, bota_core::Striker::Other);
     }
     assert!(
         world.alive(ward),
-        "four fifths of the last hit leave it standing"
+        "three quarters of the last pip leave it standing"
     );
-    // The whole health shows one hit left; the exact health shows a fifth
-    // of it, what a front end draws the last block's fill from.
-    let fifth = rules::WARD_HITS.taken(Some(bota_core::Striker::Other), Fixed::from_int(2));
     let left = shown(&world, None, ward);
     assert_eq!(left.hp, 1);
-    assert_eq!(
-        left.hit_health,
-        Some(Fixed::from_int(1) - fifth - fifth - fifth - fifth)
-    );
+    assert_eq!(left.hit_health, Some(Fixed::from_int(1)));
     let hero = world.spawn_hero(Team::Radiant, at, SlotId(0), HeroId::SHADOW_FIEND);
     world.settle();
     assert_eq!(
@@ -445,7 +454,7 @@ fn a_wards_two_hits_of_health_lose_one_to_a_hero_and_a_fifth_to_anything_else() 
         "a hero's is damage"
     );
     blow(&mut world, bota_core::Striker::Other);
-    assert!(!world.alive(ward), "the fifth brings it down");
+    assert!(!world.alive(ward), "the fourth quarter brings it down");
 }
 
 #[test]

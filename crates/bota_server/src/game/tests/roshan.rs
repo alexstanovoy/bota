@@ -2881,9 +2881,11 @@ fn pit_branches_cannot_plant_a_tree_inside_either_pit_or_spend_a_charge() {
     }
 }
 
+/// Dota 7.42, pip health: Roshan's attack deals "1 full pip", and two on the Banner's Fragile
+/// pips ("Now has fragile pip health"; the game's server code doubles Roshan's like a melee
+/// hero's).
 #[test]
-fn pit_roshan_destroys_observer_and_sentry_wards_in_one_hit_but_deals_ordinary_hit_damage_to_a_banner()
- {
+fn pit_roshan_destroys_observer_and_sentry_wards_in_one_hit_but_takes_two_pips_of_a_banner() {
     use bota_core::{BANNERS, NeutralKind, OBSERVER_WARD, SENTRY_WARD};
     use bota_proto::{EventKind, Team, Vec2};
     for (def, destroyed) in [
@@ -2906,7 +2908,7 @@ fn pit_roshan_destroys_observer_and_sentry_wards_in_one_hit_but_deals_ordinary_h
         assert!(struck, "the autonomous attack lands");
         assert_eq!(!world.alive(ward), destroyed);
         if !destroyed {
-            assert_eq!(world.health.get(ward).expect("banner").hp.to_int(), 23);
+            assert_eq!(world.health.get(ward).expect("banner").hp.to_int(), 24 - 8);
         }
         assert!(world.alive(boss));
     }

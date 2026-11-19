@@ -361,7 +361,7 @@ fn one_of_your_own_worn_down_far_enough_may_be_put_out() {
 /// once its health falls below half (towers and barracks below a tenth;
 /// Liquipedia, *Denying*), so exactly half is not yet.
 #[test]
-fn a_creep_and_a_ward_go_only_below_half_of_what_they_hold() {
+fn a_creep_goes_only_below_half_of_what_it_holds_and_a_ward_at_any_health() {
     let (mut world, hero, own) = hero_and_own_creep();
     wear_down(&mut world, own, 50);
     assert!(
@@ -381,8 +381,11 @@ fn a_creep_and_a_ward_go_only_below_half_of_what_they_hold() {
     ));
     world.step();
     let ward = the_ward(&world);
-    wear_down(&mut world, ward, 50);
-    assert!(!world.may_attack_on_order(hero, ward), "a ward likewise");
+    // Dota 7.42, both wards: "Still can be hit by allies while at full health".
+    assert!(
+        world.may_attack_on_order(hero, ward),
+        "a ward at full health"
+    );
     wear_down(&mut world, ward, 49);
     assert!(world.may_attack_on_order(hero, ward));
 }

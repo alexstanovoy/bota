@@ -17,9 +17,9 @@ pub enum Striker {
     Illusion,
     /// An attack that destroys a susceptible hit-count body in one hit.
     Lethal,
-    /// Roshan (not yet told apart: counts as anything else).
+    /// Roshan.
     Roshan,
-    /// A tower or a fountain (not yet told apart: counts as anything else).
+    /// A tower or a fountain.
     Structure,
 }
 
@@ -29,6 +29,8 @@ impl Striker {
         match (kind, ranged) {
             (UnitKind::Hero, false) => Striker::MeleeHero,
             (UnitKind::Hero, true) => Striker::RangedHero,
+            (UnitKind::Roshan, _) => Striker::Roshan,
+            (UnitKind::Tower | UnitKind::Fountain, _) => Striker::Structure,
             _ => Striker::Other,
         }
     }
@@ -52,6 +54,27 @@ pub struct HitCount {
 }
 
 impl HitCount {
+    /// Dota 7.42's pip health, counted in quarter pips (a unit's `StatusHealth` is its quarters:
+    /// 8 is two pips): a real hero's, Roshan's, a tower's or the fountain's attack takes a whole
+    /// pip, anything else's (a creep's, a summon's, an illusion's) a quarter; on Fragile pip
+    /// health a melee hero's and Roshan's take two pips (the game's server code; Dota 7.42:
+    /// "Couriers now have fragile pip health").
+    pub const fn pips(fragile: bool) -> HitCount {
+        let pip = Fixed::from_int(QUARTERS_A_PIP);
+        let fragile_blow = if fragile {
+            Fixed::from_int(2 * QUARTERS_A_PIP)
+        } else {
+            pip
+        };
+        HitCount {
+            melee_hero: fragile_blow,
+            ranged_hero: pip,
+            roshan: fragile_blow,
+            structure: pip,
+            other: Fixed::from_int(1),
+        }
+    }
+
     /// Health of `max_hp` that so many attacks of each striker bring down from full, each
     /// taking its share rounded up, so that the counted hits always bring it down and one
     /// fewer never does; Roshan and the structures count as anything else.
@@ -80,6 +103,9 @@ impl HitCount {
         }
     }
 }
+
+/// The quarters a pip of health holds.
+pub const QUARTERS_A_PIP: i32 = 4;
 
 /// `max_hp` over `hits`, rounded up to the next raw step.
 const fn share(max_hp: i32, hits: u8) -> Fixed {

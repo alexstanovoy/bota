@@ -417,22 +417,29 @@ fn a_shielded_courier_takes_nothing() {
     );
 }
 
+/// Dota 7.42, pip health: "Couriers now have fragile pip health"; "Attacks from heroes,
+/// Roshan, towers, and the fountain deal 1 full pip per attack", "Attacks from illusions and
+/// creeps deal 1/4 pip per attack", and Fragile pips "take two pips of damage from melee
+/// heroes". A courier's two pips (StatusHealth 8) fall to one melee hero swing, two ranged
+/// hero missiles or tower shots, or eight creep blows.
 #[test]
-fn a_courier_falls_to_one_melee_hero_swing_two_ranged_hero_missiles_or_six_other_blows() {
+fn a_courier_falls_to_one_melee_hero_swing_two_ranged_hero_missiles_or_tower_shots_or_eight_creep_blows()
+ {
     let pudge = hero_def(HeroId::PUDGE).expect("a hero").unit;
     let fiend = hero_def(HeroId::SHADOW_FIEND).expect("a hero").unit;
     for (attacker, blows) in [
         (pudge, 1),
         (fiend, 2),
-        (&MELEE_CREEP, 6),
-        (&RANGED_CREEP, 6),
-        (&TOWERS[0], 6),
+        (&MELEE_CREEP, 8),
+        (&RANGED_CREEP, 8),
+        (&TOWERS[0], 2),
     ] {
         let (mut world, courier, by) = a_courier_and(attacker);
+        assert_eq!(rules::COURIER_HP, 8);
         assert_eq!(
             world.stats.get(courier).map(|stats| stats.max_hp),
             Some(Fixed::from_int(rules::COURIER_HP)),
-            "six hits of health"
+            "two pips of health"
         );
         assert_eq!(
             blows_to_fell(&mut world, by, courier),
@@ -443,11 +450,11 @@ fn a_courier_falls_to_one_melee_hero_swing_two_ranged_hero_missiles_or_six_other
     }
 }
 
-/// What a side is shown of an enemy courier is its health in hits, the
-/// numbers a front end draws its bar's blocks from: six, and three gone with
-/// each missile of a ranged hero its seat sends at it.
+/// What a side is shown of an enemy courier is its health in quarter pips, the numbers a front
+/// end draws its bar's pips from: eight, and four, a pip, gone with each missile of a ranged
+/// hero its seat sends at it.
 #[test]
-fn a_courier_a_seat_sends_its_ranged_hero_at_shows_six_hits_and_loses_three_a_missile() {
+fn a_courier_a_seat_sends_its_ranged_hero_at_shows_two_pips_and_loses_one_a_missile() {
     let mut world = World::new();
     let at = Vec2::from_ints(5000, 5000);
     let fiend = seated_hero(&mut world, at, HeroId::SHADOW_FIEND);
@@ -465,7 +472,7 @@ fn a_courier_a_seat_sends_its_ranged_hero_at_shows_six_hits_and_loses_three_a_mi
         (unit.hp, unit.max_hp)
     };
     let full = rules::COURIER_HP;
-    assert_eq!(health(&world), (full, full), "six hits of health shown");
+    assert_eq!(health(&world), (full, full), "two pips of health shown");
     attack_click(&mut world, courier);
     let mut shown_after = Vec::new();
     for _ in 0..(10 * rules::TICKS_PER_SECOND) {
@@ -480,7 +487,7 @@ fn a_courier_a_seat_sends_its_ranged_hero_at_shows_six_hits_and_loses_three_a_mi
         }
     }
     assert!(!world.alive(courier), "two missiles bring it down");
-    assert_eq!(shown_after, vec![full - 3], "half of it after the first");
+    assert_eq!(shown_after, vec![full - 4], "half of it after the first");
 }
 
 #[test]
