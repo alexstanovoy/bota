@@ -59,6 +59,14 @@ pub struct LocalMatch {
     tape: Option<Vec<ReplayRecord>>,
 }
 
+/// One step's seat streams and the world facts for a local observer.
+pub struct LocalStep {
+    pub streams: Vec<Vec<ServerMsg>>,
+    pub events: Vec<Event>,
+    /// Orders released for application, including those refused on application.
+    pub orders: Vec<Command>,
+}
+
 impl LocalMatch {
     /// Creates a match and advances it to its first visible tick (tick one),
     /// returning each seat's opening stream: `MatchStart`, `Snapshot`,
@@ -117,6 +125,14 @@ impl LocalMatch {
     /// and no longer held, the snapshot, the events, and `MatchOver` when the
     /// match ended (a neutral winner is a draw).
     pub fn step(&mut self, orders: &[&[OutgoingOrder]]) -> Result<Vec<Vec<ServerMsg>>, LocalError> {
+        self.step_with_facts(orders).map(|step| step.streams)
+    }
+
+    /// Steps the match and reports the world facts alongside the seat streams.
+    pub fn step_with_facts(
+        &mut self,
+        orders: &[&[OutgoingOrder]],
+    ) -> Result<LocalStep, LocalError> {
         if self.world.victor().is_some() {
             return Err(LocalError::MatchOver);
         }
@@ -170,7 +186,11 @@ impl LocalMatch {
         } else {
             self.publish_over(&mut streams);
         }
-        Ok(streams)
+        Ok(LocalStep {
+            streams,
+            events,
+            orders: commands,
+        })
     }
 
     /// The replay records kept since the last call, in the order a server

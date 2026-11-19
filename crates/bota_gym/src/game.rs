@@ -48,8 +48,8 @@ use core::marker::PhantomData;
 
 use bota_proto::{MatchStats, OutgoingOrder, ReplayRecord, ServerMsg, Team, TickMode, WorldView};
 use bota_replay::meta::{Meta, Recorder};
-use bota_server::game::{Entity, MatchConfig, World};
-use bota_server::local::{LocalError, LocalMatch};
+use bota_server::game::{Command, Entity, Event, MatchConfig, World};
+use bota_server::local::{LocalError, LocalMatch, LocalStep};
 
 use crate::GymError;
 use crate::spec::{MAX_SETUP_CHEATS, MAX_TICK_LIMIT, MatchSpec};
@@ -128,6 +128,11 @@ impl Advance {
     pub const fn done(&self) -> bool {
         self.winner.is_some() || self.limited
     }
+}
+
+struct CompletedTick {
+    step: LocalStep,
+    winner: Option<Team>,
 }
 
 /// One in-process lockstep match.
@@ -286,13 +291,10 @@ impl<A: Access> Game<A> {
         &mut self,
         orders: &[&[OutgoingOrder]],
     ) -> Result<Vec<Vec<ServerMsg>>, GymError> {
-        self.step_told(orders).map(|(streams, _)| streams)
+        self.step_told(orders).map(|tick| tick.step.streams)
     }
 
-    fn step_told(
-        &mut self,
-        orders: &[&[OutgoingOrder]],
-    ) -> Result<(Vec<Vec<ServerMsg>>, Option<Team>), GymError> {
+    fn step_told(&mut self, orders: &[&[OutgoingOrder]]) -> Result<CompletedTick, GymError> {
         if self.result.is_some() {
             return Err(GymError::MatchOver);
         }
@@ -314,7 +316,8 @@ impl<A: Access> Game<A> {
                 limit: self.limit,
             });
         }
-        let streams = self.local.step(orders).map_err(local_error)?;
+        let step = self.local.step_with_facts(orders).map_err(local_error)?;
+        let streams = &step.streams;
         self.record();
         let views: [&[ServerMsg]; MAX_SEATS] =
             core::array::from_fn(|seat| streams.get(seat).map_or(&[][..], Vec::as_slice));
@@ -326,7 +329,7 @@ impl<A: Access> Game<A> {
             });
             self.result = Some((winner, stats.expect("a validated ending tells MatchOver")));
         }
-        Ok((streams, winner))
+        Ok(CompletedTick { step, winner })
     }
 
     /// Steps up to `ticks` ticks, `orders` given on the first, handing each tick's streams to
@@ -350,6 +353,15 @@ impl<A: Access> Game<A> {
         ticks: u32,
         mut each_tick: impl FnMut(Vec<Vec<ServerMsg>>) -> Result<(), E>,
     ) -> Result<Advance, E> {
+        self.advance_ticks(orders, ticks, |step, _| each_tick(step.streams))
+    }
+
+    fn advance_ticks<E: From<GymError>>(
+        &mut self,
+        orders: &[&[OutgoingOrder]],
+        ticks: u32,
+        mut each_tick: impl FnMut(LocalStep, &LocalMatch) -> Result<(), E>,
+    ) -> Result<Advance, E> {
         if !(1..=MAX_ADVANCE_TICKS).contains(&ticks) {
             return Err(GymError::Config("advance ticks must be 1..=MAX_ADVANCE_TICKS").into());
         }
@@ -367,10 +379,10 @@ impl<A: Access> Game<A> {
             } else {
                 &none[..orders.len().min(MAX_SEATS)]
             };
-            let (streams, winner) = self.step_told(given)?;
+            let CompletedTick { step, winner } = self.step_told(given)?;
             advance.ticks += 1;
             advance.winner = winner;
-            each_tick(streams)?;
+            each_tick(step, &self.local)?;
             if winner.is_some() {
                 return Ok(advance);
             }
@@ -442,6 +454,18 @@ impl Game<Privileged> {
     /// The whole truth of the match.
     pub fn truth(&self) -> Truth<'_> {
         Truth { local: &self.local }
+    }
+
+    /// Like [`Self::advance_batches`], with the world events and orders released each tick.
+    pub fn advance_with_facts<E: From<GymError>>(
+        &mut self,
+        orders: &[&[OutgoingOrder]],
+        ticks: u32,
+        mut each_tick: impl FnMut(Vec<Vec<ServerMsg>>, Truth<'_>, &[Event], &[Command]) -> Result<(), E>,
+    ) -> Result<Advance, E> {
+        self.advance_ticks(orders, ticks, |step, local| {
+            each_tick(step.streams, Truth { local }, &step.events, &step.orders)
+        })
     }
 
     /// The match metadata recorded so far, when the spec asked for it: per-minute samples of
