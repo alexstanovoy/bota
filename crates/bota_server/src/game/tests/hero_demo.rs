@@ -2410,3 +2410,154 @@ fn hero_scoped_cheats_aimed_at_an_illusion_are_refused_as_not_a_hero_and_never_h
     assert_eq!(demo.me().gold, own_gold_before, "giver's gold untouched");
     assert_eq!(demo.me().level, own_level_before, "giver's level untouched");
 }
+
+#[test]
+fn a_match_without_cheats_refuses_every_order_kind_aimed_at_another_players_hero() {
+    use bota_proto::ItemSlot;
+
+    let mut pair = Pair::on(DEMO_ID, false);
+    let enemy = pair
+        .view(0)
+        .player(SlotId(1))
+        .and_then(|row| row.unit)
+        .expect("Seat 1's hero in Seat 0's snapshot");
+    assert_eq!(
+        pair.local
+            .handle_of(0, pair.local.hero_of(1).expect("seat 1 hero")),
+        Some(enemy)
+    );
+    for order in [
+        Order::Move {
+            target: Target::None,
+        },
+        Order::Attack {
+            target: Target::None,
+        },
+        Order::Cast {
+            slot: AbilitySlot(0),
+            target: Target::None,
+        },
+        Order::Buy {
+            item: ItemId::IRON_BRANCH,
+        },
+        Order::Sell { slot: ItemSlot(0) },
+        Order::Swap {
+            from: ItemSlot(0),
+            to: ItemSlot(1),
+        },
+        Order::Learn {
+            slot: AbilitySlot(0),
+        },
+        Order::LearnAttributeBonus,
+        Order::Buyback,
+    ] {
+        pair.give(0, Some(enemy), order);
+        assert_eq!(
+            pair.rejected[0],
+            [RejectReason::NotYourUnit],
+            "without cheats, {order:?} naming Seat 1's hero must be refused"
+        );
+    }
+
+    // Team-scoped Glyph and Scan naming the enemy hero still affect only Radiant's own side.
+    let wait = map_of(DEMO_ID).pregame_ticks + rules::GLYPH_FIRST_USE_AFTER_HORN;
+    pair.run(wait);
+    let charges_before = [
+        pair.local.world_mut().scan_ledger(0).charges,
+        pair.local.world_mut().scan_ledger(1).charges,
+    ];
+    pair.give(0, Some(enemy), Order::Glyph);
+    assert_eq!(pair.rejected[0], []);
+    pair.give(
+        0,
+        Some(enemy),
+        Order::Scan {
+            at: rules::DEMO_LANE_CORNERS[1],
+        },
+    );
+    assert_eq!(pair.rejected[0], []);
+    let world = pair.local.world_mut();
+    let now = world.tick;
+    assert!(world.glyphs[0].ready_at > now, "Radiant's Glyph spent");
+    assert!(world.glyphs[1].ready_at <= now, "Dire's Glyph untouched");
+    assert_eq!(
+        [
+            world.scan_ledger(0).charges,
+            world.scan_ledger(1).charges,
+        ],
+        [charges_before[0] - 1, charges_before[1]],
+        "only Radiant's Scan spent"
+    );
+}
+
+#[test]
+fn with_cheats_on_a_player_cannot_control_buy_learn_or_cheat_another_players_hero() {
+    let mut pair = Pair::on(HERO_DEMO_ID, true);
+    let other = pair
+        .view(0)
+        .player(SlotId(1))
+        .and_then(|row| row.unit)
+        .expect("Seat 1's hero in Seat 0's snapshot");
+    assert_eq!(
+        pair.local
+            .handle_of(0, pair.local.hero_of(1).expect("seat 1 hero")),
+        Some(other)
+    );
+    let dire_gold_before = pair.local.world_mut().seats[1].gold;
+    for order in [
+        Order::Move {
+            target: Target::None,
+        },
+        Order::Attack {
+            target: Target::None,
+        },
+        Order::Cast {
+            slot: AbilitySlot(0),
+            target: Target::None,
+        },
+        Order::Buy {
+            item: ItemId::BLINK_DAGGER,
+        },
+        Order::Learn {
+            slot: AbilitySlot(0),
+        },
+        Order::Buyback,
+        Order::Cheat {
+            cheat: Cheat::RemoveHero,
+        },
+        Order::Cheat {
+            cheat: Cheat::MaxAbilities,
+        },
+        Order::Cheat {
+            cheat: Cheat::UnlearnAbilities,
+        },
+        Order::Cheat {
+            cheat: Cheat::Gold { amount: 5_000 },
+        },
+        Order::Cheat {
+            cheat: Cheat::Suicide,
+        },
+    ] {
+        pair.give(0, Some(other), order);
+        assert_eq!(
+            pair.rejected[0],
+            [RejectReason::NotYourUnit],
+            "with cheats on, {order:?} naming another player's hero must be refused"
+        );
+    }
+    assert_eq!(
+        pair.view(1).player(SlotId(1)).expect("Seat 1").respawn_left,
+        0,
+        "Seat 1's hero stayed alive"
+    );
+    assert_eq!(
+        pair.view(1).player(SlotId(1)).expect("Seat 1").level,
+        1,
+        "Seat 1's level untouched"
+    );
+    assert_eq!(
+        pair.local.world_mut().seats[1].gold,
+        dire_gold_before,
+        "Seat 1's gold untouched"
+    );
+}

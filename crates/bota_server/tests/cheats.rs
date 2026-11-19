@@ -521,3 +521,320 @@ fn a_queued_launch_refuses_the_hero_demo_without_cheats() {
     queued.lobby_cheats = true;
     assert_eq!(check_opts(&queued), Ok(()));
 }
+
+#[test]
+fn multi_reserved_seat_hero_demo_startup_enforces_cheats_and_lobby_cheats() {
+    let make = |players: u8, cheats: bool, lobby_cheats: bool| {
+        let mut o = opts(cheats, None);
+        o.map = bota_core::HERO_DEMO_ID;
+        o.players = players;
+        o.lobby_cheats = lobby_cheats;
+        o.reserved = (0..players)
+            .map(|seat| ReservedSeat {
+                version: bota_server::lobby::VersionSource::Client,
+                key: bota_proto::SeatKey([seat; 32]),
+                name: format!("p{seat}"),
+                team: if seat % 2 == 0 {
+                    bota_proto::Team::Radiant
+                } else {
+                    bota_proto::Team::Dire
+                },
+                kind: None,
+            })
+            .collect();
+        o
+    };
+    assert!(
+        check_opts(&make(2, false, false)).is_err(),
+        "2 reserved seats without cheats on map 3 refused"
+    );
+    assert!(
+        check_opts(&make(2, true, false)).is_err(),
+        "2 reserved seats with --cheats but without --lobby-cheats on map 3 refused"
+    );
+    assert!(
+        check_opts(&make(2, false, true)).is_err(),
+        "2 reserved seats with --lobby-cheats without --cheats refused"
+    );
+    assert_eq!(
+        check_opts(&make(2, true, true)),
+        Ok(()),
+        "2 reserved seats with --cheats and --lobby-cheats on map 3 accepted"
+    );
+    assert!(
+        check_opts(&make(1, false, false)).is_err(),
+        "1 reserved seat without cheats on map 3 refused"
+    );
+    assert_eq!(
+        check_opts(&make(1, true, false)),
+        Ok(()),
+        "1 reserved seat with --cheats on map 3 (solo Demo Hero) accepted"
+    );
+}
+
+#[test]
+fn over_tcp_a_player_cannot_order_or_cheat_another_players_hero_with_cheats_off_or_on() {
+    use bota_proto::{ClientMsg, Target};
+
+    for cheats in [false, true] {
+        let mut o = opts(cheats, None);
+        o.players = 2;
+        let (address, server) = serve(o);
+
+        let addr_b = address.clone();
+        let peer = thread::spawn(move || {
+            let (mut link, seated) =
+                Link::join(&addr_b, "peer", HeroId::SHADOW_FIEND, None).expect("peer seated");
+            let mut seat = Seat::new(seated, SessionOptions::default());
+            for _ in 0..200 {
+                let Ok(Some(msg)) = link.recv() else {
+                    break;
+                };
+                match seat.ingest(msg, &mut ()).expect("sound") {
+                    Ingested::TickComplete { .. } => {
+                        if let Some(tick) = seat.session_mut().and_then(|s| s.end_turn()) {
+                            let _ = link.send(&ClientMsg::Ack { tick });
+                        }
+                    }
+                    Ingested::Over { .. } | Ingested::Aborted { .. } => break,
+                    _ => {}
+                }
+            }
+        });
+
+        let (mut link, seated) =
+            Link::join(&address, "tester", HeroId::SHADOW_FIEND, None).expect("tester seated");
+        let own_slot = seated.slot;
+        let other_slot = if own_slot == SlotId(0) {
+            SlotId(1)
+        } else {
+            SlotId(0)
+        };
+        let mut seat = Seat::new(seated, SessionOptions::default());
+        let orders = [
+            Order::Move {
+                target: Target::None,
+            },
+            Order::Cheat {
+                cheat: Cheat::RemoveHero,
+            },
+            Order::Cheat {
+                cheat: Cheat::Suicide,
+            },
+        ];
+        let mut sent = 0usize;
+        let mut waiting = false;
+        let mut refusals = Vec::new();
+        for _ in 0..2_000 {
+            if refusals.len() == orders.len() {
+                break;
+            }
+            let msg = link.recv().expect("recv").expect("open");
+            match seat.ingest(msg, &mut ()).expect("sound") {
+                Ingested::Rejected { reason, .. } => {
+                    refusals.push(reason);
+                    waiting = false;
+                }
+                Ingested::TickComplete { .. } => {
+                    let session = seat.session_mut().expect("started");
+                    let view = session.current().expect("view").clone();
+                    if !waiting && sent < orders.len() {
+                        let other_hero = view
+                            .player(other_slot)
+                            .and_then(|p| p.unit)
+                            .expect("other player's hero in own view");
+                        let issued = IssuedOrder {
+                            unit: Some(other_hero),
+                            ..IssuedOrder::hero(orders[sent])
+                        };
+                        let outgoing = session.issue(issued).expect("issued");
+                        link.send(&outgoing.message()).expect("sent");
+                        sent += 1;
+                        waiting = true;
+                    }
+                    if let Some(tick) = session.end_turn() {
+                        link.send(&ClientMsg::Ack { tick }).expect("acked");
+                    }
+                }
+                Ingested::Over { .. } | Ingested::Aborted { .. } => break,
+                _ => {}
+            }
+        }
+        assert_eq!(
+            refusals,
+            vec![RejectReason::NotYourUnit; orders.len()],
+            "cheats={cheats}: orders to another player's hero over TCP must be refused"
+        );
+        let _ = link.send(&ClientMsg::LeaveGame);
+        drop(link);
+        peer.join().expect("peer thread");
+        server.join().expect("server thread");
+    }
+}
+
+#[test]
+fn a_departed_players_hero_stays_uncontrollable_and_unremovable_with_cheats_on() {
+    use bota_proto::{ClientMsg, SeatKey, Target, Team};
+
+    let make_seat = |key: u8, name: &str, team: Team| ReservedSeat {
+        version: bota_server::lobby::VersionSource::Client,
+        key: SeatKey([key; 32]),
+        name: name.to_owned(),
+        team,
+        kind: None,
+    };
+    let mut o = opts(true, None);
+    o.players = 3;
+    o.lobby_cheats = true;
+    o.reserved = vec![
+        make_seat(1, "keeper", Team::Radiant),
+        make_seat(2, "leaver", Team::Radiant),
+        make_seat(3, "enemy", Team::Dire),
+    ];
+    let (address, server) = serve(o);
+
+    // Seat 1 ("leaver") joins, plays 2 ticks, then permanently leaves with LeaveGame.
+    let addr_leaver = address.clone();
+    let leaver = thread::spawn(move || {
+        let (mut link, seated) = Link::join(
+            &addr_leaver,
+            "leaver",
+            HeroId::SHADOW_FIEND,
+            Some(SeatKey([2; 32])),
+        )
+        .expect("leaver seated");
+        let mut seat = Seat::new(seated, SessionOptions::default());
+        let mut ticks = 0u32;
+        for _ in 0..200 {
+            let Ok(Some(msg)) = link.recv() else {
+                break;
+            };
+            if let Ingested::TickComplete { .. } = seat.ingest(msg, &mut ()).expect("sound") {
+                ticks += 1;
+                if let Some(tick) = seat.session_mut().and_then(|s| s.end_turn()) {
+                    let _ = link.send(&ClientMsg::Ack { tick });
+                }
+                if ticks == 2 {
+                    let _ = link.send(&ClientMsg::LeaveGame);
+                    break;
+                }
+            }
+        }
+    });
+
+    // Seat 2 ("enemy") stays connected so the match does not forfeit while Seat 0 tests.
+    let addr_enemy = address.clone();
+    let enemy = thread::spawn(move || {
+        let (mut link, seated) = Link::join(
+            &addr_enemy,
+            "enemy",
+            HeroId::SHADOW_FIEND,
+            Some(SeatKey([3; 32])),
+        )
+        .expect("enemy seated");
+        let mut seat = Seat::new(seated, SessionOptions::default());
+        for _ in 0..500 {
+            let Ok(Some(msg)) = link.recv() else {
+                break;
+            };
+            match seat.ingest(msg, &mut ()).expect("sound") {
+                Ingested::TickComplete { .. } => {
+                    if let Some(tick) = seat.session_mut().and_then(|s| s.end_turn()) {
+                        let _ = link.send(&ClientMsg::Ack { tick });
+                    }
+                }
+                Ingested::Over { .. } | Ingested::Aborted { .. } => break,
+                _ => {}
+            }
+        }
+    });
+
+    let (mut link, seated) = Link::join(
+        &address,
+        "keeper",
+        HeroId::SHADOW_FIEND,
+        Some(SeatKey([1; 32])),
+    )
+    .expect("keeper seated");
+    let mut seat = Seat::new(seated, SessionOptions::default());
+    let orders = [
+        Order::Move {
+            target: Target::None,
+        },
+        Order::Cheat {
+            cheat: Cheat::RemoveHero,
+        },
+        Order::Cheat {
+            cheat: Cheat::Suicide,
+        },
+    ];
+    let mut leaver_gone = false;
+    let mut sent = 0usize;
+    let mut waiting = false;
+    let mut refusals = Vec::new();
+    let mut last_view = None;
+    for _ in 0..2_000 {
+        if refusals.len() == orders.len() {
+            break;
+        }
+        let msg = link.recv().expect("recv").expect("open");
+        match seat.ingest(msg, &mut ()).expect("sound") {
+            Ingested::Passed(boxed) => {
+                if matches!(
+                    *boxed,
+                    ServerMsg::ParticipantLeft {
+                        slot: Some(SlotId(1)),
+                        ..
+                    }
+                ) {
+                    leaver_gone = true;
+                }
+            }
+            Ingested::Rejected { reason, .. } => {
+                refusals.push(reason);
+                waiting = false;
+            }
+            Ingested::TickComplete { .. } => {
+                let session = seat.session_mut().expect("started");
+                let view = session.current().expect("view").clone();
+                if leaver_gone && !waiting && sent < orders.len() {
+                    let departed_hero = view
+                        .player(SlotId(1))
+                        .and_then(|p| p.unit)
+                        .expect("departed player's hero still in match");
+                    let issued = IssuedOrder {
+                        unit: Some(departed_hero),
+                        ..IssuedOrder::hero(orders[sent])
+                    };
+                    let outgoing = session.issue(issued).expect("issued");
+                    link.send(&outgoing.message()).expect("sent");
+                    sent += 1;
+                    waiting = true;
+                }
+                last_view = Some(view);
+                if let Some(tick) = session.end_turn() {
+                    link.send(&ClientMsg::Ack { tick }).expect("acked");
+                }
+            }
+            Ingested::Over { .. } | Ingested::Aborted { .. } => break,
+            _ => {}
+        }
+    }
+    assert!(leaver_gone, "leaver's PlayerLeft was heard");
+    assert_eq!(
+        refusals,
+        vec![RejectReason::NotYourUnit; orders.len()],
+        "a departed player's hero must remain uncontrollable and unremovable with cheats on"
+    );
+    let view = last_view.expect("a snapshot");
+    assert!(
+        view.player(SlotId(1)).is_some_and(|p| p.respawn_left == 0),
+        "departed player's hero stayed in the match and alive"
+    );
+    // Cleanly terminate match so enemy/server threads exit promptly.
+    let _ = link.send(&ClientMsg::LeaveGame);
+    drop(link);
+    leaver.join().expect("leaver thread");
+    enemy.join().expect("enemy thread");
+    server.join().expect("server thread");
+}
