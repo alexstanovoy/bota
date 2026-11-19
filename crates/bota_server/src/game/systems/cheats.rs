@@ -644,20 +644,67 @@ impl World {
 
     /// Every point a hero spent comes back: what it learned of its own abilities stands at
     /// nothing again, the Attribute Bonus too, and its talents are untaken. What its level
-    /// grants it keeps.
+    /// grants it keeps. Any toggle of an unlearned ability goes off, and any cast or channel
+    /// of one is cancelled before its level is zeroed.
     fn unlearn_all(&mut self, hero: Entity) {
         let kit = self
             .hero
             .get(hero)
             .and_then(|id| hero_def(*id))
             .map_or(&[] as &[bota_proto::AbilityId], |def| def.abilities);
+        if self.abilities.get(hero).is_none() {
+            return;
+        }
+        let unlearned = |id: bota_proto::AbilityId| {
+            kit.contains(&id)
+                && bota_core::ability_def(id).is_some_and(|def| def.granted_at.is_none())
+        };
+        if unlearned(bota_proto::AbilityId::ROT) {
+            self.rot_goes_out(hero);
+        }
+        if let Some(crate::game::ActionState::CastAbility { slot, .. }) =
+            self.action.get(hero).map(|action| action.state)
+            && unlearned(self.ability_in(hero, slot))
+        {
+            self.cancel_action(hero);
+        }
+        let clear_pending = self
+            .orders
+            .get(hero)
+            .and_then(|orders| orders.pending)
+            .is_some_and(|cast| {
+                matches!(
+                    cast,
+                    crate::game::PendingCast::Ability { slot, .. }
+                        if unlearned(self.ability_in(hero, slot))
+                )
+            });
+        let clear_immediate = self
+            .orders
+            .get(hero)
+            .and_then(|orders| orders.immediate)
+            .is_some_and(|cast| {
+                matches!(
+                    cast,
+                    crate::game::PendingCast::Ability { slot, .. }
+                        if unlearned(self.ability_in(hero, slot))
+                )
+            });
+        if let Some(orders) = self.orders.get_mut(hero) {
+            if clear_pending {
+                orders.pending = None;
+            }
+            if clear_immediate {
+                orders.immediate = None;
+            }
+        }
         let Some(book) = self.abilities.get_mut(hero) else {
             return;
         };
         // The hero's own abilities alone: what the map lends every unit (an objective's
         // interaction) is no learning.
-        for held in book.slots.iter_mut().filter(|held| kit.contains(&held.id)) {
-            if bota_core::ability_def(held.id).is_some_and(|def| def.granted_at.is_none()) {
+        for held in book.slots.iter_mut() {
+            if unlearned(held.id) {
                 held.level = 0;
             }
         }

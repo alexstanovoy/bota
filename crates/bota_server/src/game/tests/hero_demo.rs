@@ -1760,3 +1760,160 @@ fn removing_a_created_hero_channelling_an_outpost_capture_releases_capture_progr
         "player hero inherited removed hero's capture progress: completed in {channel_ticks} ticks (expected ~{CAPTURE_TICKS})"
     );
 }
+
+#[test]
+fn unlearning_abilities_turns_off_active_rot_and_stops_its_burn() {
+    use bota_proto::{AbilityId, EffectId, Inflictor};
+
+    let mut demo = Demo::on(HERO_DEMO_ID);
+    let pudge = demo.spawn_enemy(HeroId::PUDGE);
+    let rot = ability_slot_of(demo.unit(pudge), AbilityId::ROT);
+    demo.order(pudge, Order::Learn { slot: rot });
+    demo.order(
+        pudge,
+        Order::Cast {
+            slot: rot,
+            target: Target::None,
+        },
+    );
+    demo.run(2);
+    assert!(
+        demo.unit(pudge)
+            .effects
+            .iter()
+            .any(|e| e.id == EffectId::ROT),
+        "Rot is active before unlearning"
+    );
+
+    demo.cheat_at(pudge, Cheat::UnlearnAbilities);
+    assert_eq!(
+        demo.unit(pudge).abilities[usize::from(rot.0)].level,
+        0,
+        "Rot level was zeroed"
+    );
+    assert!(
+        !demo.unit(pudge).abilities[usize::from(rot.0)].on,
+        "Rot toggle must be off after unlearning"
+    );
+    assert!(
+        demo.unit(pudge)
+            .effects
+            .iter()
+            .all(|e| e.id != EffectId::ROT),
+        "Rot effect must not remain after unlearning"
+    );
+    assert!(
+        demo.view()
+            .projectiles
+            .iter()
+            .all(|p| p.inflictor != Some(Inflictor::Ability(AbilityId::ROT))),
+        "Rot mark must not remain after unlearning"
+    );
+    let hp_after = demo.unit(pudge).hp;
+    for _ in 0..rules::TICKS_PER_SECOND {
+        demo.run(1);
+        let hp = demo.unit(pudge).hp;
+        assert!(
+            hp >= hp_after,
+            "Pudge kept taking Rot burn after unlearning: hp {hp} < {hp_after}"
+        );
+    }
+}
+
+#[test]
+fn unlearning_abilities_cancels_an_active_dismember_channel() {
+    use bota_proto::{AbilityId, EffectId, EventKind, Inflictor, StatusFlags};
+
+    let mut demo = Demo::on(HERO_DEMO_ID);
+    let own = demo.me().unit.expect("own hero");
+    demo.cheat(Cheat::Levels { count: 25 });
+    demo.cheat(Cheat::Refresh);
+    let pudge = demo.spawn_enemy(HeroId::PUDGE);
+    demo.cheat_at(pudge, Cheat::Levels { count: 10 });
+    let dismember = ability_slot_of(demo.unit(pudge), AbilityId::DISMEMBER);
+    demo.order(pudge, Order::Learn { slot: dismember });
+    let own_pos = demo.unit(own).pos;
+    demo.cheat_at(
+        pudge,
+        Cheat::Teleport {
+            at: own_pos + Vec2::from_ints(120, 0),
+        },
+    );
+    demo.order(
+        pudge,
+        Order::Cast {
+            slot: dismember,
+            target: Target::Unit(own),
+        },
+    );
+    for _ in 0..rules::TICKS_PER_SECOND {
+        demo.run(1);
+        if demo.unit(own).statuses.bits & StatusFlags::STUNNED != 0 {
+            break;
+        }
+    }
+    assert_ne!(
+        demo.unit(own).statuses.bits & StatusFlags::STUNNED,
+        0,
+        "Dismember stunned the victim"
+    );
+    assert!(
+        demo.unit(own)
+            .effects
+            .iter()
+            .any(|e| e.id == EffectId::DISMEMBERED),
+        "victim wears Dismembered effect"
+    );
+    assert_ne!(
+        demo.unit(pudge).statuses.bits & StatusFlags::CHANNELLING,
+        0,
+        "Pudge is channelling Dismember"
+    );
+
+    demo.cheat_at(pudge, Cheat::UnlearnAbilities);
+    assert_eq!(
+        demo.unit(pudge).statuses.bits & StatusFlags::CHANNELLING,
+        0,
+        "Pudge must stop channelling Dismember after unlearning"
+    );
+    assert_eq!(
+        demo.unit(own).statuses.bits & StatusFlags::STUNNED,
+        0,
+        "victim must not remain stunned after Dismember is unlearned"
+    );
+    assert!(
+        demo.unit(own)
+            .effects
+            .iter()
+            .all(|e| e.id != EffectId::DISMEMBERED),
+        "victim must not keep Dismembered effect after unlearning"
+    );
+    assert!(
+        demo.view()
+            .projectiles
+            .iter()
+            .all(|p| p.inflictor != Some(Inflictor::Ability(AbilityId::DISMEMBER))),
+        "Dismember mark must be cleared when unlearned"
+    );
+    // Run through the rest of the channel duration: no magical Dismember bites may land.
+    for _ in 0..4 * rules::TICKS_PER_SECOND {
+        let streams = demo.local.step(&[&[]]).expect("a step");
+        for msg in streams.into_iter().flatten() {
+            if let ServerMsg::Events { events, .. } = msg {
+                for event in events {
+                    if let EventKind::Damaged {
+                        target,
+                        kind: DamageKind::Magical,
+                        ..
+                    } = event
+                    {
+                        assert_ne!(
+                            target, own,
+                            "victim took magical Dismember bite after unlearning"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
