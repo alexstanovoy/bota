@@ -1,7 +1,9 @@
 //! Towers at Dota 7.41f: what they are made of, how fast they shoot, what
 //! their fall pays and how often they let go.
 
-use bota_core::{MELEE_CREEP, RANGED_CREEP, UnitDef, rules, tower_def};
+use bota_core::{
+    BARRACKS_MELEE, BARRACKS_RANGED, MELEE_CREEP, RANGED_CREEP, UnitDef, rules, tower_def,
+};
 
 use crate::game::World;
 use bota_proto::{Fixed, Order, Target, Team, UnitKind, Vec2};
@@ -126,8 +128,36 @@ fn a_fallen_tower_pays_its_side_and_its_striker_and_a_deny_pays_both_sides_half(
 /// A Dire tier-one tower, two Radiant seats (the first beside it, the
 /// second across the map) and the Dire seat that owns it, all with no gold.
 fn a_tower_and_three_seats() -> (World, crate::game::Entity) {
+    a_building_and_three_seats(tower_def(1))
+}
+
+/// Dota 7.42: "Barracks last hit gold rescaled from 90-135 to 100", "Melee barracks gold per
+/// player decreased from 155 to 125", "Ranged barracks gold per player increased from 90 to
+/// 100": a barracks struck down pays every seat of the side that brought it down its share and
+/// the striker 100 more.
+#[test]
+fn a_fallen_barracks_pays_its_side_its_share_and_its_striker_a_hundred() {
+    for (def, team) in [(&BARRACKS_MELEE, 125), (&BARRACKS_RANGED, 100)] {
+        assert_eq!(def.bounty_team, team);
+        let (mut world, barracks) = a_building_and_three_seats(def);
+        let striker = world.seats[0].unit.expect("seated");
+        let mut events = Vec::new();
+        world.bury(vec![(barracks, Some(striker))], &mut events);
+        let gold: Vec<i32> = world.seats.iter().map(|seat| seat.gold).collect();
+        assert_eq!(
+            gold,
+            vec![team + 100, team, 0],
+            "struck down, {team} a seat"
+        );
+        assert_eq!(paid(&events), Some(team + 100));
+    }
+}
+
+/// A Dire building of `def`, two Radiant seats (the first beside it, the second across the map)
+/// and the Dire seat that owns it, all with no gold.
+fn a_building_and_three_seats(def: &'static UnitDef) -> (World, crate::game::Entity) {
     let mut world = World::new();
-    let tower = world.spawn_unit(tower_def(1), Team::Dire, Vec2::from_ints(5000, 5000));
+    let tower = world.spawn_unit(def, Team::Dire, Vec2::from_ints(5000, 5000));
     seat_hero(&mut world, 0, Team::Radiant, Vec2::from_ints(5300, 5000));
     seat_hero(
         &mut world,

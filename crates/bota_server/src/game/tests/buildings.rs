@@ -320,8 +320,9 @@ fn the_fountain_sees_a_hidden_ward_in_its_reach_and_shoots_it_down() {
     assert!(!world.alive(inside), "the fountain shoots it down");
     assert!(world.alive(outside));
     // The reveal ends at 1800 out along the diagonal too: a shade inside it is found, a shade
-    // beyond it hides. The fountain's ordinary sight reaches as far since 7.42, so what does not
-    // hide is seen where the found shade stands, and no further.
+    // beyond it hides. The fountain's ordinary sight reaches 1800 as well (7.41f's did too), so a
+    // Radiant creep beside the far shade lends plain sight there: what does not hide is seen by
+    // it, and the shade beside it, which only true sight finds, is not.
     let mut world = World::on_map(map_of(MapId(2)));
     let edge =
         |far: i32| fountain_at + bota_proto::Vec2::from_ints(far * 707 / 1000, far * 707 / 1000);
@@ -330,12 +331,16 @@ fn the_fountain_sees_a_hidden_ward_in_its_reach_and_shoots_it_down() {
         plant(&mut world, edge(reach - 20)),
         plant(&mut world, edge(reach + 20)),
     );
-    let plain = world.spawn_unit(&STANDING_TARGET, Team::Dire, edge(reach - 20));
+    world.spawn_unit(&STANDING_TARGET, Team::Radiant, edge(reach + 120));
+    let plain = world.spawn_unit(&STANDING_TARGET, Team::Dire, edge(reach + 40));
     world.settle();
     assert!(
         world.can_see(Team::Radiant, plain),
-        "what does not hide is seen there"
+        "what does not hide is seen beyond 1800, by the creep's sight"
     );
     assert!(world.can_see(Team::Radiant, edge_in), "inside 1800: found");
-    assert!(!world.can_see(Team::Radiant, edge_out), "beyond: hidden");
+    assert!(
+        !world.can_see(Team::Radiant, edge_out),
+        "beyond: hidden, plain sight or not"
+    );
 }

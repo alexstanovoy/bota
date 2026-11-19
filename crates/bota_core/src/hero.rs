@@ -70,7 +70,10 @@ pub fn white_damage_least(unit: &UnitDef, level: u8, has: Attributes) -> i32 {
     unit.damage + unit.per_level.damage * levels + primary_damage(has, unit.primary)
 }
 
-/// The attack damage a primary attribute pays: none for a unit without one.
+/// The attack damage a primary attribute pays: none for a unit without one. Dota pays for whole
+/// points: it truncates the attribute before it multiplies it (the game's server code).
+/// Universal heroes, paid 0.45 a point of the three summed, are not modelled: no hero bota plays
+/// is one.
 pub fn primary_damage(has: Attributes, primary: Option<Attribute>) -> i32 {
     primary.map_or(0, |primary| {
         (has.of(primary) * Fixed::from_int(rules::DAMAGE_PER_PRIMARY)).to_int()
@@ -79,7 +82,8 @@ pub fn primary_damage(has: Attributes, primary: Option<Attribute>) -> i32 {
 
 /// The whole points of an attribute that pay for health and mana: Dota's hero stat
 /// recalculation floors strength and intelligence, a hundredth added against rounding, before
-/// it multiplies them (read from the game's server code).
+/// it multiplies them (read from the game's server code). Health and mana are the only two
+/// derived stats that floor; the others take the attribute as it is held, or truncate it.
 pub const fn whole_points(attribute: Fixed) -> i32 {
     (attribute.raw + WHOLE_POINT_MARGIN.raw) >> Fixed::FRAC_BITS
 }
@@ -97,12 +101,13 @@ pub const fn intelligence_mana(intelligence: Fixed) -> i32 {
 /// The hundredth a point that [`whole_points`] adds before it floors.
 const WHOLE_POINT_MARGIN: Fixed = Fixed::from_ratio(1, 100);
 
-/// The magic resistance intelligence is worth, in basis points.
+/// The magic resistance intelligence is worth, in basis points: every fraction of it pays (the
+/// game's server code multiplies the unfloored attribute).
 pub fn intelligence_magic_resist_bp(has: Attributes) -> i32 {
     (has.intelligence * rules::MAGIC_RESIST_BP_PER_INTELLIGENCE).to_int()
 }
 
-/// The armor agility is worth.
+/// The armor agility is worth: every fraction of it pays (the game's server code).
 pub fn agility_armor(has: Attributes) -> Fixed {
     rules::ARMOR_PER_AGILITY * has.agility
 }

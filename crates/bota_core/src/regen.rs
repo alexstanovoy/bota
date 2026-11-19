@@ -91,7 +91,8 @@ fn from_modifier(kind: ModifierKind, max: Regen) -> Regen {
     Regen { hp, mana }
 }
 
-/// What strength and intelligence mend each tick.
+/// What strength and intelligence mend each tick: every fraction of them pays (the game's
+/// server code multiplies the unfloored attributes).
 pub fn attribute_regen(attributes: Attributes) -> Regen {
     Regen {
         hp: rules::HP_REGEN_PER_STRENGTH * attributes.strength,

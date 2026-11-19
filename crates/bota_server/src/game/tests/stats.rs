@@ -503,6 +503,92 @@ fn health_and_mana_are_paid_for_whole_points_of_strength_and_intelligence() {
     );
 }
 
+/// Shadow Fiend settled at the first level where his agility holds half a point or more past a
+/// whole one and his strength and intelligence hold a fraction: what each derived stat pays
+/// for tells a floored attribute from one taken as held.
+fn fiend_holding_fractions() -> (Stats, u8) {
+    let frac = |f: Fixed| f.raw & ((1 << Fixed::FRAC_BITS) - 1);
+    let half = 1 << (Fixed::FRAC_BITS - 1);
+    for level in 1..=30 {
+        let mut world = World::new();
+        let fiend = seated_hero(
+            &mut world,
+            Vec2::from_ints(5000, 5000),
+            bota_proto::HeroId(1),
+        );
+        world.level.insert(fiend, Level(level));
+        world.settle();
+        let stats = *world.stats.get(fiend).expect("settled");
+        let has = stats.attributes;
+        if frac(has.agility) >= half && frac(has.strength) > 0 && frac(has.intelligence) > 0 {
+            return (stats, level);
+        }
+    }
+    panic!("no level of Shadow Fiend's holds fractions of all three attributes");
+}
+
+/// The game's server code takes agility as held for armor: "GetAgility x 1/6", unfloored.
+#[test]
+fn armor_pays_for_every_fraction_of_agility() {
+    let (stats, level) = fiend_holding_fractions();
+    let base = &bota_core::SHADOW_FIEND;
+    let armor = |agility| Fixed::from_int(base.armor) + agility * Fixed::from_ratio(1, 6);
+    let agility = stats.attributes.agility;
+    assert_eq!(stats.armor, armor(agility), "level {level}");
+    assert_ne!(stats.armor, armor(Fixed::from_int(agility.to_int())));
+}
+
+/// And intelligence for magic resistance: "0.125 x multiplier x GetIntellect", unfloored.
+#[test]
+fn magic_resistance_pays_for_every_fraction_of_intelligence() {
+    let (stats, level) = fiend_holding_fractions();
+    let base = &bota_core::SHADOW_FIEND;
+    let resist = |intelligence: Fixed| {
+        base.magic_resist_pct * 100 + (intelligence * Fixed::from_ratio(25, 2)).to_int()
+    };
+    let intelligence = stats.attributes.intelligence;
+    assert_eq!(stats.magic_resist_bp, resist(intelligence), "level {level}");
+    assert_ne!(
+        stats.magic_resist_bp,
+        resist(Fixed::from_int(intelligence.to_int()))
+    );
+}
+
+/// And strength and intelligence for regeneration: 0.1 health and 0.05 mana a second a point,
+/// unfloored.
+#[test]
+fn regeneration_pays_for_every_fraction_of_strength_and_intelligence() {
+    let (stats, level) = fiend_holding_fractions();
+    let base = &bota_core::SHADOW_FIEND;
+    let has = stats.attributes;
+    let whole = |f: Fixed| Fixed::from_int(f.to_int());
+    let health = |strength| base.hp_regen + rules::HP_REGEN_PER_STRENGTH * strength;
+    let mana = |intelligence| base.mana_regen + rules::MANA_REGEN_PER_INTELLIGENCE * intelligence;
+    assert_eq!(stats.hp_regen, health(has.strength), "level {level} health");
+    assert_ne!(stats.hp_regen, health(whole(has.strength)));
+    assert_eq!(
+        stats.mana_regen,
+        mana(has.intelligence),
+        "level {level} mana"
+    );
+    assert_ne!(stats.mana_regen, mana(whole(has.intelligence)));
+}
+
+/// The primary attribute pays attack damage for its whole points: the game's server code
+/// truncates it before it multiplies ("trunc(that attribute)"), so half a point and more past a
+/// whole one pays nothing.
+#[test]
+fn attack_damage_pays_for_whole_points_of_the_primary_attribute() {
+    let (stats, level) = fiend_holding_fractions();
+    let base = &bota_core::SHADOW_FIEND;
+    let levels = i32::from(level) - 1;
+    assert_eq!(
+        stats.damage,
+        base.damage + base.per_level.damage * levels + stats.attributes.agility.to_int(),
+        "level {level}"
+    );
+}
+
 #[test]
 fn shadow_fiend_stands_at_dota_numbers_from_the_first_level_to_the_last() {
     // With nothing bought: level, health, mana, attack damage (the middle of the spread),
@@ -648,10 +734,9 @@ fn split_of(world: &World, hero: crate::game::Entity) -> bota_client_core::StatS
     bota_client_core::stat_split(&shown(world, Some(Team::Radiant), hero)).expect("a hero")
 }
 
-/// Intelligence adds 0.1% magic resistance a point to the hero's base, as
-/// Dota 7.41's does (its stats tooltip calls the sum Base Magic
-/// Resistance): the view tells it, it keeps magic damage out, and the panel
-/// draws it white, a Robe's intelligence too.
+/// Intelligence adds 0.125% magic resistance a point to the hero's base, as Dota 7.42's does
+/// (its stats tooltip calls the sum Base Magic Resistance): the view tells it, it keeps magic
+/// damage out, and the panel draws it white, a Robe's intelligence too.
 #[test]
 fn intelligence_adds_base_magic_resistance() {
     let mut world = World::new();

@@ -405,10 +405,23 @@ fn roshans_npc_level_attack_speed_and_bounty_are_the_boss_rows() {
     world.settle();
     let before: Vec<_> = world.seats.iter().map(|s| s.xp).collect();
     let killer = world.seats[0].unit;
+    let gold_before: Vec<_> = world.seats.iter().map(|s| s.gold).collect();
     world.push_hit(killer, roshan, 100_000, DamageKind::Pure, None);
     world.step();
     assert_eq!(world.seats[0].xp - before[0], 400);
     assert_eq!(world.seats[1].xp - before[1], 0);
+    // Dota 7.42: "Roshan gold per player decreased from 135 to 125"; the last hit is the boss
+    // row's own.
+    let last_hit = bota_core::ROSHAN.bounty_gold;
+    let to_killer = world.seats[0].gold - gold_before[0] - 125;
+    assert!(
+        (last_hit.min..=last_hit.max).contains(&to_killer),
+        "the killer: 125 and a last hit, {to_killer} over"
+    );
+    assert_eq!(
+        world.seats[1].gold, gold_before[1],
+        "the other side nothing"
+    );
     assert!(world.health.get(killer.expect("hero")).expect("alive").hp > Fixed::ZERO);
 }
 

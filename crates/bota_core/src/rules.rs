@@ -505,13 +505,13 @@ pub const ATTACK_SPEED_PER_AGILITY: i32 = 1;
 pub const MANA_PER_INTELLIGENCE: i32 = 12;
 /// Mana per tick one point of intelligence mends.
 pub const MANA_REGEN_PER_INTELLIGENCE: Fixed = Fixed::from_ratio(1, 20 * TICKS_PER_SECOND as i32);
-/// Attack damage one point of the primary attribute adds.
+/// Attack damage one whole point of the primary attribute adds (see [`crate::primary_damage`]).
 pub const DAMAGE_PER_PRIMARY: i32 = 1;
 /// Magic resistance one point of intelligence adds, in basis points: 0.125%, added to the
 /// unit's base resistance before anything that multiplies it (Dota 7.42: "Magic Resistance
 /// gained per point of Intelligence increased from 0.1% to 0.125%"; its stats tooltip calls the
-/// sum Base Magic Resistance). Paid for the whole intelligence, fractions too (the game's server
-/// code does not floor it).
+/// sum Base Magic Resistance). Paid for every fraction of intelligence: the game's server code
+/// multiplies the attribute as it holds it, unfloored (see [`crate::intelligence_magic_resist_bp`]).
 pub const MAGIC_RESIST_BP_PER_INTELLIGENCE: Fixed = Fixed::from_ratio(25, 2);
 
 // Attack speed. A unit swings at its own pace at [`BASE_ATTACK_SPEED`], and
