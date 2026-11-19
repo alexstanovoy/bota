@@ -580,6 +580,12 @@ fn cheat_orders() -> Vec<Order> {
         },
         Cheat::Suicide,
         Cheat::ResetBuyback,
+        Cheat::Experience { amount: 500 },
+        Cheat::Restore {
+            health_bp: 3500,
+            mana_bp: 3500,
+            ticks: 240,
+        },
     ]
     .into_iter()
     .map(|cheat| Order::Cheat { cheat })

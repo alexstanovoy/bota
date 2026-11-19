@@ -14,6 +14,26 @@ use crate::*;
 const WIRE: &str = include_str!("../../registry/wire.txt");
 
 #[test]
+fn experience_and_restore_follow_the_reserved_cheat_positions() {
+    let orders = [
+        (32, Cheat::Experience { amount: 1 }),
+        (
+            33,
+            Cheat::Restore {
+                health_bp: 1,
+                mana_bp: 0,
+                ticks: 1,
+            },
+        ),
+    ];
+    for (index, cheat) in orders {
+        let encoded = postcard::to_allocvec(&cheat).expect("encode cheat");
+        assert_eq!(encoded[0], index, "{cheat:?}");
+        assert_eq!(postcard::from_bytes::<Cheat>(&encoded), Ok(cheat));
+    }
+}
+
+#[test]
 fn every_id_space_is_numbered_densely_once() {
     for space in [
         IdSpace::Hero,
