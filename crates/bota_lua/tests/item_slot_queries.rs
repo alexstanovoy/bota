@@ -2,9 +2,7 @@ mod support;
 
 use bota_client_core::{ClientSession, IssuedOrder};
 use bota_lua::{BotSeat, GcStress, Keys, Limits, LuaTeam, ScriptKind};
-use bota_proto::{
-    Cheat, HeroId, ItemId, ItemSlot, Kit, Order, ServerMsg, SlotId, Team,
-};
+use bota_proto::{Cheat, HeroId, ItemId, ItemSlot, Kit, Order, ServerMsg, SlotId, Team};
 use bota_server::local::LocalMatch;
 
 fn team(side: Team, slot: SlotId, source: &[u8]) -> LuaTeam {
@@ -56,7 +54,10 @@ fn assert_slot_marker(turn: &bota_lua::TeamTurn, slot: i32) {
     assert!(turn.failures.is_empty(), "{:?}", turn.failures);
     assert_eq!(
         turn.bots[0].orders,
-        vec![IssuedOrder::hero(Order::Swap {from:ItemSlot(slot as u8),to:ItemSlot(slot as u8)})]
+        vec![IssuedOrder::hero(Order::Swap {
+            from: ItemSlot(slot as u8),
+            to: ItemSlot(slot as u8)
+        })]
     );
 }
 

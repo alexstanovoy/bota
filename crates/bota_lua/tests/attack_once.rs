@@ -6,7 +6,6 @@ use bota_proto::{EntityId, EventKind, HeroId, Order, SlotId, Target, Team};
 use bota_server::local::LocalMatch;
 use std::collections::BTreeSet;
 
-
 fn attack_one_creep_then_stop(hero: HeroId, ranged: bool) {
     let (mut local, mut sessions, target) = support::stationary_creep_encounter(hero);
     let own = sessions[0]
@@ -185,7 +184,8 @@ fn attack_once_retains_damage_after_unrelated_events_evict_recent_history() {
 }
 
 fn attack_once_think_gap(evict: bool) {
-    let (mut local, mut sessions, target) = support::stationary_creep_encounter(HeroId::SHADOW_FIEND);
+    let (mut local, mut sessions, target) =
+        support::stationary_creep_encounter(HeroId::SHADOW_FIEND);
     let source = sessions[0]
         .own_player()
         .expect("player")
@@ -302,7 +302,8 @@ fn attack_once_think_gap(evict: bool) {
 
 #[test]
 fn an_older_inflight_shot_can_complete_the_current_once_action_on_impact() {
-    let (mut local, mut sessions, target) = support::stationary_creep_encounter(HeroId::SHADOW_FIEND);
+    let (mut local, mut sessions, target) =
+        support::stationary_creep_encounter(HeroId::SHADOW_FIEND);
     let source = sessions[0]
         .own_player()
         .expect("player")

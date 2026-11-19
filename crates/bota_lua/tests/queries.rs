@@ -258,6 +258,12 @@ fn an_aoe_query_exhausts_a_small_budget_after_preserving_the_accepted_prefix() {
         "{:?}",
         turn.failures
     );
-    assert_eq!(turn.bots[0].orders,vec![bota_client_core::IssuedOrder::hero(Order::Swap {from:bota_proto::ItemSlot(0),to:bota_proto::ItemSlot(0)})],
-        "fuel exhaustion aborts pcall and later statements while retaining the earlier accepted order");
+    assert_eq!(
+        turn.bots[0].orders,
+        vec![bota_client_core::IssuedOrder::hero(Order::Swap {
+            from: bota_proto::ItemSlot(0),
+            to: bota_proto::ItemSlot(0)
+        })],
+        "fuel exhaustion aborts pcall and later statements while retaining the earlier accepted order"
+    );
 }

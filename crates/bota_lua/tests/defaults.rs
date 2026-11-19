@@ -492,9 +492,18 @@ fn lazy_mode_setup_preserves_the_active_turn_fuel_budget() {
     let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
     let turn = lua.think(&sessions[0]).expect("turn");
     assert!(turn.bots[0].orders.is_empty());
-    assert!(!turn.failures.is_empty(), "lazy setup must not renew the hero's turn fuel");
-    assert!(turn.failures.iter().all(|failure|matches!(failure.error,luagee::Error::Limit(luagee::Limit::FuelPerTick))),
-        "every later callback sees the same exhausted tick budget: {:?}",turn.failures);
+    assert!(
+        !turn.failures.is_empty(),
+        "lazy setup must not renew the hero's turn fuel"
+    );
+    assert!(
+        turn.failures.iter().all(|failure| matches!(
+            failure.error,
+            luagee::Error::Limit(luagee::Limit::FuelPerTick)
+        )),
+        "every later callback sees the same exhausted tick budget: {:?}",
+        turn.failures
+    );
 }
 
 #[test]

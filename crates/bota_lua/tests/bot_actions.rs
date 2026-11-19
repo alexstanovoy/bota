@@ -540,30 +540,85 @@ fn an_unidentified_effect_releases_the_waiting_move_at_its_five_second_bound() {
     }
 }
 
-
 #[test]
 fn an_instant_item_application_releases_its_tail_only_for_its_own_caster() {
-    use bota_proto::{ItemId,ItemSlot,Target};
-    let (mut local,mut sessions)=support::local_with_cheats(&[Team::Radiant,Team::Dire],bota_core::MAP2_ID);
-    let at=sessions[0].own_hero().unwrap().pos;
-    let setup:Vec<Vec<_>>=(0..2).map(|index| {
-        let mut cheats=vec![Cheat::Item {item:ItemId::MANGO},Cheat::SetPools {health:100,mana:10}];
-        if index==1 {cheats.push(Cheat::Teleport {at:at+Vec2::from_ints(224,0)});}
-        cheats.into_iter().map(|cheat|sessions[index].issue(IssuedOrder::hero(Order::Cheat {cheat})).unwrap()).collect()
-    }).collect();
-    for (session,stream) in sessions.iter_mut().zip(local.step(&[&setup[0],&setup[1]]).unwrap()){support::fold(session,stream);}
-    let own=sessions[0].own_hero().unwrap().id;let enemy=sessions[1].own_hero().unwrap().id;
+    use bota_proto::{ItemId, ItemSlot, Target};
+    let (mut local, mut sessions) =
+        support::local_with_cheats(&[Team::Radiant, Team::Dire], bota_core::MAP2_ID);
+    let at = sessions[0].own_hero().unwrap().pos;
+    let setup: Vec<Vec<_>> = (0..2)
+        .map(|index| {
+            let mut cheats = vec![
+                Cheat::Item {
+                    item: ItemId::MANGO,
+                },
+                Cheat::SetPools {
+                    health: 100,
+                    mana: 10,
+                },
+            ];
+            if index == 1 {
+                cheats.push(Cheat::Teleport {
+                    at: at + Vec2::from_ints(224, 0),
+                });
+            }
+            cheats
+                .into_iter()
+                .map(|cheat| {
+                    sessions[index]
+                        .issue(IssuedOrder::hero(Order::Cheat { cheat }))
+                        .unwrap()
+                })
+                .collect()
+        })
+        .collect();
+    for (session, stream) in sessions
+        .iter_mut()
+        .zip(local.step(&[&setup[0], &setup[1]]).unwrap())
+    {
+        support::fold(session, stream);
+    }
+    let own = sessions[0].own_hero().unwrap().id;
+    let enemy = sessions[1].own_hero().unwrap().id;
     assert!(sessions[0].current().unwrap().unit(enemy).is_some());
     let mut lua=host(br#"local frame=0 function Think() frame=frame+1;local b=GetBot();if frame==1 then b:Action_UseAbility(b:GetItemInSlot(0));b:ActionQueue_MoveToLocation(b:GetLocation()+Vector(256,0,0)) elseif frame==2 then assert(b:GetCurrentActionType()==BOT_ACTION_TYPE_USE_ABILITY,'another caster must not finish our action');assert(b:NumQueuedActions()==1) else assert(b:GetCurrentActionType()==BOT_ACTION_TYPE_MOVE_TO,'our instant item effect must release the queued move');assert(b:NumQueuedActions()==0) end end"#);
-    let first=lua.think(&sessions[0]).unwrap();assert!(first.failures.is_empty(),"{:?}",first.failures);assert_eq!(first.bots[0].orders.len(),1);
-    let enemy_use=sessions[1].issue(IssuedOrder::hero(Order::Use {slot:ItemSlot(0),target:Target::None})).unwrap();
-    for (session,stream) in sessions.iter_mut().zip(local.step(&[&[],&[enemy_use]]).unwrap()){support::fold(session,stream);}
+    let first = lua.think(&sessions[0]).unwrap();
+    assert!(first.failures.is_empty(), "{:?}", first.failures);
+    assert_eq!(first.bots[0].orders.len(), 1);
+    let enemy_use = sessions[1]
+        .issue(IssuedOrder::hero(Order::Use {
+            slot: ItemSlot(0),
+            target: Target::None,
+        }))
+        .unwrap();
+    for (session, stream) in sessions
+        .iter_mut()
+        .zip(local.step(&[&[], &[enemy_use]]).unwrap())
+    {
+        support::fold(session, stream);
+    }
     assert!(sessions[0].recent_events().iter().any(|event|matches!(event.kind,EventKind::ItemUsed {caster:Some(id),item:ItemId::MANGO,..} if id==enemy)));
-    let other=lua.think(&sessions[0]).unwrap();assert!(other.failures.is_empty(),"{:?}",other.failures);assert!(other.bots[0].orders.is_empty());
-    step(&mut local,&mut sessions,&first.bots[0].orders);
+    let other = lua.think(&sessions[0]).unwrap();
+    assert!(other.failures.is_empty(), "{:?}", other.failures);
+    assert!(other.bots[0].orders.is_empty());
+    step(&mut local, &mut sessions, &first.bots[0].orders);
     assert!(sessions[0].recent_events().iter().any(|event|matches!(event.kind,EventKind::ItemUsed {caster:Some(id),item:ItemId::MANGO,..} if id==own)));
-    assert!(!sessions[0].recent_events().iter().any(|event|matches!(event.kind,EventKind::Damaged {source:Some(id),..} if id==own)),"the item's completion is not damage evidence");
-    let next=lua.think(&sessions[0]).unwrap();assert!(next.failures.is_empty(),"{:?}",next.failures);
-    assert_eq!(next.bots[0].orders,vec![IssuedOrder::hero(Order::Move {target:Target::Pos(at+Vec2::from_ints(256,0))})]);
-    let before=sessions[0].own_hero().unwrap().pos;step(&mut local,&mut sessions,&next.bots[0].orders);assert_ne!(sessions[0].own_hero().unwrap().pos,before);
+    assert!(
+        !sessions[0]
+            .recent_events()
+            .iter()
+            .any(|event| matches!(event.kind,EventKind::Damaged {source:Some(id),..} if id==own)),
+        "the item's completion is not damage evidence"
+    );
+    let next = lua.think(&sessions[0]).unwrap();
+    assert!(next.failures.is_empty(), "{:?}", next.failures);
+    assert_eq!(
+        next.bots[0].orders,
+        vec![IssuedOrder::hero(Order::Move {
+            target: Target::Pos(at + Vec2::from_ints(256, 0))
+        })]
+    );
+    let before = sessions[0].own_hero().unwrap().pos;
+    step(&mut local, &mut sessions, &next.bots[0].orders);
+    assert_ne!(sessions[0].own_hero().unwrap().pos, before);
 }

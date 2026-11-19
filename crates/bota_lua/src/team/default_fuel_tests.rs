@@ -399,23 +399,52 @@ fn a_same_target_script_attack_does_not_replace_or_promote_the_native_request() 
         deadline > native.tick + 9,
         "promotion must happen before expiry"
     );
-    let mut confirmations=0;
-    while session.current().expect("view").tick<=deadline {
-        receive_promotion_tick(&mut session,&mut view);
-        let turn=lua.think(&session).expect("next turn");
-        assert!(turn.failures.is_empty(),"{:?}",turn.failures);
-        assert!(!turn.bots[0].orders.contains(&attack),"same-target script request does not resend the attack");
-        let markers=turn.bots[0].orders.iter().filter(|issued|matches!(issued.order,bota_proto::Order::Swap {..})).count();
-        if markers>0 {assert_eq!(view.tick,native.tick+9);assert_eq!(markers,1);confirmations+=1;}
-        let state=lua.state.borrow();
-        if view.tick<deadline {
-            let pending=state.bots[0].pending_once.expect("the original native request remains leased");
-            assert_eq!((pending.source,pending.target,pending.tick,pending.expires_at),(native.source,target,native.tick,Some(deadline)));
+    let mut confirmations = 0;
+    while session.current().expect("view").tick <= deadline {
+        receive_promotion_tick(&mut session, &mut view);
+        let turn = lua.think(&session).expect("next turn");
+        assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+        assert!(
+            !turn.bots[0].orders.contains(&attack),
+            "same-target script request does not resend the attack"
+        );
+        let markers = turn.bots[0]
+            .orders
+            .iter()
+            .filter(|issued| matches!(issued.order, bota_proto::Order::Swap { .. }))
+            .count();
+        if markers > 0 {
+            assert_eq!(view.tick, native.tick + 9);
+            assert_eq!(markers, 1);
+            confirmations += 1;
+        }
+        let state = lua.state.borrow();
+        if view.tick < deadline {
+            let pending = state.bots[0]
+                .pending_once
+                .expect("the original native request remains leased");
+            assert_eq!(
+                (
+                    pending.source,
+                    pending.target,
+                    pending.tick,
+                    pending.expires_at
+                ),
+                (native.source, target, native.tick, Some(deadline))
+            );
             assert!(!pending.launched);
-        } else {assert!(state.bots[0].pending_once.is_none(),"the unchanged native lease expires");}
+        } else {
+            assert!(
+                state.bots[0].pending_once.is_none(),
+                "the unchanged native lease expires"
+            );
+        }
     }
-    assert_eq!(confirmations,1,"the script's explicit same-target call actually ran");
-    assert!(view.tick>deadline);
+    assert_eq!(
+        confirmations, 1,
+        "the script's explicit same-target call actually ran"
+    );
+    assert!(view.tick > deadline);
     view.tick += 1;
     let tick = view.tick;
     session

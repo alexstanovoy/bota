@@ -129,9 +129,11 @@ fn malformed_team_desires_preserve_callback_orders_without_partial_desire_update
         );
         assert_eq!(
             rejected.bots[0].orders,
-            vec![bota_client_core::IssuedOrder::hero(bota_proto::Order::Move {
-                target: bota_proto::Target::Pos(bota_proto::Vec2::from_ints(9216, 9216)),
-            })],
+            vec![bota_client_core::IssuedOrder::hero(
+                bota_proto::Order::Move {
+                    target: bota_proto::Target::Pos(bota_proto::Vec2::from_ints(9216, 9216)),
+                }
+            )],
             "the successful TeamThink callback's order remains committed: {bad}"
         );
         assert_eq!(lua.state.borrow().team_desires, before, "{bad}");
@@ -298,9 +300,11 @@ fn malformed_team_desires_preserve_each_configured_seats_callback_orders() {
     assert_eq!(turn.bots[0].slot, SlotId(1));
     assert_eq!(
         turn.bots[0].orders,
-        vec![bota_client_core::IssuedOrder::hero(bota_proto::Order::Move {
-            target: bota_proto::Target::Pos(bota_proto::Vec2::from_ints(9313, 9216)),
-        })],
+        vec![bota_client_core::IssuedOrder::hero(
+            bota_proto::Order::Move {
+                target: bota_proto::Target::Pos(bota_proto::Vec2::from_ints(9313, 9216)),
+            }
+        )],
         "the first seat's later Think callback still runs and commits its order"
     );
     assert_eq!(turn.bots[1].slot, SlotId(0));

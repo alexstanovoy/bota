@@ -83,16 +83,16 @@ fn structure_queries_return_received_barracks_and_ancients_from_both_sides() {
             );
             let orders = &turn.bots[0].orders;
             if phase == 1 && query >= 7 {
-                assert!(orders.is_empty(),"withheld structures return no target");
+                assert!(orders.is_empty(), "withheld structures return no target");
             } else {
-                assert_eq!(orders.len(),1,"one query-derived movement per callback");
-                let at=destination(orders[0].order);
+                assert_eq!(orders.len(), 1, "one query-derived movement per callback");
+                let at = destination(orders[0].order);
                 match query {
                     0..=5 => observed[index][phase].push(at),
-                    6 => assert_eq!(at,sessions[index].map().ancients[index].unwrap()),
+                    6 => assert_eq!(at, sessions[index].map().ancients[index].unwrap()),
                     7..=12 => enemy_observed[index][phase].push(at),
-                    13 => assert_eq!(at,sessions[index].map().ancients[1-index].unwrap()),
-                    _=>unreachable!(),
+                    13 => assert_eq!(at, sessions[index].map().ancients[1 - index].unwrap()),
+                    _ => unreachable!(),
                 }
             }
         }

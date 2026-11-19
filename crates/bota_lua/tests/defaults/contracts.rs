@@ -2,7 +2,11 @@ use super::*;
 use bota_proto::{StatusFlags, UnitKind};
 
 fn assert_order_limit(turn: &bota_lua::TeamTurn) {
-    assert_eq!(turn.bots[0].orders.len(),64,"accepted prefixes fill the cap before the error");
+    assert_eq!(
+        turn.bots[0].orders.len(),
+        64,
+        "accepted prefixes fill the cap before the error"
+    );
     assert_eq!(turn.failures.len(), 1);
     assert!(
         matches!(&turn.failures[0].error,luagee::Error::Runtime{message,..} if message.contains("order limit exceeded")),
@@ -65,9 +69,13 @@ fn mode_desires_reject_boundary_values_and_accept_signed_zero() {
             .think(&sessions[0])
             .expect("mode");
         assert_eq!(turn.failures.len(), 1, "{expr}");
-        assert_eq!(turn.bots[0].orders.len(),2,"the failed mode callback does not suppress native auxiliary hooks");
-        assert!(matches!(turn.bots[0].orders[0].order,Order::Learn {..}));
-        assert!(matches!(turn.bots[0].orders[1].order,Order::Buy {..}));
+        assert_eq!(
+            turn.bots[0].orders.len(),
+            2,
+            "the failed mode callback does not suppress native auxiliary hooks"
+        );
+        assert!(matches!(turn.bots[0].orders[0].order, Order::Learn { .. }));
+        assert!(matches!(turn.bots[0].orders[1].order, Order::Buy { .. }));
         assert!(
             matches!(&turn.failures[0].error,luagee::Error::Runtime{message,..} if message.contains("finite number between zero and one")),
             "{:?}",

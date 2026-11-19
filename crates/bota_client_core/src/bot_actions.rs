@@ -182,16 +182,25 @@ pub struct BotActionImpact {
 }
 impl BotActionImpact {
     pub fn observed(tick: u32, event: &EventKind) -> Option<Self> {
-        let (source,effect)=match event {
-            EventKind::Damaged {source:Some(source),inflictor:Some(inflictor),removal:false,..} => {
-                let effect=match inflictor {
-                    Inflictor::Ability(id)=>BotActionEffect::Ability(*id),
-                    Inflictor::Item(id)=>BotActionEffect::Item(*id),
+        let (source, effect) = match event {
+            EventKind::Damaged {
+                source: Some(source),
+                inflictor: Some(inflictor),
+                removal: false,
+                ..
+            } => {
+                let effect = match inflictor {
+                    Inflictor::Ability(id) => BotActionEffect::Ability(*id),
+                    Inflictor::Item(id) => BotActionEffect::Item(*id),
                 };
-                (*source,effect)
+                (*source, effect)
             }
-            EventKind::ItemUsed {caster:Some(source),item,..}=>(*source,BotActionEffect::Item(*item)),
-            _=>return None,
+            EventKind::ItemUsed {
+                caster: Some(source),
+                item,
+                ..
+            } => (*source, BotActionEffect::Item(*item)),
+            _ => return None,
         };
         Some(Self {
             tick,

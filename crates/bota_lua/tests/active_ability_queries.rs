@@ -376,7 +376,10 @@ fn channel_identity_unobserved_items_and_owned_death_have_distinct_results() {
             assert!(turn.failures.is_empty(), "{:?}", turn.failures);
             assert_eq!(
                 turn.bots[0].orders,
-                vec![IssuedOrder::hero(Order::Swap {from:bota_proto::ItemSlot(phase as u8),to:bota_proto::ItemSlot(phase as u8)})]
+                vec![IssuedOrder::hero(Order::Swap {
+                    from: bota_proto::ItemSlot(phase as u8),
+                    to: bota_proto::ItemSlot(phase as u8)
+                })]
             );
         }
     }

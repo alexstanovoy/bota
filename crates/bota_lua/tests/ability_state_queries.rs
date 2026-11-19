@@ -148,7 +148,10 @@ fn ability_and_item_reads_follow_received_mana_cooldowns_charges_and_item_remova
             assert_eq!(turn.bots[0].orders.len(), 1);
             assert_eq!(
                 turn.bots[0].orders[0].order,
-                Order::Swap {from:bota_proto::ItemSlot(phase as u8),to:bota_proto::ItemSlot(phase as u8)}
+                Order::Swap {
+                    from: bota_proto::ItemSlot(phase as u8),
+                    to: bota_proto::ItemSlot(phase as u8)
+                }
             );
         }
     }

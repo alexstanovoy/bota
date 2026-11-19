@@ -431,13 +431,19 @@ fn a_discarded_completion_turn_requeues_stop_until_a_turn_is_accepted() {
     let mut stops = 0;
     let mut accepted_stop = None;
     for _ in 0..600 {
-        let completion_due=!late_completion && sessions[0].entity(source).and_then(|unit|unit.last_damage_dealt).is_some();
-        native.timeout=HANG_GUARD;
+        let completion_due = !late_completion
+            && sessions[0]
+                .entity(source)
+                .and_then(|unit| unit.last_damage_dealt)
+                .is_some();
+        native.timeout = HANG_GUARD;
         if completion_due {
-            let ready=waiting.take().expect("one withheld completion");
-            native.after_send=Some(Box::new(move |timeout| {
-                ready.recv_timeout(HANG_GUARD).expect("actual completion reaches the reply barrier");
-                *timeout=Duration::ZERO;
+            let ready = waiting.take().expect("one withheld completion");
+            native.after_send = Some(Box::new(move |timeout| {
+                ready
+                    .recv_timeout(HANG_GUARD)
+                    .expect("actual completion reaches the reply barrier");
+                *timeout = Duration::ZERO;
             }));
         }
         let orders = match native.think(&sessions[0]) {
@@ -449,7 +455,10 @@ fn a_discarded_completion_turn_requeues_stop_until_a_turn_is_accepted() {
                     .collect::<Vec<_>>()
             }
             Err(NativeError::Deadline) => {
-                assert!(completion_due,"only the deliberately expired completion deadline may elapse");
+                assert!(
+                    completion_due,
+                    "only the deliberately expired completion deadline may elapse"
+                );
                 late_completion = true;
                 release.send(()).expect("release");
                 Vec::new()

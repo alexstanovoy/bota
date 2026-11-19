@@ -397,14 +397,17 @@ pub fn local_for_heroes_with_cheats(heroes: &[(Team, HeroId)]) -> (LocalMatch, V
     )
 }
 
-#[allow(dead_code,reason="shared real-order fixture for attack and worker-completion tests")]
-pub fn stationary_creep_encounter(hero: HeroId) -> (LocalMatch, Vec<ClientSession>, bota_proto::EntityId) {
-    use bota_proto::{Cheat, ControlKind, Fixed, ModifierSpec, Vec2, Order, Target};
+#[allow(
+    dead_code,
+    reason = "shared real-order fixture for attack and worker-completion tests"
+)]
+pub fn stationary_creep_encounter(
+    hero: HeroId,
+) -> (LocalMatch, Vec<ClientSession>, bota_proto::EntityId) {
     use bota_client_core::IssuedOrder;
-    let (mut local, mut sessions) = local_for_heroes_with_cheats(&[
-        (Team::Radiant, hero),
-        (Team::Dire, HeroId::SHADOW_FIEND),
-    ]);
+    use bota_proto::{Cheat, ControlKind, Fixed, ModifierSpec, Order, Target, Vec2};
+    let (mut local, mut sessions) =
+        local_for_heroes_with_cheats(&[(Team::Radiant, hero), (Team::Dire, HeroId::SHADOW_FIEND)]);
     let at = Vec2::from_ints(9216, 9216);
     let orders: Vec<_> = [
         Cheat::Teleport { at },
@@ -420,8 +423,10 @@ pub fn stationary_creep_encounter(hero: HeroId) -> (LocalMatch, Vec<ClientSessio
             .unwrap()
     })
     .collect();
-    let streams=local.step(&[&orders,&[]]).unwrap();
-    for (session,stream) in sessions.iter_mut().zip(streams) {fold(session,stream);}
+    let streams = local.step(&[&orders, &[]]).unwrap();
+    for (session, stream) in sessions.iter_mut().zip(streams) {
+        fold(session, stream);
+    }
     let ids: Vec<_> = sessions[0]
         .current()
         .unwrap()
@@ -454,8 +459,10 @@ pub fn stationary_creep_encounter(hero: HeroId) -> (LocalMatch, Vec<ClientSessio
             );
         }
     }
-    let streams=local.step(&[&orders,&[]]).unwrap();
-    for (session,stream) in sessions.iter_mut().zip(streams) {fold(session,stream);}
+    let streams = local.step(&[&orders, &[]]).unwrap();
+    for (session, stream) in sessions.iter_mut().zip(streams) {
+        fold(session, stream);
+    }
     let own = sessions[0].own_hero().unwrap().pos;
     let target = sessions[0]
         .current()
@@ -477,4 +484,3 @@ pub fn stationary_creep_encounter(hero: HeroId) -> (LocalMatch, Vec<ClientSessio
     );
     (local, sessions, target)
 }
-

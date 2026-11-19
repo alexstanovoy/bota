@@ -203,7 +203,10 @@ fn owned_statistics_remain_available_after_a_dead_body_track_expires() {
     assert!(turn.failures.is_empty(), "{:?}", turn.failures);
     assert_eq!(
         turn.bots[0].orders[0].order,
-        Order::Swap {from:bota_proto::ItemSlot(1),to:bota_proto::ItemSlot(1)}
+        Order::Swap {
+            from: bota_proto::ItemSlot(1),
+            to: bota_proto::ItemSlot(1)
+        }
     );
     let mut view = sessions[0].current().expect("view").clone();
     view.tick += 481;
@@ -230,7 +233,10 @@ fn owned_statistics_remain_available_after_a_dead_body_track_expires() {
     assert!(turn.failures.is_empty(), "{:?}", turn.failures);
     assert_eq!(
         turn.bots[0].orders[0].order,
-        Order::Swap {from:bota_proto::ItemSlot(2),to:bota_proto::ItemSlot(2)}
+        Order::Swap {
+            from: bota_proto::ItemSlot(2),
+            to: bota_proto::ItemSlot(2)
+        }
     );
 }
 
