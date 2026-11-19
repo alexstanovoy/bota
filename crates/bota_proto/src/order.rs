@@ -305,7 +305,21 @@ pub enum Cheat {
         control: crate::ControlKind,
         ticks: u32,
     },
+    /// A simulator extension: experience put into the hero the order is for, as a kill near it
+    /// grants it, its levels rising with it. Amount is `1..=MAX_CHEAT_EXPERIENCE`.
+    Experience { amount: u32 },
+    /// A simulator extension: the hero the order is for mends shares of its maximum health and
+    /// mana, in basis points of each, evenly over `ticks` (`1..=MAX_MODIFIER_TICKS`), as a
+    /// drink mends it, but no blow puts it out. At most 10_000 each, at least one above zero.
+    Restore {
+        health_bp: u16,
+        mana_bp: u16,
+        ticks: u32,
+    },
 }
+
+/// The most experience one [`Cheat::Experience`] puts into a hero: more than every level holds.
+pub const MAX_CHEAT_EXPERIENCE: u32 = 1_000_000;
 
 /// Whose creeps a [`Cheat::KillCreeps`] takes away.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -590,7 +604,9 @@ impl Order {
                     | Cheat::SetPools { .. }
                     | Cheat::RemoveHero
                     | Cheat::MaxAbilities
-                    | Cheat::UnlearnAbilities,
+                    | Cheat::UnlearnAbilities
+                    | Cheat::Experience { .. }
+                    | Cheat::Restore { .. },
             }
             | Order::Buy { .. }
             | Order::Sell { .. }
@@ -656,7 +672,9 @@ impl Order {
                     | Cheat::SetPools { .. }
                     | Cheat::RemoveHero
                     | Cheat::MaxAbilities
-                    | Cheat::UnlearnAbilities,
+                    | Cheat::UnlearnAbilities
+                    | Cheat::Experience { .. }
+                    | Cheat::Restore { .. },
             }
             | Order::Buy { .. }
             | Order::Sell { .. }

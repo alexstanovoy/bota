@@ -165,6 +165,11 @@ fn steps() -> Vec<Step> {
             asked: Typed("dota_dev hero_level 3"),
             holds: |v| me(v).level == 4,
         },
+        // Experience by the amount, as a kill grants it: on top of what level 4 took.
+        Step {
+            asked: Button(Cheat::Experience { amount: 1_000 }),
+            holds: |v| me(v).xp == bota_core::rules::XP_THRESHOLDS[3] + 1_000,
+        },
         // Items by their Dota keys, in the chat's and the console's form.
         Step {
             asked: Typed("-item item_blink"),
@@ -258,6 +263,26 @@ fn steps() -> Vec<Step> {
             holds: |v| {
                 my_hero(v)
                     .is_some_and(|hero| hero.abilities.iter().any(|ability| ability.mana_cost > 0))
+            },
+        },
+        // Pools brought low, then mended back over a second by shares of their maxima.
+        Step {
+            asked: Button(Cheat::SetPools {
+                health: 40,
+                mana: 40,
+            }),
+            holds: |v| my_hero(v).is_some_and(|hero| hero.hp * 100 <= hero.max_hp * 41),
+        },
+        Step {
+            asked: Button(Cheat::Restore {
+                health_bp: 3_500,
+                mana_bp: 3_500,
+                ticks: 30,
+            }),
+            holds: |v| {
+                my_hero(v).is_some_and(|hero| {
+                    hero.hp * 100 >= hero.max_hp * 74 && hero.mana * 100 >= hero.max_mana * 74
+                })
             },
         },
         Step {

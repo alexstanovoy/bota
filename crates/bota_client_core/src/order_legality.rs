@@ -573,6 +573,7 @@ impl OrderContext<'_> {
                     | Cheat::RemoveHero
                     | Cheat::MaxAbilities
                     | Cheat::UnlearnAbilities
+                    | Cheat::Restore { .. }
             )
         {
             return Verdict::Illegal(RejectReason::HeroDead);

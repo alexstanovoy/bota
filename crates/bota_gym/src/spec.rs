@@ -47,6 +47,10 @@ pub struct MatchSpec {
     /// A scenario through cheat orders, applied before the first decision. Any cheat turns the
     /// match into a cheat lobby, which every seat is told in its `MatchStart`.
     pub setup: Vec<SetupCheat>,
+    /// The match takes cheat orders though its setup holds none: its holder changes it from
+    /// outside as it runs. A cheat lobby either way, which every seat is told in its
+    /// `MatchStart`.
+    pub cheats: bool,
     /// The tick the game is cut at, at the latest, if nothing ends it before;
     /// `1..=MAX_TICK_LIMIT`.
     pub tick_limit: u32,
@@ -74,6 +78,7 @@ impl MatchSpec {
             spawn_modifiers: Vec::new(),
             economy_events: Vec::new(),
             setup: Vec::new(),
+            cheats: false,
             tick_limit,
             record_meta: false,
         }

@@ -249,6 +249,57 @@ impl World {
                     self.unlearn_all(hero);
                 }
             }
+            Cheat::Experience { amount } => {
+                if let Some(seat) = hero_seat {
+                    let amount = i32::try_from(amount).expect("a bounded experience cheat fits");
+                    self.grant_xp(seat, amount, events);
+                }
+            }
+            Cheat::Restore {
+                health_bp,
+                mana_bp,
+                ticks,
+            } => {
+                if let Some(unit) = unit {
+                    self.restore_over(unit, (health_bp, mana_bp), ticks);
+                }
+            }
+        }
+    }
+
+    /// Mends basis-point shares of the unit's maximum health and mana evenly over `ticks`,
+    /// through the drinks' own mending, which no blow puts out.
+    fn restore_over(&mut self, unit: Entity, (health_bp, mana_bp): (u16, u16), ticks: u32) {
+        let Some(stats) = self.stats.get(unit).copied() else {
+            return;
+        };
+        let share = |maximum: bota_proto::Fixed, basis_points: u16| {
+            (i64::from(maximum.to_int()) * i64::from(basis_points) / 10_000) as i32
+        };
+        let mends = [
+            (share(stats.max_hp, health_bp), true),
+            (share(stats.max_mana, mana_bp), false),
+        ];
+        for (total, health) in mends {
+            if total <= 0 {
+                continue;
+            }
+            let per_tick = bota_core::mend_per_tick(total, ticks);
+            let kind = if health {
+                bota_core::ModifierKind::Mending {
+                    per_tick,
+                    breaks: false,
+                }
+            } else {
+                bota_core::ModifierKind::Clarity {
+                    per_tick,
+                    breaks: false,
+                }
+            };
+            self.put_modifier(
+                unit,
+                crate::game::Modifier::new(kind, None, None, Some(ticks)),
+            );
         }
     }
 
@@ -380,6 +431,11 @@ impl World {
                     return Err(RejectReason::BadCheat);
                 }
             }
+            Cheat::Restore { .. } => {
+                let unit = unit.ok_or(RejectReason::HeroDead)?;
+                hero_unit(Some(unit))?;
+                living(Some(unit))?;
+            }
             Cheat::MaxAbilities | Cheat::UnlearnAbilities => {
                 let unit = unit.ok_or(RejectReason::HeroDead)?;
                 hero_unit(Some(unit))?;
@@ -387,6 +443,7 @@ impl World {
             }
             Cheat::Gold { .. }
             | Cheat::Levels { .. }
+            | Cheat::Experience { .. }
             | Cheat::Respawn
             | Cheat::Invulnerable { .. }
             | Cheat::ResetHero

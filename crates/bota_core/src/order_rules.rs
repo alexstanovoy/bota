@@ -324,6 +324,17 @@ pub fn cheat_refusal(
         Cheat::Item { item } => catalogue.item(item).is_some(),
         Cheat::CreateHero { hero, .. } => crate::hero_def(hero).is_some(),
         Cheat::SpawnRune { .. } => has_rune_spots,
+        Cheat::Experience { amount } => (1..=bota_proto::MAX_CHEAT_EXPERIENCE).contains(&amount),
+        Cheat::Restore {
+            health_bp,
+            mana_bp,
+            ticks,
+        } => {
+            health_bp <= 10_000
+                && mana_bp <= 10_000
+                && health_bp.max(mana_bp) > 0
+                && bota_proto::modifier_ticks_bounded(ticks)
+        }
         _ => true,
     };
     if valid {

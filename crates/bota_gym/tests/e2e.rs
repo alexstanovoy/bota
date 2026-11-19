@@ -647,3 +647,35 @@ fn an_arranged_world_is_told_to_every_seat_as_a_fresh_snapshot() {
     assert_eq!(gold, Some(4321));
     assert!(matches!(&told[0][1], ServerMsg::Events { events, .. } if events.is_empty()));
 }
+
+#[test]
+fn a_spec_that_takes_cheats_accepts_one_mid_game_and_one_that_does_not_refuses_it() {
+    for cheats in [false, true] {
+        let mut spec = duel(5, 10);
+        spec.cheats = cheats;
+        let (mut game, opening) = Game::<bota_gym::Player>::new(&spec).expect("a game");
+        let told_cheats = opening[0]
+            .iter()
+            .any(|message| matches!(message, ServerMsg::MatchStart { info } if info.cheats));
+        assert_eq!(
+            told_cheats, cheats,
+            "the seats are told whether cheats are on"
+        );
+        let gift = bota_proto::OutgoingOrder {
+            seq: 1,
+            unit: None,
+            order: bota_proto::Order::Cheat {
+                cheat: Cheat::Gold { amount: 777 },
+            },
+            seen: game.tick(),
+            queue: false,
+        };
+        let told = game.step(&[Some(gift), None]).expect("a step");
+        let refused = told[0].iter().find_map(|message| match message {
+            ServerMsg::OrderRejected { reason, .. } => Some(*reason),
+            _ => None,
+        });
+        let expected = (!cheats).then_some(RejectReason::NoCheats);
+        assert_eq!(refused, expected, "cheats {cheats}");
+    }
+}

@@ -552,7 +552,7 @@ fn match_config(spec: &MatchSpec) -> MatchConfig {
         mode: TickMode::Lockstep,
         // Lockstep in-process: nobody acknowledges, and nothing waits on the clock.
         ack_timeout_ticks: 150,
-        cheats: !spec.setup.is_empty(),
+        cheats: spec.cheats || !spec.setup.is_empty(),
         spawn_modifiers: spec.spawn_modifiers.clone(),
         immortal_structures: spec.immortal_structures,
         immortal_heroes: spec.immortal_heroes,

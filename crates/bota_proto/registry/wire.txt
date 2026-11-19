@@ -890,3 +890,9 @@ variant Cheat 31 Control {}
 field Cheat::Control 0 target: Target
 field Cheat::Control 1 control: ControlKind
 field Cheat::Control 2 ticks: u32
+variant Cheat 32 Experience {}
+field Cheat::Experience 0 amount: u32
+variant Cheat 33 Restore {}
+field Cheat::Restore 0 health_bp: u16
+field Cheat::Restore 1 mana_bp: u16
+field Cheat::Restore 2 ticks: u32
