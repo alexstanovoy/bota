@@ -9,8 +9,8 @@
 use std::collections::HashMap;
 
 use bota_proto::{
-    EntityId, EventKind, ItemId, MatchInfo, MatchStats, PlayerView, ReplayRecord, ServerMsg,
-    SlotId, Team, UnitKind, WorldView,
+    EntityId, EventKind, MatchInfo, MatchStats, PlayerView, ReplayRecord, ServerMsg, SlotId, Team,
+    UnitKind, WorldView,
 };
 
 use super::record::{MetaHeader, MetaRecord, Who, stat};
@@ -272,7 +272,6 @@ impl Recorder {
         held.stats.clear();
         held.stats.extend([
             (stat::GOLD, i64::from(player.gold.unwrap_or(0))),
-            (stat::NET_WORTH, i64::from(net_worth(view, player))),
             (stat::XP, i64::from(player.xp)),
             (stat::LEVEL, i64::from(player.level)),
             (stat::KILLS, i64::from(player.kills)),
@@ -284,6 +283,9 @@ impl Recorder {
             (stat::STRUCTURE_DAMAGE, tally.structure_damage),
             (stat::HEALING, tally.healing),
         ]);
+        if let Some(worth) = player.current_net_worth {
+            held.stats.push((stat::NET_WORTH, i64::from(worth)));
+        }
         held.items = carried.iter().map(|i| i.as_ref().map(|i| i.id.0)).collect();
     }
 
@@ -523,21 +525,4 @@ fn carried(view: &WorldView, player: &PlayerView) -> Vec<Option<bota_proto::Item
         .kit
         .as_ref()
         .map_or_else(Vec::new, |kit| kit.items.clone())
-}
-
-/// The gold a seat holds and the value of everything it carries and stashes, at what the rules
-/// of this build price the items. The town portal slot is not counted: the scroll every hero starts with was never bought,
-/// is not counted, so a hero that only bought and never sold or died is worth what it earned.
-fn net_worth(view: &WorldView, player: &PlayerView) -> i32 {
-    let held: i32 = carried(view, player)
-        .iter()
-        .flatten()
-        .chain(player.stash.iter().flatten().flatten())
-        .map(|item| cost(item.id))
-        .sum();
-    player.gold.unwrap_or(0).saturating_add(held)
-}
-
-fn cost(id: ItemId) -> i32 {
-    bota_core::item_def(id).map_or(0, |def| def.cost)
 }

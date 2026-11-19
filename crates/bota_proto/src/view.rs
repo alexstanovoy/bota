@@ -658,8 +658,12 @@ pub struct PlayerView {
     /// The seat's buyback. Own side only; absent for opponents, who are told
     /// neither its cost nor its cooldown. Appended on the wire.
     pub buyback: Option<BuybackView>,
-    /// Permanent upgrade facts, when the side is entitled to inspect this hero.
+    /// Consumed upgrades, for this player's team and full views.
     pub upgrades: Option<HeroUpgrades>,
+    /// Effective Scepter upgrade, under the same visibility as [`Self::upgrades`].
+    pub scepter_active: Option<bool>,
+    /// Gold and owned item value at this tick, for its team and full recordings.
+    pub current_net_worth: Option<i32>,
 }
 
 /// Upgrades already consumed by one hero.

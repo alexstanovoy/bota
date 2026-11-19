@@ -231,8 +231,9 @@ impl World {
             backpack: own.then(|| self.backpack_view(seat)).flatten(),
             bought_back_at: seat.buyback.last,
             buyback: own.then(|| self.buyback_view(seat)),
-            upgrades: (own || in_view && seat.unit.is_some_and(|unit| !disguised.contains(&unit)))
-                .then_some(seat.upgrades),
+            upgrades: own.then_some(seat.upgrades),
+            scepter_active: own.then(|| seat.unit.is_some_and(|hero| self.has_scepter(hero))),
+            current_net_worth: own.then(|| self.owned_net_worth(seat)),
         }
     }
 
@@ -735,18 +736,16 @@ impl World {
         let health = self.health.get(entity);
         let mana = self.mana.get(entity);
         // The waits a seat owes on kinds of item show on its hero's stacks.
-        let clocks: &[(bota_proto::ItemId, u32)] = self
-            .seats
-            .iter()
-            .find(|seat| seat.unit == Some(entity))
-            .map_or(&[], |seat| &seat.item_clocks);
+        let seat = self.seats.iter().find(|seat| seat.unit == Some(entity));
+        let clocks: &[(bota_proto::ItemId, u32)] = seat.map_or(&[], |seat| &seat.item_clocks);
+        let team = self.team.get(entity).copied().unwrap_or(Team::Neutral);
         let mana_rate = self.mana_cost_rate_of(Some(entity));
         let bag = self.inventory.get(entity);
         let hull = self.hull.get(entity);
         Some(UnitView {
             id: wire_id(entity),
             kind,
-            team: self.team.get(entity).copied().unwrap_or(Team::Neutral),
+            team,
             pos: transform.pos,
             facing: transform.facing,
             hp: shown(health.map_or(Fixed::ZERO, |h| h.hp)),
@@ -808,6 +807,9 @@ impl World {
             level: self.level.get(entity).map_or(0, |l| l.0),
             abilities: self.abilities.get(entity).map_or_else(Vec::new, |book| {
                 let level = self.level.get(entity).map_or(0, |held| held.0);
+                let upgrades = seat
+                    .filter(|_| viewer.is_none_or(|side| side == team))
+                    .map_or_else(bota_proto::HeroUpgrades::default, |seat| seat.upgrades);
                 book.slots
                     .iter()
                     .enumerate()
@@ -818,7 +820,7 @@ impl World {
                             self.ability_on(entity, ability.id),
                             book.can_raise(slot, level),
                             mana_rate,
-                            self.upgrades_of(entity),
+                            upgrades,
                         )
                     })
                     .collect()

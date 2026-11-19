@@ -1992,7 +1992,7 @@ fn pudge_with_upgrade_gold() -> (World, Entity) {
 #[test]
 fn a_purchased_shard_is_consumed_and_extends_pudges_hook() {
     // “Aghanim's Shard now increases cast range by 100”.
-    let shard = bota_core::item_by_key("item_aghanims_shard").expect("installed shard row");
+    let shard = bota_core::item_by_key("item_aghanims_shard").expect("catalogued Shard");
     let (mut world, pudge) = pudge_with_upgrade_gold();
     let gold = world.seats[0].gold;
     let before = world.match_stats().slots[0].current_net_worth;
@@ -2028,8 +2028,39 @@ fn a_purchased_shard_is_consumed_and_extends_pudges_hook() {
 }
 
 #[test]
+fn a_shard_shelf_opens_on_its_first_stock_tick() {
+    let shard = bota_core::item_by_key("item_aghanims_shard").unwrap();
+    let (mut world, _) = pudge_with_upgrade_gold();
+    let mut shelves = 0;
+    for shelf in world
+        .shop_stock
+        .iter_mut()
+        .filter(|shelf| shelf.item == shard)
+    {
+        assert_eq!(shelf.restock_left, 990 * rules::TICKS_PER_SECOND);
+        assert_eq!(shelf.left, 0);
+        shelf.restock_left = 2;
+        shelves += 1;
+    }
+    assert_eq!(shelves, 2);
+    world.restock_shops();
+    assert_eq!(
+        world.validate_order(SlotId(0), None, &Order::Buy { item: shard }),
+        Err(RejectReason::OutOfStock)
+    );
+    assert!(!world.in_stock(Team::Dire, shard));
+
+    world.restock_shops();
+    assert_eq!(
+        world.validate_order(SlotId(0), None, &Order::Buy { item: shard }),
+        Ok(())
+    );
+    assert!(world.in_stock(Team::Dire, shard));
+}
+
+#[test]
 fn a_consumed_shard_cannot_be_bought_again_after_restocks() {
-    let shard = bota_core::item_by_key("item_aghanims_shard").expect("installed shard row");
+    let shard = bota_core::item_by_key("item_aghanims_shard").expect("catalogued Shard");
     let (mut world, _) = pudge_with_upgrade_gold();
     every_shelf_full(&mut world);
     let buy = Order::Buy { item: shard };
@@ -2044,12 +2075,13 @@ fn a_consumed_shard_cannot_be_bought_again_after_restocks() {
 #[test]
 fn assembling_the_scepter_blessing_consumes_the_scepter_and_its_recipe() {
     let (mut world, pudge) = pudge_with_upgrade_gold();
-    let catalogue = |key| bota_core::item_by_key(key).expect("installed recipe key");
+    let catalogue = |key| bota_core::item_by_key(key).expect("catalogued recipe");
     let scepter = catalogue("item_ultimate_scepter");
     let recipe = catalogue("item_recipe_ultimate_scepter_2");
     let blessing = catalogue("item_ultimate_scepter_2");
     hand_item(&mut world, pudge, scepter, 0);
     let gold = world.seats[0].gold;
+    let worth = world.match_stats().slots[0].current_net_worth;
     advance_validated(&mut world, None, Order::Buy { item: recipe });
     assert_eq!(world.seats[0].gold, gold - price_of(recipe));
     let bag = world.inventory.get(pudge).expect("bag");
@@ -2058,6 +2090,9 @@ fn assembling_the_scepter_blessing_consumes_the_scepter_and_its_recipe() {
         "assembly ran"
     );
     assert!(bag.held().all(|item| item.id != blessing));
+    assert!(world.seats[0].upgrades.scepter_blessing);
+    assert!(world.has_scepter(pudge));
+    assert_eq!(world.match_stats().slots[0].current_net_worth, worth);
 }
 
 #[test]
@@ -2072,9 +2107,9 @@ fn consumed_upgrades_survive_death_and_are_private_in_fog() {
     assert!(world.view_full().players[0].upgrades.unwrap().shard);
 
     let before = world.hash();
-    world.seats[0].upgrades.shard = false;
+    let saved = std::mem::take(&mut world.seats[0].upgrades);
     assert_ne!(world.hash(), before);
-    world.seats[0].upgrades.shard = true;
+    world.seats[0].upgrades = saved;
     assert_eq!(world.hash(), before);
 
     world.bury(vec![(pudge, None)], &mut Vec::new());
@@ -2112,4 +2147,176 @@ fn a_shard_hook_that_grabs_an_ally_refunds_none_of_its_cooldown() {
         }
     }
     panic!("Hook never caught its allied target");
+}
+
+#[test]
+fn blessing_parts_wait_for_their_hero_instead_of_producing_a_transferable_upgrade() {
+    let (mut world, pudge) = pudge_with_upgrade_gold();
+    let item = |key| bota_core::item_by_key(key).unwrap();
+    let scepter = item("item_ultimate_scepter");
+    let recipe = item("item_recipe_ultimate_scepter_2");
+    let home = world.pos(pudge).unwrap();
+    world.transform.get_mut(pudge).unwrap().pos = an_empty_spot(&world);
+    world.settle();
+    assert!(!world.at_shop(pudge));
+    world.seats[0].stash.slots[0] = Some(fresh_stack(scepter, 0));
+    advance_validated(&mut world, None, Order::Buy { item: recipe });
+    let stash: Vec<_> = world.seats[0].stash.held().map(|stack| stack.id).collect();
+    assert_eq!(stash, [scepter, recipe]);
+    assert!(!world.seats[0].upgrades.scepter_blessing);
+
+    world.transform.get_mut(pudge).unwrap().pos = home;
+    world.step();
+    assert!(world.seats[0].upgrades.scepter_blessing);
+    assert!(world.seats[0].stash.held().next().is_none());
+    assert!(world.inventory.get(pudge).unwrap().held().next().is_none());
+}
+
+#[test]
+fn each_free_upgrade_keeps_its_full_wealth_after_consumption_and_grants_once() {
+    use bota_core::HeroUpgrade::{Scepter, Shard};
+    for (key, upgrade) in [
+        ("item_aghanims_shard_roshan", Shard),
+        ("item_ultimate_scepter_roshan", Scepter),
+    ] {
+        let (mut world, pudge) = pudge_with_upgrade_gold();
+        let item = bota_core::item_by_key(key).unwrap();
+        let worth = world.match_stats().slots[0].current_net_worth;
+        let value = price_of(item);
+        hand_item(&mut world, pudge, item, 0);
+        assert_eq!(
+            world.match_stats().slots[0].current_net_worth,
+            worth + value
+        );
+        let order = Order::Use {
+            slot: ItemSlot(0),
+            target: Target::None,
+        };
+        advance_validated(&mut world, None, order);
+        assert!(upgrade.held(world.seats[0].upgrades));
+        assert!(slot_of(&world, pudge, 0).is_none());
+        assert_eq!(
+            world.match_stats().slots[0].current_net_worth,
+            worth + value
+        );
+        assert_eq!(
+            world.buyback_cost_of(&world.seats[0]),
+            bota_core::buyback_cost(worth + value)
+        );
+        hand_item(&mut world, pudge, item, 0);
+        assert_eq!(
+            world.validate_order(SlotId(0), None, &order),
+            Err(RejectReason::ItemRestricted)
+        );
+        assert!(slot_of(&world, pudge, 0).is_some());
+        assert_eq!(
+            world.match_stats().slots[0].current_net_worth,
+            worth + 2 * value
+        );
+    }
+}
+
+#[test]
+fn a_free_upgrade_can_be_given_to_an_ally_who_does_not_have_it() {
+    use crate::game::Command;
+    use bota_proto::Pick;
+
+    let item = bota_core::item_by_key("item_aghanims_shard_roshan").unwrap();
+    let mut cfg = config();
+    cfg.picks.push(Pick {
+        slot: SlotId(1),
+        team: Team::Radiant,
+        hero: HeroId::PUDGE,
+    });
+    let mut world = World::for_match(&cfg, cfg.rng());
+    let giver = world.seats[0].unit.unwrap();
+    let recipient = world.seats[1].unit.unwrap();
+    let giver_at = world.pos(giver).unwrap();
+    world.transform.get_mut(recipient).unwrap().pos = giver_at + Vec2::from_ints(100, 0);
+    world.settle();
+    hand_item(&mut world, giver, item, 0);
+    advance_validated(
+        &mut world,
+        None,
+        Order::Put {
+            slot: ItemSlot(0),
+            target: Target::Unit(wire_id(recipient)),
+        },
+    );
+    assert_eq!(
+        slot_of(&world, recipient, 0).map(|stack| stack.id),
+        Some(item)
+    );
+    let order = Order::Use {
+        slot: ItemSlot(0),
+        target: Target::None,
+    };
+    assert_eq!(world.validate_order(SlotId(1), None, &order), Ok(()));
+    world.advance_trusted(&[Command {
+        slot: SlotId(1),
+        unit: None,
+        order,
+        queue: false,
+        seq: 0,
+    }]);
+    assert!(world.seats[1].upgrades.shard);
+    assert!(!world.seats[0].upgrades.shard);
+}
+
+#[test]
+fn a_visible_enemy_cannot_read_the_upgrade_flag_or_effective_hook_range() {
+    let (mut world, pudge, _) = pudge_and_a_hero_mark(250);
+    assert!(world.grant_upgrade_on(pudge, bota_core::HeroUpgrade::Shard));
+    world.settle();
+    let enemy = world.view(Team::Dire);
+    let enemy_hero = enemy
+        .unit(wire_id(pudge))
+        .expect("Pudge is visible to the other team");
+    assert_eq!(enemy.players[0].upgrades, None);
+    let range = |hero: &bota_proto::UnitView| {
+        hero.abilities
+            .iter()
+            .find(|def| def.id == AbilityId::MEAT_HOOK)
+            .unwrap()
+            .range
+    };
+    assert_eq!(range(enemy_hero), rules::HOOK_RANGE);
+    let ally = world.view(Team::Radiant);
+    assert!(ally.players[0].upgrades.unwrap().shard);
+    assert_eq!(
+        range(ally.unit(wire_id(pudge)).unwrap()),
+        rules::HOOK_RANGE + 100
+    );
+}
+
+#[test]
+fn buying_a_shard_with_a_fallen_hero_consumes_it_for_the_same_seat() {
+    let (mut world, pudge) = pudge_with_upgrade_gold();
+    let shard = bota_core::item_by_key("item_aghanims_shard").unwrap();
+    every_shelf_full(&mut world);
+    world.bury(vec![(pudge, None)], &mut Vec::new());
+    assert!(world.seats[0].dead());
+    let before = world.seats[0].gold;
+    advance_validated(&mut world, None, Order::Buy { item: shard });
+    assert_eq!(world.seats[0].gold, before - price_of(shard));
+    assert!(world.seats[0].upgrades.shard);
+}
+
+#[test]
+fn the_effective_scepter_fact_follows_the_equipped_slot_and_the_blessing() {
+    let (mut world, pudge) = pudge_with_upgrade_gold();
+    let before = |world: &World| world.view(Team::Radiant).players[0].scepter_active;
+    assert_eq!(before(&world), Some(false));
+    hand_item(&mut world, pudge, bota_core::SCEPTER_ITEM, 0);
+    assert_eq!(before(&world), Some(true));
+    world
+        .inventory
+        .get_mut(pudge)
+        .unwrap()
+        .slots
+        .swap(0, rules::INVENTORY_SLOTS);
+    assert_eq!(before(&world), Some(false));
+    assert!(world.grant_upgrade_on(pudge, bota_core::HeroUpgrade::Scepter));
+    assert_eq!(before(&world), Some(true));
+    assert_eq!(world.view(Team::Dire).players[0].scepter_active, None);
 }

@@ -901,3 +901,5 @@ field SlotStats 9 current_net_worth: i32
 field PlayerView 20 upgrades: Option<HeroUpgrades>
 field HeroUpgrades 0 shard: bool
 field HeroUpgrades 1 scepter_blessing: bool
+field PlayerView 21 scepter_active: Option<bool>
+field PlayerView 22 current_net_worth: Option<i32>

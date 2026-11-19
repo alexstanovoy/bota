@@ -1,4 +1,4 @@
-//! Permanent hero upgrades from consumed items, and the installed ability values they affect.
+//! Permanent hero upgrades from consumed items, and the ability rules they affect.
 
 use bota_proto::{AbilityId, HeroUpgrades, ItemId};
 

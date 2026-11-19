@@ -140,6 +140,16 @@ impl ItemStack {
         }
     }
 
+    /// What the remaining paid charges add to their owner's current wealth.
+    pub(crate) fn wealth_value(&self) -> i32 {
+        if self.id == ItemId::WARD_DISPENSER {
+            return self.purchase_value();
+        }
+        item_def(self.id).map_or(0, |def| {
+            bota_core::stack_worth(def, self.charges, self.free_charges)
+        })
+    }
+
     /// An untouched purchase with the catalog's initial charges and mode.
     /// Nothing for an item no shop sells.
     pub fn bought(id: ItemId, owner: SlotId, tick: u32) -> Option<Self> {

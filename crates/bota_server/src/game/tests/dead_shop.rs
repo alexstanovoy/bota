@@ -144,7 +144,7 @@ fn while_the_hero_lies_dead_only_what_was_bought_since_it_fell_sells_back() {
         paid,
         "untouched and fresh: the whole price back"
     );
-    // Recorded 7.42 sell proceeds go to the unreliable purse.
+    // Sell proceeds go to the unreliable purse.
     assert_eq!(world.seats[0].unreliable_gold() - unreliable, paid);
     assert!(!stash_items(&world).contains(&ItemId::TANGO));
     assert!(

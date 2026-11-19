@@ -213,11 +213,17 @@ const POOL_STRIDE: usize = 16;
 /// combining take no part. The
 /// build lands in the lowest slot of the first container any of its parts
 /// came out of, so it stays in the inventory when a part was there.
-fn assemble_pool(catalogue: Catalogue, owner: SlotId, tick: u32, pool: &mut [&mut Inventory]) {
+fn assemble_pool(
+    catalogue: Catalogue,
+    owner: SlotId,
+    tick: u32,
+    pool: &mut [&mut Inventory],
+    mut receiver: Option<&mut bota_proto::HeroUpgrades>,
+) {
     assert!(pool.iter().all(|bag| bag.slots.len() <= POOL_STRIDE));
     // Each build leaves fewer stacks than it took, so the run ends.
     for _ in 0..pool.iter().map(|bag| bag.slots.len()).sum::<usize>() {
-        if !assemble_once(catalogue, owner, tick, pool) {
+        if !assemble_once(catalogue, owner, tick, pool, receiver.as_deref_mut()) {
             break;
         }
     }
@@ -229,6 +235,7 @@ fn assemble_once(
     owner: SlotId,
     tick: u32,
     pool: &mut [&mut Inventory],
+    mut receiver: Option<&mut bota_proto::HeroUpgrades>,
 ) -> bool {
     let held: Vec<(usize, ItemStack)> = pool
         .iter()
@@ -256,6 +263,21 @@ fn assemble_once(
             }
             continue;
         };
+        if let Some(grant) = def
+            .permanent
+            .filter(|grant| grant.on == bota_core::UpgradeOn::Assemble)
+        {
+            if !receiver
+                .as_deref_mut()
+                .is_some_and(|receiver| grant.upgrade.grant(receiver))
+            {
+                continue;
+            }
+            for at in spent.iter() {
+                pool[at / POOL_STRIDE].slots[at % POOL_STRIDE] = None;
+            }
+            return true;
+        }
         let Some(landing) = spent.min() else {
             continue;
         };
@@ -527,7 +549,7 @@ impl World {
                 .courier
                 .and_then(|courier| self.inventory.get_mut(courier))
             {
-                assemble_pool(catalogue, owner, tick, &mut [bag]);
+                assemble_pool(catalogue, owner, tick, &mut [bag], None);
             }
             let stash_in_reach = self.seats[seat].unit.is_some_and(|unit| self.at_shop(unit));
             let dead = self.seats[seat].dead();
@@ -538,29 +560,26 @@ impl World {
                 .and_then(|unit| self.inventory.get_mut(unit));
             match hero {
                 Some(hero) if stash_in_reach || dead => {
-                    assemble_pool(catalogue, owner, tick, &mut [hero, stash]);
+                    assemble_pool(
+                        catalogue,
+                        owner,
+                        tick,
+                        &mut [hero, stash],
+                        Some(&mut seat_state.upgrades),
+                    );
                 }
                 Some(hero) => {
-                    assemble_pool(catalogue, owner, tick, &mut [hero]);
-                    assemble_pool(catalogue, owner, tick, &mut [stash]);
+                    assemble_pool(
+                        catalogue,
+                        owner,
+                        tick,
+                        &mut [hero],
+                        Some(&mut seat_state.upgrades),
+                    );
+                    assemble_pool(catalogue, owner, tick, &mut [stash], None);
                 }
                 None => {
-                    assemble_pool(catalogue, owner, tick, &mut [stash]);
-                }
-            }
-            if let Some(bag) = seat_state
-                .unit
-                .and_then(|unit| self.inventory.get_mut(unit))
-            {
-                for stack in &mut bag.slots {
-                    let grant = stack
-                        .filter(|stack| stack.owner == owner)
-                        .and_then(|stack| item_def(stack.id))
-                        .and_then(|def| def.permanent)
-                        .filter(|grant| grant.on == bota_core::UpgradeOn::Assemble);
-                    if grant.is_some_and(|grant| grant.upgrade.grant(&mut seat_state.upgrades)) {
-                        *stack = None;
-                    }
+                    assemble_pool(catalogue, owner, tick, &mut [stash], None);
                 }
             }
         }

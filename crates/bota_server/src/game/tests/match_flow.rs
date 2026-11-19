@@ -1301,7 +1301,7 @@ fn death_loss_counts_a_whole_item_bought_at_the_shop() {
     let protected = 50;
     world.seats[0].earn_gold(protected, crate::game::GoldPool::Reliable);
     world.bury(vec![(hero, None)], &mut Vec::new());
-    // Recorded 7.42 death loss counts both pools and owned inventory.
+    // Death loss counts both pools and owned inventory.
     let loss = (600 + protected + cost) / rules::DEATH_GOLD_LOSS_SHARE;
     assert_eq!(world.seats[0].unreliable_gold(), 600 - loss);
     assert_eq!(world.seats[0].gold, protected + 600 - loss);
@@ -1338,11 +1338,160 @@ fn scoreboard_net_worth_falls_when_an_owned_item_sells_at_half_price() {
     let half = cost * rules::SELL_PCT / 100;
     let worth = 1200 - cost + half;
     assert_eq!(world.seats[0].gold, worth, "half-price sale completed");
-    // Recorded 7.42 NetWorth drops when an owned item is sold for less than its cost.
+    // Selling an item below cost lowers current net worth.
     let stats = world.match_stats().slots[0];
     assert_eq!(stats.current_net_worth, worth);
     assert_eq!(
         stats.net_worth, 1200,
         "the lifetime income counter stays separate"
     );
+}
+
+#[test]
+fn both_gold_pools_conserve_value_through_sale_settlement_death_and_buyback() {
+    use crate::game::GoldPool;
+
+    let boots = ItemId::BOOTS;
+    let price = price_of(boots);
+    let starting_unreliable = price / 2;
+    let starting_reliable = price;
+    let (mut world, hero) = a_hero_with_gold(starting_unreliable);
+    world.seats[0].earn_gold(starting_reliable, GoldPool::Reliable);
+    let wallet = |world: &World| {
+        let seat = &world.seats[0];
+        (seat.unreliable_gold(), seat.gold - seat.unreliable_gold())
+    };
+    let buy = |world: &mut World, item| {
+        advance_validated(world, None, Order::Buy { item });
+    };
+    let sell = Order::Sell { slot: ItemSlot(0) };
+
+    buy(&mut world, boots);
+    assert_eq!(wallet(&world), (0, starting_unreliable));
+    advance_validated(&mut world, None, sell);
+    assert_eq!(wallet(&world), (price, starting_unreliable));
+    assert_eq!(
+        world.match_stats().slots[0].current_net_worth,
+        price + starting_unreliable
+    );
+
+    let tango = ItemId::TANGO;
+    buy(&mut world, tango);
+    let half_sale = {
+        let slot = world.inventory.get_mut(hero).unwrap().slots[0]
+            .as_mut()
+            .unwrap();
+        let initial = slot.charges;
+        slot.charges -= 1;
+        slot.touched = true;
+        let unused = price_of(tango) * i32::from(slot.charges) / i32::from(initial);
+        unused * rules::SELL_PCT / 100
+    };
+    let shop = world.pos(hero).unwrap();
+    world.transform.get_mut(hero).unwrap().pos = an_empty_spot(&world);
+    advance_validated(&mut world, None, sell);
+    assert!(slot_of(&world, hero, 0).unwrap().for_sale);
+    let headroom = half_sale / 2;
+    let top_up = rules::MAX_HELD_GOLD - headroom - world.seats[0].gold;
+    world.seats[0].adjust_gold(top_up);
+    let before = wallet(&world);
+    world.transform.get_mut(hero).unwrap().pos = shop;
+    world.step();
+    assert!(slot_of(&world, hero, 0).is_none());
+    assert_eq!(wallet(&world), (before.0 + headroom, before.1));
+
+    let before = wallet(&world);
+    let loss = rules::MAX_HELD_GOLD / rules::DEATH_GOLD_LOSS_SHARE;
+    world.bury(vec![(hero, None)], &mut Vec::new());
+    assert_eq!(wallet(&world), (before.0 - loss, before.1));
+    let paid = bota_core::buyback_cost(rules::MAX_HELD_GOLD - loss);
+    let before = wallet(&world);
+    advance_validated(&mut world, None, Order::Buyback);
+    assert_eq!(wallet(&world), (before.0 - paid, before.1));
+    assert_eq!(
+        world.match_stats().slots[0].current_net_worth,
+        before.0 + before.1 - paid
+    );
+}
+
+#[test]
+fn allied_carriers_preserve_the_owners_wealth_for_death_and_buyback() {
+    let mut cfg = config();
+    cfg.picks.push(bota_proto::Pick {
+        slot: SlotId(1),
+        team: Team::Radiant,
+        hero: HeroId::PUDGE,
+    });
+    let mut world = World::for_match(&cfg, cfg.rng());
+    let hero = world.seats[0].unit.unwrap();
+    world.seats[0].earn_gold(1000, crate::game::GoldPool::Unreliable);
+    world.seats[0].earn_gold(300, crate::game::GoldPool::Reliable);
+    let item = ItemId::BLINK_DAGGER;
+    let worth = world.seats[0].gold + price_of(item);
+    let ally_worth = world.seats[1].gold;
+    let courier = world.seats[1].courier.expect("the ally has a courier");
+    let ally = world.seats[1].unit.unwrap();
+    for carrier in [hero, courier, ally] {
+        world.inventory.get_mut(carrier).unwrap().slots[0] = Some(fresh_stack(item, 0));
+        let receipt = world.match_stats();
+        assert_eq!(receipt.slots[0].current_net_worth, worth);
+        assert_eq!(receipt.slots[1].current_net_worth, ally_worth);
+        world.inventory.get_mut(carrier).unwrap().slots[0] = None;
+    }
+    world.inventory.get_mut(courier).unwrap().slots[0] = Some(fresh_stack(item, 0));
+    assert_eq!(
+        world.buyback_cost_of(&world.seats[0]),
+        bota_core::buyback_cost(worth)
+    );
+    assert_eq!(
+        world.view(Team::Radiant).players[0].current_net_worth,
+        Some(worth)
+    );
+    assert_eq!(world.view_full().players[0].current_net_worth, Some(worth));
+    assert_eq!(world.view(Team::Dire).players[0].current_net_worth, None);
+
+    let unreliable_before = world.seats[0].unreliable_gold();
+    let loss = worth / rules::DEATH_GOLD_LOSS_SHARE;
+    world.bury(vec![(hero, None)], &mut Vec::new());
+    assert_eq!(world.seats[0].unreliable_gold(), unreliable_before - loss);
+    assert_eq!(world.seats[0].gold - world.seats[0].unreliable_gold(), 300);
+    assert_eq!(
+        world.buyback_cost_of(&world.seats[0]),
+        bota_core::buyback_cost(worth - loss)
+    );
+}
+
+#[test]
+fn the_replay_samples_count_remaining_paid_charges_like_the_receipt() {
+    use bota_replay::meta::{MetaRecord, Recorder, decode, stat};
+
+    let (mut world, hero) = a_hero_with_gold(1000);
+    let item = ItemId::TANGO;
+    advance_validated(&mut world, None, Order::Buy { item });
+    let slot = world.inventory.get_mut(hero).unwrap().slots[0]
+        .as_mut()
+        .unwrap();
+    let initial = slot.charges;
+    assert!(initial > 1);
+    slot.charges -= 1;
+    let worth =
+        1000 - price_of(item) + price_of(item) * i32::from(initial - 1) / i32::from(initial);
+    assert_eq!(world.match_stats().slots[0].current_net_worth, worth);
+
+    let mut recorder = Recorder::new();
+    recorder.start(&config().info());
+    recorder.view(&world.view_full());
+    let file = decode(&recorder.finish()).expect("valid metadata");
+    let mut samples = 0;
+    for record in &file.records {
+        if let MetaRecord::Sample { stats, .. } = record {
+            let value = stats
+                .iter()
+                .find(|(key, _)| *key == stat::NET_WORTH)
+                .map(|(_, value)| *value);
+            assert_eq!(value, Some(i64::from(worth)));
+            samples += 1;
+        }
+    }
+    assert!(samples > 0, "the recorder samples the match");
 }

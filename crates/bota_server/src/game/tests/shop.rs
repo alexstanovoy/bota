@@ -526,7 +526,7 @@ fn a_marked_stack_sells_the_moment_it_reaches_the_shop() {
     world.step();
     assert!(slot_of(&world, hero, 0).is_none(), "sold on arrival");
     let half = price_of(ItemId::BOOTS) * rules::SELL_PCT / 100;
-    // Recorded 7.42 sell proceeds go to the unreliable purse.
+    // Sell proceeds go to the unreliable purse.
     assert_eq!(world.seats[0].unreliable_gold() - before, half);
 }
 
@@ -1053,7 +1053,7 @@ fn a_marked_stash_stack_settles_into_the_unreliable_purse() {
 
     world.step();
     assert!(world.seats[0].stash.slots[0].is_none());
-    // Recorded 7.42 sell proceeds go to the unreliable purse.
+    // Sell proceeds go to the unreliable purse.
     assert_eq!(
         world.seats[0].unreliable_gold(),
         price_of(ItemId::BOOTS) * rules::SELL_PCT / 100

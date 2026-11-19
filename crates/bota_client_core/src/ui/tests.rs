@@ -389,6 +389,8 @@ fn a_player() -> PlayerView {
         bought_back_at: None,
         buyback: None,
         upgrades: None,
+        scepter_active: None,
+        current_net_worth: None,
     }
 }
 

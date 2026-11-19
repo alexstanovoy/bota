@@ -1,10 +1,10 @@
 //! Buyback: a seat pays to have its dead hero stand up at once, then waits
 //! out a cooldown, and the hero's next death lasts longer.
 
-use bota_core::{buyback_cost, buyback_refusal, item_def, rules, stack_worth};
-use bota_proto::{BuybackView, EntityId, EventKind, ItemId, RejectReason, SlotId};
+use bota_core::{buyback_cost, buyback_refusal, rules};
+use bota_proto::{BuybackView, EntityId, EventKind, RejectReason, SlotId};
 
-use crate::game::{Event, EventVisibility, ItemStack, Seat, World};
+use crate::game::{Event, EventVisibility, Seat, World};
 
 impl World {
     /// Whether a seat may buy its hero back now. The order is the seat's: it
@@ -69,25 +69,7 @@ impl World {
 
     /// What a buyback costs a seat now.
     pub fn buyback_cost_of(&self, seat: &Seat) -> i32 {
-        buyback_cost(self.holdings_worth(seat))
-    }
-
-    /// A seat's net worth as Dota prices a buyback by it: its gold and the
-    /// worth of every stack it owns in its hero's bag, its stash and its
-    /// courier's bag. What lies on the ground counts for nothing.
-    fn holdings_worth(&self, seat: &Seat) -> i32 {
-        let carried = [seat.unit, seat.courier]
-            .into_iter()
-            .flatten()
-            .filter_map(|unit| self.inventory.get(unit));
-        let worth: i64 = carried
-            .chain([&seat.stash])
-            .flat_map(|bag| bag.slots.iter().chain(bag.town_portal.iter()).flatten())
-            .filter(|stack| stack.owner == seat.slot)
-            .map(|stack| i64::from(worth_of(stack)))
-            .sum();
-        let consumed = bota_core::consumed_upgrade_value(seat.upgrades);
-        i32::try_from(i64::from(seat.gold) + worth + i64::from(consumed)).unwrap_or(i32::MAX)
+        buyback_cost(self.owned_net_worth(seat))
     }
 
     /// A seat's buyback as its own side is told it.
@@ -98,21 +80,4 @@ impl World {
             respawn_penalty: seat.buyback.respawn_penalty,
         }
     }
-}
-
-/// What one stack adds to its owner's net worth: a Ward Dispenser the wards it holds, each at
-/// its own worth, anything else by [`stack_worth`].
-fn worth_of(stack: &ItemStack) -> i32 {
-    let worth = |id: ItemId, charges: u8, free: u8| {
-        item_def(id).map_or(0, |def| stack_worth(def, charges, free))
-    };
-    if stack.id == ItemId::WARD_DISPENSER {
-        let (observers, sentries) = stack.ward_counts().unwrap_or_default();
-        return worth(ItemId::OBSERVER_WARD, observers, 0).saturating_add(worth(
-            ItemId::SENTRY_WARD,
-            sentries,
-            0,
-        ));
-    }
-    worth(stack.id, stack.charges, stack.free_charges)
 }

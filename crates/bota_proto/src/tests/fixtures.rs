@@ -286,6 +286,8 @@ pub fn player_view(slot: u8) -> PlayerView {
             shard: true,
             scepter_blessing: true,
         }),
+        scepter_active: Some(true),
+        current_net_worth: Some(540),
     }
 }
 

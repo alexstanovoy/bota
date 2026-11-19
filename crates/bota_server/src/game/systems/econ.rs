@@ -244,7 +244,7 @@ impl World {
             team: 0,
             xp: hero_kill_xp(seat.xp, if counts_as_kill { streak } else { 0 }, level),
         };
-        let worth = self.owned_net_worth(index);
+        let worth = self.owned_net_worth(seat);
         let worths = Worths {
             fallen: worth,
             fallen_side: self.side_worth(seat.team),
@@ -260,28 +260,34 @@ impl World {
         Some((bounty, fallen_seat, Some(worths)))
     }
 
-    /// The purse and the full value of the seat's owned inventory at this tick.
-    pub(in crate::game) fn owned_net_worth(&self, index: usize) -> i32 {
-        let seat = &self.seats[index];
-        let hero_bag = seat.unit.and_then(|hero| self.inventory.get(hero));
-        hero_bag
-            .into_iter()
+    /// A player's purse and the current value of their property carried by their team.
+    pub(in crate::game) fn owned_net_worth(&self, seat: &crate::game::Seat) -> i32 {
+        let carried = self
+            .seats
+            .iter()
+            .filter(|member| member.team == seat.team)
+            .flat_map(|member| {
+                let bags = [member.unit, member.courier]
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|unit| self.inventory.get(unit));
+                std::iter::once(&member.stash).chain(bags)
+            })
             .flat_map(|bag| bag.held().chain(bag.town_portal.iter().flatten()))
-            .chain(seat.stash.held())
-            .filter(|item| item.owner == seat.slot)
-            .fold(
-                seat.gold
-                    .saturating_add(bota_core::consumed_upgrade_value(seat.upgrades)),
-                |worth, item| worth.saturating_add(item.purchase_value()),
-            )
+            .filter(|item| item.owner == seat.slot);
+        let held = seat
+            .gold
+            .saturating_add(bota_core::consumed_upgrade_value(seat.upgrades));
+        carried.fold(held, |worth, item| {
+            worth.saturating_add(item.wealth_value())
+        })
     }
 
     fn side_worth(&self, side: Team) -> i64 {
         self.seats
             .iter()
-            .enumerate()
-            .filter(|(_, seat)| seat.team == side)
-            .map(|(index, _)| i64::from(self.owned_net_worth(index)))
+            .filter(|seat| seat.team == side)
+            .map(|seat| i64::from(self.owned_net_worth(seat)))
             .sum()
     }
 

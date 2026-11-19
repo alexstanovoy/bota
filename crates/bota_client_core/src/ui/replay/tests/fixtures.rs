@@ -68,6 +68,8 @@ pub fn snapshot(tick: u32) -> ReplayRecord {
                 bought_back_at: None,
                 buyback: None,
                 upgrades: None,
+                scepter_active: None,
+                current_net_worth: None,
             }],
             projectiles: Vec::new(),
             loot: Vec::new(),
