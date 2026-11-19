@@ -82,6 +82,7 @@ pub(crate) struct KnownUnit {
     pub recent_damage: bota_client_core::RecentDamage,
     pub attack_target: Option<EntityId>,
     pub damage_dealt_at: Option<u32>,
+    pub direction_history: bota_client_core::DirectionHistory,
 }
 
 pub(crate) struct AttackFact {
@@ -332,6 +333,7 @@ impl Snapshot {
                     recent_damage: track.recent_damage,
                     attack_target: track.attack_target(),
                     damage_dealt_at: track.last_damage_dealt.map(|damage| damage.tick),
+                    direction_history: track.direction_history,
                 })
                 .collect(),
         })

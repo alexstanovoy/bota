@@ -5,6 +5,12 @@ mod support {
     include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/support/mod.rs"));
 }
 fn call(name: &str, fuel: u64) -> Result<Vec<Value>, luagee::Error> {
+    let full_history = name == "StabilityComplete";
+    let name = if full_history {
+        "GetMovementDirectionStability"
+    } else {
+        name
+    };
     let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
     let own = sessions[0].own_hero().unwrap().id;
     let state = Rc::new(RefCell::new(State::new(
@@ -14,7 +20,19 @@ fn call(name: &str, fuel: u64) -> Result<Vec<Value>, luagee::Error> {
             hero: HeroId::SHADOW_FIEND,
         }],
     )));
-    state.borrow_mut().snapshot = Some(Snapshot::capture(&sessions[0]).unwrap());
+    let mut snapshot = Snapshot::capture(&sessions[0]).unwrap();
+    if full_history {
+        snapshot.tick = 31;
+        let known = snapshot
+            .units
+            .iter_mut()
+            .find(|known| known.unit.id == own)
+            .unwrap();
+        for tick in 1..=31 {
+            known.direction_history.observe(tick, known.unit.pos);
+        }
+    }
+    state.borrow_mut().snapshot = Some(snapshot);
     let mut lua = Lua::new(
         Limits::DEFAULT.with_fuel_per_tick(fuel),
         Keys {
@@ -554,5 +572,32 @@ mod pins {
                 rig.declined()
             );
         }
+    }
+}
+
+#[test]
+fn direction_history_queries_pay_for_the_full_window_before_answer_or_decline() {
+    let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
+    let units = sessions[0].entities().len() as u64;
+    let host = 1 + units / 8 + 8 + units + 31 * 32;
+    let minimum = support::bare_native_call_fuel() + host;
+    for name in ["GetMovementDirectionStability", "StabilityComplete"] {
+        let result = call(name, minimum);
+        assert!(result.is_ok(), "{name} exact minimum {minimum}: {result:?}");
+        assert_eq!(
+            result.unwrap(),
+            if name == "StabilityComplete" {
+                vec![Value::Number(1.0)]
+            } else {
+                vec![Value::Nil]
+            }
+        );
+        assert!(
+            matches!(
+                call(name, minimum - 1),
+                Err(luagee::Error::Limit(luagee::Limit::FuelPerTick))
+            ),
+            "{name} must reject one fuel below its full window price"
+        );
     }
 }

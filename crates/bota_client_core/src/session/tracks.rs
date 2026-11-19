@@ -100,6 +100,8 @@ pub struct EntityTrack {
     pub last_seen_tick: u32,
     /// Exact displacement and elapsed ticks, absent before a second observation.
     pub velocity: Option<VelocityEstimate>,
+    /// Consecutive positions observed by this seat, with fixed capacity.
+    pub direction_history: crate::DirectionHistory,
     /// Health change since the preceding visible observation.
     pub hp_delta: i64,
     /// Mana change since the preceding visible observation.
@@ -222,7 +224,10 @@ impl Tracks {
                 // A hero is one unit all match: seen again after it fell, it
                 // stood up anew, and its track starts afresh.
                 Some(entity) if entity.last_death.is_some() => {
+                    let mut history = entity.direction_history;
+                    history.observe(view.tick, unit.pos);
                     *entity = new_entity(view.tick, unit);
+                    entity.direction_history = history;
                 }
                 Some(entity) => update_entity(entity, view.tick, unit),
                 None => fresh.push(index),
@@ -236,6 +241,7 @@ impl Tracks {
         assert!(self.entities.len() <= MAX_TRACKED_ENTITIES);
         for entity in self.entities.iter_mut().filter(|entity| !entity.visible) {
             entity.casting_since = None;
+            entity.direction_history.clear();
         }
         self.update_fights(view, viewer);
         self.update_talents(view);
@@ -545,7 +551,10 @@ fn casting(unit: &UnitView) -> bool {
 }
 
 fn new_entity(tick: u32, unit: &UnitView) -> EntityTrack {
+    let mut direction_history = crate::DirectionHistory::default();
+    direction_history.observe(tick, unit.pos);
     EntityTrack {
+        direction_history,
         id: unit.id,
         unit: unit.clone(),
         previous_seen_tick: tick,
@@ -574,6 +583,7 @@ fn new_entity(tick: u32, unit: &UnitView) -> EntityTrack {
 }
 
 fn update_entity(entity: &mut EntityTrack, tick: u32, unit: &UnitView) {
+    entity.direction_history.observe(tick, unit.pos);
     let previous_pos = entity.unit.pos;
     let previous_tick = entity.last_seen_tick;
     entity.previous_seen_tick = previous_tick;

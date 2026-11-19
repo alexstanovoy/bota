@@ -27,6 +27,7 @@ mod chat;
 mod constants;
 pub(crate) mod context;
 mod damage_history;
+mod direction_stability;
 mod distances;
 mod environment;
 mod estimates;
@@ -125,6 +126,7 @@ pub(crate) fn install(lua: &mut Lua, state: Shared, vectors: Vectors) -> Result<
     patterns::install(lua, &context)?;
     environment::install(lua, &context)?;
     bot_controller::install(lua, &context)?;
+    direction_stability::install(lua, &context)?;
     catalogue_queries::install(lua, &context)?;
     chat::install(lua, &context)?;
     additional_actions::install(lua, &context)?;

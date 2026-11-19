@@ -45,6 +45,8 @@ use bota_core::{Dec, ScriptData};
 #[path = "../../bota_core/src/roshan_data.rs"]
 mod roshan_data;
 
+mod direction_stability;
+pub use direction_stability::{DIRECTION_HISTORY_CAPACITY, DirectionHistory};
 mod ability_read;
 pub mod bot_actions;
 mod catalog;

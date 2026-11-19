@@ -107,16 +107,22 @@ fn run_pack(directory: &std::path::Path, runtime: Option<&std::path::Path>, team
 #[test]
 #[ignore = "requires BOTA_LUA_LOCAL_PACK; optional local source conformance"]
 fn local_pack_issues_a_body_order_through_the_host_before_the_first_minute() {
-    first_order_proof(false);
+    first_order_proof(false, false);
 }
 
 #[test]
 #[ignore = "requires BOTA_LUA_LOCAL_PACK; optional local source conformance"]
 fn local_pack_reads_its_controller_and_issues_orders_without_a_controller_api_failure() {
-    first_order_proof(true);
+    first_order_proof(true, false);
 }
 
-fn first_order_proof(require_controller: bool) {
+#[test]
+#[ignore = "requires BOTA_LUA_LOCAL_PACK; optional local source conformance"]
+fn local_pack_reads_observed_movement_stability_and_issues_a_body_order() {
+    first_order_proof(true, true);
+}
+
+fn first_order_proof(require_controller: bool, require_stability: bool) {
     let directory =
         std::env::var_os("BOTA_LUA_LOCAL_PACK").expect("BOTA_LUA_LOCAL_PACK is required");
     let runtime = std::env::var_os("BOTA_LUA_RUNTIME_SCRIPTS").map(std::path::PathBuf::from);
@@ -159,7 +165,7 @@ fn first_order_proof(require_controller: bool) {
         };
         if require_controller {
             let at = Vec2::from_ints(9216, 9216);
-            let setup = [
+            let mut setup = vec![
                 bota_proto::Cheat::Teleport { at },
                 bota_proto::Cheat::StartGame,
                 bota_proto::Cheat::CreateCreeps {
@@ -167,6 +173,13 @@ fn first_order_proof(require_controller: bool) {
                     at: at + Vec2::from_ints(224, 0),
                 },
             ];
+            if require_stability {
+                setup.extend([
+                    bota_proto::Cheat::Levels { count: 29 },
+                    bota_proto::Cheat::MaxAbilities,
+                    bota_proto::Cheat::Refresh,
+                ]);
+            }
             let outgoing: Vec<_> = setup
                 .into_iter()
                 .map(|cheat| {
@@ -177,6 +190,22 @@ fn first_order_proof(require_controller: bool) {
                 .collect();
             let mut commands = [Vec::new(), Vec::new()];
             commands[index] = outgoing;
+            if require_stability {
+                commands[1 - index] = [
+                    bota_proto::Cheat::Teleport {
+                        at: at + Vec2::from_ints(450, 0),
+                    },
+                    bota_proto::Cheat::Levels { count: 29 },
+                    bota_proto::Cheat::Refresh,
+                ]
+                .into_iter()
+                .map(|cheat| {
+                    sessions[1 - index]
+                        .issue(IssuedOrder::hero(Order::Cheat { cheat }))
+                        .unwrap()
+                })
+                .collect();
+            }
             for (session, stream) in sessions
                 .iter_mut()
                 .zip(local.step(&[&commands[0], &commands[1]]).unwrap())
@@ -187,6 +216,7 @@ fn first_order_proof(require_controller: bool) {
         let mut first_error = None;
         let mut issued = false;
         let mut saw_controller = !require_controller;
+        let mut saw_stability = !require_stability;
         let mut gaps = Vec::new();
         // Pack objectives contain clock gates. Observe the real Solo Mid pregame
         // plus one bounded game minute; no pack source is changed.
@@ -224,6 +254,26 @@ fn first_order_proof(require_controller: bool) {
                     .iter()
                     .any(|api| api.name == "GetCurrentActionType" && api.calls > 0);
             }
+            if require_stability {
+                saw_stability |= turn
+                    .statistics
+                    .as_ref()
+                    .unwrap()
+                    .api
+                    .iter()
+                    .any(|api| api.name == "GetMovementDirectionStability" && api.calls > 0);
+                assert!(
+                    !turn
+                        .statistics
+                        .as_ref()
+                        .unwrap()
+                        .undefined_api_reads
+                        .names
+                        .iter()
+                        .any(|entry| entry.name == "GetMovementDirectionStability"),
+                    "movement stability must not be an undefined API"
+                );
+            }
             if first_error.is_none() {
                 first_error = turn
                     .failures
@@ -260,7 +310,7 @@ fn first_order_proof(require_controller: bool) {
             {
                 support::fold(session, stream);
             }
-            if issued && saw_controller {
+            if issued && saw_controller && saw_stability {
                 println!(
                     "pack_first_order side={side:?} tick={} failures_so_far={:?}",
                     sessions[index].current().unwrap().tick,
@@ -270,7 +320,7 @@ fn first_order_proof(require_controller: bool) {
             }
         }
         assert!(
-            issued && saw_controller,
+            issued && saw_controller && saw_stability,
             "side={side:?}: no script body order through the host; first_error={first_error:?}; gaps={gaps:?}"
         );
     }

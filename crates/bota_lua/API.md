@@ -652,3 +652,25 @@ identified casts that never start or end instantly without a damage impact are d
 A body walking into cast range is not declared inactive because no cast phase is visible.
 Controller substance lives in `bota_client_core::bot_actions`; bindings map names, validate
 handles/arguments and charge bounded work.
+
+### Movement direction stability
+
+`GetMovementDirectionStability()` reads only this seat's consecutive observed horizontal
+positions. At 30 Hz it needs 31 positions (29 adjacent direction pairs): the pair count is
+`trunc(1.0f / (1.0f / tick_rate))`, capped at 118. Fixed storage retains at most
+`TICKS_PER_SECOND+2` positions; a cadence requiring a larger window is unavailable.
+A missing sample, fog interval or incomplete window yields `nil` and increments
+`GetMovementDirectionStability_unobserved_window`. No missing samples are interpolated
+or padded, and the API does not substitute 1. The first observation after return to sight
+starts a fresh window. Teleports receive no special reset beyond actual missing observations.
+
+Each segment is normalized in single precision; an exact zero segment stays zero. Two
+zero segments cost 0, a zero/nonzero transition costs 1, and other pairs cost `1-dot`.
+The result is `1-clamp(10*sum/pairs,0,1)`: straight movement and standing still score 1;
+reversals and frequent corners lower the score. Inputs are received fixed-point positions
+converted to centered single-precision coordinates, so sub-quantum jitter is not recovered.
+
+History and the query live in `bota_client_core::DirectionHistory`, fed by the shared
+entity tracker. Storage is fixed, updates O(1), query O(window). Lua charges the receiver,
+8 plus the observation lookup and 32 per window position before either answering or
+reporting unavailable. No server state, view field, model input or wire id is added.
