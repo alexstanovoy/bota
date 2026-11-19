@@ -595,7 +595,7 @@ impl World {
     /// level's point goes into the Attribute Bonus by itself when nothing
     /// else could take it ([`crate::game::AbilityBook::auto_attribute_bonus`]).
     pub fn grant_xp(&mut self, seat: usize, amount: i32, events: &mut Vec<Event>) {
-        self.seats[seat].xp += amount;
+        self.seats[seat].xp = self.seats[seat].xp.saturating_add(amount);
         while self.seats[seat].level < rules::HERO_MAX_LEVEL {
             let next = rules::XP_THRESHOLDS[usize::from(self.seats[seat].level)];
             if self.seats[seat].xp < next {

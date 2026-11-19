@@ -88,6 +88,15 @@ fn levels_go_up_at_once_and_no_further_than_the_cap() {
 }
 
 #[test]
+fn repeated_experience_grants_cannot_overflow_the_seat_total() {
+    let (mut world, _) = world_with(true);
+    world.seats[0].xp = i32::MAX - 5;
+    world.seats[0].level = rules::HERO_MAX_LEVEL;
+    cheat(&mut world, Cheat::Experience { amount: 10 });
+    assert_eq!(world.seats[0].xp, i32::MAX);
+}
+
+#[test]
 fn a_refresh_fills_the_pools_and_clears_every_wait() {
     let (mut world, hero) = world_with(true);
     world.health.get_mut(hero).expect("standing").hp = Fixed::from_int(1);
