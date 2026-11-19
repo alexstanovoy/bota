@@ -87,7 +87,7 @@ fn team_desire_pairs_reset_missing_returns_to_native_policy() {
 }
 
 #[test]
-fn malformed_team_desires_reject_the_turn_without_publishing_partial_updates() {
+fn malformed_team_desires_preserve_callback_orders_without_partial_desire_updates() {
     for bad in [
         "false",
         "{}",
@@ -127,7 +127,13 @@ fn malformed_team_desires_reject_the_turn_without_publishing_partial_updates() {
             "{:?}",
             rejected.failures
         );
-        assert!(rejected.bots[0].orders.is_empty());
+        assert_eq!(
+            rejected.bots[0].orders,
+            vec![bota_client_core::IssuedOrder::hero(bota_proto::Order::Move {
+                target: bota_proto::Target::Pos(bota_proto::Vec2::from_ints(9216, 9216)),
+            })],
+            "the successful TeamThink callback's order remains committed: {bad}"
+        );
         assert_eq!(lua.state.borrow().team_desires, before, "{bad}");
         advance(&mut local, &mut sessions);
         assert!(
@@ -250,7 +256,7 @@ fn failed_push_keeps_an_empty_initial_pair_but_does_not_skip_valid_defend() {
 }
 
 #[test]
-fn malformed_team_desires_discard_only_the_first_configured_seats_orders() {
+fn malformed_team_desires_preserve_each_configured_seats_callback_orders() {
     let (_, sessions) = support::local(&[Team::Radiant, Team::Radiant, Team::Dire]);
     let seats = [
         BotSeat {
@@ -289,7 +295,14 @@ fn malformed_team_desires_discard_only_the_first_configured_seats_orders() {
         SlotId(1),
         "the first configured seat need not be wire slot zero"
     );
-    assert!(turn.bots[0].orders.is_empty());
+    assert_eq!(turn.bots[0].slot, SlotId(1));
+    assert_eq!(
+        turn.bots[0].orders,
+        vec![bota_client_core::IssuedOrder::hero(bota_proto::Order::Move {
+            target: bota_proto::Target::Pos(bota_proto::Vec2::from_ints(9313, 9216)),
+        })],
+        "the first seat's later Think callback still runs and commits its order"
+    );
     assert_eq!(turn.bots[1].slot, SlotId(0));
     assert!(turn.bots[1].orders.iter().any(|order| order.order
         == bota_proto::Order::Move {
