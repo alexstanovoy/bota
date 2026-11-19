@@ -14,7 +14,7 @@ while IFS= read -r file; do
         tools/import_items/src/main.rs|tools/import_items/src/wave_rules.rs) ;; # group import_items (tools/test_groups.toml): --include-ignored
         tools/import_map/src/main.rs) ;;                       # group import_map (tools/test_groups.toml): --include-ignored
         crates/bota_server/src/game/tests/determinism.rs) ;;   # print_pins, print_blind_pins: recorders (cargo test print_pins -- --ignored --nocapture)
-        tools/import_items/src/neutral.rs) ;;                # group import_items (tools/test_groups.toml): --include-ignored
+        tools/import_items/src/neutral.rs|tools/import_items/src/boss.rs) ;;                # group import_items (tools/test_groups.toml): --include-ignored
         *) echo "ignored_audit: $file has ignored tests that no gate step runs"; bad=1 ;;
     esac
 done < <(git ls-files '*.rs' | xargs grep -l '#\[ignore')
