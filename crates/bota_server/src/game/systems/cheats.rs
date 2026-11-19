@@ -37,10 +37,11 @@ impl World {
             return;
         };
         // What works through a hero works through the one the cheat is aimed at: the giver's
-        // own, or one it controls.
-        let seat = unit
-            .and_then(|unit| self.seats.iter().position(|seat| seat.unit == Some(unit)))
-            .unwrap_or(giver);
+        // own when unnamed, or the named hero's seat; a named non-hero never falls back to giver.
+        let hero_seat = match unit {
+            None => Some(giver),
+            Some(unit) => self.seats.iter().position(|seat| seat.unit == Some(unit)),
+        };
         match cheat {
             Cheat::SpellImmunity { target, ticks } => {
                 if let Some(mark) = unit.and_then(|unit| self.cheat_target(unit, target).ok()) {
@@ -70,12 +71,22 @@ impl World {
                 }
             }
             Cheat::Gold { amount } => {
-                let gold = &mut self.seats[seat].gold;
-                *gold = gold.saturating_add(amount).max(0);
+                if let Some(seat) = hero_seat {
+                    let gold = &mut self.seats[seat].gold;
+                    *gold = gold.saturating_add(amount).max(0);
+                }
             }
-            Cheat::Levels { count } => self.raise_levels(seat, count, events),
+            Cheat::Levels { count } => {
+                if let Some(seat) = hero_seat {
+                    self.raise_levels(seat, count, events);
+                }
+            }
             Cheat::Refresh => self.refresh_all(),
-            Cheat::Item { item } => self.hand_out(seat, item, events),
+            Cheat::Item { item } => {
+                if let Some(seat) = hero_seat {
+                    self.hand_out(seat, item, events);
+                }
+            }
             Cheat::ApplyModifier {
                 target,
                 spec,
@@ -117,7 +128,11 @@ impl World {
                     self.refresh_all();
                 }
             }
-            Cheat::Respawn => self.respawn_now(seat),
+            Cheat::Respawn => {
+                if let Some(seat) = hero_seat {
+                    self.respawn_now(seat);
+                }
+            }
             Cheat::CreateHero { hero, enemy, at } => {
                 let team = self.cheat_side(giver, enemy);
                 let body =
@@ -140,7 +155,11 @@ impl World {
             Cheat::KillCreeps { which } => self.kill_creeps(which),
             Cheat::StartGame => self.start_game(),
             Cheat::AllVision { on } => self.all_vision = on,
-            Cheat::Invulnerable { on } => self.seats[seat].invulnerable = on,
+            Cheat::Invulnerable { on } => {
+                if let Some(seat) = hero_seat {
+                    self.seats[seat].invulnerable = on;
+                }
+            }
             Cheat::Teleport { at } => {
                 if let Some(unit) = unit
                     && let Some(at) = self.open_landing_for(unit, at)
@@ -148,7 +167,11 @@ impl World {
                     self.move_unit_to(unit, at);
                 }
             }
-            Cheat::ResetHero => self.reset_hero(seat),
+            Cheat::ResetHero => {
+                if let Some(seat) = hero_seat {
+                    self.reset_hero(seat);
+                }
+            }
             Cheat::TimeOfDay { night } => {
                 let now = self.time_of_day();
                 if now.night != night {
@@ -163,19 +186,33 @@ impl World {
             }
             Cheat::Suicide => {
                 // Dota kills the hero with itself as the attacker.
-                if let Some(hero) = self.seats[seat].unit.filter(|_| !self.seats[seat].dead()) {
+                if let Some(seat) = hero_seat
+                    && let Some(hero) = self.seats[seat].unit.filter(|_| !self.seats[seat].dead())
+                {
                     self.bury(vec![(hero, Some(hero))], events);
                 }
             }
-            Cheat::ResetBuyback => self.seats[seat].buyback.ready_at = self.tick,
-            Cheat::RemoveHero => self.remove_created_seat(seat),
+            Cheat::ResetBuyback => {
+                if let Some(seat) = hero_seat {
+                    self.seats[seat].buyback.ready_at = self.tick;
+                }
+            }
+            Cheat::RemoveHero => {
+                if let Some(seat) = hero_seat {
+                    self.remove_created_seat(seat);
+                }
+            }
             Cheat::MaxAbilities => {
-                if let Some(hero) = self.seats[seat].unit {
+                if let Some(seat) = hero_seat
+                    && let Some(hero) = self.seats[seat].unit
+                {
                     self.learn_all(hero);
                 }
             }
             Cheat::UnlearnAbilities => {
-                if let Some(hero) = self.seats[seat].unit {
+                if let Some(seat) = hero_seat
+                    && let Some(hero) = self.seats[seat].unit
+                {
                     self.unlearn_all(hero);
                 }
             }
@@ -216,18 +253,33 @@ impl World {
             self.catalogue,
             !self.map.rune_spots.is_empty(),
         )?;
+        let living = |unit: Option<Entity>| -> Result<Entity, RejectReason> {
+            let unit = unit.ok_or(RejectReason::HeroDead)?;
+            if !self.alive(unit) {
+                return Err(RejectReason::HeroDead);
+            }
+            Ok(unit)
+        };
+        let hero_unit = |unit: Option<Entity>| -> Result<(), RejectReason> {
+            if let Some(unit) = unit
+                && !self.seats.iter().any(|seat| seat.unit == Some(unit))
+            {
+                return Err(RejectReason::NotAHero);
+            }
+            Ok(())
+        };
         match cheat {
             Cheat::SpellImmunity { target, ticks } => {
                 if !modifier_ticks_bounded(*ticks) {
                     return Err(RejectReason::BadCheat);
                 }
-                self.cheat_target(unit.ok_or(RejectReason::HeroDead)?, *target)?;
+                self.cheat_target(living(unit)?, *target)?;
             }
             Cheat::Damage { target, amount, .. } => {
                 if *amount == 0 || *amount > 1000 {
                     return Err(RejectReason::BadCheat);
                 }
-                let target = self.cheat_target(unit.ok_or(RejectReason::HeroDead)?, *target)?;
+                let target = self.cheat_target(living(unit)?, *target)?;
                 if !self.alive(target) {
                     return Err(RejectReason::BadCheat);
                 }
@@ -236,21 +288,18 @@ impl World {
                 if !(1..=100).contains(health) || *mana > 100 {
                     return Err(RejectReason::BadCheat);
                 }
-                let unit = unit.ok_or(RejectReason::HeroDead)?;
-                if !self.alive(unit)
-                    || self.health.get(unit).is_none()
-                    || self.mana.get(unit).is_none()
-                {
+                let unit = living(unit)?;
+                if self.health.get(unit).is_none() || self.mana.get(unit).is_none() {
                     return Err(RejectReason::BadCheat);
                 }
             }
             Cheat::ApplyModifier { target, .. } => {
-                self.cheat_target(unit.ok_or(RejectReason::HeroDead)?, *target)?;
+                self.cheat_target(living(unit)?, *target)?;
             }
             Cheat::ClearModifiers { target } => {
-                self.cheat_target(unit.ok_or(RejectReason::HeroDead)?, *target)?;
+                self.cheat_target(living(unit)?, *target)?;
             }
-            Cheat::Item { .. } => {}
+            Cheat::Item { .. } => hero_unit(unit)?,
             Cheat::CreateHero { hero, enemy, at } => {
                 if self.seats.len() >= MAX_SEATS_WITH_CHEATS {
                     return Err(RejectReason::BadCheat);
@@ -279,12 +328,13 @@ impl World {
                 self.nearest_rune_spot(*at).ok_or(RejectReason::BadCheat)?;
             }
             Cheat::Teleport { at } => {
-                let unit = unit.ok_or(RejectReason::HeroDead)?;
+                let unit = living(unit)?;
                 self.open_landing_for(unit, *at)
                     .ok_or(RejectReason::ClosedGround)?;
             }
             Cheat::RemoveHero => {
                 let unit = unit.ok_or(RejectReason::HeroDead)?;
+                hero_unit(Some(unit))?;
                 let created = self
                     .seats
                     .iter()
@@ -295,27 +345,26 @@ impl World {
             }
             Cheat::MaxAbilities | Cheat::UnlearnAbilities => {
                 let unit = unit.ok_or(RejectReason::HeroDead)?;
-                if !self.seats.iter().any(|seat| seat.unit == Some(unit)) {
-                    return Err(RejectReason::BadCheat);
-                }
+                hero_unit(Some(unit))?;
+                living(Some(unit))?;
             }
             Cheat::Gold { .. }
             | Cheat::Levels { .. }
-            | Cheat::Refresh
+            | Cheat::Respawn
+            | Cheat::Invulnerable { .. }
+            | Cheat::ResetHero
+            | Cheat::Suicide
+            | Cheat::ResetBuyback => hero_unit(unit)?,
+            Cheat::Refresh
             | Cheat::LevelBots { .. }
             | Cheat::Wtf { .. }
-            | Cheat::Respawn
             | Cheat::SpawnCreeps
             | Cheat::CreepSpawning { .. }
             | Cheat::SpawnNeutrals
             | Cheat::KillCreeps { .. }
             | Cheat::StartGame
             | Cheat::AllVision { .. }
-            | Cheat::Invulnerable { .. }
-            | Cheat::ResetHero
-            | Cheat::TimeOfDay { .. }
-            | Cheat::Suicide
-            | Cheat::ResetBuyback => {}
+            | Cheat::TimeOfDay { .. } => {}
         }
         Ok(())
     }

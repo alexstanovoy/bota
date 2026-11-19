@@ -2238,3 +2238,165 @@ fn items_of_a_removed_hero_held_by_another_unit_become_that_holders() {
         "next hero in slot 1 received nothing"
     );
 }
+
+#[test]
+fn aimed_body_cheats_on_a_dead_created_hero_refuse_with_hero_dead_like_own_dead_hero() {
+    use bota_proto::ModifierSpec;
+
+    let mut demo = Demo::on(HERO_DEMO_ID);
+    let pudge = demo.spawn_enemy(HeroId::PUDGE);
+    let spot = rules::DEMO_LANE_CORNERS[1];
+    let body_cheats = [
+        Cheat::Teleport { at: spot },
+        Cheat::ApplyModifier {
+            target: Target::None,
+            spec: ModifierSpec::NOMINAL,
+            ticks: 30,
+        },
+        Cheat::ClearModifiers {
+            target: Target::None,
+        },
+        Cheat::SpellImmunity {
+            target: Target::None,
+            ticks: 30,
+        },
+        Cheat::SetPools {
+            health: 50,
+            mana: 50,
+        },
+        Cheat::MaxAbilities,
+        Cheat::UnlearnAbilities,
+    ];
+
+    // Kill own hero first and record that each body cheat returns HeroDead.
+    demo.kill_hero();
+    for cheat in body_cheats {
+        demo.step(&[Order::Cheat { cheat }]);
+        assert_eq!(
+            demo.rejected,
+            [RejectReason::HeroDead],
+            "own dead hero must refuse {cheat:?} with HeroDead"
+        );
+    }
+    demo.cheat(Cheat::Respawn);
+
+    // Kill the created hero: every body-requiring cheat must give the same HeroDead refusal.
+    demo.cheat_at(pudge, Cheat::Suicide);
+    assert!(demo.row_of(pudge).respawn_left > 0, "created hero lies dead");
+    for cheat in body_cheats {
+        demo.step_naming(&[(Some(pudge), Order::Cheat { cheat })]);
+        assert_eq!(
+            demo.rejected,
+            [RejectReason::HeroDead],
+            "dead created hero must refuse {cheat:?} with HeroDead"
+        );
+    }
+    // Removing a dead created hero still works.
+    demo.cheat_at(pudge, Cheat::RemoveHero);
+    assert!(demo.view().player(SlotId(1)).is_none());
+}
+
+#[test]
+fn hero_scoped_cheats_aimed_at_an_illusion_are_refused_as_not_a_hero_and_never_hit_giver() {
+    use bota_proto::{RuneKind, RuneSet};
+
+    let map = MapId(2);
+    let cfg = MatchConfig {
+        map,
+        cheats: true,
+        objectives: bota_proto::ObjectiveSet::NONE,
+        runes: RuneSet::of(RuneKind::Illusion),
+        ..config()
+    };
+    let (local, opening) = LocalMatch::new(&cfg, &[OrderDelay::NONE]).expect("a match");
+    let mut demo = Demo {
+        local,
+        seq: 0,
+        view: None,
+        rejected: Vec::new(),
+        over: false,
+    };
+    demo.take(opening);
+    demo.cheat(Cheat::AllVision { on: true });
+
+    let rune_spot = map_of(map).rune_spots[0].at;
+    demo.cheat(Cheat::CreateHero {
+        hero: HeroId::PUDGE,
+        enemy: false,
+        at: rune_spot + Vec2::from_ints(120, 0),
+    });
+    let pudge = demo
+        .view()
+        .player(SlotId(1))
+        .and_then(|row| row.unit)
+        .expect("created Pudge");
+    demo.cheat(Cheat::SpawnRune {
+        kind: RuneKind::Illusion,
+        at: rune_spot,
+    });
+    let rune = demo
+        .view()
+        .runes
+        .first()
+        .expect("Illusion rune spawned")
+        .id;
+    demo.order(
+        pudge,
+        Order::Move {
+            target: Target::Unit(rune),
+        },
+    );
+    let mut illusion = None;
+    for _ in 0..3 * rules::TICKS_PER_SECOND {
+        demo.run(1);
+        illusion = demo
+            .view()
+            .units
+            .iter()
+            .find(|u| {
+                u.kind == UnitKind::Hero
+                    && u.owner == Some(SlotId(1))
+                    && u.id != pudge
+                    && u.effects
+                        .iter()
+                        .any(|e| e.id == bota_proto::EffectId::ILLUSION)
+            })
+            .map(|u| u.id);
+        if illusion.is_some() {
+            break;
+        }
+    }
+    let illusion = illusion.expect("created hero's rune illusion");
+
+    let own_gold_before = demo.me().gold;
+    let own_level_before = demo.me().level;
+    for cheat in [
+        Cheat::Suicide,
+        Cheat::Gold { amount: 1000 },
+        Cheat::Levels { count: 2 },
+        Cheat::Item {
+            item: ItemId::BLINK_DAGGER,
+        },
+        Cheat::Invulnerable { on: true },
+        Cheat::ResetHero,
+        Cheat::Respawn,
+        Cheat::ResetBuyback,
+        Cheat::RemoveHero,
+        Cheat::MaxAbilities,
+        Cheat::UnlearnAbilities,
+    ] {
+        demo.step_naming(&[(Some(illusion), Order::Cheat { cheat })]);
+        assert_eq!(
+            demo.rejected,
+            [RejectReason::NotAHero],
+            "{cheat:?} aimed at a created hero's illusion must be refused as NotAHero"
+        );
+    }
+    assert_eq!(
+        demo.me().respawn_left,
+        0,
+        "Suicide aimed at an illusion must never kill the giver's hero"
+    );
+    assert_eq!(demo.me().gold, own_gold_before, "giver's gold untouched");
+    assert_eq!(demo.me().level, own_level_before, "giver's level untouched");
+}
