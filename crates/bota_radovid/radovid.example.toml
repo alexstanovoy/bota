@@ -101,10 +101,9 @@ artifact_args = ["--replay", "{artifact}"]
 # Demo Hero: Dota's demo with cheats, one player, free pick. Nobody queues or makes a lobby for it: `instant_solo` lets
 # one account start a match of it alone at once (`StartSolo`). Only people use it (a bot has no use for cheats).
 # `info` is bota's own flag byte (01: this ruleset is a Demo, which bota_radovid::is_demo reads and dbota opens from its
-# Demo Hero entry); radovid does not read it. --cheats is what makes the game server honour the cheats (it refuses them
-# with two or more seats). The map is the one `--map` value: 3 is Dota's Hero Demo on its small demo map (Roshan,
-# heroes rising where they fell); 0 would be the whole Dota map. A match
-# ends a minute after its player left it (--empty-after-secs), and there is no replay to keep.
+# Demo Hero entry); radovid does not read it. Keep "--map", "3" and "--cheats" in the launcher arguments when
+# adapting this example for a local launcher. Map 3 has the short lane, Roshan, and respawn where the hero fell.
+# The match ends a minute after its player leaves (--empty-after-secs).
 [[ruleset]]
 id = "demo"
 name = "Demo Hero"

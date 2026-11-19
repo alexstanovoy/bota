@@ -1162,12 +1162,14 @@ impl App {
 
     /// Whether a unit is one this seat drives.
     pub fn drives(&self, id: EntityId) -> bool {
-        let Some((mine, view)) = self.my_slot.zip(self.view()) else {
-            return false;
-        };
-        view.unit(id)
-            .and_then(|unit| unit.owner)
-            .is_some_and(|owner| owner == mine || self.created_seat(owner))
+        self.view()
+            .and_then(|view| view.unit(id)?.owner)
+            .is_some_and(|owner| self.controls_seat(owner))
+    }
+
+    fn controls_seat(&self, slot: SlotId) -> bool {
+        self.my_slot
+            .is_some_and(|mine| mine == slot || self.created_seat(slot))
     }
 
     /// In a cheat match, the live scoreboard includes spawned seats that were absent
@@ -1176,6 +1178,16 @@ impl App {
         self.statics()
             .is_some_and(|statics| statics.metadata().cheats && statics.pick(slot).is_none())
             && self.player(slot).is_some()
+    }
+
+    /// The hero under the player's control and selected, or the player's hero when there is
+    /// no selection. The scoreboard keeps that hero's identity while it is dead.
+    pub fn controlled_hero(&self) -> Option<&PlayerView> {
+        let selected = self.commanded()?;
+        self.view()?
+            .players
+            .iter()
+            .find(|player| player.unit == Some(selected) && self.controls_seat(player.slot))
     }
 
     /// Which unit an order names. The server addresses unnamed orders to our own hero.
@@ -1198,9 +1210,8 @@ impl App {
 
     /// The seat whose economy backs purchases for the selected controlled hero.
     pub fn buyer_slot(&self) -> Option<SlotId> {
-        self.ordering_unit()
-            .and_then(|id| self.view()?.unit(id)?.owner)
-            .filter(|&slot| self.created_seat(slot))
+        self.controlled_hero()
+            .map(|hero| hero.slot)
             .or(self.my_slot)
     }
 
