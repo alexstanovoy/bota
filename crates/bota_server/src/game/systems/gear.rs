@@ -1427,26 +1427,9 @@ impl World {
     }
 
     fn sale_price(&self, stack: &ItemStack) -> i32 {
-        let Some(def) = item_def(stack.id) else {
-            return 0;
-        };
         let fresh = !stack.touched
             && self.tick.saturating_sub(stack.bought_tick) <= rules::SELL_REFUND_TICKS;
-        let cost = match stack.ward_counts() {
-            // A dispenser is worth the wards it holds, each at its own price.
-            Some((observers, sentries)) => {
-                let price = |ward: ItemId, count: u8| {
-                    item_def(ward).map_or(0, |def| def.cost) * i32::from(count)
-                };
-                price(ItemId::OBSERVER_WARD, observers) + price(ItemId::SENTRY_WARD, sentries)
-            }
-            None if def.stack_limit > 0 => {
-                debug_assert!(stack.charges <= def.stack_limit);
-                // The price is that of the charges a purchase brings.
-                def.cost * i32::from(stack.charges) / i32::from(def.charges)
-            }
-            None => def.cost,
-        };
+        let cost = stack.purchase_value();
         if fresh {
             cost
         } else {

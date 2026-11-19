@@ -121,6 +121,25 @@ pub struct ItemStack {
 }
 
 impl ItemStack {
+    /// Full shop value of the paid charges remaining in this stack.
+    pub(crate) fn purchase_value(&self) -> i32 {
+        let Some(def) = item_def(self.id) else {
+            return 0;
+        };
+        match self.ward_counts() {
+            Some((observers, sentries)) => {
+                let price =
+                    |ward, count| item_def(ward).map_or(0, |row| row.cost) * i32::from(count);
+                price(ItemId::OBSERVER_WARD, observers) + price(ItemId::SENTRY_WARD, sentries)
+            }
+            None if def.stack_limit > 0 => {
+                let paid = self.charges.saturating_sub(self.free_charges);
+                def.cost * i32::from(paid) / i32::from(def.charges.max(1))
+            }
+            None => def.cost,
+        }
+    }
+
     /// An untouched purchase with the catalog's initial charges and mode.
     /// Nothing for an item no shop sells.
     pub fn bought(id: ItemId, owner: SlotId, tick: u32) -> Option<Self> {

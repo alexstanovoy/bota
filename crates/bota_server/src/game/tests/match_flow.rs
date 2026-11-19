@@ -144,7 +144,7 @@ fn a_hero_kill_pays_dotas_bounty_first_blood_and_assist_gold() {
         HeroId::SHADOW_FIEND,
     );
     let prey = seat_hero(&mut world, 1, Team::Dire, Vec2::from_ints(5050, 5000));
-    world.seats[0].net_worth = 500;
+    world.seats[0].gold = 500;
     world.seats[1].gold = 500;
     world.seats[1].net_worth = 500;
     world.seats[1].level = 4;
@@ -156,7 +156,11 @@ fn a_hero_kill_pays_dotas_bounty_first_blood_and_assist_gold() {
     // 7.42: "Hero kill bounty rescaled". Level four pays 100 + 10 × 4 before streak
     // and First Blood. The shared assist component rounds 68.5 to 69 before adding 15.
     let head = 100 + 40 + 60 + 135 + 84;
-    assert_eq!(world.seats[0].gold, head, "Dota 7.42's head and assist");
+    assert_eq!(
+        world.seats[0].gold - 500,
+        head,
+        "Dota 7.42's head and assist"
+    );
     assert_eq!(world.seats[0].kills, 1);
     assert_eq!(
         world.seats[0].streak, 1,
@@ -187,10 +191,10 @@ fn a_hero_kill_pays_dotas_bounty_first_blood_and_assist_gold() {
     // is 100 + 10 and 15 + 50 + 0.037 × its 1000, the killer side leading
     // 1435 to 1000 and paid 1000/1435 of it.
     let prey = seat_hero(&mut world, 2, Team::Dire, Vec2::from_ints(5050, 5000));
-    world.seats[2].net_worth = 1000;
+    world.seats[2].gold = 1000;
     world.seats[2].level = 1;
-    world.seats[1].net_worth = 0;
-    world.seats[0].net_worth = 1435;
+    world.seats[1].gold = 0;
+    world.seats[0].gold = 1435;
     world.settle();
     let before = world.seats[0].gold;
     world.bury(vec![(prey, Some(hunter))], &mut Vec::new());
@@ -230,6 +234,11 @@ fn a_death_never_takes_more_gold_than_the_purse_holds() {
     // a hundred, and only the fifty is there to take.
     world.seats[0].gold = 50;
     world.seats[0].net_worth = 4000;
+    world.inventory.get_mut(prey).unwrap().slots[0] = crate::game::ItemStack::bought(
+        bota_proto::ItemId::MONKEY_KING_BAR,
+        bota_proto::SlotId(0),
+        0,
+    );
     world.seats[0].level = 10;
     world.settle();
     let mut events = Vec::new();
@@ -1227,4 +1236,31 @@ fn a_negative_nonspend_gold_adjustment_stops_at_the_unreliable_balance() {
     seat.adjust_gold(-50);
     assert_eq!(seat.unreliable_gold(), 0);
     assert_eq!(seat.gold, 20);
+}
+
+/// Recorded 7.42 death loss is the current purse plus owned item value,
+/// divided by forty. Only the unreliable gold actually held can be taken.
+#[test]
+fn death_loss_prices_the_current_wallet_and_owned_remaining_charges() {
+    use crate::game::ItemStack;
+    use bota_proto::{ItemId, SlotId};
+
+    let mut world = World::new();
+    let hero = seated_hero(
+        &mut world,
+        Vec2::from_ints(5000, 5000),
+        HeroId::SHADOW_FIEND,
+    );
+    world.seats[0].gold = 600;
+    world.seats[0].net_worth = 20;
+    let bag = world.inventory.get_mut(hero).unwrap();
+    let mut mangoes = ItemStack::bought(ItemId::MANGO, SlotId(0), 0).unwrap();
+    mangoes.charges = 2;
+    bag.slots[0] = Some(mangoes);
+    bag.slots[1] = ItemStack::bought(ItemId::MONKEY_KING_BAR, SlotId(1), 0);
+    world.bury(vec![(hero, None)], &mut Vec::new());
+    assert_eq!(
+        world.seats[0].gold, 582,
+        "the owned two charges add 130 to the 600-gold purse"
+    );
 }

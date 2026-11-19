@@ -975,3 +975,22 @@ fn kill_credit_feeds_flesh_heap_from_afar_for_pudge() {
         .count_of(ModifierKind::flesh_heap);
     assert_eq!(count, 1, "his own kill feeds it");
 }
+
+/// The 7.42 assist calculation reads the teams' current net worth. Lifetime
+/// receipts do not represent what a hero still holds after deaths and purchases.
+#[test]
+fn kill_credit_uses_current_wealth_for_the_assist_award() {
+    let (mut world, ours, victim) = scene(1);
+    world.seats[0].gold = 1000;
+    world.seats[0].net_worth = 1000;
+    world.seats[1].gold = 600;
+    world.seats[1].net_worth = 1000;
+    let before = world.seats[0].gold;
+    finish(&mut world, victim, ours[0]);
+    // round(50 + 0.037 * 600) + 15 is 87. Multiply by 600 / 1000 then truncate.
+    assert_eq!(
+        world.seats[0].gold - before,
+        245 + 52,
+        "hero bounty plus scaled assist"
+    );
+}

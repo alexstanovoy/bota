@@ -244,13 +244,14 @@ impl World {
             team: 0,
             xp: hero_kill_xp(seat.xp, if counts_as_kill { streak } else { 0 }, level),
         };
+        let worth = self.owned_net_worth(index);
         let worths = Worths {
-            fallen: seat.net_worth,
+            fallen: worth,
             fallen_side: self.side_worth(seat.team),
             killer_side: self.side_worth(other_side(seat.team)),
         };
         let seat = &mut self.seats[index];
-        let loss = (seat.net_worth / rules::DEATH_GOLD_LOSS_SHARE).clamp(0, seat.unreliable_gold());
+        let loss = (worth / rules::DEATH_GOLD_LOSS_SHARE).min(seat.unreliable_gold());
         seat.spend_gold(loss);
         seat.net_worth -= loss;
         if counts_as_kill {
@@ -259,11 +260,26 @@ impl World {
         Some((bounty, fallen_seat, Some(worths)))
     }
 
+    /// The purse and the full value of the seat's owned inventory at this tick.
+    fn owned_net_worth(&self, index: usize) -> i32 {
+        let seat = &self.seats[index];
+        let hero_bag = seat.unit.and_then(|hero| self.inventory.get(hero));
+        hero_bag
+            .into_iter()
+            .flat_map(|bag| bag.held().chain(bag.town_portal.iter().flatten()))
+            .chain(seat.stash.held())
+            .filter(|item| item.owner == seat.slot)
+            .fold(seat.gold, |worth, item| {
+                worth.saturating_add(item.purchase_value())
+            })
+    }
+
     fn side_worth(&self, side: Team) -> i64 {
         self.seats
             .iter()
-            .filter(|seat| seat.team == side)
-            .map(|seat| i64::from(seat.net_worth))
+            .enumerate()
+            .filter(|(_, seat)| seat.team == side)
+            .map(|(index, _)| i64::from(self.owned_net_worth(index)))
             .sum()
     }
 
