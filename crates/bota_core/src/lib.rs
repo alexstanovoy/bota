@@ -28,6 +28,7 @@ mod growth_clock;
 mod lifesteal;
 mod placement_data;
 mod roshan_data;
+pub mod unit_data;
 pub use growth_clock::*;
 pub use lifesteal::*;
 pub use placement_data::DOTA_NO_WARDS;

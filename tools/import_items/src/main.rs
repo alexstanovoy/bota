@@ -17,6 +17,7 @@
 
 mod ability;
 mod boss;
+mod units;
 mod creeps;
 mod dec;
 mod emit;
@@ -155,6 +156,17 @@ fn run() -> Result<(), String> {
     } else {
         std::fs::write(&boss_path, boss).map_err(|e| format!("{boss_path:?}: {e}"))?;
     }
+    let units = rustfmt(&units::table(args.dota.as_deref())?)?;
+    let units_path = repo().join("crates/bota_core/src/unit_data.rs");
+    if args.check {
+        let committed =
+            std::fs::read_to_string(&units_path).map_err(|e| format!("{units_path:?}: {e}"))?;
+        if !emit::same_items(&committed, &units) {
+            return Err(stale(&units_path, &committed, &build));
+        }
+    } else {
+        std::fs::write(&units_path, units).map_err(|e| format!("{units_path:?}: {e}"))?;
+    }
     let zones = rustfmt(&zones::table(args.dota.as_deref())?)?;
     let zones_path = repo().join("crates/bota_core/src/placement_data.rs");
     if args.check {
@@ -255,6 +267,7 @@ mod tests {
             "crates/bota_core/src/heroes_data.rs",
             "crates/bota_core/src/creep_data.rs",
             "crates/bota_core/src/roshan_data.rs",
+            "crates/bota_core/src/unit_data.rs",
         ] {
             let text = std::fs::read_to_string(crate::repo().join(file)).expect("a table");
             let named = text
@@ -345,6 +358,17 @@ mod tests {
         assert!(
             crate::emit::same_items(&committed, &boss),
             "Roshan data is stale"
+        );
+        let units = crate::rustfmt(
+            &crate::units::table(crate::pinned_install().as_deref()).expect("unit scripts"),
+        )
+        .expect("formatted unit data");
+        let committed =
+            std::fs::read_to_string(crate::repo().join("crates/bota_core/src/unit_data.rs"))
+                .expect("committed unit data");
+        assert!(
+            crate::emit::same_items(&committed, &units),
+            "courier and ward data is stale"
         );
         let zones = crate::rustfmt(
             &crate::zones::table(crate::pinned_install().as_deref())
