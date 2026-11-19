@@ -231,6 +231,8 @@ impl World {
             backpack: own.then(|| self.backpack_view(seat)).flatten(),
             bought_back_at: seat.buyback.last,
             buyback: own.then(|| self.buyback_view(seat)),
+            upgrades: (own || in_view && seat.unit.is_some_and(|unit| !disguised.contains(&unit)))
+                .then_some(seat.upgrades),
         }
     }
 
@@ -268,10 +270,9 @@ impl World {
     ) -> bota_proto::Kit {
         let bag = self.inventory.get(hero);
         bota_proto::Kit {
-            abilities: self
-                .abilities
-                .get(hero)
-                .map_or_else(Vec::new, |book| ability_views(book, mana_rate)),
+            abilities: self.abilities.get(hero).map_or_else(Vec::new, |book| {
+                ability_views(book, mana_rate, seat.upgrades)
+            }),
             items: bag.map_or_else(Vec::new, |bag| {
                 item_views(bag, mana_rate, clocks, self.tick)
             }),
@@ -817,6 +818,7 @@ impl World {
                             self.ability_on(entity, ability.id),
                             book.can_raise(slot, level),
                             mana_rate,
+                            self.upgrades_of(entity),
                         )
                     })
                     .collect()
@@ -1088,6 +1090,7 @@ fn ability_view(
     on: bool,
     can_level: bool,
     mana_rate_bp: i32,
+    upgrades: bota_proto::HeroUpgrades,
 ) -> AbilityView {
     let def = bota_core::ability_def(held.id);
     AbilityView {
@@ -1096,7 +1099,7 @@ fn ability_view(
         max_level: def.map_or(0, |def| def.max_level),
         cooldown_left: held.cooldown,
         mana_cost: crate::game::cost_after(ability_mana_cost(held.id, held.level), mana_rate_bp),
-        range: def.map_or(0, |def| def.range),
+        range: bota_core::ability_range(held.id, upgrades),
         aim: def.map_or(bota_proto::Aim::Own, |def| def.aim),
         passive: def.is_some_and(|def| def.passive),
         on,
@@ -1107,11 +1110,15 @@ fn ability_view(
 
 /// A whole book on the wire, as it stands with no body under it: nothing
 /// toggled on and no point to spend.
-fn ability_views(book: &crate::game::AbilityBook, mana_rate_bp: i32) -> Vec<AbilityView> {
+fn ability_views(
+    book: &crate::game::AbilityBook,
+    mana_rate_bp: i32,
+    upgrades: bota_proto::HeroUpgrades,
+) -> Vec<AbilityView> {
     book.slots
         .iter()
         .filter(|held| slot_shown(held))
-        .map(|held| ability_view(held, false, false, mana_rate_bp))
+        .map(|held| ability_view(held, false, false, mana_rate_bp, upgrades))
         .collect()
 }
 

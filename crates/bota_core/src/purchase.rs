@@ -106,6 +106,7 @@ impl<P: HeldItem> Shelf<'_, P> {
 /// Where one bought part goes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Berth {
+    Consumed,
     /// The hero's bag, by slot number.
     Bag(usize),
     /// The stash, by slot number.
@@ -233,7 +234,15 @@ pub fn place_shop_purchase_into<P: HeldItem>(
         if item.stack_limit > 0 {
             debug_assert_eq!(parts.len(), 1, "a part that merges is bought alone");
         }
-        let berth = if item.secret_shop && !context.universal_shop {
+        let berth = if item
+            .permanent
+            .is_some_and(|grant| grant.on == crate::UpgradeOn::Purchase)
+        {
+            if context.hero.is_none() {
+                return Err(RejectReason::HeroDead);
+            }
+            Some(Berth::Consumed)
+        } else if item.secret_shop && !context.universal_shop {
             let hero = context.hero.as_ref().filter(|carrier| carrier.shops.secret);
             let courier = context
                 .courier

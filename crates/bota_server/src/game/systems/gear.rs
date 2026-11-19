@@ -548,6 +548,21 @@ impl World {
                     assemble_pool(catalogue, owner, tick, &mut [stash]);
                 }
             }
+            if let Some(bag) = seat_state
+                .unit
+                .and_then(|unit| self.inventory.get_mut(unit))
+            {
+                for stack in &mut bag.slots {
+                    let grant = stack
+                        .filter(|stack| stack.owner == owner)
+                        .and_then(|stack| item_def(stack.id))
+                        .and_then(|def| def.permanent)
+                        .filter(|grant| grant.on == bota_core::UpgradeOn::Assemble);
+                    if grant.is_some_and(|grant| grant.upgrade.grant(&mut seat_state.upgrades)) {
+                        *stack = None;
+                    }
+                }
+            }
         }
     }
 
@@ -560,12 +575,53 @@ impl World {
     /// into the stash. Secret-shop parts
     /// instead need a living hero or courier in that shop's trigger zone.
     /// [`bota_core::place_shop_purchase`] is the same rule a client asks.
+    pub(crate) fn upgrade_purchase_restricted(
+        &self,
+        seat: &crate::game::Seat,
+        item: ItemId,
+    ) -> bool {
+        item_def(item)
+            .and_then(|def| def.permanent)
+            .is_some_and(|grant| grant.upgrade.held(seat.upgrades))
+    }
+
+    pub(crate) fn upgrades_of(&self, hero: Entity) -> bota_proto::HeroUpgrades {
+        self.seats
+            .iter()
+            .find(|seat| seat.unit == Some(hero))
+            .map_or_else(bota_proto::HeroUpgrades::default, |seat| seat.upgrades)
+    }
+
+    pub(crate) fn has_scepter(&self, hero: Entity) -> bool {
+        self.upgrades_of(hero).scepter_blessing
+            || self.inventory.get(hero).is_some_and(|bag| {
+                bag.slots
+                    .iter()
+                    .take(rules::INVENTORY_SLOTS)
+                    .flatten()
+                    .any(|stack| stack.id == bota_core::SCEPTER_ITEM && stack.mute == 0)
+            })
+    }
+
+    pub(crate) fn grant_upgrade_on(
+        &mut self,
+        hero: Entity,
+        upgrade: bota_core::HeroUpgrade,
+    ) -> bool {
+        self.seats
+            .iter_mut()
+            .find(|seat| seat.unit == Some(hero))
+            .is_some_and(|seat| upgrade.grant(&mut seat.upgrades))
+    }
+
     pub fn buy(&mut self, slot: SlotId, item: ItemId, events: &mut Vec<Event>) -> bool {
         let Some(index) = self.seats.iter().position(|s| s.slot == slot) else {
             return false;
         };
         let unit = self.seats[index].unit;
-        if self.catalogue.sold(item).is_none() {
+        if self.catalogue.sold(item).is_none()
+            || self.upgrade_purchase_restricted(&self.seats[index], item)
+        {
             return false;
         }
         let Some(plan) = self.purchase_plan(slot, item) else {
@@ -590,6 +646,12 @@ impl World {
         };
         for (bought, berth) in stacks.into_iter().zip(berths) {
             match berth {
+                Berth::Consumed => {
+                    let upgrade = item_def(bought.id)
+                        .and_then(|def| def.permanent)
+                        .expect("an immediately consumed purchase has an upgrade");
+                    assert!(upgrade.upgrade.grant(&mut self.seats[index].upgrades));
+                }
                 Berth::Bag(at) => self
                     .inventory
                     .get_mut(unit.expect("a bag berth is the hero's"))
@@ -835,6 +897,16 @@ impl World {
         stack: &ItemStack,
         def: &ItemDef,
     ) -> Result<Aim, RejectReason> {
+        if def.permanent.is_some_and(|grant| {
+            grant.on == bota_core::UpgradeOn::Use
+                && self
+                    .seats
+                    .iter()
+                    .find(|seat| seat.unit == Some(unit))
+                    .is_none_or(|seat| grant.upgrade.held(seat.upgrades))
+        }) {
+            return Err(RejectReason::ItemRestricted);
+        }
         bota_core::item_usability(def.aim, stack.mute, self.wears_illusion(unit))
     }
 

@@ -111,6 +111,8 @@ pub struct Seat {
     pub unit: Option<Entity>,
     /// Total gold in hand.
     pub gold: i32,
+    /// Consumed item upgrades are permanent across death and buyback.
+    pub upgrades: bota_proto::HeroUpgrades,
     /// The part protected from the death penalty.
     reliable_gold: i32,
     /// Gold earned over the match, spent or not, less what deaths cost.
@@ -234,6 +236,7 @@ impl Seat {
             gold,
             reliable_gold: 0,
             net_worth: gold,
+            upgrades: bota_proto::HeroUpgrades::default(),
             xp: 0,
             level: 1,
             respawn_left: 0,
@@ -346,6 +349,7 @@ state_hash!(Seat {
     unit,
     gold,
     net_worth,
+    upgrades,
     xp,
     level,
     respawn_left,
@@ -371,3 +375,26 @@ state_hash!(Seat {
     buyback,
     respawn_spot
 }; 0xDB => { reliable_gold: 0 });
+
+impl crate::engine::StateHash for bota_proto::HeroUpgrades {
+    fn state_hash(&self, fnv: &mut crate::engine::Fnv) {
+        if self.shard || self.scepter_blessing {
+            0xa7u8.state_hash(fnv);
+            self.shard.state_hash(fnv);
+            self.scepter_blessing.state_hash(fnv);
+        }
+    }
+}
+
+#[cfg(test)]
+impl crate::engine::Specimen for bota_proto::HeroUpgrades {
+    fn low() -> Self {
+        Self::default()
+    }
+    fn high() -> Self {
+        Self {
+            shard: true,
+            scepter_blessing: true,
+        }
+    }
+}

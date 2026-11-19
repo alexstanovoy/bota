@@ -751,6 +751,7 @@ impl Fnv {
 /// [`ItemDef`] fail to build here until it is digested too.
 pub(crate) const fn item_digest(def: &ItemDef) -> u64 {
     let ItemDef {
+        permanent,
         attack_break,
         auras,
         modifiers,
@@ -864,6 +865,10 @@ pub(crate) const fn item_digest(def: &ItemDef) -> u64 {
         .u64(lifetime as u64);
     // What only a few items have adds to the digest only where it is: an item
     // without it digests as it did before the field was.
+    let fnv = match permanent {
+        Some(grant) => fnv.u64(0xD4).u64(grant.upgrade as u64).u64(grant.on as u64),
+        None => fnv,
+    };
     let fnv = match wait_key {
         None => fnv,
         Some(key) => fnv.u64(0xA1).u64(key.0 as u64),

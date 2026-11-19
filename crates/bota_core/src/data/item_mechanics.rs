@@ -1872,6 +1872,64 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
     ItemDef {
         ..from(&ITEM_RECIPE_MAELSTROM)
     },
+    ItemDef {
+        permanent: Some(crate::PermanentItem {
+            upgrade: crate::HeroUpgrade::Shard,
+            on: crate::UpgradeOn::Purchase,
+        }),
+        limits: ITEM_AGHANIMS_SHARD.limits,
+        ..from(&ITEM_AGHANIMS_SHARD)
+    },
+    ItemDef {
+        permanent: Some(crate::PermanentItem {
+            upgrade: crate::HeroUpgrade::Shard,
+            on: crate::UpgradeOn::Use,
+        }),
+        aim: Some(Aim::Own),
+        immediate: true,
+        spends: Spends::All,
+        limits: ITEM_AGHANIMS_SHARD_ROSHAN.limits,
+        ..from(&ITEM_AGHANIMS_SHARD_ROSHAN)
+    },
+    ItemDef {
+        ..from(&ITEM_RECIPE_ULTIMATE_SCEPTER)
+    },
+    ItemDef {
+        carried: Carried {
+            attributes: Attributes::all(int(&ITEM_ULTIMATE_SCEPTER, "bonus_all_stats")),
+            hp: int(&ITEM_ULTIMATE_SCEPTER, "bonus_health"),
+            mana: int(&ITEM_ULTIMATE_SCEPTER, "bonus_mana"),
+            ..NOTHING
+        },
+        limits: ITEM_ULTIMATE_SCEPTER.limits,
+        ..from(&ITEM_ULTIMATE_SCEPTER)
+    },
+    ItemDef {
+        permanent: Some(crate::PermanentItem {
+            upgrade: crate::HeroUpgrade::Scepter,
+            on: crate::UpgradeOn::RecipePart,
+        }),
+        ..from(&ITEM_RECIPE_ULTIMATE_SCEPTER_2)
+    },
+    ItemDef {
+        permanent: Some(crate::PermanentItem {
+            upgrade: crate::HeroUpgrade::Scepter,
+            on: crate::UpgradeOn::Assemble,
+        }),
+        limits: ITEM_ULTIMATE_SCEPTER_2.limits,
+        ..from(&ITEM_ULTIMATE_SCEPTER_2)
+    },
+    ItemDef {
+        permanent: Some(crate::PermanentItem {
+            upgrade: crate::HeroUpgrade::Scepter,
+            on: crate::UpgradeOn::Use,
+        }),
+        aim: Some(Aim::Own),
+        immediate: true,
+        spends: Spends::All,
+        limits: ITEM_ULTIMATE_SCEPTER_ROSHAN.limits,
+        ..from(&ITEM_ULTIMATE_SCEPTER_ROSHAN)
+    },
 ];
 
 /// A critical strike of an item: `crit_chance` percent to deal `crit_multiplier` percent, or that

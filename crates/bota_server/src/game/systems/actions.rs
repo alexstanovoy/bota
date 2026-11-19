@@ -143,7 +143,7 @@ impl World {
     fn own_reach(&self, entity: Entity, pending: PendingCast) -> i32 {
         match pending {
             PendingCast::Ability { slot, .. } => {
-                ability_def(self.ability_in(entity, slot)).map_or(0, |def| def.range)
+                bota_core::ability_range(self.ability_in(entity, slot), self.upgrades_of(entity))
             }
             PendingCast::Item { slot, target } => {
                 let Some(def) = self.item_def_in(entity, usize::from(slot.0)) else {

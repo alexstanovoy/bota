@@ -898,3 +898,6 @@ field Cheat::Restore 1 mana_bp: u16
 field Cheat::Restore 2 ticks: u32
 field LairView 3 falls: u32
 field SlotStats 9 current_net_worth: i32
+field PlayerView 20 upgrades: Option<HeroUpgrades>
+field HeroUpgrades 0 shard: bool
+field HeroUpgrades 1 scepter_blessing: bool

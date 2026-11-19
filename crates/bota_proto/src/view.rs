@@ -658,6 +658,15 @@ pub struct PlayerView {
     /// The seat's buyback. Own side only; absent for opponents, who are told
     /// neither its cost nor its cooldown. Appended on the wire.
     pub buyback: Option<BuybackView>,
+    /// Permanent upgrade facts, when the side is entitled to inspect this hero.
+    pub upgrades: Option<HeroUpgrades>,
+}
+
+/// Upgrades already consumed by one hero.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct HeroUpgrades {
+    pub shard: bool,
+    pub scepter_blessing: bool,
 }
 
 /// A seat's buyback, as its own side is told it.

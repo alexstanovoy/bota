@@ -691,6 +691,9 @@ impl World {
         if self.catalogue.sold(item).is_none() {
             return Err(RejectReason::UnknownItem);
         }
+        if self.upgrade_purchase_restricted(seat, item) {
+            return Err(RejectReason::ItemRestricted);
+        }
         let plan = self
             .purchase_plan(seat.slot, item)
             .ok_or(RejectReason::HeroDead)?;

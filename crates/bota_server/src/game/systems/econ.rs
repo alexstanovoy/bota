@@ -269,9 +269,11 @@ impl World {
             .flat_map(|bag| bag.held().chain(bag.town_portal.iter().flatten()))
             .chain(seat.stash.held())
             .filter(|item| item.owner == seat.slot)
-            .fold(seat.gold, |worth, item| {
-                worth.saturating_add(item.purchase_value())
-            })
+            .fold(
+                seat.gold
+                    .saturating_add(bota_core::consumed_upgrade_value(seat.upgrades)),
+                |worth, item| worth.saturating_add(item.purchase_value()),
+            )
     }
 
     fn side_worth(&self, side: Team) -> i64 {

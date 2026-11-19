@@ -86,7 +86,8 @@ impl World {
             .filter(|stack| stack.owner == seat.slot)
             .map(|stack| i64::from(worth_of(stack)))
             .sum();
-        i32::try_from(i64::from(seat.gold) + worth).unwrap_or(i32::MAX)
+        let consumed = bota_core::consumed_upgrade_value(seat.upgrades);
+        i32::try_from(i64::from(seat.gold) + worth + i64::from(consumed)).unwrap_or(i32::MAX)
     }
 
     /// A seat's buyback as its own side is told it.

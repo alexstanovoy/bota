@@ -160,6 +160,14 @@ pub const PRESENCE_LINGER_TICKS: u32 = TICKS_PER_SECOND / 2;
 pub const REQUIEM_LINE_DISTANCE: i32 = NEVERMORE_REQUIEM.value("requiem_radius").first().int();
 /// World units a second a line of the requiem flies.
 pub const REQUIEM_LINE_SPEED: i32 = NEVERMORE_REQUIEM.value("requiem_line_speed").first().int();
+/// Soul speed when the caster has a Scepter upgrade.
+pub const REQUIEM_SCEPTER_LINE_SPEED: i32 = {
+    let speed = NEVERMORE_REQUIEM.value("requiem_line_speed");
+    speed
+        .bonus("special_bonus_scepter")
+        .applied(speed.first(), 0)
+        .int()
+};
 /// How wide a line of the requiem catches as it sets out, in world units.
 pub const REQUIEM_LINE_WIDTH_START: i32 = NEVERMORE_REQUIEM
     .value("requiem_line_width_start")

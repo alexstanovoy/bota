@@ -1059,3 +1059,28 @@ fn a_blood_grenade_bursts_on_what_its_side_cannot_see() {
     });
     assert!(struck, "an area strikes what stands in it, seen or not");
 }
+
+#[test]
+fn scepter_equipment_or_blessing_makes_requiems_souls_fly_faster() {
+    // “Aghanim's Scepter now also increases soul speed by 30%”.
+    for blessed in [false, true] {
+        let (mut world, fiend, _) = fiend_and_a_mark(400);
+        if blessed {
+            assert!(world.grant_upgrade_on(fiend, bota_core::HeroUpgrade::Scepter));
+        } else {
+            hand_item(&mut world, fiend, bota_core::SCEPTER_ITEM, 0);
+        }
+        hand_souls(&mut world, fiend, 5);
+        world.step();
+        cast_through(&mut world, REQUIEM_SLOT, rules::REQUIEM_CAST_POINT_MS);
+        let soul = world
+            .entities
+            .iter()
+            .find_map(|entity| world.requiem_line.get(entity))
+            .expect("the requiem let a soul fly");
+        assert_eq!(
+            soul.speed,
+            Fixed::from_int(rules::REQUIEM_LINE_SPEED * 130 / 100)
+        );
+    }
+}

@@ -20,6 +20,21 @@ pub const HOOK_COOLDOWN: [u32; 4] = ticks_of(PUDGE_MEAT_HOOK.cooldown);
 pub const HOOK_CAST_POINT_MS: u32 = PUDGE_MEAT_HOOK.cast_point[0].0;
 /// How far the hook flies, in world units: its cast range.
 pub const HOOK_RANGE: i32 = PUDGE_MEAT_HOOK.cast_range[0];
+/// Range added by the consumed Shard.
+pub const HOOK_SHARD_RANGE: i32 = PUDGE_MEAT_HOOK
+    .value("AbilityCastRange")
+    .bonus("special_bonus_shard")
+    .added()
+    .int();
+// The 7.42 Hook code leaves the cooldown running after every latch.
+const _: () = assert!(
+    PUDGE_MEAT_HOOK
+        .value("cooldown_reduction_pct_allied_hook")
+        .bonus("special_bonus_shard")
+        .added()
+        .int()
+        == 0
+);
 /// How far its side sees around where the hook latched, unobstructed, in world units: its
 /// `vision_radius`.
 pub const HOOK_VISION_RADIUS: i32 = PUDGE_MEAT_HOOK.value("vision_radius").first().int();

@@ -93,6 +93,12 @@ impl World {
         {
             return false;
         }
+        if let Some(grant) = def
+            .permanent
+            .filter(|grant| grant.on == bota_core::UpgradeOn::Use)
+        {
+            return self.grant_upgrade_on(user, grant.upgrade);
+        }
         let with = Inflictor::Item(item);
         // What the user carries lengthens the reach the use is checked against, as it lengthened
         // the walk in.

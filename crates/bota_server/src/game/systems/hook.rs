@@ -23,7 +23,8 @@ impl World {
         };
         // The hook flies as far as its cast reaches, a cast range bonus included (Liquipedia,
         // Meat Hook: cast range bonuses lengthen it).
-        let reach = rules::units(self.reach_of(caster, rules::HOOK_RANGE));
+        let range = bota_core::ability_range(AbilityId::MEAT_HOOK, self.upgrades_of(caster));
+        let reach = rules::units(self.reach_of(caster, range));
         let aim = if pos == from {
             point_ahead(from, facing, reach)
         } else {

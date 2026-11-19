@@ -1979,3 +1979,137 @@ fn a_tether_tells_opponents_only_the_positions_in_their_sight() {
         "the observer saw the real head move"
     );
 }
+
+fn pudge_with_upgrade_gold() -> (World, Entity) {
+    let mut cfg = config();
+    cfg.picks[0].hero = HeroId::PUDGE;
+    let mut world = World::for_match(&cfg, cfg.rng());
+    world.seats[0].gold = 9000;
+    let hero = world.seats[0].unit.expect("Pudge");
+    (world, hero)
+}
+
+#[test]
+fn a_purchased_shard_is_consumed_and_extends_pudges_hook() {
+    // “Aghanim's Shard now increases cast range by 100”.
+    let shard = bota_core::item_by_key("item_aghanims_shard").expect("installed shard row");
+    let (mut world, pudge) = pudge_with_upgrade_gold();
+    let gold = world.seats[0].gold;
+    let before = world.match_stats().slots[0].current_net_worth;
+    let buyback_before = world.buyback_cost_of(&world.seats[0]);
+    let buy = Order::Buy { item: shard };
+    assert_eq!(
+        world.validate_order(SlotId(0), None, &buy),
+        Err(RejectReason::OutOfStock)
+    );
+    every_shelf_full(&mut world);
+    advance_validated(&mut world, None, buy);
+    assert_eq!(world.seats[0].gold, gold - price_of(shard));
+    assert_eq!(world.match_stats().slots[0].current_net_worth, before);
+    assert_eq!(world.buyback_cost_of(&world.seats[0]), buyback_before);
+
+    let from = world.pos(pudge).expect("hero");
+    assert!(world.cast_hook(pudge, 0, Target::Pos(from + Vec2::from_ints(1500, 0))));
+    let hook = world
+        .entities
+        .iter()
+        .find_map(|id| world.hook.get(id))
+        .expect("hook");
+    assert_eq!(hook.aim, from + Vec2::from_ints(rules::HOOK_RANGE + 100, 0));
+    assert!(
+        !world
+            .inventory
+            .get(pudge)
+            .unwrap()
+            .held()
+            .any(|item| item.id == shard)
+    );
+    assert!(world.seats[0].stash.held().all(|item| item.id != shard));
+}
+
+#[test]
+fn a_consumed_shard_cannot_be_bought_again_after_restocks() {
+    let shard = bota_core::item_by_key("item_aghanims_shard").expect("installed shard row");
+    let (mut world, _) = pudge_with_upgrade_gold();
+    every_shelf_full(&mut world);
+    let buy = Order::Buy { item: shard };
+    advance_validated(&mut world, None, buy);
+    every_shelf_full(&mut world);
+    assert_eq!(
+        world.validate_order(SlotId(0), None, &buy),
+        Err(RejectReason::ItemRestricted)
+    );
+}
+
+#[test]
+fn assembling_the_scepter_blessing_consumes_the_scepter_and_its_recipe() {
+    let (mut world, pudge) = pudge_with_upgrade_gold();
+    let catalogue = |key| bota_core::item_by_key(key).expect("installed recipe key");
+    let scepter = catalogue("item_ultimate_scepter");
+    let recipe = catalogue("item_recipe_ultimate_scepter_2");
+    let blessing = catalogue("item_ultimate_scepter_2");
+    hand_item(&mut world, pudge, scepter, 0);
+    let gold = world.seats[0].gold;
+    advance_validated(&mut world, None, Order::Buy { item: recipe });
+    assert_eq!(world.seats[0].gold, gold - price_of(recipe));
+    let bag = world.inventory.get(pudge).expect("bag");
+    assert!(
+        bag.held().all(|item| ![scepter, recipe].contains(&item.id)),
+        "assembly ran"
+    );
+    assert!(bag.held().all(|item| item.id != blessing));
+}
+
+#[test]
+fn consumed_upgrades_survive_death_and_are_private_in_fog() {
+    let shard = bota_core::item_by_key("item_aghanims_shard").unwrap();
+    let (mut world, pudge) = pudge_with_upgrade_gold();
+    every_shelf_full(&mut world);
+    advance_validated(&mut world, None, Order::Buy { item: shard });
+    let own = world.view(Team::Radiant);
+    assert!(own.players[0].upgrades.unwrap().shard);
+    assert_eq!(world.view(Team::Dire).players[0].upgrades, None);
+    assert!(world.view_full().players[0].upgrades.unwrap().shard);
+
+    let before = world.hash();
+    world.seats[0].upgrades.shard = false;
+    assert_ne!(world.hash(), before);
+    world.seats[0].upgrades.shard = true;
+    assert_eq!(world.hash(), before);
+
+    world.bury(vec![(pudge, None)], &mut Vec::new());
+    let own = world.view(Team::Radiant);
+    assert!(own.players[0].upgrades.unwrap().shard);
+    let kit = own.players[0].kit.as_ref().expect("fallen hero kit");
+    assert_eq!(
+        kit.abilities
+            .iter()
+            .find(|ability| ability.id == AbilityId::MEAT_HOOK)
+            .unwrap()
+            .range,
+        rules::HOOK_RANGE + 100
+    );
+}
+
+#[test]
+fn a_shard_hook_that_grabs_an_ally_refunds_none_of_its_cooldown() {
+    // “Aghanim’s Shard no longer refunds 50% of cooldown when hitting an ally”.
+    let (mut world, pudge, ally) = pudge_and_a_hero_mark(600);
+    world.set_team(ally, Team::Radiant);
+    assert!(world.grant_upgrade_on(pudge, bota_core::HeroUpgrade::Shard));
+    world.settle();
+    let home = world.pos(pudge).unwrap();
+    cast(&mut world, 0, Target::Pos(home + Vec2::from_ints(600, 0)));
+    until_the_hook_flies(&mut world);
+    let cooldown = |world: &World| world.abilities.get(pudge).unwrap().slots[0].cooldown;
+    let left = cooldown(&world);
+    let flew_on = world.tick;
+    for _ in 0..rules::TICKS_PER_SECOND {
+        world.step();
+        if hook_holds(&world) {
+            assert_eq!(cooldown(&world), left - (world.tick - flew_on));
+            return;
+        }
+    }
+    panic!("Hook never caught its allied target");
+}

@@ -7,8 +7,15 @@ use bota_proto::{ItemId, ItemView, RejectReason};
 
 impl OrderContext<'_> {
     pub(super) fn buy(&self, item: ItemId) -> Verdict {
-        if self.catalogue.sold(item).is_none() {
+        let Some(def) = self.catalogue.sold(item) else {
             return Verdict::Illegal(RejectReason::UnknownItem);
+        };
+        if def
+            .permanent
+            .zip(self.player.upgrades)
+            .is_some_and(|(grant, upgrades)| grant.upgrade.held(upgrades))
+        {
+            return Verdict::Illegal(RejectReason::ItemRestricted);
         }
         if self.player.stash.is_none() || self.player.gold.is_none() {
             return Verdict::Unknown(UnknownReason::HiddenState);

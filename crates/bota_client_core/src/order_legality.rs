@@ -22,7 +22,7 @@
 //! #     slot: SlotId(0), team: Team::Radiant, hero: HeroId::PUDGE, unit: None,
 //! #     level: 1, xp: 0, gold: Some(0), stash: Some(vec![None; 6]), kit: None,
 //! #     kills: 0, deaths: 0, assists: 0, last_hits: 0, denies: 0, respawn_left: 0,
-//! #     creep_score: None, seen_at: Some(1), backpack: None, bought_back_at: None, buyback: None,
+//! #     creep_score: None, seen_at: Some(1), backpack: None, bought_back_at: None, buyback: None, upgrades: None,
 //! # };
 //! # let mut view = WorldView {
 //! #     tick: 1, viewer: Some(Team::Radiant), units: vec![], projectiles: vec![],

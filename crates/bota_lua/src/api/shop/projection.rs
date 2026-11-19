@@ -231,6 +231,7 @@ impl Inventory {
         for (part, berth) in plan.parts.into_iter().zip(plan.berths) {
             let item = StoredItem::bought(part, self.slot)?;
             match berth {
+                Berth::Consumed => (),
                 Berth::Bag(slot) => self.bag.put(slot, item, true)?,
                 Berth::Stash(slot) => self.stash.put(slot, item, false)?,
                 Berth::Courier(slot) => self.courier.put(slot, item, true)?,

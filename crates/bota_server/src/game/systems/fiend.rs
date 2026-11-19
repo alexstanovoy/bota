@@ -158,6 +158,11 @@ impl World {
         // How far the lines fly and how wide they catch both take the caster's AoE bonus.
         let aoe_bonus = self.aoe_bonus_of(caster);
         let distance = self.widened_of(caster, rules::REQUIEM_LINE_DISTANCE);
+        let speed = if self.has_scepter(caster) {
+            rules::REQUIEM_SCEPTER_LINE_SPEED
+        } else {
+            rules::REQUIEM_LINE_SPEED
+        };
         for nth in 0..lines {
             let facing = Angle {
                 brads: (nth * 65536 / lines) as u16,
@@ -169,7 +174,7 @@ impl World {
                 RequiemLine {
                     owner: caster,
                     aim,
-                    speed: Fixed::from_int(rules::REQUIEM_LINE_SPEED),
+                    speed: Fixed::from_int(speed),
                     travelled: Fixed::ZERO,
                     distance,
                     aoe_bonus,

@@ -388,6 +388,7 @@ fn a_player() -> PlayerView {
         backpack: None,
         bought_back_at: None,
         buyback: None,
+        upgrades: None,
     }
 }
 

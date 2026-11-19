@@ -282,6 +282,10 @@ pub fn player_view(slot: u8) -> PlayerView {
             ready_at: 15_300,
             respawn_penalty: 750,
         }),
+        upgrades: Some(HeroUpgrades {
+            shard: true,
+            scepter_blessing: true,
+        }),
     }
 }
 

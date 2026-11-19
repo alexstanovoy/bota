@@ -95,8 +95,10 @@ mod unit;
 mod unit_definition;
 mod unit_kind;
 mod unit_neutral;
+mod upgrades;
 mod wave;
 mod wave_data;
+pub use upgrades::*;
 
 #[cfg(test)]
 mod tests;

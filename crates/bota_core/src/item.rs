@@ -456,6 +456,8 @@ pub enum PickupEligibility {
 /// One entry of the catalog.
 #[derive(Clone, Copy, Debug)]
 pub struct ItemDef {
+    /// Permanently upgrades the recipient when acquired or used in the declared way.
+    pub permanent: Option<crate::PermanentItem>,
     pub attack_break: Option<crate::AttackBreak>,
     /// Stat auras emitted by each active copy through the ordinary aura system.
     pub auras: &'static [crate::ItemAura],
@@ -926,6 +928,7 @@ impl ItemDef {
 /// An item that costs nothing, carries nothing and does nothing, so an entry
 /// names only what sets it apart.
 pub(crate) const PLAIN: ItemDef = ItemDef {
+    permanent: None,
     attack_break: None,
     auras: &[],
     modifiers: &[],

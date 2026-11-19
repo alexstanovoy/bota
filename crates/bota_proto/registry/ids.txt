@@ -254,6 +254,13 @@ item 153 live item_boots_of_bearing
 item 154 live item_crellas_crozier
 item 155 live item_recipe_crellas_crozier
 item 156 live item_recipe_maelstrom
+item 157 live item_aghanims_shard
+item 158 live item_aghanims_shard_roshan
+item 159 live item_recipe_ultimate_scepter
+item 160 live item_ultimate_scepter
+item 161 live item_recipe_ultimate_scepter_2
+item 162 live item_ultimate_scepter_2
+item 163 live item_ultimate_scepter_roshan
 
 effect 0 retired bota_haste
 effect 1 live modifier_flask_healing
