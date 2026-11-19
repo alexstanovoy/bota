@@ -52,7 +52,7 @@ impl World {
         };
         let cost = self.buyback_cost_of(&self.seats[index]);
         let now = self.tick;
-        self.seats[index].gold -= cost;
+        self.seats[index].spend_gold(cost);
         assert!(self.seats[index].gold >= 0, "a buyback is paid in full");
         self.respawn(index);
         let ledger = &mut self.seats[index].buyback;

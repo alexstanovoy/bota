@@ -105,8 +105,7 @@ impl World {
             }
             Cheat::Gold { amount } => {
                 if let Some(seat) = hero_seat {
-                    let gold = &mut self.seats[seat].gold;
-                    *gold = gold.saturating_add(amount).max(0);
+                    self.seats[seat].adjust_gold(amount);
                 }
             }
             Cheat::Levels { count } => {

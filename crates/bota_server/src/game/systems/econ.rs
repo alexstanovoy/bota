@@ -7,8 +7,8 @@ use bota_core::{
 use bota_proto::{EventKind, GoldAward, GoldAwardKind, Team, UnitKind, Vec2};
 
 use crate::game::{
-    Bounty, Entity, Event, EventVisibility, KILL_CREDIT_WINDOW_TICKS, Landed, LandingBody, Level,
-    Modifier, Purpose, RespawnSpot, World, wire_id,
+    Bounty, Entity, Event, EventVisibility, GoldPool, KILL_CREDIT_WINDOW_TICKS, Landed,
+    LandingBody, Level, Modifier, Purpose, RespawnSpot, World, wire_id,
 };
 
 use super::fight::other_side;
@@ -45,8 +45,7 @@ impl World {
             return;
         }
         for seat in self.seats.iter_mut() {
-            seat.gold += due;
-            seat.net_worth += due;
+            seat.earn_gold(due, GoldPool::Unreliable);
         }
     }
 
@@ -252,7 +251,7 @@ impl World {
         };
         let seat = &mut self.seats[index];
         let loss = (seat.net_worth / rules::DEATH_GOLD_LOSS_SHARE).clamp(0, seat.gold);
-        seat.gold -= loss;
+        seat.spend_gold(loss);
         seat.net_worth -= loss;
         if counts_as_kill {
             seat.streak = 0;
@@ -331,14 +330,7 @@ impl World {
         let mut to_killer = 0;
         for index in seats {
             let paid = self.bounty_after(self.seats[index].unit, amount);
-            let seat = &mut self.seats[index];
-            let capacity = i32::MAX
-                .saturating_sub(seat.gold)
-                .min(i32::MAX.saturating_sub(seat.net_worth))
-                .max(0);
-            let paid = paid.min(capacity);
-            seat.gold += paid;
-            seat.net_worth += paid;
+            let paid = self.seats[index].earn_gold(paid, GoldPool::Unreliable);
             if killer_seat == Some(index) {
                 to_killer = paid;
             }

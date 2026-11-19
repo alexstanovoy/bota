@@ -109,8 +109,10 @@ pub struct Seat {
     /// not created again. However, it respawns", Liquipedia, *Hero (unit
     /// type)*).
     pub unit: Option<Entity>,
-    /// Gold in hand.
+    /// Total gold in hand.
     pub gold: i32,
+    /// The part protected from the death penalty.
+    reliable_gold: i32,
     /// Gold earned over the match, spent or not, less what deaths cost.
     pub net_worth: i32,
     /// Experience gathered.
@@ -230,6 +232,7 @@ impl Seat {
             hero,
             unit: None,
             gold,
+            reliable_gold: 0,
             net_worth: gold,
             xp: 0,
             level: 1,
@@ -258,6 +261,57 @@ impl Seat {
         }
     }
 
+    /// Gold that may be lost on death.
+    pub(crate) fn unreliable_gold(&self) -> i32 {
+        self.gold.saturating_sub(self.reliable_gold).max(0)
+    }
+
+    /// Credits earned gold and net worth up to their common capacity. Invalid negative
+    /// credits pay zero. The protected balance must already lie within the purse.
+    pub(crate) fn earn_gold(&mut self, amount: i32, pool: GoldPool) -> i32 {
+        if amount < 0 {
+            return 0;
+        }
+        assert!(
+            (0..=self.gold).contains(&self.reliable_gold),
+            "reliable gold must fit the purse"
+        );
+        let capacity = i32::MAX
+            .saturating_sub(self.gold)
+            .min(i32::MAX.saturating_sub(self.net_worth));
+        let paid = amount.min(capacity);
+        self.gold += paid;
+        self.net_worth += paid;
+        if pool == GoldPool::Reliable {
+            self.reliable_gold += paid;
+        }
+        paid
+    }
+
+    /// Pays a validated cost from unreliable gold first.
+    pub(crate) fn spend_gold(&mut self, amount: i32) {
+        assert!(
+            (0..=self.gold).contains(&amount),
+            "a gold debit must fit the purse"
+        );
+        assert!(
+            (0..=self.gold).contains(&self.reliable_gold),
+            "reliable gold must fit the purse"
+        );
+        let from_reliable = (amount - self.unreliable_gold()).max(0);
+        self.reliable_gold -= from_reliable;
+        self.gold -= amount;
+    }
+
+    /// A scripted gold adjustment or cheat changes the purse without counting as a bounty.
+    pub(crate) fn adjust_gold(&mut self, amount: i32) {
+        if amount < 0 {
+            self.spend_gold(amount.saturating_neg().min(self.gold));
+        } else {
+            self.gold = self.gold.saturating_add(amount);
+        }
+    }
+
     /// Whether its hero lies dead, waiting to stand again.
     pub fn dead(&self) -> bool {
         self.respawn_left > 0
@@ -275,6 +329,13 @@ state_hash!(Teleport {
     sight_radius
 });
 state_hash!(Sighting { level, xp, at });
+/// Which part of a purse can be lost on death.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GoldPool {
+    Unreliable,
+    Reliable,
+}
+
 state_hash!(Seat {
     slot,
     team,
@@ -306,4 +367,4 @@ state_hash!(Seat {
     hurt_by,
     buyback,
     respawn_spot
-});
+}; 0xDB => { reliable_gold: 0 });

@@ -1053,3 +1053,29 @@ fn a_buyback_given_before_the_sale_that_would_pay_for_it_is_refused() {
     );
     assert_eq!(duel.gold(RADIANT), 600, "the sale went through after it");
 }
+
+/// The installed 7.42 spend rule also draws from unreliable gold first for Buyback.
+#[test]
+fn a_buyback_spends_unreliable_gold_before_the_reliable_award() {
+    for unreliable in [400_i32, 70] {
+        let mut duel = Duel::new();
+        let world = duel.local.world_mut();
+        let hero = world.seats[RADIANT].unit.expect("the player has a hero");
+        world.bury(vec![(hero, None)], &mut Vec::new());
+        world.seats[RADIANT].gold = unreliable;
+        world.seats[RADIANT].earn_gold(500, crate::game::GoldPool::Reliable);
+        let cost = world.buyback_cost_of(&world.seats[RADIANT]);
+        duel.done(RADIANT, Order::Buyback);
+        let seat = &duel.local.world().seats[RADIANT];
+        assert_eq!(
+            seat.gold,
+            500 + unreliable - cost,
+            "the buyback price is paid"
+        );
+        assert_eq!(
+            seat.gold - seat.unreliable_gold(),
+            500 - cost.saturating_sub(unreliable).max(0),
+            "buyback takes only its shortfall from the reliable pool"
+        );
+    }
+}

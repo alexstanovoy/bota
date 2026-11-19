@@ -1,6 +1,6 @@
 use bota_proto::{EventKind, SlotId};
 
-use crate::game::EventVisibility;
+use crate::game::{EventVisibility, GoldPool};
 
 use super::fixtures::*;
 
@@ -27,6 +27,25 @@ fn sixty_five_gold_buys_one_charge_and_emits_one_event() {
         events[0].visible_to(),
         EventVisibility::OneTeam(bota_proto::Team::Radiant)
     );
+}
+
+/// The installed 7.42 purchase rule spends unreliable gold before reliable gold.
+#[test]
+fn a_purchase_spends_unreliable_gold_first_and_takes_only_the_shortfall_from_reliable_gold() {
+    for (unreliable, left_reliable) in [(100, 100), (45, 80)] {
+        let (mut world, hero) = fixture();
+        world.seats[0].gold = unreliable;
+        world.seats[0].earn_gold(100, GoldPool::Reliable);
+        assert!(world.buy(OWNER, MANGO, &mut Vec::new()));
+        assert_eq!(held(&world, hero, 0).id, MANGO);
+        let seat = &world.seats[0];
+        assert_eq!(seat.gold, unreliable + 100 - 65, "the Mango price is paid");
+        assert_eq!(
+            seat.gold - seat.unreliable_gold(),
+            left_reliable,
+            "only the part the unreliable pool cannot cover comes out of the reliable pool"
+        );
+    }
 }
 
 #[test]

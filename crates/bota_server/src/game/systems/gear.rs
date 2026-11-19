@@ -663,7 +663,7 @@ impl World {
     ) {
         assert!(!parts.is_empty(), "a purchase must place at least one part");
         debug_assert!(price >= 0 && self.seats[seat].gold >= price);
-        self.seats[seat].gold -= price;
+        self.seats[seat].spend_gold(price);
         for part in parts {
             self.take_from_stock(self.seats[seat].team, *part);
         }

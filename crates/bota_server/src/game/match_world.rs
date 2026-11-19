@@ -128,8 +128,7 @@ impl World {
             let Some(seat) = self.seats.iter().position(|seat| seat.slot == event.slot) else {
                 continue;
             };
-            let gold = &mut self.seats[seat].gold;
-            *gold = gold.saturating_add(event.gold).max(0);
+            self.seats[seat].adjust_gold(event.gold);
             for item in event.items {
                 self.hand_out(seat, item, events);
             }

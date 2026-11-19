@@ -412,6 +412,43 @@ fn passive_experience_starts_one_second_after_the_horn_and_continues_while_dead(
     assert_eq!(world.seats[0].xp, 2, "second experience tick while dead");
 }
 
+#[test]
+fn changing_the_reliable_share_of_the_same_wallet_changes_the_world_hash() {
+    use crate::game::GoldPool;
+
+    let wallet = |pool| {
+        let mut world = World::new();
+        seated_hero(
+            &mut world,
+            Vec2::from_ints(5000, 5000),
+            HeroId::SHADOW_FIEND,
+        );
+        world.seats[0].earn_gold(10, pool);
+        world
+    };
+    let protected = wallet(GoldPool::Reliable);
+    let vulnerable = wallet(GoldPool::Unreliable);
+    assert_eq!(protected.seats[0].gold, vulnerable.seats[0].gold);
+    assert_eq!(protected.seats[0].net_worth, vulnerable.seats[0].net_worth);
+    assert_ne!(protected.hash(), vulnerable.hash());
+}
+
+#[test]
+fn a_negative_gold_credit_leaves_the_wallet_and_net_worth_intact() {
+    let mut world = World::new();
+    seated_hero(
+        &mut world,
+        Vec2::from_ints(5000, 5000),
+        HeroId::SHADOW_FIEND,
+    );
+    let before = world.hash();
+    assert_eq!(
+        world.seats[0].earn_gold(-1, crate::game::GoldPool::Reliable),
+        0
+    );
+    assert_eq!(world.hash(), before);
+}
+
 /// 7.42: "Total amount of experience needed to reach level 30 increased from 64400 to 66600".
 #[test]
 fn level_thirty_requires_66600_experience() {
