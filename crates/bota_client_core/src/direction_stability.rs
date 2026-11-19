@@ -38,7 +38,9 @@ impl DirectionHistory {
         self.last_tick = Some(tick);
     }
     pub fn clear(&mut self) {
-        *self = Self::default();
+        if self.len != 0 {
+            *self = Self::default();
+        }
     }
     /// Number of positions required. An unsupported cadence is unavailable, never resampled.
     pub fn window_positions(tick_rate: u16) -> Option<usize> {

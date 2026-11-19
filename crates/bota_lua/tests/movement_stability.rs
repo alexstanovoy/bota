@@ -189,3 +189,150 @@ fn hidden_movement_differences_cannot_enter_a_seats_stability_query() {
         assert!(turn.failures.is_empty(), "{:?}", turn.failures);
     }
 }
+
+#[test]
+fn the_entity_tracker_restarts_observed_history_after_a_death_and_respawn_gap() {
+    use bota_client_core::IssuedOrder;
+    use bota_proto::{Cheat, Order};
+    let (mut local, mut sessions) =
+        support::local_with_cheats(&[Team::Radiant, Team::Dire], bota_core::MAP2_ID);
+    let hero = sessions[0].own_hero().unwrap().id;
+    fn advance(
+        local: &mut bota_server::local::LocalMatch,
+        sessions: &mut [bota_client_core::ClientSession],
+        orders: &[IssuedOrder],
+    ) {
+        let outgoing: Vec<_> = orders
+            .iter()
+            .map(|&order| sessions[0].issue(order).unwrap())
+            .collect();
+        for (session, stream) in sessions
+            .iter_mut()
+            .zip(local.step(&[&outgoing, &[]]).unwrap())
+        {
+            support::fold(session, stream);
+        }
+    }
+    for _ in 0..31 {
+        advance(&mut local, &mut sessions, &[]);
+    }
+    assert_eq!(
+        sessions[0]
+            .entity(hero)
+            .unwrap()
+            .direction_history
+            .stability(30),
+        Some(1.0)
+    );
+    advance(
+        &mut local,
+        &mut sessions,
+        &[IssuedOrder::hero(Order::Cheat {
+            cheat: Cheat::Suicide,
+        })],
+    );
+    assert!(
+        sessions[0].entity(hero).unwrap().last_death.is_some(),
+        "the shared tracker folded the death event"
+    );
+    for _ in 0..3 {
+        advance(&mut local, &mut sessions, &[]);
+        assert_eq!(
+            sessions[0]
+                .entity(hero)
+                .unwrap()
+                .direction_history
+                .stability(30),
+            None
+        );
+    }
+    advance(
+        &mut local,
+        &mut sessions,
+        &[IssuedOrder::hero(Order::Cheat {
+            cheat: Cheat::Respawn,
+        })],
+    );
+    let track = sessions[0].entity(hero).unwrap();
+    assert!(track.visible);
+    assert!(
+        track.last_death.is_none(),
+        "the observed respawn traversed the tracker reset branch"
+    );
+    assert_eq!(track.direction_history.stability(30), None);
+    for _ in 0..29 {
+        advance(&mut local, &mut sessions, &[]);
+    }
+    assert_eq!(
+        sessions[0]
+            .entity(hero)
+            .unwrap()
+            .direction_history
+            .stability(30),
+        None
+    );
+    advance(&mut local, &mut sessions, &[]);
+    assert_eq!(
+        sessions[0]
+            .entity(hero)
+            .unwrap()
+            .direction_history
+            .stability(30),
+        Some(1.0)
+    );
+}
+
+#[test]
+fn the_entity_tracker_keeps_consecutive_positions_across_a_death_and_immediate_respawn() {
+    use bota_client_core::IssuedOrder;
+    use bota_proto::{Cheat, Order};
+    let (mut local, mut sessions) =
+        support::local_with_cheats(&[Team::Radiant, Team::Dire], bota_core::MAP2_ID);
+    let hero = sessions[0].own_hero().unwrap().id;
+    for _ in 0..31 {
+        for (session, stream) in sessions.iter_mut().zip(local.step(&[&[], &[]]).unwrap()) {
+            support::fold(session, stream);
+        }
+    }
+    assert!(
+        sessions[0]
+            .entity(hero)
+            .unwrap()
+            .direction_history
+            .stability(30)
+            .is_some()
+    );
+    let commands: Vec<_> = [Cheat::Suicide, Cheat::Respawn]
+        .into_iter()
+        .map(|cheat| {
+            sessions[0]
+                .issue(IssuedOrder::hero(Order::Cheat { cheat }))
+                .unwrap()
+        })
+        .collect();
+    for (session, stream) in sessions
+        .iter_mut()
+        .zip(local.step(&[&commands, &[]]).unwrap())
+    {
+        support::fold(session, stream);
+    }
+    assert_eq!(sessions[0].own_hero().unwrap().id, hero);
+    assert!(
+        sessions[0]
+            .entity(hero)
+            .unwrap()
+            .direction_history
+            .stability(30)
+            .is_some(),
+        "death is not an observation gap"
+    );
+    for (session, stream) in sessions.iter_mut().zip(local.step(&[&[], &[]]).unwrap()) {
+        support::fold(session, stream);
+    }
+    let track = sessions[0].entity(hero).unwrap();
+    assert!(track.last_death.is_none());
+    assert!(
+        track.direction_history.stability(30).is_some(),
+        "the respawn tracker branch must retain consecutive observations"
+    );
+}
