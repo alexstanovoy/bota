@@ -1,5 +1,5 @@
 //! How many outer locals one script function may capture in the host: up to 120, as the reference game's script runtime
-//! accepts (game build 6975) and scripts written for it rely on, and a function that captures more is refused with the
+//! accepts and scripts written for it rely on, and a function that captures more is refused with the
 //! interpreter's own diagnostic. The host's fuel and memory budgets hold for such scripts as for any other.
 #![cfg(all(feature = "native", not(target_arch = "wasm32")))]
 

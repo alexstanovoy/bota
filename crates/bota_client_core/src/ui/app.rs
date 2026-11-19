@@ -251,8 +251,7 @@ pub const DAMAGE_WINDOW: f32 = 1.0;
 /// Seconds a floater rises before it is gone, unless its kind says otherwise
 /// ([`FloaterKind::life`]).
 pub const FLOATER_LIFE: f32 = 1.3;
-/// Seconds Dota's miss notice stays, as established from the installed game
-/// (build 6975).
+/// Seconds a miss notice stays.
 pub const MISS_LIFE: f32 = 1.5;
 
 impl FloaterKind {

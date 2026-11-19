@@ -1,4 +1,4 @@
-//! Numeric bot API constants established from the installed game, build 6975.
+//! Numeric bot API constants.
 use crate::BindingError;
 use luagee::{Lua, Value};
 

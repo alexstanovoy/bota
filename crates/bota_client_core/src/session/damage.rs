@@ -43,7 +43,7 @@ impl RecentDamage {
             DamageSource::Other => None,
         }
     }
-    /// O(1). Strict boundary, as established from the installed game, build 6975.
+    /// O(1). Strict interval boundary.
     pub fn within(&self, now: u32, window: u32, source: DamageSource) -> bool {
         self.last(source)
             .and_then(|tick| now.checked_sub(tick))

@@ -195,7 +195,7 @@ impl World {
     }
 
     /// Exhausted clear-space search returns a hull-inset map clamp without
-    /// certifying obstacle clearance (established from installed build 6975).
+    /// certifying obstacle clearance.
     pub(crate) fn resolve_landing_as(&self, body: LandingBody, aim: Vec2) -> LandingResolution {
         if let Some(at) = self.search_landing(aim, |at| self.landing_clear_as(body, at)) {
             return LandingResolution { at, cleared: true };

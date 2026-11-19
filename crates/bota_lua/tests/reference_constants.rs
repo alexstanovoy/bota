@@ -1,19 +1,13 @@
-// Reference snapshot: numeric bot-API globals exported from the installed game, build 6975.
-// An installation-local exporter enumerated every numeric registration, preserving integer values
-// and the exact promoted single-precision desire values. To regenerate, export that installation's
-// numeric bot-API names and values again, sort the names, and replace data/reference_constants.json
-// with {"build":6975,"constants":{name:number,...}}. Keep recovery metadata outside the repository.
-// BOT_MODE_NONE (0) is missing from the first export, yet the installed game registers it with the other
-// BOT_MODE_ constants: it was added after a targeted check of that registration, so the table holds 357 names.
+// Numeric bot-API constant contract. Names are sorted; desires retain promoted f32 values.
 mod support;
 use bota_lua::{BotSeat, Keys, Limits, LuaTeam, ScriptKind};
 use bota_proto::{HeroId, SlotId, Team};
 
 #[test]
-fn every_installed_reference_constant_is_defined_with_its_exact_value() {
+fn every_reference_constant_is_defined_with_its_exact_value() {
     let reference: serde_json::Value =
         serde_json::from_str(include_str!("data/reference_constants.json")).unwrap();
-    assert_eq!(reference["build"], 6975);
+    assert_eq!(reference.as_object().unwrap().keys().collect::<Vec<_>>(),vec!["constants"]);
     let constants = reference["constants"].as_object().unwrap();
     assert_eq!(constants.len(), 357);
     let mut source = String::from("function Think()\n");

@@ -54,7 +54,6 @@ pub fn unit_definition(map: &MapDef, unit: UnitIdentity) -> Option<&'static Unit
 }
 
 /// Half the base attack-damage interval, including half-integer variances. O(1).
-/// Established from the installed game, build 6975.
 pub fn base_damage_variance(definition: &UnitDef) -> Fixed {
     Fixed::from_ratio(definition.damage_spread, 2)
 }

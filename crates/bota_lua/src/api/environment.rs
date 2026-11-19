@@ -57,7 +57,7 @@ fn side_distance(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize,
     if state.position(id).is_none() {
         return Err(vm.error("unit is no longer known"));
     }
-    // Established from the installed game, build 6975: an absent shop's integer distance.
+    // An absent shop's integer distance.
     vm.results(&[Value::Number(f64::from(i32::MIN))])
 }
 fn courier_count(context: &ApiContext, vm: &mut Vm, _args: Args) -> Result<usize, LuaError> {

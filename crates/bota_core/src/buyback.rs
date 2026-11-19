@@ -18,7 +18,6 @@ pub const fn buyback_cost(net_worth: i32) -> i32 {
 /// is worth the share of its cost its paid charges are of those it comes with, so nothing when
 /// empty and more than its cost when stacked; any other item is worth its whole cost at any
 /// charge: one that comes with none (a Magic Wand), and one that stays when empty (a Bottle).
-/// Established from the installed game, Dota 7.41f build 6975.
 #[inline]
 #[must_use]
 pub fn stack_worth(def: &crate::ItemDef, charges: u8, free_charges: u8) -> i32 {

@@ -8,7 +8,7 @@ use crate::BindingError;
 use bota_client_core::Activity;
 use luagee::{Args, Lua, LuaError, Value, Vm};
 
-// Activity ids established from the installed game, build 6975.
+// Script activity identifiers.
 const CONSTANTS: &[(&str, i32)] = &[
     ("ACTIVITY_IDLE", 1500),
     ("ACTIVITY_IDLE_RARE", 1501),

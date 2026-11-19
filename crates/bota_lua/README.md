@@ -66,7 +66,7 @@ are restored before computing that request. Lua script globals are not rewound.
 Native defaults are 125,000 fuel per call and 600,000
 per team tick, leaving margin inside the deadline under load. Native interpreter limits may
 only reduce the defaults of the script host: `SCRIPT_LIMITS`, the interpreter's defaults with the upvalues per function
-raised to 120, which the reference game's script runtime accepts and scripts written for it rely on (game build 6975).
+raised to 120, which the reference game's script runtime accepts and scripts written for it rely on.
 `NativeConfig` and so `bota_botscript` start from it. `LuaTeam::new` takes the limits its caller passes, so an embedder that
 passes the interpreter's `Limits::DEFAULT` keeps 60 upvalues per function. Active and retiring workers share a process-wide limit
 of 32; cleanup does not wait on timed-out work.
@@ -156,23 +156,19 @@ without copying source into the repository. `fuzz/fuzz_targets/lua_binding.rs` (
 a fuzz workspace of its own run with `fuzz/fuzz.sh`) drives Lua source, hostile arguments,
 collection modes and varied game states.
 
-## Native reconstruction evidence
+## Built-in fallback contracts
 
-“Sourced” below identifies a fact read from the current simulation catalogue or
-received observations. It does not independently verify that catalogue against
-Dota. “Inferred” is a compatibility interpretation awaiting an engine check.
-“Own design” is an explicit host policy, not a recovered Valve C++ decision.
-Tests pin these choices; passing a pin does not promote an inference to a source.
+The fallback uses catalogue data and received observations. Its fixed policy and work bounds are:
 
 | Choice | Classification | Evidence or reason |
 |---|---|---|
 | Two SF heroes, MAP2 only | Own design | Scope of the native fallback; other configurations receive no native policy. |
 | Mode arbitration every 9 ticks | Own design | Bounds repeated arbitration work; overrides still Think each tick. |
-| Laning/attack/farm/retreat desires 0.3/0.6/0.4/0.95 | Own design | Explicit ordering of the reconstructed modes. No engine-policy source. |
+| Laning/attack/farm/retreat desires 0.3/0.6/0.4/0.95 | Own design | Explicit ordering of the fallback modes. |
 | Retreat below 35% HP, held until 90% | Own design | Hysteresis avoids repeatedly switching modes near a threshold. |
 | Attack/farm radius 900; item/courier threat radius 1000 | Own design | Local decision radii, not claimed engine policy. |
 | Raze distances, radii, damage and mana costs | Sourced: simulation catalogue | `bota_core::rules::RAZE_DISTANCE`, `RAZE_RADIUS`, hero definitions and received ability rows. |
-| Raze creep cluster at least 2; mana reserve at least twice the cost | Own design | Reconstructed resource and target selection. |
+| Raze creep cluster at least 2; mana reserve at least twice the cost | Own design | Resource and target selection. |
 | Requiem requires received souls and an enemy within attack range | Own design using sourced facts | The decision is ours; souls, range and ability metadata are received/catalogue facts. |
 | Learn available ultimate before ordinary active skills, then passives, by slot; available talents first | Own design using sourced legality | Selection priority is ours; `learnable` and `may_learn` come from the view. |
 | Regeneration useful at half its restoration amount; avoid interruptible recovery near threats; Phase during retreat | Own design using sourced effects | Amounts, aim, active effect, mute and cooldown are read from item/effect metadata. |
@@ -181,8 +177,8 @@ Tests pin these choices; passing a pin does not promote an inference to a source
 | Courier command lease 30 ticks | Own design | Retry lost/rejected requests without resending every tick. Tick rate is sourced from rules. |
 | Pregame movement command lease 30 ticks | Host execution contract | Initial command, bounded retry, immediate retarget and one cancellation on arrival. Shares the courier retry interval. |
 | Courier delivery/stash/return, burst and shield selection | Own design using sourced legality | Ability ids, cooldown, mana, ownership and handoff/stash ranges come from catalogue/views. |
-| Pregame no-creep Laning: move 300 behind own mid T1, 100-unit arrival tolerance | Established from the installed game, build 6975; host map/transport adaptation | See native_laning.md for behaviour, supported conditions and tests. |
-| Other lane targets: 200 behind the observed friendly front, 256-unit cells towards home | Own design | Existing fallback outside the recovered pregame slice. |
+| Pregame no-creep Laning: move 300 behind own mid T1, 100-unit arrival tolerance | Pregame movement contract | See native_laning.md for behaviour, supported conditions and tests. |
+| Other lane targets: 200 behind the observed friendly front, 256-unit cells towards home | Own design | Existing fallback outside the pregame slice. |
 | Native attack-once lease: observed windup plus 1 second, clamped to 1–10 seconds | Own design using received timing | Bounds silence after an unlaunched order is rejected or lost. Launch facts take precedence at expiry. Explicit script once requests have no native lease. Discarded host turns restore the previous continuation checkpoint. |
 | Missing/nil GetDesire falls back; explicit empty Think overrides; MinionThink-only files retain hero defaults; explicit minion hooks replace courier defaults | Inferred compatibility contract | Implements the host's documented composition of scripts and native policy. Not verified against the closed engine. |
 | Engine player ids: Radiant 0–4, Dire 5–9; rank from the received roster, only a proven contiguous prefix before that roster | Inferred compatibility contract | Distinct from wire seat ids. No live-engine mapping verification is claimed. |

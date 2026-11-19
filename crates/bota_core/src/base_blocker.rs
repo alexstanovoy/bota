@@ -35,8 +35,7 @@ impl BaseBlockerDef {
     }
 }
 
-// The four permanent fields and their orientation, established from installed
-// game build 6975.
+// The four permanent fields and their orientation.
 pub const DOTA_BASE_BLOCKERS: [BaseBlockerDef; 4] = [
     blocker(152340, 628660, 0, Team::Radiant, 27357),
     blocker(1657600, 1164800, 0, Team::Dire, 27648),

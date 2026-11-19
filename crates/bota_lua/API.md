@@ -288,9 +288,7 @@ protected metatables carry weak host-index entries charged to interpreter memory
 collection removes those entries and shrinks their capacity. Copying script fields
 or borrowing a method cannot create an engine identity.
 
-The README's “Native reconstruction evidence” table classifies the native
-policy constants and inferred engine player/mode/lane ids. These bindings do not
-claim a live-engine verification of those mappings. Explicit script attack-once
+Explicit script attack-once
 requests have no native policy lease; only native last-hit requests expire after
 the bounded, windup-aware lease. A rejected or lost native order can therefore
 recover without requiring a launch event or a gap-free stream of snapshots.
@@ -362,8 +360,6 @@ the [generated bot API](https://docs.moddota.com/lua_bots/)'s
 
 `GetAnimActivity()` and `GetAnimCycle()` read the shared client activity model.
 The former returns the registered `ACTIVITY_*` id, the latter a cycle in `[0,1)`.
-The identifiers and unseen sentinels were established from the installed game,
-build 6975.
 An authenticated foreign unit outside current sight returns `-1` / `-1.0`, even
 while its frozen last observation remains in memory. A forgotten non-roster unit
 errors with `unit is no longer known`; forged handles are rejected.
@@ -399,8 +395,7 @@ ability handle or assert a reference-engine sequence selection.
 ### Incoming tracking projectiles
 
 `GetIncomingTrackingProjectiles()` returns a fresh array of currently received
-homing missiles whose target is this visible unit. The result fields were
-established from the installed game, build 6975. Rows contain `location`,
+homing missiles whose target is this visible unit. Rows contain `location`,
 `caster`, `playerid`, `ability`, `is_attack` and `is_dodgeable`. An unseen foreign
 receiver returns nil; an unknown non-roster receiver errors. Only current filtered
 records participate. A concealed caster stays nil and has playerid -1; it is never
@@ -427,7 +422,7 @@ phase/progress field on this wire.
 `CDOTA_Bot_Script` and `CDOTABaseAbility_BotScript` expose the shared unit and
 ability/item method tables. Existing handles look up missing fields through those same tables:
 patching a class method changes subsequent calls, while an instance field takes precedence.
-These class names are established from the installed game, build 6975. Handles retain their
+Handles retain their
 host-maintained identity checks; a class table or copied method is not a unit/ability identity.
 Class access and script overrides spend normal interpreter table/instruction fuel; native calls
 retain their existing explicit charges.
@@ -441,7 +436,6 @@ retain their existing explicit charges.
 | `GetGameState()` | Init=0, selection=2, strategy=3, pregame=4, playing=5, completed=6, aborted=7. Uses received lifecycle facts and clock; the terminal snapshot may be processed once at the final tick. 8 fuel. |
 | `IsItemPurchasedFromSideShop(name)` | The current installed item data has no active SideShop flags, so false, including unknown names. 8 plus checked-string work. |
 
-These enum values and absent-shop behavior were established from the installed game, build 6975;
 locations and the current roster use the configured map and the receiving side's observations.
 
 
@@ -450,16 +444,14 @@ known forest, within the integer radius (0..32767). Static ids are match-tree in
 planted positions receive stable ids after that prefix (at most 8192 retained planted identities).
 Ids never reveal whether a tree outside sight has secretly been cut or planted. A foreign receiver
 outside the current view returns nil; a forgotten owned receiver errors unless its body position
-is retained. The call shape and tree query are established from the installed game, build 6975.
+is retained.
 Host ids translate the configured match's forest; they are not native entity indexes.
 Fuel: checked receiver, 8 plus received bodies scanned, each static tree and its binary-search
 work in remembered felled indices, each planted tree scanned, each retained identity examined,
 and each result, plus interpreter table/write charges. The scan and retained storage are bounded.
 
 
-`ActionImmediate_Chat(text, allChat)` sends ordinary checked chat, established from the installed
-game, build 6975. `Action_Chat` is a documented host alias; it is not claimed as a current native
-export. `allChat=true` selects all players, false the team. The transport's UTF-8, control/bidi,
+`ActionImmediate_Chat(text, allChat)` sends ordinary checked chat. `Action_Chat` is a host alias. `allChat=true` selects all players, false the team. The transport's UTF-8, control/bidi,
 byte and grapheme limits apply before enqueueing; malformed text errors rather than reaching any
 receiver. The host permits one line per bot every 30 simulation ticks and at most one per turn.
 A failed or discarded bot turn publishes no chat and restores that allowance. Chat does not
@@ -470,20 +462,17 @@ for bounded UTF-8/text-policy work. No raw text is inserted into protocol diagno
 `GetLaneFrontAmount(team, lane, ignoreTowers)` returns progress in the viewer's orientation:
 allied fronts advance upward from 0, enemy fronts downward from 1. It considers observed living
 lane creeps within 1000 units of their lane and, unless ignored, observed towers of that team.
-Those extrema, defaults, orientation and tower inclusion were established from the installed game,
-build 6975. This host supports the single-wave-lane maps: their creep lane is public from the
+This host supports the single-wave-lane maps: their creep lane is public from the
 configured wave lanes. Other maps error rather than infer a creep's unobserved assigned lane.
 Canonical configured lane geometry supplies the projection. Cost: 32 + 8 per lane segment, plus
 per received body 4 + 8 per segment + the team's map tower rows. Hidden units never supply a front.
 `NumQueuedActions()` counts the active bot's waiting queue, excluding its running action;
 foreign/non-active receivers return -1. A publicly dead owned hero has no queued actions.
-This queue distinction and sentinel were established from the installed game, build 6975.
 Cost: checked receiver plus 8; no scan over the returned queue length.
 
 
 
-Class scope is VM-wide, not script-wide: the installed game's class registrations are VM
-globals shared while the active bot context changes (build 6975). All bots and scripts of one
+Class scope is VM-wide, not script-wide: class globals are shared while the active bot context changes. All bots and scripts of one
 team/pack therefore see its class overrides. Another team or pack uses an independent `LuaTeam`
 and VM, so no override crosses that boundary. Host fallback dispatch captures and pins original
 bindings at installation; it never resolves host calls through a script-writable class table.
@@ -491,20 +480,19 @@ A script override changes script lookups only. Fixed host dispatch retains its e
 
 
 `GetGameState` reports init0, active selection2, completed-selection/strategy3, pregame4,
-playing5, post-game6; an explicitly aborted session reports disconnect7. These API enum values
-are established from the installed game, build6975. End state comes from the client's received
+playing5, post-game6; an explicitly aborted session reports disconnect7. End state comes from the client's received
 MatchOver/MatchAborted fact, not a server-side counter. An embedding may query one terminal
 transition at the last snapshot's tick; ordinary duplicate thinks still error. The live driver
 finishes on its end message and does not submit actions after the match.
 
-Numeric bot API constants follow the installed game (build 6975), including action desires,
+Numeric bot API constants include action desires,
 mode ids, ability behavior/target flags, courier states, activities, selection states and unit-list
-categories. The reference table test checks all 357 numeric registrations of that game, `BOT_MODE_NONE`=0 among them.
+categories. The reference table test checks all 357 numeric constants, `BOT_MODE_NONE`=0 among them.
 Mode ids are translated at the scheduler boundary; private scheduling indices are not public ids.
 Unit lists include the allied/enemy other and thinker categories (the simulator has no thinker units).
 Pack-local constants, misspellings and names absent from that API are not aliases.
 
-Constants are ordinary writable Lua globals, established from the installed game (build 6975).
+Constants are ordinary writable Lua globals.
 Overwriting them changes script-visible values, not the host's independently bound facts.
 The unit-list corrections replace former host ids: ENEMIES 6→7, enemy subcategories 7..10→8..11,
 and NEUTRAL_CREEPS 11→13. ALLIED_OTHER=6, ENEMY_OTHER=12 and THINKERS=14 are now defined;
@@ -538,8 +526,7 @@ preserve initialization counts and run aggregation does not double count them.
 ## Shared observation and movement queries
 
 Their substance is shared with other clients; Lua performs identity checks, argument conversion and fuel accounting.
-"Basis" says where each rule comes from. *Reference* means established from the installed game
-(build 6975); *seat* means a fact the receiving seat is told over the wire. Where the reference rejects a call (it logs
+*Reference* describes API behavior; *seat* describes a fact the receiving seat is told over the wire. Where the reference rejects a call (it logs
 an error and answers a sentinel), the host answers the same sentinel and counts the call in `declined_api_calls`
 (statistics; keyed `<API>_<reason>`) so that a script's misuse stays visible. A fact the seat was never told is `nil`
 or a counted gap, never an invented value.

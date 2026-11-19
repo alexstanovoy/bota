@@ -1,6 +1,5 @@
 # Pregame laning
 
-The pregame movement rules were established from the installed game, build 6975.
 This slice covers selected Laning in a two-player Shadow Fiend Solo Mid match:
 no currently observed own living creeps, an observed living own mid tier-one tower,
 and no queued commands or busy statuses excluded by the fallback dispatcher.

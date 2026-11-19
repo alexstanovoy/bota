@@ -36,7 +36,7 @@ pub fn unspent_points(level: u8, abilities: &[AbilityView], attribute_bonus: u8)
         .saturating_sub(spent)
         .min(u16::from(u8::MAX)) as u8
 }
-/// Sum of item catalogue costs, independent of remaining charges (installed game build 6975).
+/// Sum of item catalogue costs, independent of remaining charges.
 /// O(STASH_SLOTS), over the receiving player's storage only. None is not an empty stash.
 pub fn stash_value(stash: Option<&[Option<ItemView>]>) -> Option<i32> {
     let mut value = 0i32;

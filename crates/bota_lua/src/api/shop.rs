@@ -13,8 +13,7 @@ use super::{
 mod projection;
 pub(crate) use projection::Projection;
 
-/// What a purchase returns to the script: the value of the matching `PURCHASE_ITEM_*` global (the installed game's
-/// ids, defined in `constants.rs`; `tests/shop.rs` compares every result with its global).
+/// What a purchase returns to the script: the value of the matching `PURCHASE_ITEM_*` global (defined in `constants.rs`; `tests/shop.rs` compares every result with its global).
 #[derive(Clone, Copy)]
 #[repr(i16)]
 enum Purchase {

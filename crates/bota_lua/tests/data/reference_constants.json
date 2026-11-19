@@ -1,5 +1,4 @@
 {
-  "build": 6975,
   "constants": {
     "ABILITY_BEHAVIOR_AOE": 32,
     "ABILITY_BEHAVIOR_ATTACK": 131072,
