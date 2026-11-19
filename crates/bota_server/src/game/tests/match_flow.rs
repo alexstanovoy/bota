@@ -516,9 +516,9 @@ fn all_level_thresholds_match_the_installed_experience_increments() {
 fn a_heros_head_and_its_wait_are_priced_as_the_game_prices_them() {
     assert_eq!(hero_kill_xp(0, 0, 1), rules::HERO_KILL_XP_BASE);
     assert_eq!(hero_kill_xp(0, 2, 9), rules::HERO_KILL_XP_BASE);
-    assert_eq!(hero_kill_xp(0, 3, 4), rules::HERO_KILL_XP_BASE + 55);
-    assert_eq!(hero_kill_xp(0, 10, 2), rules::HERO_KILL_XP_BASE + 220);
-    assert_eq!(hero_kill_xp(0, 14, 2), rules::HERO_KILL_XP_BASE + 220);
+    assert_eq!(hero_kill_xp(0, 3, 4), rules::HERO_KILL_XP_BASE + 44);
+    assert_eq!(hero_kill_xp(0, 10, 2), rules::HERO_KILL_XP_BASE + 216);
+    assert_eq!(hero_kill_xp(0, 14, 2), rules::HERO_KILL_XP_BASE + 216);
     assert_eq!(hero_kill_xp(1000, 0, 5), rules::HERO_KILL_XP_BASE + 130);
     assert_eq!(respawn_wait(1, 0, false), 12 * rules::TICKS_PER_SECOND);
     assert_eq!(respawn_wait(12, 0, false), 44 * rules::TICKS_PER_SECOND);
@@ -1262,5 +1262,25 @@ fn death_loss_prices_the_current_wallet_and_owned_remaining_charges() {
     assert_eq!(
         world.seats[0].gold, 582,
         "the owned two charges add 130 to the 600-gold purse"
+    );
+}
+
+/// Installed 7.42 kill XP truncates the streak coefficient before multiplying
+/// it by the victim's level. A level-four hero on a streak of three pays 44 extra.
+#[test]
+fn ending_a_streak_pays_the_truncated_coefficient_per_victim_level() {
+    let mut world = World::new();
+    let at = Vec2::from_ints(5000, 5000);
+    let killer = seated_hero(&mut world, at, HeroId::SHADOW_FIEND);
+    let victim = seat_hero(&mut world, 1, Team::Dire, at + Vec2::from_ints(100, 0));
+    world.grant_xp(1, 1200, &mut Vec::new());
+    world.seats[1].streak = 3;
+    world.settle();
+    world.bury(vec![(victim, Some(killer))], &mut Vec::new());
+    assert_eq!(world.seats[0].xp, 100 + 156 + 44);
+    assert_eq!(
+        hero_kill_xp(0, 0, 0),
+        0,
+        "a body without a level has no hero XP bounty"
     );
 }

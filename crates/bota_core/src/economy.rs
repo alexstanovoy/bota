@@ -40,11 +40,14 @@ pub fn passive_gold_by(ticks: u32) -> i32 {
 /// bonus for the streak its death ends.
 #[inline]
 pub fn hero_kill_xp(victim_xp: i32, streak: i32, level: i32) -> i32 {
+    if level <= 0 {
+        return 0;
+    }
     let streak = streak.min(rules::STREAK_XP_CAP);
     let streak_bonus = if streak < rules::STREAK_XP_FROM {
         0
     } else {
-        (5 * streak * streak - 10 * streak + 40) * level / 4
+        (5 * streak * streak - 10 * streak + 32) / 4 * level
     };
     let counted = victim_xp.min(rules::HERO_KILL_XP_COUNTED_MAX);
     rules::HERO_KILL_XP_BASE + counted * rules::HERO_KILL_XP_SHARE_PCT / 100 + streak_bonus

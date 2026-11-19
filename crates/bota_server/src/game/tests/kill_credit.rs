@@ -662,7 +662,7 @@ fn kill_credit_nonkill_finishes_do_not_pay_streak_experience() {
         let source = finisher(&mut world, true);
         let before = world.seats[0].xp;
         finish(&mut world, victim, source);
-        assert_eq!(world.seats[0].xp - before, if assisted { 155 } else { 100 });
+        assert_eq!(world.seats[0].xp - before, if assisted { 144 } else { 100 });
         assert_eq!(world.seats[1].streak, if assisted { 0 } else { 3 });
     }
 }
