@@ -10,6 +10,10 @@ use bota_proto::{DamageKind, Fixed, Inflictor, ItemId, MapId, Team, UnitKind, Ve
 
 use super::support::*;
 
+#[path = "fixtures/creep_bounty_fixture.rs"]
+mod creep_bounty_fixture;
+use self::creep_bounty_fixture::creep_bounty_cases;
+
 /// A pool a tick regenerates.
 #[derive(Clone, Copy, Debug)]
 enum Pool {
@@ -675,28 +679,6 @@ fn shadow_fiend_stands_at_dota_numbers_from_the_first_level_to_the_last() {
 
 /// A creep kind, its health, its damage range and its gold range.
 type Row = (&'static UnitDef, i32, (i32, i32), (i32, i32));
-
-fn creep_bounty_cases() -> impl Iterator<Item = (String, &'static UnitDef, u32)> {
-    let last_lane_step = u32::MAX / (rules::WAVE_PERIOD_TICKS * rules::WAVE_UPGRADE_PERIOD);
-    let lane = bota_core::FIXED_UNIT_DEFS
-        .into_iter()
-        .filter(|def| bota_core::lane_creep_def(def.kind).is_some())
-        .map(move |def| {
-            (
-                format!("{:?}/{:?}", def.kind, def.tier),
-                def,
-                last_lane_step,
-            )
-        });
-    let neutral = bota_core::NEUTRALS.iter().map(|neutral| {
-        let earliest = rules::Schedule::of(0);
-        let last_step = neutral
-            .growth
-            .map_or(0, |growth| growth.clock.count(u32::MAX, earliest));
-        (neutral.unit.to_owned(), &neutral.def, last_step)
-    });
-    lane.chain(neutral)
-}
 
 #[test]
 fn upgraded_bounty_matches_the_previous_spawn_bounty_for_every_creep_and_step() {
