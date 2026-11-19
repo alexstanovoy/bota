@@ -1736,7 +1736,11 @@ fn removing_a_created_hero_channelling_an_outpost_capture_releases_capture_progr
         "created hero is channelling Outpost capture"
     );
     demo.run(CAPTURE_TICKS / 2);
-    assert_eq!(demo.unit(outpost).team, Team::Dire, "halfway, not yet captured");
+    assert_eq!(
+        demo.unit(outpost).team,
+        Team::Dire,
+        "halfway, not yet captured"
+    );
 
     // Remove the created hero mid-capture.
     demo.cheat_at(created, Cheat::RemoveHero);
@@ -1756,7 +1760,10 @@ fn removing_a_created_hero_channelling_an_outpost_capture_releases_capture_progr
         if demo.unit(outpost).team == Team::Radiant {
             break;
         }
-        if demo.hero().is_some_and(|h| h.statuses.bits & StatusFlags::CHANNELLING != 0) {
+        if demo
+            .hero()
+            .is_some_and(|h| h.statuses.bits & StatusFlags::CHANNELLING != 0)
+        {
             channel_ticks += 1;
         }
     }
@@ -2195,7 +2202,10 @@ fn items_of_a_removed_hero_held_by_another_unit_become_that_holders() {
         .unit(own)
         .items
         .iter()
-        .position(|slot| slot.as_ref().is_some_and(|item| item.id == ItemId::BLINK_DAGGER))
+        .position(|slot| {
+            slot.as_ref()
+                .is_some_and(|item| item.id == ItemId::BLINK_DAGGER)
+        })
         .expect("player hero holds hero A's Blink Dagger");
     assert_eq!(
         demo.unit(own).items[blink_slot]
@@ -2292,7 +2302,10 @@ fn aimed_body_cheats_on_a_dead_created_hero_refuse_with_hero_dead_like_own_dead_
 
     // Kill the created hero: every body-requiring cheat must give the same HeroDead refusal.
     demo.cheat_at(pudge, Cheat::Suicide);
-    assert!(demo.row_of(pudge).respawn_left > 0, "created hero lies dead");
+    assert!(
+        demo.row_of(pudge).respawn_left > 0,
+        "created hero lies dead"
+    );
     for cheat in body_cheats {
         demo.step_naming(&[(Some(pudge), Order::Cheat { cheat })]);
         assert_eq!(
@@ -2344,12 +2357,7 @@ fn hero_scoped_cheats_aimed_at_an_illusion_are_refused_as_not_a_hero_and_never_h
         kind: RuneKind::Illusion,
         at: rune_spot,
     });
-    let rune = demo
-        .view()
-        .runes
-        .first()
-        .expect("Illusion rune spawned")
-        .id;
+    let rune = demo.view().runes.first().expect("Illusion rune spawned").id;
     demo.order(
         pudge,
         Order::Move {
@@ -2481,10 +2489,7 @@ fn a_match_without_cheats_refuses_every_order_kind_aimed_at_another_players_hero
     assert!(world.glyphs[0].ready_at > now, "Radiant's Glyph spent");
     assert!(world.glyphs[1].ready_at <= now, "Dire's Glyph untouched");
     assert_eq!(
-        [
-            world.scan_ledger(0).charges,
-            world.scan_ledger(1).charges,
-        ],
+        [world.scan_ledger(0).charges, world.scan_ledger(1).charges,],
         [charges_before[0] - 1, charges_before[1]],
         "only Radiant's Scan spent"
     );

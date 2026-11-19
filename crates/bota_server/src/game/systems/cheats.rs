@@ -508,7 +508,9 @@ impl World {
         }
         self.seats.insert(at_index, seat);
         debug_assert!(
-            self.seats.windows(2).all(|pair| pair[0].slot < pair[1].slot),
+            self.seats
+                .windows(2)
+                .all(|pair| pair[0].slot < pair[1].slot),
             "seats stay sorted by slot"
         );
         self.settle();
@@ -648,11 +650,7 @@ impl World {
             let marks: Vec<Entity> = self
                 .entities
                 .iter()
-                .filter(|&entity| {
-                    self.mark
-                        .get(entity)
-                        .is_some_and(|mark| mark.owner == unit)
-                })
+                .filter(|&entity| self.mark.get(entity).is_some_and(|mark| mark.owner == unit))
                 .collect();
             for mark in marks {
                 self.take_mark(mark);

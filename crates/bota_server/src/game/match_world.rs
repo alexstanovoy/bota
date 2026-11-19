@@ -310,14 +310,7 @@ impl World {
     /// waiting, or replaces the one move, attack or the like waiting; any
     /// other order replaces whatever waits. Refused when the casts waiting
     /// fill [`MAX_QUEUED_ORDERS`](bota_core::rules::MAX_QUEUED_ORDERS).
-    fn wait_for_cast(
-        &mut self,
-        seat: SlotId,
-        giver: SlotId,
-        unit: Entity,
-        order: Order,
-        seq: u32,
-    ) {
+    fn wait_for_cast(&mut self, seat: SlotId, giver: SlotId, unit: Entity, order: Order, seq: u32) {
         let mut waiting = self.waiting.remove(unit).unwrap_or_default();
         if !bota_core::order_is_cast(order)
             || !waiting
