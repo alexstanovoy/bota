@@ -184,3 +184,85 @@ fn a_retained_callback_error_does_not_keep_the_scripts_large_string_allocation()
     );
     assert_eq!(turn.bots[0].orders, vec![movement(1)]);
 }
+
+#[test]
+fn a_direct_move_uses_unit_pathfinding_around_a_tree_and_arrives() {
+    use bota_proto::{Cheat, Fixed};
+    let (mut local, mut sessions) =
+        support::local_with_cheats(&[Team::Radiant, Team::Dire], bota_core::MAP2_ID);
+    let hero = sessions[0].own_hero().unwrap();
+    let home = hero.pos;
+    let radius = hero.bound;
+    let (from, to) = sessions[0]
+        .statics()
+        .trees()
+        .iter()
+        .copied()
+        .filter(|tree| home.within(*tree, Fixed::from_int(2000)))
+        .find_map(|tree| {
+            let from = tree - Vec2::from_ints(160, 0);
+            let to = tree + Vec2::from_ints(160, 0);
+            let clearance = &local.world().clearance;
+            (clearance.point_clear(from, radius)
+                && clearance.point_clear(to, radius)
+                && !clearance.capsule_clear(from, to, radius))
+            .then_some((from, to))
+        })
+        .expect("nearby tree with walkable endpoints and a blocked straight segment");
+    let teleport = sessions[0]
+        .issue(IssuedOrder::hero(Order::Cheat {
+            cheat: Cheat::Teleport { at: from },
+        }))
+        .unwrap();
+    for (session, stream) in sessions
+        .iter_mut()
+        .zip(local.step(&[&[teleport], &[]]).unwrap())
+    {
+        support::fold(session, stream);
+    }
+    let mut lua = host();
+    let source = format!(
+        "function Think() GetBot():Action_MoveDirectly(Vector({},{},0)) end",
+        to.x.to_int() - 9216,
+        to.y.to_int() - 9216
+    );
+    lua.add_script(
+        SlotId(0),
+        ScriptKind::Takeover,
+        "direct_move",
+        source.as_bytes(),
+    )
+    .unwrap();
+    let turn = lua.think(&sessions[0]).unwrap();
+    assert!(turn.failures.is_empty(), "{:?}", turn.failures);
+    assert_eq!(
+        turn.bots[0].orders,
+        vec![IssuedOrder::hero(Order::Move {
+            target: Target::Pos(to)
+        })]
+    );
+    let outgoing: Vec<_> = turn.bots[0]
+        .orders
+        .iter()
+        .map(|&order| sessions[0].issue(order).unwrap())
+        .collect();
+    let mut detoured = false;
+    let mut arrived = false;
+    for tick in 0..300 {
+        let orders = if tick == 0 { outgoing.as_slice() } else { &[] };
+        for (session, stream) in sessions.iter_mut().zip(local.step(&[orders, &[]]).unwrap()) {
+            support::fold(session, stream);
+        }
+        let pos = sessions[0].own_hero().unwrap().pos;
+        detoured |= (pos.y - from.y).abs() > Fixed::from_int(24);
+        if pos.within(to, Fixed::from_int(8)) {
+            arrived = true;
+            break;
+        }
+    }
+    assert!(arrived, "direct move must finish at its target");
+    assert!(
+        detoured,
+        "unit pathfinding must route around the standing tree"
+    );
+}

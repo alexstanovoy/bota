@@ -8,7 +8,10 @@ pub(super) fn install(lua: &mut Lua, context: &ApiContext) -> Result<(), Binding
     register_unit(lua, context, "GetHealth", get_health)?;
     register_unit(lua, context, "GetLocation", get_location)?;
     register_unit(lua, context, "GetOrigin", get_location)?;
-    register_unit(lua, context, "Action_MoveToLocation", move_to_location)
+    register_unit(lua, context, "Action_MoveToLocation", move_to_location)?;
+    // This skips the bot pathfinder,
+    // while its ordinary move order still uses the unit's pathfinder.
+    register_unit(lua, context, "Action_MoveDirectly", move_to_location)
 }
 
 fn get_location(context: &ApiContext, vm: &mut Vm, args: Args) -> Result<usize, LuaError> {
