@@ -148,8 +148,12 @@ impl World {
             return false;
         };
         let damage_amp_bp = self.outgoing_spell_amp_bp(Some(caster), DamageKind::Magical);
-        let (line, most) = requiem_fear_ticks(self.has_talent(caster, Talent::RequiemFear));
-        let fear = Fear { line, most };
+        let hold = requiem_fear_ticks(level, self.has_talent(caster, Talent::RequiemFear));
+        let fear = Fear {
+            first: hold.first,
+            line: hold.line,
+            most: hold.most,
+        };
         // How far the lines fly and how wide they catch both take the caster's AoE bonus.
         let aoe_bonus = self.aoe_bonus_of(caster);
         let distance = self.widened_of(caster, rules::REQUIEM_LINE_DISTANCE);

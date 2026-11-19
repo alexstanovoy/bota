@@ -95,10 +95,12 @@ pub enum ModifierKind {
         /// Percent added to its speed.
         pct: i32,
     },
-    /// Wears less armor for standing near a dark presence.
+    /// Wears less armor, and keeps less magic out, for standing near a dark presence.
     ArmorBroken {
         /// Armor taken off.
         armor: Fixed,
+        /// Percent added to the share of magic damage let through (7.42).
+        magic_pct: i32,
     },
     /// Keeps less magic out for having been crossed by a requiem: what its
     /// resistance lets through grows by `pct` percent.
@@ -621,9 +623,13 @@ impl ModifierKind {
                     effect: their_effect,
                 },
             ) => effect == their_effect && armor > their,
-            (ModifierKind::ArmorBroken { armor }, ModifierKind::ArmorBroken { armor: theirs }) => {
-                armor > theirs
-            }
+            (
+                ModifierKind::ArmorBroken { armor, magic_pct },
+                ModifierKind::ArmorBroken {
+                    armor: theirs,
+                    magic_pct: their_magic,
+                },
+            ) => (armor, magic_pct) > (theirs, their_magic),
             (
                 ModifierKind::Guarded {
                     armor,

@@ -335,19 +335,26 @@ fn blows_on(events: &[Event], unit: Entity) -> Vec<i32> {
 
 #[test]
 fn the_stack_damage_talent_adds_thirty_a_stack() {
-    for (talent, stack) in [(None, 35), (Some(1), 65)] {
+    // 7.42: the stack bonus is 20 at level one; the talent still adds 30.
+    for (talent, stack) in [(None, 20), (Some(1), 50)] {
         // Both the near and the middle raze land 325 east.
         let (mut world, _fiend, mark) = talented_fiend(325, talent);
         let first = cast_through(&mut world, RAZE_NEAR_SLOT, rules::RAZE_CAST_POINT_MS);
-        assert_eq!(burns_on(&first, mark), vec![85]);
+        assert_eq!(burns_on(&first, mark), vec![in_presence(85)]);
         let second = cast_through(&mut world, RAZE_MID_SLOT, rules::RAZE_CAST_POINT_MS);
-        assert_eq!(burns_on(&second, mark), vec![85 + stack], "{talent:?}");
+        assert_eq!(
+            burns_on(&second, mark),
+            vec![in_presence(85 + stack)],
+            "{talent:?}"
+        );
     }
 }
 
+/// No talent of his 7.42 tree adds to a feast's attack speed ("Level 10 Talent +30 Feast of Souls
+/// Attack Speed replaced with +2 Feast of Souls Collected"): the left level-10 slot leaves it.
 #[test]
-fn the_feast_attack_speed_talent_adds_thirty() {
-    for (talent, added) in [(None, 35), (Some(0), 65)] {
+fn no_talent_of_his_tree_adds_to_the_feasts_attack_speed() {
+    for (talent, added) in [(None, 35), (Some(0), 35)] {
         let (mut world, fiend, _mark) = talented_fiend(1500, talent);
         let before = world.stats.get(fiend).expect("settled").attack_speed;
         cast(&mut world, FEAST_SLOT, Target::None);
@@ -359,7 +366,8 @@ fn the_feast_attack_speed_talent_adds_thirty() {
 
 #[test]
 fn the_feast_souls_talent_takes_five_from_a_hero() {
-    for (talent, taken) in [(None, 3), (Some(2), 5)] {
+    // 7.42 moved it to the left level-10 slot.
+    for (talent, taken) in [(None, 3), (Some(0), 5)] {
         let (mut world, fiend, _mark) = talented_fiend(1500, talent);
         let foe = world.spawn_hero(
             Team::Dire,
@@ -376,19 +384,52 @@ fn the_feast_souls_talent_takes_five_from_a_hero() {
     }
 }
 
+/// 7.42: "Level 15 Talent +1.5 Presence Armor Reduction replaced with +1/2% Presence
+/// Armor/Resist Reduction".
 #[test]
-fn the_presence_talent_takes_one_and_a_half_armor_more() {
-    let armor = |talent| {
+fn the_presence_talent_takes_one_armor_and_two_percent_magic_resistance_more() {
+    let stood = |talent| {
         let (mut world, _fiend, mark) = talented_fiend(100, talent);
         world.step();
-        world.stats.get(mark).expect("standing").armor
+        *world.stats.get(mark).expect("standing")
     };
-    assert_eq!(armor(None) - armor(Some(3)), Fixed::from_ratio(3, 2));
+    let (plain, talented) = (stood(None), stood(Some(3)));
+    assert_eq!(plain.armor - talented.armor, Fixed::from_int(1));
+    // A creep keeps out no magic: 4% more let through is -4%, 6% is -6%.
+    assert_eq!(plain.magic_resist_bp, -400);
+    assert_eq!(talented.magic_resist_bp, -600);
+}
+
+/// 7.42's level-15 talent: "Feast of Souls Heals 25 HP Per Soul".
+#[test]
+fn the_feast_heal_talent_heals_twenty_five_a_soul() {
+    for (talent, healed) in [(None, 0), (Some(2), 3 * 25)] {
+        let (mut world, fiend, _mark) = talented_fiend(1500, talent);
+        let foe = world.spawn_hero(
+            Team::Dire,
+            Vec2::from_ints(5300, 5000),
+            SlotId(1),
+            HeroId::PUDGE,
+        );
+        put_on(&mut world, foe, ModifierKind::Stunned, 10_000);
+        world.settle();
+        stop_click(&mut world);
+        world.health.get_mut(fiend).expect("alive").hp = Fixed::from_int(100);
+        cast(&mut world, FEAST_SLOT, Target::None);
+        let before = world.health.get(fiend).expect("alive").hp;
+        run(&mut world, rules::FEAST_PERIOD_TICKS);
+        let after = world.health.get(fiend).expect("alive").hp;
+        let regen = world.stats.get(fiend).expect("settled").hp_regen;
+        let mended = regen * Fixed::from_int(rules::FEAST_PERIOD_TICKS as i32);
+        assert_eq!((after - before - mended).to_int(), healed, "{talent:?}");
+    }
 }
 
 #[test]
 fn the_requiem_talent_holds_a_line_longer_and_lifts_the_most() {
-    for (talent, held) in [(None, [18, 65]), (Some(4), [24, 78])] {
+    // 7.42: a level-one requiem holds 1.2 s and 0.1 s a line, with no most; the talent adds
+    // 0.5 s.
+    for (talent, held) in [(None, [39, 51]), (Some(4), [54, 66])] {
         for (lines, ticks) in [1, 5].into_iter().zip(held) {
             let (mut world, fiend, mark) = talented_fiend(60, talent);
             hand_souls(&mut world, fiend, lines);
@@ -431,7 +472,11 @@ fn the_raze_attack_talent_lands_a_swing_with_every_raze() {
     let stats = *world.stats.get(fiend).expect("settled");
     let armor = world.stats.get(mark).expect("standing").armor;
     let events = cast_through(&mut world, RAZE_NEAR_SLOT, rules::RAZE_CAST_POINT_MS);
-    assert_eq!(burns_on(&events, mark), vec![85], "the burn is the same");
+    assert_eq!(
+        burns_on(&events, mark),
+        vec![in_presence(85)],
+        "the burn is the same"
+    );
     let blows = blows_on(&events, mark);
     assert_eq!(blows.len(), 1, "and one swing's damage rides with it");
     // A creep's armor lets 100 / (100 + 6 armor) through.

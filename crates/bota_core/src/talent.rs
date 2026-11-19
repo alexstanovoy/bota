@@ -8,17 +8,18 @@ use crate::rules;
 /// One talent: what it changes. The numbers live in [`rules`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Talent {
-    /// [`rules::TALENT_FEAST_ATTACK_SPEED`] more attack speed from a feast.
+    /// [`rules::TALENT_FEAST_ATTACK_SPEED`] more attack speed from a feast. In no tree since
+    /// 7.42; kept to be offered again.
     FeastAttackSpeed,
     /// [`rules::TALENT_RAZE_STACK_DAMAGE`] more raze damage a stack.
     RazeStackDamage,
     /// [`rules::TALENT_FEAST_SOULS_PER_HERO`] more souls a feast takes from a
     /// hero.
     FeastSoulsPerHero,
-    /// [`rules::TALENT_PRESENCE_ARMOR`] more armor taken by the presence.
+    /// [`rules::TALENT_PRESENCE_ARMOR`] more armor and
+    /// [`rules::TALENT_PRESENCE_MAGIC_PCT`] more magic resistance taken by the presence.
     PresenceArmor,
-    /// [`rules::TALENT_REQUIEM_LINE_TICKS`] more fear a requiem line, up to
-    /// [`rules::TALENT_REQUIEM_HOLD_TICKS`] more in all.
+    /// [`rules::TALENT_REQUIEM_HOLD_TICKS`] more fear and slow from a requiem.
     RequiemFear,
     /// [`rules::TALENT_NECRO_SOUL_CAP`] more souls held from kills.
     NecroSoulCap,
@@ -45,6 +46,8 @@ pub enum Talent {
     FleshHeapBonuses,
     /// A dismember bites harder.
     DismemberDamage,
+    /// A feast heals [`rules::TALENT_FEAST_HEAL_PER_SOUL`] for every soul it takes (7.42).
+    FeastHealPerSoul,
 }
 
 impl Talent {
@@ -70,6 +73,7 @@ impl Talent {
             Talent::DismemberDuration => "special_bonus_unique_pudge_6",
             Talent::FleshHeapBonuses => "special_bonus_unique_pudge_1",
             Talent::DismemberDamage => "special_bonus_unique_pudge_3",
+            Talent::FeastHealPerSoul => "special_bonus_unique_nevermore_frenzy_heal_per_soul",
         }
     }
 }

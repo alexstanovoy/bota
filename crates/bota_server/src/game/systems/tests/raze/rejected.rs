@@ -95,7 +95,7 @@ fn raze_zero_damage_from_total_resistance_neither_adds_nor_refreshes_stacks() {
     assert_eq!(land(&mut world, caster, target, 0), 0);
     assert_eq!(effects(&world, target), vec![effect(1, 179)]);
     world.stats.get_mut(target).unwrap().magic_resist_bp = 0;
-    assert_eq!(land(&mut world, caster, target, 0), 120);
+    assert_eq!(land(&mut world, caster, target, 0), 105);
 }
 
 #[test]

@@ -178,7 +178,10 @@ fn scripted_with_observer(watched: bool) -> Left {
     let server = thread::spawn(move || run(listener, options));
     let watcher = watched.then(|| observer(&address));
     let map = bota_core::map_of(MapId(2));
-    let middle = Vec2::from_ints(7500, 7500);
+    // The mid river, out of both first towers' reach: the seat's hero alone brings the made
+    // hero down (beside the Radiant tower, 7.42's sturdier heroes lived long enough for the tower
+    // to take the last hit).
+    let middle = Vec2::from_ints(8700, 8800);
     let enemy_fountain = bota_core::fountain_pos(map, Team::Dire);
     let mut decisions = 0u32;
     let outcome = Link::play(&address, "meta", HeroId::SHADOW_FIEND, |session| {

@@ -5,7 +5,7 @@
 use bota_core::{Odds, UnitDef, carried_pierces, rules};
 
 use crate::game::{Entity, Event, UnitOrder, World, wire_id};
-use bota_proto::{DamageKind, EventKind, Fixed, HeroId, ItemId, SlotId, Team, UnitKind, Vec2};
+use bota_proto::{DamageKind, EventKind, HeroId, ItemId, SlotId, Team, UnitKind, Vec2};
 
 use super::support::{ANVIL, assert_dota_runs, hold, opened_rolls, step_until, swing_at};
 
@@ -218,8 +218,9 @@ fn every_pierce_carried_rolls_its_own_and_several_bars_pierce_as_one() {
     );
 }
 
+/// 7.42: the bar "No longer provides +50 Attack Range for melee heroes".
 #[test]
-fn a_monkey_king_bar_reaches_further_in_melee_hands_only() {
+fn a_monkey_king_bar_reaches_no_further_in_any_hands() {
     let mut world = World::new();
     let bare = hero_holding(&mut world, HeroId::PUDGE, &[]);
     let armed = hero_holding(&mut world, HeroId::PUDGE, &[ItemId::MONKEY_KING_BAR]);
@@ -227,13 +228,13 @@ fn a_monkey_king_bar_reaches_further_in_melee_hands_only() {
     let armed_archer = hero_holding(&mut world, HeroId::SHADOW_FIEND, &[ItemId::MONKEY_KING_BAR]);
     world.settle();
     let reach = |entity: Entity| world.stats.get(entity).expect("settled").attack_range;
-    assert_eq!(reach(armed) - reach(bare), Fixed::from_int(50));
+    assert_eq!(reach(armed), reach(bare));
     assert_eq!(reach(armed_archer), reach(archer));
 }
 
 /// A pierce's magic rides with the swing and takes the attacker's spell amplification as a spell's
-/// would (the Monkey King Bar's Mystic Strike, `bonus_chance_damage` 70): a Kaya's 10% makes it
-/// 77, in melee and ranged hands alike.
+/// would (the Monkey King Bar's Mystic Strike, `bonus_chance_damage` 70): a Kaya's 6% (7.42) makes
+/// it 74, in melee and ranged hands alike.
 #[test]
 fn a_kayas_spell_amplification_amplifies_a_pierces_magic_in_melee_and_ranged_hands() {
     for hero in [HeroId::PUDGE, HeroId::SHADOW_FIEND] {
@@ -248,7 +249,7 @@ fn a_kayas_spell_amplification_amplifies_a_pierces_magic_in_melee_and_ranged_han
             .collect();
         assert!(!bonuses.is_empty(), "{hero:?}: the bar pierces");
         assert!(
-            bonuses.iter().all(|&bonus| bonus == 77),
+            bonuses.iter().all(|&bonus| bonus == 74),
             "{hero:?}: {bonuses:?}"
         );
     }

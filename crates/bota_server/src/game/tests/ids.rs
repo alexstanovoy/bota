@@ -61,7 +61,10 @@ fn every_modifier() -> Vec<ModifierKind> {
         ModifierKind::Slowed { pct: 0 },
         ModifierKind::Hastened { pct: 0 },
         ModifierKind::Haste { pct: 0 },
-        ModifierKind::ArmorBroken { armor: Fixed::ZERO },
+        ModifierKind::ArmorBroken {
+            armor: Fixed::ZERO,
+            magic_pct: 0,
+        },
         ModifierKind::MagicBroken { pct: 0 },
         ModifierKind::Guarded {
             armor: 0,

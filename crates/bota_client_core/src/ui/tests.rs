@@ -3421,7 +3421,8 @@ fn an_aether_lens_lengthens_the_drawn_reach_of_a_blink_dagger() {
         vec![hero],
         vec![a_seat(SlotId(0), Some(id))],
     ));
-    assert_eq!(app.reach_of(Slot::Item(0)), blink + 225);
+    // 7.42: the lens's "Cast Range bonus decreased from +225 to +200".
+    assert_eq!(app.reach_of(Slot::Item(0)), blink + 200);
 }
 
 #[test]

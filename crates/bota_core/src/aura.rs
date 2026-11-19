@@ -4,7 +4,7 @@
 //! ability whose passive it is (Shadow Fiend's presence, a neutral's aura:
 //! [`AbilityDef::aura`](crate::AbilityDef::aura)).
 
-use crate::{ModifierKind, NeutralAbility, Talent, presence_armor};
+use crate::{ModifierKind, NeutralAbility, Talent, presence_armor, presence_magic_pct};
 
 /// Whom an aura reaches: its carrier's side or every other.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -47,8 +47,8 @@ pub enum AuraModifier {
     /// This modifier, grown by the upgrade intervals its carrier spawned
     /// after ([`ModifierKind::grown`]).
     Kind(ModifierKind),
-    /// The armor the presence tears at the level its carrier holds it, the
-    /// talent tearing more: [`presence_armor`].
+    /// The armor and magic resistance the presence tears at the level its carrier holds it,
+    /// the talent tearing more: [`presence_armor`], [`presence_magic_pct`].
     ArmorBroken,
     /// A neutral spell's own modifier, at the level its carrier holds the
     /// spell.
@@ -80,6 +80,7 @@ impl AuraModifier {
             AuraModifier::Kind(kind) => kind.grown(steps),
             AuraModifier::ArmorBroken => ModifierKind::ArmorBroken {
                 armor: presence_armor(level, talented(Talent::PresenceArmor)),
+                magic_pct: presence_magic_pct(level, talented(Talent::PresenceArmor)),
             },
             AuraModifier::Spell(ability) => ModifierKind::Spell {
                 ability,

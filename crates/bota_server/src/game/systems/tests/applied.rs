@@ -567,11 +567,13 @@ fn max_mana_scales_the_raised_base_before_items() {
     let (mut world, hero, _creep) = arena();
     hold(&mut world, hero, 0, ItemId::NULL_TALISMAN);
     apply(&mut world, hero, spec(|s| s.max_mana = 20_000), 10);
-    let expected = SHADOW_FIEND.max_mana * 2 + rules::MANA_PER_INTELLIGENCE * 22;
+    // His 16 intelligence and the talisman's 5, and since 7.42 the talisman's flat 60 mana ("No
+    // longer increases max mana by 3%", "Now provides +60 Mana").
+    let expected = SHADOW_FIEND.max_mana * 2 + rules::MANA_PER_INTELLIGENCE * (16 + 5) + 60;
     assert_eq!(
         world.stats.get(hero).map(|stats| stats.max_mana.to_int()),
         Some(expected),
-        "the base is doubled first, then the talisman's intelligence pays"
+        "the base is doubled first, then the talisman's intelligence and mana pay"
     );
 }
 

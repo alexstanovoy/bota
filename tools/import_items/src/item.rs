@@ -27,6 +27,8 @@ pub struct Item {
     /// `ItemStockInitial`, `ItemStockMax`, `ItemStockTime` and `ItemInitialStockTime`
     /// (thousandths of seconds).
     pub stock: Option<(i64, i64, Milli, Milli)>,
+    /// `ItemPurchasable`, unless `IsObsolete`: the game keeps an obsolete item's row and offers
+    /// it nowhere, and so does bota, its rules kept to be offered again.
     pub purchasable: bool,
     pub secret_shop: bool,
     /// `SpellDispellableType` without its `SPELL_DISPELLABLE_` prefix: `NO`, `YES` or
@@ -99,6 +101,7 @@ const READ: &[&str] = &[
     "ItemKillable",
     "AllowedInBackpack",
     "ItemCanBeUsedWithoutInventory",
+    "IsObsolete",
     "CooldownPausedOutOfInventory",
     "ItemRequirements",
     "ItemResult",
@@ -122,7 +125,6 @@ const LEFT_OUT: &[&str] = &[
     "AbilityUnitTargetType",
     "Effect",
     "FightRecapLevel",
-    "IsObsolete",
     "IsTempestDoubleClonable",
     "ItemAllowCombineFromGround",
     // Alt-click notification metadata; it changes no simulation rule.
@@ -265,7 +267,7 @@ pub fn read(key: &str, block: &Kv) -> Result<Item, String> {
             .transpose()
             .map_err(fail)?,
         stock,
-        purchasable: whole("ItemPurchasable", 1)? == 1,
+        purchasable: whole("ItemPurchasable", 1)? == 1 && whole("IsObsolete", 0)? == 0,
         secret_shop,
         dispel,
         immunity,
@@ -457,6 +459,27 @@ mod tests {
             parse(r#""SecretShop" "2""#).expect_err("invalid flag"),
             "item_x: SecretShop must be 0 or 1"
         );
+    }
+
+    /// An item the game marks `IsObsolete` keeps its row and every number, and nobody can buy
+    /// it: Javelin in 7.42.
+    #[test]
+    fn an_obsolete_item_keeps_its_numbers_and_is_not_purchasable() {
+        let parse = |value: &str| {
+            let source = Source::new(
+                "fixture".into(),
+                &format!(
+                    r#""DOTAAbilities" {{ "item_x" {{ "ItemCost" "900" {value} "AbilityValues" {{ "chance" "25" }} }} }}"#
+                ),
+            )
+            .expect("KV");
+            read("item_x", source.items().get("item_x").expect("item")).expect("an item")
+        };
+        assert!(parse("").purchasable);
+        let obsolete = parse(r#""IsObsolete" "1""#);
+        assert!(!obsolete.purchasable);
+        assert_eq!(obsolete.cost, 900);
+        assert_eq!(obsolete.values, vec![("chance".to_owned(), vec![25_000])]);
     }
 
     /// 7.42's item scripts mark the values an attack's Item Potency scales

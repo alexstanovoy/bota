@@ -4,6 +4,9 @@ const ITEM_ROSHANS_BANNER: crate::ScriptData = crate::ScriptData {
     values: crate::item_table::script_values(bota_proto::ItemId::ROSHANS_BANNER),
 };
 
+/// The quarters a pip of health holds: the share of a creep's or an illusion's attack.
+const QUARTERS_A_PIP: i32 = 4;
+
 /// Each upgrade of the planted ward uses the same script's health and aura rows.
 static BANNER_AURAS: [[crate::Aura; 1]; 3] = [[banner_aura(0)], [banner_aura(1)], [banner_aura(2)]];
 pub static BANNERS: [crate::UnitDef; 3] = [banner(0), banner(1), banner(2)];
@@ -11,16 +14,19 @@ pub static BANNERS: [crate::UnitDef; 3] = [banner(0), banner(1), banner(2)];
 const fn banner(level: usize) -> crate::UnitDef {
     use crate::HitCount;
     use crate::roshan_data::BANNER_UNIT as U;
-    let hp = ITEM_ROSHANS_BANNER.value("health")[level].int();
-    let hits = ITEM_ROSHANS_BANNER.value("health_tooltip")[level].int();
+    // 7.42: "Now has fragile pip health". Its `health` is its pips; a hero's attack takes one,
+    // a melee hero's two (Fragile), anything else's a quarter. Its health is counted in quarter
+    // pips, so every striker's share is whole.
+    let pips = ITEM_ROSHANS_BANNER.value("health")[level].int();
+    assert!(ITEM_ROSHANS_BANNER.value("health_tooltip")[level].int() == pips);
     crate::UnitDef {
         kind: bota_proto::UnitKind::Banner,
         base_level: U.first("Level").int() as u8,
-        max_hp: hp,
+        max_hp: QUARTERS_A_PIP * pips,
         hit_count: Some(HitCount {
-            melee_hero: hits as u8,
-            ranged_hero: (hits * 2) as u8,
-            other: hp as u8,
+            melee_hero: ((pips + 1) / 2) as u8,
+            ranged_hero: pips as u8,
+            other: (QUARTERS_A_PIP * pips) as u8,
         }),
         collision: 18, // Measured NPC hull; the script names HULL_SIZE_REGULAR.
         bound: 8,

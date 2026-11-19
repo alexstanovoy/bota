@@ -2,6 +2,15 @@
 use crate::PitZone;
 use bota_proto::Vec2;
 pub const DOTA_NO_WARDS: &[PitZone] = &[
+    // maps/dota/entities/unnamed_3010_4090_49.vmdl
+    PitZone {
+        corners: &[
+            Vec2::from_ints(13919, 8060),
+            Vec2::from_ints(14175, 7874),
+            Vec2::from_ints(14366, 8099),
+            Vec2::from_ints(14078, 8280),
+        ],
+    },
     // maps/dota/entities/unnamed_2699_25701.vmdl
     PitZone {
         corners: &[
@@ -22,18 +31,18 @@ pub const DOTA_NO_WARDS: &[PitZone] = &[
     // maps/dota/entities/unnamed_2699_25707.vmdl
     PitZone {
         corners: &[
-            Vec2::from_ints(15424, 15360),
-            Vec2::from_ints(15872, 14912),
-            Vec2::from_ints(15872, 16320),
-            Vec2::from_ints(15424, 16320),
+            Vec2::from_ints(15168, 15104),
+            Vec2::from_ints(15616, 14656),
+            Vec2::from_ints(15616, 16064),
+            Vec2::from_ints(15168, 16064),
         ],
     },
     PitZone {
         corners: &[
-            Vec2::from_ints(15872, 14912),
-            Vec2::from_ints(17024, 14912),
-            Vec2::from_ints(17024, 16320),
-            Vec2::from_ints(15872, 16320),
+            Vec2::from_ints(15616, 14656),
+            Vec2::from_ints(16768, 14656),
+            Vec2::from_ints(16768, 16064),
+            Vec2::from_ints(15616, 16064),
         ],
     },
     // maps/dota/entities/unnamed_2699_28491.vmdl
@@ -58,15 +67,6 @@ pub const DOTA_NO_WARDS: &[PitZone] = &[
             Vec2::from_ints(12688, 6368),
             Vec2::from_ints(12501, 6786),
             Vec2::from_ints(11855, 6953),
-        ],
-    },
-    // maps/dota/entities/unnamed_3010_4090_49.vmdl
-    PitZone {
-        corners: &[
-            Vec2::from_ints(13919, 8060),
-            Vec2::from_ints(14175, 7874),
-            Vec2::from_ints(14366, 8099),
-            Vec2::from_ints(14078, 8280),
         ],
     },
 ];

@@ -240,7 +240,9 @@ impl HitEffect {
 /// most it may hold in all. Set as the requiem is let go, talents included.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Fear {
-    /// Ticks one line adds.
+    /// Ticks the first line holds a unit.
+    pub first: u32,
+    /// Ticks each further line adds.
     pub line: u32,
     /// The most ticks the hold reaches.
     pub most: u32,
@@ -267,7 +269,7 @@ state_hash!(Hit {
     riders,
     category
 });
-state_hash!(Fear { line, most });
+state_hash!(Fear { first, line, most });
 
 impl StateHash for HitEffect {
     fn state_hash(&self, fnv: &mut Fnv) {

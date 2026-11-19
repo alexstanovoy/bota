@@ -67,6 +67,7 @@ fn touch(world: &mut World, source: Entity, victim: Entity, damage: bool) {
             Modifier::new(
                 ModifierKind::ArmorBroken {
                     armor: Fixed::from_int(1),
+                    magic_pct: 0,
                 },
                 Some(source),
                 None,

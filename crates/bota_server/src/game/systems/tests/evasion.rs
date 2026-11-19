@@ -81,7 +81,8 @@ fn swings_in(events: &[Event], from: Entity, on: Entity) -> Vec<bool> {
 
 #[test]
 fn a_butterfly_makes_its_share_of_melee_and_thrown_swings_miss_in_dotas_runs() {
-    let odds = Odds::percent(35);
+    // 7.42: "Evasion bonus decreased from +35% to +30%".
+    let odds = Odds::percent(30);
     for (attacker, case) in [(&STRIKER, "melee"), (&ARCHER, "thrown")] {
         let (mut world, from, mark) = attacker_at_a_hero(attacker, &[ItemId::BUTTERFLY]);
         assert_eq!(
@@ -130,8 +131,8 @@ fn without_evasion_nothing_is_rolled_and_nothing_misses() {
 
 #[test]
 fn evasions_carried_stack_as_dota_stacks_them_and_miss_at_what_they_make() {
-    // Each lets through its share of what the others do: 1 - 0.85 * 0.65.
-    let both = Odds::parts(44_750_000);
+    // Each lets through its share of what the others do: 1 - 0.85 * 0.70 (7.42's Butterfly).
+    let both = Odds::parts(40_500_000);
     let (mut world, from, mark) =
         attacker_at_a_hero(&STRIKER, &[ItemId::TALISMAN_OF_EVASION, ItemId::BUTTERFLY]);
     assert_eq!(world.stats.get(mark).map(|stats| stats.evasion), Some(both));
@@ -148,7 +149,7 @@ fn evasions_carried_stack_as_dota_stacks_them_and_miss_at_what_they_make() {
 }
 
 #[test]
-fn a_butterfly_is_worth_its_agility_damage_and_share_of_the_base_pace() {
+fn a_butterfly_is_worth_its_agility_damage_and_attack_speed() {
     let (world, _from, plain) = attacker_at_a_hero(&STRIKER, &[]);
     let bare = *world.stats.get(plain).expect("settled");
     let (world, _from, mark) = attacker_at_a_hero(&STRIKER, &[ItemId::BUTTERFLY]);
@@ -162,9 +163,11 @@ fn a_butterfly_is_worth_its_agility_damage_and_share_of_the_base_pace() {
     let agility_pace =
         (with.attributes.agility * Fixed::from_int(rules::ATTACK_SPEED_PER_AGILITY)).to_int();
     let base = rules::BASE_ATTACK_SPEED + agility_pace;
+    // 7.42: "No longer provides +20% Base Attack Speed Percentage", "Now also provides +30
+    // Attack Speed".
     assert_eq!(
         with.attack_speed,
-        base + base * 20 / 100,
-        "a fifth of the base pace and of what agility adds, and nothing else"
+        base + 30,
+        "thirty attack speed besides its agility's, and nothing else"
     );
 }

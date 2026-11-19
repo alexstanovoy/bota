@@ -76,6 +76,18 @@ pub fn presence_armor(level: u8, talented: bool) -> Fixed {
         }
 }
 
+/// How much magic resistance, in percent, the presence tears at a level (from one), the talent
+/// included when `talented` (7.42).
+#[inline]
+pub fn presence_magic_pct(level: u8, talented: bool) -> i32 {
+    rules::PRESENCE_MAGIC_PCT[usize::from(level - 1)]
+        + if talented {
+            rules::TALENT_PRESENCE_MAGIC_PCT
+        } else {
+            0
+        }
+}
+
 /// The lines a requiem sends for the souls held, one to a soul.
 pub fn requiem_lines(souls: u32) -> u32 {
     souls.min(rules::REQUIEM_LINES_MAX)
@@ -93,17 +105,35 @@ pub fn requiem_line_damage(level: usize) -> i32 {
     rules::REQUIEM_LINE_DAMAGE[level.min(rules::REQUIEM_LINE_DAMAGE.len() - 1)]
 }
 
-/// How long a requiem line's fear lasts, and the most a unit can be held
-/// in it, in ticks; the level-25 talent lengthens both when `talented`.
-pub fn requiem_fear_ticks(talented: bool) -> (u32, u32) {
-    if talented {
-        (
-            rules::REQUIEM_LINE_TICKS + rules::TALENT_REQUIEM_LINE_TICKS,
-            rules::REQUIEM_HOLD_MAX_TICKS + rules::TALENT_REQUIEM_HOLD_TICKS,
-        )
-    } else {
-        (rules::REQUIEM_LINE_TICKS, rules::REQUIEM_HOLD_MAX_TICKS)
+/// How a requiem of a level (counted from zero) holds what its lines cross in fear and slow,
+/// in ticks: the first line its hold by level and its share, each further line its share
+/// (7.42: "a base Fear and Slow duration of 1.2/1.5/1.8s and no longer has a max duration",
+/// "duration per soul ... 0.1s"); the level-20 talent lengthens the hold when `talented`. No
+/// more than every line crossing it can hold a unit.
+pub fn requiem_fear_ticks(level: usize, talented: bool) -> RequiemHold {
+    let base = rules::REQUIEM_HOLD_TICKS[level.min(rules::REQUIEM_HOLD_TICKS.len() - 1)]
+        + if talented {
+            rules::TALENT_REQUIEM_HOLD_TICKS
+        } else {
+            0
+        };
+    let line = rules::REQUIEM_TICKS_PER_LINE;
+    RequiemHold {
+        first: base + line,
+        line,
+        most: base + line * rules::REQUIEM_LINES_MAX,
     }
+}
+
+/// How a requiem's lines hold what they cross: [`requiem_fear_ticks`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RequiemHold {
+    /// Ticks the first line holds a unit.
+    pub first: u32,
+    /// Ticks each further line adds.
+    pub line: u32,
+    /// The most the lines of one requiem can hold it.
+    pub most: u32,
 }
 
 /// How wide a line of the requiem catches once it has flown so far of its

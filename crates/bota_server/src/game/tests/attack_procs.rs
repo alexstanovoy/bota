@@ -22,6 +22,7 @@ use super::support::*;
 /// Dota's published pseudo-random constants C(P), in parts of 2^32.
 const C10: u64 = 63_332_921; // 0.014745844781072
 const C25: u64 = 363_973_103; // 0.084744091852316
+const C15: u64 = 138_387_773; // 0.032220914373087
 const C30: u64 = 510_882_893; // 0.118949192725403
 const C60: u64 = 1_815_266_771; // 0.422649730810374
 
@@ -473,9 +474,11 @@ fn of_a_daedalus_and_a_crystalys_the_daedalus_rolls_first_and_a_proc_stops_the_r
     }
 }
 
-/// Revenant's Brooch's Phantom Critical leaves the swing as it is and deals 80% of its damage roll
-/// on top as magical damage (`crit_chance` 30, `crit_multiplier` 80), on Dota's 30% run: the
-/// magic lands the tick its swing does, laid to the Brooch, and only on the swings the run says.
+/// Revenant's Brooch's critical strike leaves the swing as it is and deals 50% of its damage roll
+/// on top as magical damage (7.42's artifact, Ghastly Strike: `crit_chance` 15,
+/// `crit_multiplier` 50), on Dota's 15% run: the magic lands the tick its swing does, laid to the
+/// Brooch, and only on the swings the run says. The Brooch is sold nowhere since 7.42; the duel
+/// hands it out.
 #[test]
 fn a_revenants_brooch_lands_its_critical_strike_as_magic_on_top_of_a_plain_swing() {
     let (mut world, hero, enemy) = duel(
@@ -485,11 +488,11 @@ fn a_revenants_brooch_lands_its_critical_strike_as_magic_on_top_of_a_plain_swing
         Vec2::from_ints(150, 0),
     );
     let place = item_place(slot_holding(&world, hero, ItemId::REVENANTS_BROOCH));
-    let mut run = Prd::new(&world, hero, place, C30);
+    let mut run = Prd::new(&world, hero, place, C15);
     let plain = taken_at(&world, hero, enemy, 100);
     let (low, high) = damage_range(&world, hero);
     let magic =
-        magical_on(&world, enemy, low * 80 / 100)..=magical_on(&world, enemy, high * 80 / 100);
+        magical_on(&world, enemy, low * 50 / 100)..=magical_on(&world, enemy, high * 50 / 100);
     let all = attack_until(&mut world, hero, enemy, 40).blows;
     let brooch = Some(Inflictor::Item(ItemId::REVENANTS_BROOCH));
     for blow in attack_blows(&all, enemy) {
@@ -520,12 +523,12 @@ fn a_revenants_brooch_lands_its_critical_strike_as_magic_on_top_of_a_plain_swing
     }
 }
 
-/// Phantom Critical "Counts as a Critical Strike for purposes of stacking": bota ranks it by the
-/// share of the swing the struck takes in all (180%), so with a Crystalys (160%) the Brooch rolls
-/// first and a Phantom Critical that lands leaves the Crystalys unrolled. A pin of bota's model:
-/// no primary text says how Dota ranks it.
+/// The Brooch's strike "Counts as a critical strike": bota ranks it by the share of the swing the
+/// struck takes in all, 150% since 7.42's artifact, so with a Crystalys (160%) the Crystalys rolls
+/// first and a Crystalys critical that lands leaves the Brooch unrolled. A pin of bota's model: no
+/// primary text says how Dota ranks it.
 #[test]
-fn a_phantom_critical_ranks_by_the_whole_it_deals_before_a_crystalys() {
+fn a_phantom_critical_ranks_by_the_whole_it_deals_after_a_crystalys() {
     let (mut world, hero, enemy) = duel(
         HeroId::PUDGE,
         &[ItemId::CRYSTALYS, ItemId::REVENANTS_BROOCH],
@@ -533,7 +536,7 @@ fn a_phantom_critical_ranks_by_the_whole_it_deals_before_a_crystalys() {
         Vec2::from_ints(150, 0),
     );
     let place = |item| item_place(slot_holding(&world, hero, item));
-    let mut brooch = Prd::new(&world, hero, place(ItemId::REVENANTS_BROOCH), C30);
+    let mut brooch = Prd::new(&world, hero, place(ItemId::REVENANTS_BROOCH), C15);
     let mut crystalys = Prd::new(&world, hero, place(ItemId::CRYSTALYS), C30);
     let (plain, crit) = (
         taken_at(&world, hero, enemy, 100),
@@ -545,10 +548,10 @@ fn a_phantom_critical_ranks_by_the_whole_it_deals_before_a_crystalys() {
         let phantom = all
             .iter()
             .any(|other| other.tick == blow.tick && other.inflictor == magic);
-        let (expect_phantom, expect_crit) = if brooch.next() {
-            (true, false)
+        let (expect_phantom, expect_crit) = if crystalys.next() {
+            (false, true)
         } else {
-            (false, crystalys.next())
+            (brooch.next(), false)
         };
         assert_eq!(phantom, expect_phantom, "{blow:?}");
         let span = if expect_crit { &crit } else { &plain };
@@ -1425,8 +1428,8 @@ fn an_illusion_strikes_critically_with_a_crystalys_on_its_own_run() {
 }
 
 /// An illusion's Phantom Critical lands its magic weakened as the illusion's damage is (Dota 7.38b
-/// fixed Revenant's Brooch dealing too much off illusions): 80% of its damage roll, amplified by
-/// the illusion's magical share, on Dota's 30% run.
+/// fixed Revenant's Brooch dealing too much off illusions): 50% of its damage roll (7.42's
+/// artifact), amplified by the illusion's magical share, on Dota's 15% run.
 #[test]
 fn an_illusions_phantom_critical_lands_its_weakened_magic() {
     let (mut world, _, illusion, enemy) = illusion_duel(
@@ -1436,11 +1439,11 @@ fn an_illusions_phantom_critical_lands_its_weakened_magic() {
         Vec2::from_ints(150, 0),
     );
     let place = item_place(slot_holding(&world, illusion, ItemId::REVENANTS_BROOCH));
-    let mut run = Prd::new(&world, illusion, place, C30);
+    let mut run = Prd::new(&world, illusion, place, C15);
     let stats = *world.stats.get(illusion).expect("derived");
     let amp = stats.attack_rider_amp_bp(DamageKind::Magical);
     assert!(amp < rules::NOMINAL_BP, "an illusion's magic is weakened");
-    let magic = |raw: i32| magical_on(&world, enemy, bota_core::amplify(raw * 80 / 100, amp));
+    let magic = |raw: i32| magical_on(&world, enemy, bota_core::amplify(raw * 50 / 100, amp));
     let span = magic(stats.damage)..=magic(stats.damage + stats.damage_spread);
     let all = attack_until(&mut world, illusion, enemy, 20).blows;
     let brooch = Some(Inflictor::Item(ItemId::REVENANTS_BROOCH));
@@ -1614,7 +1617,7 @@ fn a_vanguard_blocks_a_cleave_before_armor() {
 /// the item icon when procced nor is affected by cooldown manipulation" (Liquipedia, Maelstrom).
 /// With an Octarine Core's 25% cooldown cut carried, a proc leaves the Maelstrom showing no
 /// cooldown and its wait 6 ticks long, while a Skull Basher's bash waits its item cooldown cut by
-/// the Octarine (2.3 s: 69 ticks, cut to 51 or 52).
+/// the Octarine (2.3 s: 69 ticks, cut by 7.42's fifth to 55 or 56).
 #[test]
 fn maelstroms_wait_is_its_own_and_a_skull_bashers_is_its_items() {
     let items = [
@@ -1676,7 +1679,7 @@ fn maelstroms_wait_is_its_own_and_a_skull_bashers_is_its_items() {
         }
         if shows(basher) > 0 && !bashed {
             bashed = true;
-            assert!((51..=52).contains(&shows(basher)), "{}", shows(basher));
+            assert!((55..=56).contains(&shows(basher)), "{}", shows(basher));
         }
         if chained && bashed {
             return;
@@ -1984,7 +1987,7 @@ fn a_revenants_brooch_lands_no_magic_with_an_evaded_swing() {
         },
     );
     let place = item_place(slot_holding(&world, hero, ItemId::REVENANTS_BROOCH));
-    let mut run = Prd::new(&world, hero, place, C30);
+    let mut run = Prd::new(&world, hero, place, C15);
     let attacks = attack_until(&mut world, hero, enemy, 40);
     let brooch = Some(Inflictor::Item(ItemId::REVENANTS_BROOCH));
     let mut evaded_procs = 0;

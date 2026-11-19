@@ -594,8 +594,11 @@ fn add_modifiers<'a>(
                 sums.pace.change(pct.max(0));
             }
             ModifierKind::BonusArmor { armor, .. } => now.armor += kept(wearer.illusion, armor),
-            ModifierKind::ArmorBroken { armor } => {
+            ModifierKind::ArmorBroken { armor, magic_pct } => {
                 now.armor -= armor;
+                if magic_pct != 0 {
+                    let_more_magic_through(now, magic_pct);
+                }
             }
             ModifierKind::Laid { item, .. } => {
                 if let Some(laid) = item_def(item).and_then(|def| def.on_attack) {

@@ -750,8 +750,8 @@ fn apply_hit_effect(blow: Hit, stats: &Table<Stats>, modifiers: &mut Table<Modif
 }
 
 /// Lays a requiem line's fear, slow and torn magic resistance on what it
-/// burnt, each lengthened by the line's share and shortened by the target's
-/// status resistance.
+/// burnt: the first line of a requiem its hold, each further one its share, each shortened by
+/// the target's status resistance. A requiem that tears no resistance (7.42's) lays none.
 fn frighten(
     blow: Hit,
     level: usize,
@@ -762,20 +762,28 @@ fn frighten(
     assert_eq!(blow.kind, DamageKind::Magical);
     assert!(level < rules::REQUIEM_SLOW_PCT.len());
     assert!(fear.line > 0);
-    assert!(fear.most >= fear.line);
+    assert!(fear.first >= fear.line);
+    assert!(fear.most >= fear.first);
     let Some(on_it) = modifiers.get_mut(blow.target) else {
         return;
     };
+    let tear = rules::REQUIEM_MAGIC_BREAK_PCT[level];
     for kind in [
         ModifierKind::Slowed {
             pct: rules::REQUIEM_SLOW_PCT[level],
         },
-        ModifierKind::MagicBroken {
-            pct: rules::REQUIEM_MAGIC_BREAK_PCT[level],
-        },
+        ModifierKind::MagicBroken { pct: tear },
         ModifierKind::Feared,
     ] {
-        let ticks = resisted_ticks(stats, blow.target, kind, fear.line);
+        if matches!(kind, ModifierKind::MagicBroken { .. }) && tear == 0 {
+            continue;
+        }
+        let share = if on_it.held_ticks(kind, blow.source) == 0 {
+            fear.first
+        } else {
+            fear.line
+        };
+        let ticks = resisted_ticks(stats, blow.target, kind, share);
         on_it.extend(
             Modifier::new(kind, blow.source, blow.inflictor, Some(ticks)),
             fear.most,

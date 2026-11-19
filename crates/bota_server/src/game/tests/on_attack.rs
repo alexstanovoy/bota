@@ -750,7 +750,8 @@ fn frost_on_a_sange_and_yasha_carrier_lasts_its_resisted_share() {
 }
 
 /// Amplifications and cuts of Health Restoration stack apart and then add (Dota 7.39): Frost's 15%
-/// cut on a Sange carrier's 12% amplification leaves 97%, and a heal of 200 comes through as 194.
+/// cut on a Sange carrier's 16% amplification (7.42) leaves 101%, and a heal of 200 comes through as
+/// 202.
 #[test]
 fn frost_on_a_sange_carrier_leaves_the_difference_of_its_cut_and_amplification() {
     let (mut world, hero, mark, _) = first_landing(&[ItemId::ORB_OF_FROST], |world, at| {
@@ -763,11 +764,11 @@ fn frost_on_a_sange_carrier_leaves_the_difference_of_its_cut_and_amplification()
     assert_eq!(laid_on(&world, mark, ItemId::ORB_OF_FROST).0, 1, "frosted");
     assert_eq!(
         world.stats.get(mark).expect("derived").restoration_bp,
-        9_700
+        10_100
     );
     world.health.get_mut(mark).expect("alive").hp = Fixed::from_int(100);
     let (restored, _) = world.refill_pools(mark, 200, 0);
-    assert_eq!(restored, 194);
+    assert_eq!(restored, 202);
 }
 
 /// Frost lands on enemy units alone (Liquipedia, Orb of Frost: not "Buildings", "Ward-type units",

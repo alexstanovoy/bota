@@ -535,8 +535,10 @@ fn pipe_grants_magic_resistance_and_a_barrier_with_a_receiver_lockout() {
     );
 }
 
+/// 7.42: "Guardian Aura no longer provides 14.5 bonus health regeneration to the wearer when
+/// below 25% health": a low wearer mends as its low ally does.
 #[test]
-fn greaves_boost_only_the_low_health_wearer_and_restore_allied_pools() {
+fn greaves_boost_no_low_health_wearer_and_restore_allied_pools() {
     let mut game = Match::new();
     give(&mut game, 0, "item_guardian_greaves");
     for seat in 0..2 {
@@ -549,9 +551,10 @@ fn greaves_boost_only_the_low_health_wearer_and_restore_allied_pools() {
         );
     }
     game.advance(1);
-    assert!(
-        game.hero(0).hp_regen > game.hero(1).hp_regen,
-        "the threshold boost belongs to the wearer"
+    assert_eq!(
+        game.hero(0).hp_regen,
+        game.hero(1).hp_regen,
+        "no threshold boost for the wearer"
     );
     let before = game.hero(1).hp;
     let mana = game.hero(1).mana;
@@ -881,10 +884,14 @@ fn tranquil_boots_break_on_a_landed_attack_and_refresh_does_not_restore_the_pass
             target: bota_proto::Target::None,
         },
     );
-    assert_eq!(
-        game.hero(0).hp_regen,
-        regen,
-        "broken boots grant no regeneration"
+    // 7.42: Respite "now provides 2 Health Regen while on cooldown instead of 0".
+    let broken_regen = bota_proto::Fixed::from_ratio(
+        source("item_tranquil_boots", "broken_health_regen").hundredths(),
+        100,
+    );
+    assert!(
+        (game.hero(0).hp_regen.raw - regen.raw - broken_regen.raw).abs() < 64,
+        "broken boots grant their broken regeneration alone"
     );
     let lost_speed = source("item_tranquil_boots", "bonus_movement_speed").int()
         - source("item_tranquil_boots", "broken_movement_speed").int();
@@ -893,9 +900,8 @@ fn tranquil_boots_break_on_a_landed_attack_and_refresh_does_not_restore_the_pass
         bota_proto::Fixed::from_int(lost_speed)
     );
     game.cheat(0, Cheat::Refresh);
-    assert_eq!(
-        game.hero(0).hp_regen,
-        regen,
+    assert!(
+        (game.hero(0).hp_regen.raw - regen.raw - broken_regen.raw).abs() < 64,
         "refresh resets cooldowns without repairing boots"
     );
     game.advance(source("item_tranquil_boots", "break_time").secs().ticks());
@@ -2037,9 +2043,14 @@ fn tranquil_boots_remain_broken_on_rune_illusions_without_breaking_the_real_pair
     assert_eq!(illusions.len(), bota_core::ILLUSION_RUNE_COUNT);
     for &illusion in &illusions {
         let unit = game.views[0].unit(illusion).expect("illusion");
-        assert_eq!(
-            unit.hp_regen, base.hp_regen,
-            "illusion gets no Tranquil regeneration"
+        // 7.42: broken boots keep their Respite's 2 regeneration.
+        let broken_regen = Fixed::from_ratio(
+            source("item_tranquil_boots", "broken_health_regen").hundredths(),
+            100,
+        );
+        assert!(
+            (unit.hp_regen.raw - base.hp_regen.raw - broken_regen.raw).abs() < 64,
+            "an illusion gets the broken boots' regeneration alone"
         );
         assert_eq!(
             unit.move_speed,
@@ -2053,13 +2064,17 @@ fn tranquil_boots_remain_broken_on_rune_illusions_without_breaking_the_real_pair
         "the real pair remains intact"
     );
     game.advance(source("item_tranquil_boots", "break_time").secs().ticks() + 1);
+    let broken_regen = Fixed::from_ratio(
+        source("item_tranquil_boots", "broken_health_regen").hundredths(),
+        100,
+    );
     for illusion in illusions {
-        assert_eq!(
-            game.views[0]
-                .unit(illusion)
-                .expect("illusion remains alive")
-                .hp_regen,
-            base.hp_regen,
+        let regen = game.views[0]
+            .unit(illusion)
+            .expect("illusion remains alive")
+            .hp_regen;
+        assert!(
+            (regen.raw - base.hp_regen.raw - broken_regen.raw).abs() < 64,
             "illusion passive stays broken beyond ordinary recovery"
         );
     }

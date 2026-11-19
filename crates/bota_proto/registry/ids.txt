@@ -253,6 +253,7 @@ item 152 live item_tranquil_boots
 item 153 live item_boots_of_bearing
 item 154 live item_crellas_crozier
 item 155 live item_recipe_crellas_crozier
+item 156 live item_recipe_maelstrom
 
 effect 0 retired bota_haste
 effect 1 live modifier_flask_healing

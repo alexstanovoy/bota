@@ -574,10 +574,11 @@ fn a_butterfly_on_the_target_makes_level_swings_miss_and_both_seats_are_told() {
         target_items: &[ItemId::BUTTERFLY],
         handed_after: None,
     });
-    // Seed 5's run of Dota's pseudo-random 35%.
+    // Seed 5's run of Dota's pseudo-random 30% (7.42: "Evasion bonus decreased from +35% to
+    // +30%").
     assert_eq!(
         played.attacker.misses(),
-        14,
+        11,
         "Butterfly misses over {BLOWS} blows: {:?}",
         played.attacker.blows
     );

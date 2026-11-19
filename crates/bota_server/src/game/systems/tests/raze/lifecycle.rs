@@ -13,7 +13,7 @@ fn raze_already_queued_before_caster_death_keeps_its_damage_and_old_generation_e
     world.push_hit(None, caster, 1, DamageKind::Pure, None);
     reveal(&mut world, target);
     assert!(world.cast_raze(caster, 0, 1));
-    assert_eq!(burns_on(&world.step(), target), vec![120]);
+    assert_eq!(burns_on(&world.step(), target), vec![105]);
     assert!(!world.alive(caster));
     assert_eq!(effects(&world, target), vec![effect(2, 180)]);
     let returned = hero(&mut world, Team::Radiant, ORIGIN, SlotId(0));
@@ -99,7 +99,7 @@ fn raze_source_records_have_a_fixed_16_source_bound_with_oldest_expiry_eviction(
         assert_eq!(land(&mut world, caster, target, 0), 85);
     }
     assert_eq!(effects(&world, target).len(), 16);
-    assert_eq!(land(&mut world, second.unwrap(), target, 0), 120);
+    assert_eq!(land(&mut world, second.unwrap(), target, 0), 105);
     assert_eq!(land(&mut world, first, target, 0), 85);
     assert_eq!(effects(&world, target).len(), 16);
 }

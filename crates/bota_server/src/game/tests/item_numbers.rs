@@ -58,7 +58,7 @@ fn the_shop_charges_dota_741_prices() {
 }
 
 #[test]
-fn the_bands_and_the_cheap_parts_carry_their_741_bonuses() {
+fn the_bands_and_the_cheap_parts_carry_their_742_bonuses() {
     let (mut world, hero) = hero_out_of_fountain(HeroId::SHADOW_FIEND);
     let bare = *world.stats.get(hero).expect("derived");
     let per_second = |hundredths: i32| Fixed::from_ratio(hundredths, 100 * 30);
@@ -70,10 +70,11 @@ fn the_bands_and_the_cheap_parts_carry_their_741_bonuses() {
         intelligence: Fixed::from_int(2),
     };
     assert_eq!(wraith.attributes, bare.attributes + band);
+    // 7.42: "Attack Speed bonus increased from +6 to +10".
     assert_eq!(
         wraith.attack_speed - bare.attack_speed,
-        6 + 5,
-        "six attack speed besides the agility"
+        10 + 5,
+        "ten attack speed besides the agility"
     );
     assert!(near(
         wraith.armor - bare.armor,
@@ -103,10 +104,11 @@ fn the_bands_and_the_cheap_parts_carry_their_741_bonuses() {
         null.attributes.intelligence - bare.attributes.intelligence,
         Fixed::from_int(5)
     );
+    // 7.42: "No longer increases max mana by 3%", "Now provides +60 Mana".
     let mana = bare.max_mana + Fixed::from_int(5 * rules::MANA_PER_INTELLIGENCE);
     assert!(
-        near(null.max_mana, mana + mana * Fixed::from_ratio(3, 100)),
-        "three percent more mana, intelligence included"
+        near(null.max_mana, mana + Fixed::from_int(60)),
+        "sixty mana more, besides the intelligence's"
     );
     assert!(near(
         null.mana_regen - bare.mana_regen,
@@ -131,19 +133,24 @@ fn the_bands_and_the_cheap_parts_carry_their_741_bonuses() {
 
 #[test]
 fn boots_and_the_blade_carry_less_to_a_ranged_hero() {
-    // Phase Boots: +50 speed and +4 armor to both; +18 damage melee, +12
-    // ranged. Treads: +55 speed melee, +45 ranged. Quelling Blade: +8 melee,
-    // +4 ranged against creeps.
-    for (hero, damage, treads_speed, quell) in [
-        (HeroId::PUDGE, 18, 55, 8),
-        (HeroId::SHADOW_FIEND, 12, 45, 4),
+    // Phase Boots since 7.42: +15 damage and +4 armor to both; +55 speed melee, +45 ranged
+    // ("Movement Speed bonus changed from +50 to +45/55 for Ranged/Melee Heroes", "Damage
+    // bonus changed from +18/12 for melee/ranged heroes to +15 for any wearer"). Treads: +55
+    // speed melee, +45 ranged. Quelling Blade: +8 melee, +4 ranged against creeps.
+    for (hero, phase_speed, treads_speed, quell) in [
+        (HeroId::PUDGE, 55, 55, 8),
+        (HeroId::SHADOW_FIEND, 45, 45, 4),
     ] {
         let (mut world, unit) = hero_out_of_fountain(hero);
         let bare = *world.stats.get(unit).expect("derived");
         let phase = carrying(&mut world, unit, ItemId::PHASE_BOOTS);
-        assert_eq!(phase.damage - bare.damage, damage, "{hero:?}");
+        assert_eq!(phase.damage - bare.damage, 15, "{hero:?}");
         assert_eq!(phase.armor - bare.armor, Fixed::from_int(4));
-        assert_eq!(phase.move_speed - bare.move_speed, Fixed::from_int(50));
+        assert_eq!(
+            phase.move_speed - bare.move_speed,
+            Fixed::from_int(phase_speed),
+            "{hero:?}"
+        );
         let treads = carrying(&mut world, unit, ItemId::POWER_TREADS);
         assert_eq!(
             treads.move_speed - bare.move_speed,
@@ -400,7 +407,6 @@ fn every_stat_upgrade_bought_whole_adds_what_its_script_says_and_nothing_else() 
         ItemId::HEART,
         ItemId::CRYSTALYS,
         ItemId::DAEDALUS,
-        ItemId::REVENANTS_BROOCH,
         ItemId::SKULL_BASHER,
         ItemId::BATTLE_FURY,
         ItemId::MAELSTROM,
@@ -419,13 +425,14 @@ fn hastened(speed: Fixed, pct: i32) -> Fixed {
 }
 
 /// Dota's Yasha-based items: "multiple sources of movement speed do not stack". Two Yashas
-/// carried hasten their carrier by one Yasha's ten percent.
+/// carried hasten their carrier by one Yasha's six percent (7.42: "Movement Speed bonus
+/// decreased from +10% to +6%").
 #[test]
 fn two_yashas_carried_hasten_by_one_yashas_percent() {
     let bare = stats_after_buying(&[]).move_speed;
     let one = stats_after_buying(&[ItemId::YASHA]).move_speed;
     let two = stats_after_buying(&[ItemId::YASHA, ItemId::YASHA]).move_speed;
-    assert_eq!(one, hastened(bare, 10), "one Yasha: ten percent");
+    assert_eq!(one, hastened(bare, 6), "one Yasha: six percent");
     assert_eq!(two, one, "a second Yasha adds nothing");
 }
 
@@ -452,29 +459,29 @@ fn a_sange_keeps_a_quarter_of_a_slow_off_its_carrier() {
     assert_eq!(twice, slowed, "a second Sange keeps nothing more off");
 }
 
-/// A Sange's Health Restoration (`hp_regen_amp`, 12% since Dota 7.41b) comes through every heal its
-/// carrier takes as well as its regeneration (7.41: "Now also modifies incoming healing"); a
-/// second Sange adds nothing.
+/// A Sange's Health Restoration (`hp_regen_amp`, 16% since Dota 7.42: "increased from +12% to
+/// +16%") comes through every heal its carrier takes as well as its regeneration (7.41: "Now also
+/// modifies incoming healing"); a second Sange adds nothing.
 #[test]
-fn a_sange_amplifies_a_heal_its_carrier_takes_by_twelve_percent() {
+fn a_sange_amplifies_a_heal_its_carrier_takes_by_sixteen_percent() {
     for items in [&[ItemId::SANGE][..], &[ItemId::SANGE, ItemId::SANGE]] {
         let (mut world, hero) = out_of_fountain_after_buying(items);
         world.health.get_mut(hero).expect("alive").hp = Fixed::from_int(100);
         let (restored, _) = world.refill_pools(hero, 200, 0);
-        assert_eq!(restored, 224, "{items:?}");
+        assert_eq!(restored, 232, "{items:?}");
     }
 }
 
-/// A Kaya amplifies its carrier's spells by 10% (`spell_amp`): a Shadowraze's magical blow on a
-/// creep lands for a tenth more; a second Kaya adds nothing (Liquipedia, *Kaya*: "Multiple sources
-/// of spell damage amplification do not stack").
+/// A Kaya amplifies its carrier's spells by 6% (`spell_amp`; 7.42: "decreased from +10% to
+/// +6%"): a Shadowraze's magical blow on a creep lands for six hundredths more; a second Kaya adds
+/// nothing (Liquipedia, *Kaya*: "Multiple sources of spell damage amplification do not stack").
 #[test]
-fn a_kaya_amplifies_a_raze_by_a_tenth_and_a_second_one_adds_nothing() {
+fn a_kaya_amplifies_a_raze_by_six_percent_and_a_second_one_adds_nothing() {
     let creep = |world: &mut World, at| world.spawn_unit(&bota_core::MELEE_CREEP, Team::Dire, at);
     let (bare, _) = raze_of_a_buyer(&[], creep);
     let (one, _) = raze_of_a_buyer(&[ItemId::KAYA], creep);
     let (two, _) = raze_of_a_buyer(&[ItemId::KAYA, ItemId::KAYA], creep);
-    assert!((one - bare * 110 / 100).abs() <= 1, "{one} of {bare}");
+    assert!((one - bare * 106 / 100).abs() <= 1, "{one} of {bare}");
     assert_eq!(two, one);
 }
 
@@ -521,20 +528,21 @@ fn carrying_world(items: &[ItemId]) -> (World, Entity) {
 /// An item and what is built of it hold one bonus of a stat, the best (Liquipedia: "Multiple sources
 /// of movement speed do not stack" for Yasha-based items, of slow resistance for Sange-based ones,
 /// of spell amplification for Kaya-based ones): a Yasha and a Sange and Yasha hasten by the pair's
-/// 12%, a Sange and a Sange and Yasha keep the pair's 30% of a slow off, and a Kaya and a Kaya and
-/// Sange amplify a raze by the pair's 12%.
+/// 10%, a Sange and a Sange and Yasha keep the pair's 30% of a slow off, and a Kaya and a Kaya and
+/// Sange amplify a raze by the pair's 10% (7.42: the pairs' "Movement speed bonus decreased from
+/// +12% to +10%", "Spell Amplification bonus decreased from +12% to +10%").
 #[test]
 fn an_item_and_what_is_built_of_it_count_once_the_better() {
     let bare = stats_after_buying(&[]).move_speed;
     let both = stats_carrying(&[ItemId::YASHA, ItemId::SANGE_AND_YASHA]);
-    assert_eq!(both.move_speed, hastened(bare, 12));
+    assert_eq!(both.move_speed, hastened(bare, 10));
     let both = stats_carrying(&[ItemId::SANGE, ItemId::SANGE_AND_YASHA]);
     assert_eq!(both.slow_resist_bp, 3_000);
     let creep = |world: &mut World, at| world.spawn_unit(&bota_core::MELEE_CREEP, Team::Dire, at);
     let (bare, _) = raze_of_a_buyer(&[], creep);
     let (world, hero) = carrying_world(&[ItemId::KAYA, ItemId::KAYA_AND_SANGE]);
     let (both, _) = raze_from(world, hero, creep);
-    assert!((both - bare * 112 / 100).abs() <= 1, "{both} of {bare}");
+    assert!((both - bare * 110 / 100).abs() <= 1, "{both} of {bare}");
 }
 
 /// Items of different lineages each count: a Yasha and a Kaya and Sange, neither built of the
@@ -545,9 +553,9 @@ fn items_of_different_lineages_each_count() {
     let stats = stats_carrying(&[ItemId::YASHA, ItemId::KAYA_AND_SANGE]);
     assert_eq!(
         stats.move_speed,
-        hastened(stats_after_buying(&[]).move_speed, 10)
+        hastened(stats_after_buying(&[]).move_speed, 6)
     );
-    assert_eq!(stats.spell_amp_pct, 12);
+    assert_eq!(stats.spell_amp_pct, 10);
     let (mut world, hero) = out_of_fountain_after_buying(&[ItemId::SANGE_AND_YASHA]);
     put_on(&mut world, hero, ModifierKind::Stunned, 100);
     let left = world
@@ -605,10 +613,11 @@ fn yasha_and_kaya_casts_a_raze_at_the_rate_models_pace() {
     );
 }
 
-/// An Octarine Core cuts every cooldown its carrier starts by a quarter (`bonus_cooldown`): a
-/// Shadowraze's and a Phase Boots' alike; a second one adds nothing.
+/// An Octarine Core cuts every cooldown its carrier starts by a fifth (`bonus_cooldown`; 7.42:
+/// "decreased from +25% to +20%"): a Shadowraze's and a Phase Boots' alike; a second one adds
+/// nothing.
 #[test]
-fn an_octarine_core_cuts_a_razes_and_an_items_cooldown_by_a_quarter() {
+fn an_octarine_core_cuts_a_razes_and_an_items_cooldown_by_a_fifth() {
     let cooldowns = |items: &[ItemId]| {
         let (world, hero) = carrying_world(items);
         (
@@ -618,7 +627,7 @@ fn an_octarine_core_cuts_a_razes_and_an_items_cooldown_by_a_quarter() {
     };
     let (raze, phase) = cooldowns(&[]);
     assert!(raze > 0 && phase > 0);
-    let cut = |ticks: u32| bota_core::cooldown_after(ticks, 7_500);
+    let cut = |ticks: u32| bota_core::cooldown_after(ticks, 8_000);
     assert_eq!(cooldowns(&[ItemId::OCTARINE_CORE]), (cut(raze), cut(phase)));
     assert_eq!(
         cooldowns(&[ItemId::OCTARINE_CORE, ItemId::OCTARINE_CORE]),
@@ -627,8 +636,9 @@ fn an_octarine_core_cuts_a_razes_and_an_items_cooldown_by_a_quarter() {
 }
 
 /// A Dragon Lance lengthens a ranged hero's attack range by 130 (`base_attack_range`; Dota 7.41:
-/// "Ranged Attack Range bonus decreased from +140 to +130") and a melee hero's by nothing
-/// (`base_attack_range_melee` 0); a second one adds nothing.
+/// "Ranged Attack Range bonus decreased from +140 to +130") and a melee hero's by 25
+/// (`base_attack_range_melee`; 7.42: "Now also provides +25 Attack Range (Melee Only)"); a second
+/// one adds nothing.
 #[test]
 fn a_dragon_lance_lengthens_a_ranged_attack_alone_and_once() {
     let range = |hero: HeroId, items: &[ItemId]| {
@@ -653,7 +663,10 @@ fn a_dragon_lance_lengthens_a_ranged_attack_alone_and_once() {
         ),
         fiend + Fixed::from_int(130)
     );
-    assert_eq!(range(HeroId::PUDGE, &lance), range(HeroId::PUDGE, &[]));
+    assert_eq!(
+        range(HeroId::PUDGE, &lance),
+        range(HeroId::PUDGE, &[]) + Fixed::from_int(25)
+    );
 }
 
 /// A Heart of Tarrasque regenerates 1.5% of its carrier's missing health a second
@@ -683,8 +696,8 @@ fn a_heart_regenerates_a_share_of_the_missing_health_once() {
 }
 
 /// A Yasha's percent is summed with every other percent change of the pace and taken once, as
-/// Dota sums movement speed bonuses: with Phase Boots' phase of a ranged hero (ten percent) the
-/// pace is twenty percent above the walk, not 1.1 times 1.1.
+/// Dota sums movement speed bonuses: with Phase Boots' phase of a ranged hero (ten percent) and a
+/// Yasha's six (7.42) the pace is sixteen percent above the walk, not 1.1 times 1.06.
 #[test]
 fn a_yashas_percent_adds_to_a_phase_rather_than_multiplying() {
     let (mut world, hero) = out_of_fountain_after_buying(&[ItemId::PHASE_BOOTS, ItemId::YASHA]);
@@ -695,7 +708,7 @@ fn a_yashas_percent_adds_to_a_phase_rather_than_multiplying() {
     assert!(world.use_item(hero, 0, Target::None, &mut Vec::new()));
     world.step();
     let phased = world.stats.get(hero).expect("derived").move_speed;
-    assert_eq!(phased, hastened(boots_only, 20));
+    assert_eq!(phased, hastened(boots_only, 16));
 }
 
 /// Buys `item` whole through the seat and checks that the buyer gains what its values in the
@@ -1388,8 +1401,8 @@ fn an_aether_lens_lets_a_blink_dagger_land_1300_off() {
 }
 
 /// Spell amplifications stack additively (Liquipedia, *Damage Manipulation*: spell damage
-/// amplification "stacks additively"): an Amplify Damage Rune's 15% and a Kaya's 10% amplify a
-/// spell's magic by 25%, not 1.15 × 1.10.
+/// amplification "stacks additively"): an Amplify Damage Rune's 15% and a Kaya's 6% (7.42) amplify
+/// a spell's magic by 21%, not 1.15 × 1.06.
 #[test]
 fn an_amplify_damage_runes_and_a_kayas_spell_amplification_add() {
     let (mut world, hero) = carrying_world(&[ItemId::KAYA]);
@@ -1398,13 +1411,13 @@ fn an_amplify_damage_runes_and_a_kayas_spell_amplification_add() {
     let stats = world.stats.get(hero).expect("derived");
     assert_eq!(
         stats.spell_damage_amp_bp(bota_proto::DamageKind::Magical),
-        12_500
+        12_100
     );
 }
 
 /// Cooldown reductions of different sources multiply (Dota 7.31: "Cooldown Reduction stacking is
-/// now multiplicative"): an Octarine Core's 25% under a frostbitten golem's Time Warp Aura (8% at
-/// its first level) leaves 0.75 × 0.92 = 69% of a cooldown, not 67%.
+/// now multiplicative"): an Octarine Core's 20% (7.42) under a frostbitten golem's Time Warp Aura
+/// (8% at its first level) leaves 0.80 × 0.92 = 73.6% of a cooldown, not 72%.
 #[test]
 fn an_octarine_core_and_a_time_warp_aura_multiply() {
     let (mut world, hero) = carrying_world(&[ItemId::OCTARINE_CORE]);
@@ -1417,7 +1430,7 @@ fn an_octarine_core_and_a_time_warp_aura_multiply() {
     world.step();
     assert_eq!(
         world.stats.get(hero).expect("derived").cooldown_rate_bp,
-        6_900
+        7_360
     );
 }
 

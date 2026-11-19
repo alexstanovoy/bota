@@ -94,7 +94,7 @@ fn mango_mana_enables_a_validated_raze_without_changing_any_strategy() {
 fn raze_validated_reach_orders_share_stacks_but_keep_independent_cooldowns() {
     let (mut world, caster, target) = fixture();
     seat(&mut world, SlotId(0), Team::Radiant, caster, 0);
-    for (slot, expected) in [(0, 85), (1, 120), (2, 155)] {
+    for (slot, expected) in [(0, 85), (1, 105), (2, 125)] {
         reveal(&mut world, target);
         assert_eq!(
             burns_on(&raze_from(&mut world, caster, slot), target),

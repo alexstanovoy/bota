@@ -1,4 +1,4 @@
-//! Where bota's numbers are not the install's: the game bota plays is Dota 7.41f, and an
+//! Where bota's numbers are not the install's: the game bota plays is Dota [`PATCH`], and an
 //! install moves on with Valve's patches, or holds a number the game itself does not play by.
 //! Each override names its evidence. One the install already agrees with is refused, so the
 //! table never outlives its reason.
@@ -7,7 +7,7 @@ use crate::dec;
 use crate::item::Item;
 
 /// The patch bota plays.
-pub const PATCH: &str = "7.41f";
+pub const PATCH: &str = "7.42";
 
 /// What an override sets.
 #[derive(Clone, Copy, Debug)]

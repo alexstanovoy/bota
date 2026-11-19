@@ -59,9 +59,9 @@ const _: () = assert!(!DATA.melee, "Shadow Fiend shoots: a projectile");
 
 /// Shadow Fiend's talents, in his script's order: the left of each tier first.
 pub const SHADOW_FIEND_TALENTS: TalentTree = [
-    Talent::FeastAttackSpeed,
-    Talent::RazeStackDamage,
     Talent::FeastSoulsPerHero,
+    Talent::RazeStackDamage,
+    Talent::FeastHealPerSoul,
     Talent::PresenceArmor,
     Talent::RequiemFear,
     Talent::NecroSoulCap,

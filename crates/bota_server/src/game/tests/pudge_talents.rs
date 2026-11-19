@@ -205,7 +205,7 @@ fn the_flesh_heap_talent_makes_a_stack_three_strength_and_the_block_twelve() {
 }
 
 /// `special_bonus_unique_pudge_3`: a dismember bite is the second's damage times 1.5 and
-/// strength's share times 1.8 (`x1.5` and `x1.8` in the script).
+/// strength's share times 1.5 (`x1.5` in the script for both since 7.42; the share was `x1.8`).
 #[test]
 fn the_dismember_damage_talent_bites_harder() {
     let (mut world, pudge, mark) = talented(150, Some(DISMEMBER_DAMAGE));
@@ -213,7 +213,7 @@ fn the_dismember_damage_talent_bites_harder() {
     let full = world.health.get(mark).expect("standing").hp;
     dismember(&mut world, mark);
     let taken = full - world.health.get(mark).expect("standing").hp;
-    let per_second = Fixed::from_int(120) + strength * Fixed::from_ratio(54, 100);
+    let per_second = Fixed::from_int(120) + strength * Fixed::from_ratio(45, 100);
     let bite = (per_second * Fixed::from_ratio(2750, 6000)).to_int();
     let resist = world.stats.get(mark).expect("settled").magic_resist_bp;
     let after = bite * (rules::NOMINAL_BP - resist) / rules::NOMINAL_BP;

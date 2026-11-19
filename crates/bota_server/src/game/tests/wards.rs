@@ -539,11 +539,11 @@ fn banner_protection_keeps_glyph_and_other_banner_sources_independent() {
 
 #[test]
 fn banner_levels_select_aura_and_hit_count_and_expire_after_two_minutes() {
-    for (index, radius, melee, ranged, other) in [
-        (0, 600, 6, 12, 24),
-        (1, 900, 8, 16, 32),
-        (2, 1200, 10, 20, 40),
-    ] {
+    // 7.42: "Now has fragile pip health": 6/8/10 pips, a hero's attack takes one, a melee
+    // hero's two (Fragile), anything else's a quarter.
+    for (index, radius, melee, ranged, other) in
+        [(0, 600, 3, 6, 24), (1, 900, 4, 8, 32), (2, 1200, 5, 10, 40)]
+    {
         let def = &bota_core::BANNERS[index];
         for (striker, hits) in [
             (bota_core::Striker::MeleeHero, melee),

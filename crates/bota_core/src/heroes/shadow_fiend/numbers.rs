@@ -10,7 +10,7 @@ use crate::heroes_data::{
     NEVERMORE_SHADOWRAZE1, NEVERMORE_SHADOWRAZE2, NEVERMORE_SHADOWRAZE3,
 };
 use crate::rules::TICKS_PER_SECOND;
-use crate::{Bonus, Dec, HERO_LEVELUP, Ms, fixed, ints_of, tenths, ticks_of};
+use crate::{Bonus, Dec, HERO_LEVELUP, fixed, ints_of, tenths, ticks_of};
 
 /// How far in front of the caster a raze lands, in world units, from the
 /// nearest reach to the farthest: each raze's `shadowraze_range`.
@@ -135,6 +135,13 @@ pub const SOULS_LOST_ON_DEATH_PCT: u32 = (100
         .hundredths()) as u32;
 /// How far the presence reaches, in world units: `presence_radius`.
 pub const PRESENCE_RADIUS: i32 = NEVERMORE_DARK_LORD.value("presence_radius").first().int();
+/// Magic resistance, in percent, the presence takes from an enemy standing in it, by level:
+/// `presence_magic_resistance_reduction` (7.42).
+pub const PRESENCE_MAGIC_PCT: [i32; 4] = negated(
+    NEVERMORE_DARK_LORD
+        .value("presence_magic_resistance_reduction")
+        .ints::<4>(),
+);
 /// Armor the presence takes from an enemy standing in it, by level: `presence_armor_reduction`.
 pub const PRESENCE_ARMOR: [Fixed; 4] = {
     let reduction = NEVERMORE_DARK_LORD.value("presence_armor_reduction");
@@ -170,22 +177,20 @@ pub const REQUIEM_LINE_DAMAGE: [i32; 3] = NEVERMORE_REQUIEM.value("AbilityDamage
 /// Percent of speed the requiem takes from what it catches, by level: `requiem_reduction_ms`.
 pub const REQUIEM_SLOW_PCT: [i32; 3] =
     negated(NEVERMORE_REQUIEM.value("requiem_reduction_ms").ints::<3>());
-/// Percent of the magic it keeps out that the requiem takes from what it
-/// catches, by level: `requiem_reduction_mres`.
-pub const REQUIEM_MAGIC_BREAK_PCT: [i32; 3] = negated(
-    NEVERMORE_REQUIEM
-        .value("requiem_reduction_mres")
-        .ints::<3>(),
-);
-/// Ticks the requiem's fear, slow and torn resistance hold for each line
-/// that crosses what it catches: `requiem_slow_duration`, 0.6 seconds.
-pub const REQUIEM_LINE_TICKS: u32 = NEVERMORE_REQUIEM
-    .value("requiem_slow_duration")
-    .ticks::<1>()[0];
-/// The most ticks the requiem's fear, slow and torn resistance hold:
-/// `requiem_slow_duration_max`, 2.15 seconds, the half tick rounded up.
-pub const REQUIEM_HOLD_MAX_TICKS: u32 = NEVERMORE_REQUIEM
-    .value("requiem_slow_duration_max")
+/// Percent of the magic it keeps out that the requiem takes from what it catches, by level:
+/// none since 7.42 ("No longer reduces enemy Magic Resistance by 5/10/15%";
+/// `requiem_reduction_mres` is gone from the script). The torn resistance stays in the rules, to
+/// be offered again.
+pub const REQUIEM_MAGIC_BREAK_PCT: [i32; 3] = [0; 3];
+/// Ticks the requiem's fear and slow hold on what a first line crosses, by level:
+/// `requiem_fear_duration` (and `requiem_slow_duration`, the same), 1.2/1.5/1.8 seconds.
+pub const REQUIEM_HOLD_TICKS: [u32; 3] = NEVERMORE_REQUIEM
+    .value("requiem_fear_duration")
+    .ticks::<3>();
+/// Ticks the hold grows by for each line that crosses: `requiem_duration_per_soul`, 0.1
+/// seconds (a line is a soul). The hold has no most since 7.42; it is bounded by the lines.
+pub const REQUIEM_TICKS_PER_LINE: u32 = NEVERMORE_REQUIEM
+    .value("requiem_duration_per_soul")
     .ticks::<1>()[0];
 /// Milliseconds of the requiem's cast point.
 pub const REQUIEM_CAST_POINT_MS: u32 = NEVERMORE_REQUIEM.cast_point[0].0;
@@ -253,11 +258,16 @@ pub const FEAST_COOLDOWN: [u32; 4] = ticks_of(NEVERMORE_FRENZY.cooldown);
 /// What Shadow Fiend's talents give, read from their bonuses in his values, for the clients to
 /// word and the formulas to add.
 ///
-/// Attack speed the level-10 talent adds to a feast: `special_bonus_unique_nevermore_4` on
-/// `bonus_attack_speed`.
-pub const TALENT_FEAST_ATTACK_SPEED: i32 = NEVERMORE_FRENZY
-    .value("bonus_attack_speed")
-    .bonus("special_bonus_unique_nevermore_4")
+/// Attack speed the level-10 talent `special_bonus_unique_nevermore_4` added to a feast: 7.41f's
+/// `bonus_attack_speed` bonus. 7.42 took it out of his tree ("Level 10 Talent +30 Feast of
+/// Souls Attack Speed replaced with +2 Feast of Souls Collected") and his script no longer
+/// names it; the talent and its number stay, to be offered again.
+pub const TALENT_FEAST_ATTACK_SPEED: i32 = 30;
+/// Health the level-15 talent heals for every soul a feast takes:
+/// `special_bonus_unique_nevermore_frenzy_heal_per_soul` on `heal_per_soul`.
+pub const TALENT_FEAST_HEAL_PER_SOUL: i32 = NEVERMORE_FRENZY
+    .value("heal_per_soul")
+    .bonus("special_bonus_unique_nevermore_frenzy_heal_per_soul")
     .added()
     .int();
 /// Raze damage a stack the level-10 talent adds: `special_bonus_unique_nevermore_7` on
@@ -281,22 +291,22 @@ pub const TALENT_PRESENCE_ARMOR: Fixed = fixed(Dec(-NEVERMORE_DARK_LORD
     .bonus("special_bonus_unique_nevermore_3")
     .added()
     .0));
-/// Ticks of fear, slow and torn resistance a requiem line adds on top, with
-/// the level-20 talent: `special_bonus_unique_nevermore_6` on `requiem_slow_duration`.
-pub const TALENT_REQUIEM_LINE_TICKS: u32 = NEVERMORE_REQUIEM
-    .value("requiem_slow_duration")
+/// Magic resistance, in percent, the presence takes on top, with the level-15 talent:
+/// `special_bonus_unique_nevermore_3` on `presence_magic_resistance_reduction`.
+pub const TALENT_PRESENCE_MAGIC_PCT: i32 = -NEVERMORE_DARK_LORD
+    .value("presence_magic_resistance_reduction")
+    .bonus("special_bonus_unique_nevermore_3")
+    .added()
+    .int();
+/// Ticks the requiem's first hold lasts longer, with the level-20 talent:
+/// `special_bonus_unique_nevermore_6` on `requiem_fear_duration` (and on
+/// `requiem_slow_duration`, the same).
+pub const TALENT_REQUIEM_HOLD_TICKS: u32 = NEVERMORE_REQUIEM
+    .value("requiem_fear_duration")
     .bonus("special_bonus_unique_nevermore_6")
     .added()
     .secs()
     .ticks();
-/// Ticks the requiem's hold may reach on top, with the level-20 talent: the bonus on
-/// `requiem_slow_duration_max`, counted as the ticks of the talented hold less the untalented
-/// one, so the two round as one span (2.15 s + 0.45 s = 2.6 s).
-pub const TALENT_REQUIEM_HOLD_TICKS: u32 = {
-    let max = NEVERMORE_REQUIEM.value("requiem_slow_duration_max");
-    let added = max.bonus("special_bonus_unique_nevermore_6").added();
-    Ms((max.first().0 + added.0) as u32).ticks() - REQUIEM_HOLD_MAX_TICKS
-};
 /// Souls the necromastery holds on top, with the level-20 talent:
 /// `special_bonus_unique_nevermore_1` on `necromastery_max_souls`.
 pub const TALENT_NECRO_SOUL_CAP: u32 = NEVERMORE_NECROMASTERY
@@ -332,11 +342,29 @@ const fn negated<const N: usize>(values: [i32; N]) -> [i32; N] {
     out
 }
 
+/// The requiem's slow holds as long as its fear, the talent lengthening both alike: bota lays
+/// both for one span.
+const _: () = {
+    let slow = NEVERMORE_REQUIEM
+        .value("requiem_slow_duration")
+        .ticks::<3>();
+    let mut level = 0;
+    while level < 3 {
+        assert!(slow[level] == REQUIEM_HOLD_TICKS[level]);
+        level += 1;
+    }
+    let slow_talent = NEVERMORE_REQUIEM
+        .value("requiem_slow_duration")
+        .bonus("special_bonus_unique_nevermore_6")
+        .added();
+    assert!(slow_talent.secs().ticks() == TALENT_REQUIEM_HOLD_TICKS);
+};
+
 const _: () = {
     assert!(FEAST_TICKS.is_multiple_of(FEAST_PERIOD_TICKS));
     assert!(FEAST_PER_PERIOD > 0);
     assert!(FEAST_TARGETS[3] >= FEAST_TARGETS[0]);
-    assert!(REQUIEM_HOLD_MAX_TICKS >= REQUIEM_LINE_TICKS);
+    assert!(REQUIEM_TICKS_PER_LINE > 0);
     assert!(TALENT_FEAST_CAST_POINT_PCT > 0);
     assert!(TALENT_FEAST_CAST_POINT_PCT <= 100);
 };

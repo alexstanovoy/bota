@@ -420,14 +420,14 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
     },
     ItemDef {
         carried: Carried {
-            move_speed: int(&ITEM_PHASE_BOOTS, "bonus_movement_speed"),
-            damage: int(&ITEM_PHASE_BOOTS, "bonus_damage_melee"),
+            move_speed: int(&ITEM_PHASE_BOOTS, "bonus_movement_speed_melee"),
+            damage: int(&ITEM_PHASE_BOOTS, "bonus_damage"),
             armor: armor(&ITEM_PHASE_BOOTS, "bonus_armor"),
             ..NOTHING
         },
         ranged: Some(Carried {
-            move_speed: int(&ITEM_PHASE_BOOTS, "bonus_movement_speed"),
-            damage: int(&ITEM_PHASE_BOOTS, "bonus_damage_range"),
+            move_speed: int(&ITEM_PHASE_BOOTS, "bonus_movement_speed_ranged"),
+            damage: int(&ITEM_PHASE_BOOTS, "bonus_damage"),
             armor: armor(&ITEM_PHASE_BOOTS, "bonus_armor"),
             ..NOTHING
         }),
@@ -486,7 +486,7 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
                 "bonus_strength",
             ),
             mana_regen: regen(&ITEM_NULL_TALISMAN, "bonus_mana_regen"),
-            mana_pct: int(&ITEM_NULL_TALISMAN, "bonus_max_mana_percentage"),
+            mana: int(&ITEM_NULL_TALISMAN, "bonus_mana"),
             ..NOTHING
         },
         ..from(&ITEM_NULL_TALISMAN)
@@ -566,7 +566,7 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         carried: Carried {
             attributes: points(Attribute::Agility, int(&ITEM_BUTTERFLY, "bonus_agility")),
             damage: int(&ITEM_BUTTERFLY, "bonus_damage"),
-            base_attack_speed_pct: int(&ITEM_BUTTERFLY, "bonus_attack_speed_pct"),
+            attack_speed: int(&ITEM_BUTTERFLY, "bonus_attack_speed"),
             evasion: odds(&ITEM_BUTTERFLY, "bonus_evasion"),
             ..NOTHING
         },
@@ -597,7 +597,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         carried: Carried {
             damage: int(&ITEM_MONKEY_KING_BAR, "bonus_damage"),
             attack_speed: int(&ITEM_MONKEY_KING_BAR, "bonus_attack_speed"),
-            melee_range: int(&ITEM_MONKEY_KING_BAR, "melee_attack_range"),
             pierce: odds(&ITEM_MONKEY_KING_BAR, "bonus_chance"),
             pierce_damage: int(&ITEM_MONKEY_KING_BAR, "bonus_chance_damage"),
             pierce_unique: true,
@@ -1147,7 +1146,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         carried: Carried {
             hp: int(&ITEM_OCTARINE_CORE, "bonus_health"),
             mana: int(&ITEM_OCTARINE_CORE, "bonus_mana"),
-            hp_regen: regen(&ITEM_OCTARINE_CORE, "bonus_health_regen"),
             mana_regen: regen(&ITEM_OCTARINE_CORE, "bonus_mana_regen"),
             cooldown_cut_bp: bp(&ITEM_OCTARINE_CORE, "bonus_cooldown"),
             ..NOTHING
@@ -1212,10 +1210,12 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
     ItemDef {
         ..from(&ITEM_RECIPE_REVENANTS_BROOCH)
     },
+    // Revenant's Brooch: a neutral artifact since 7.42 (`ItemPurchasable 0`, a neutral camp's
+    // drop), offered nowhere until neutral items are simulated. Its Ghastly Strike is the same
+    // magical critical strike, at the artifact's numbers; the shop item's damage and spell
+    // lifesteal are gone from the script.
     ItemDef {
         carried: Carried {
-            damage: int(&ITEM_REVENANTS_BROOCH, "bonus_damage"),
-            spell_lifesteal_pct: int(&ITEM_REVENANTS_BROOCH, "spell_lifesteal"),
             strikes: &[PHANTOM_CRIT],
             ..NOTHING
         },
@@ -1524,15 +1524,16 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
                     [ITEM_GUARDIAN_GREAVES.first("aura_mana_regen").hundredths(); 4],
                 ),
             ),
+            // 7.41f's low-health bonus (`aura_health_regen_bonus` 14.5 below
+            // `aura_bonus_threshold` 25%), which 7.42 took out with its values: kept, laid by no
+            // aura, to be offered again.
             ItemModifier {
                 ticks: 1,
                 ..ItemModifier::buff(
                     EffectId(112),
                     Buff::of(
                         Stat::HpRegen,
-                        [(ITEM_GUARDIAN_GREAVES
-                            .first("aura_health_regen_bonus")
-                            .hundredths()
+                        [(GREAVES_741_LOW_HEALTH_REGEN_HUNDREDTHS
                             - ITEM_GUARDIAN_GREAVES
                                 .first("aura_health_regen")
                                 .hundredths())
@@ -1545,14 +1546,12 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
                 ..ItemModifier::buff(EffectId(105), Buff::many(&[]))
             },
         ],
-        auras: &[
-            ItemAura::allies(0, int(&ITEM_GUARDIAN_GREAVES, "aura_radius")),
-            ItemAura {
-                reaches: Reach::Bearer,
-                health_below_pct: Some(int(&ITEM_GUARDIAN_GREAVES, "aura_bonus_threshold")),
-                ..ItemAura::allies(1, 0)
-            },
-        ],
+        // 7.42: "Guardian Aura no longer provides 14.5 bonus health regeneration to the wearer
+        // when below 25% health" (its effect id 112 stays reserved).
+        auras: &[ItemAura::allies(
+            0,
+            int(&ITEM_GUARDIAN_GREAVES, "aura_radius"),
+        )],
         aim: Some(Aim::Own),
         immediate: true,
         effect: UseSpec::Support(AreaSupport {
@@ -1711,8 +1710,10 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         },
         attack_break: Some(crate::AttackBreak {
             ticks: ticks(&ITEM_TRANQUIL_BOOTS, "break_time"),
+            // 7.42's Respite "now provides 2 Health Regen while on cooldown instead of 0".
             broken: Carried {
                 move_speed: int(&ITEM_TRANQUIL_BOOTS, "broken_movement_speed"),
+                hp_regen: regen(&ITEM_TRANQUIL_BOOTS, "broken_health_regen"),
                 ..NOTHING
             },
         }),
@@ -1845,6 +1846,10 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
     ItemDef {
         ..from(&ITEM_RECIPE_CRELLAS_CROZIER)
     },
+    // 7.42: Maelstrom "now requires a recipe (900) instead of a Javelin (900)".
+    ItemDef {
+        ..from(&ITEM_RECIPE_MAELSTROM)
+    },
 ];
 
 /// A critical strike of an item: `crit_chance` percent to deal `crit_multiplier` percent, or that
@@ -1861,6 +1866,10 @@ const fn crit(d: &ItemData, magic: bool) -> Strike {
 const CRYSTALYS_CRIT: Strike = crit(&ITEM_LESSER_CRIT, false);
 const DAEDALUS_CRIT: Strike = crit(&ITEM_GREATER_CRIT, false);
 const PHANTOM_CRIT: Strike = crit(&ITEM_REVENANTS_BROOCH, true);
+
+/// Health regeneration, in hundredths a second, 7.41f's Guardian Greaves gave a wearer below a
+/// quarter of its health (`aura_health_regen_bonus` 14.5), gone from 7.42's script.
+const GREAVES_741_LOW_HEALTH_REGEN_HUNDREDTHS: i32 = 1450;
 
 /// A bash of an item, at the chance of `chance_key`: `bonus_chance_damage` physical damage
 /// riding with the attack and a stun of `bash_duration`, Dota's `modifier_bashed`.

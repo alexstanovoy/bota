@@ -905,6 +905,13 @@ pub(crate) fn stand_a_wall(world: &mut World, at: Vec2, radius: Fixed) {
 
 /// Shadow Fiend at (5000, 5000), facing east, with his whole kit at level
 /// one and a Dire creep `apart` east of him, one tick on.
+/// What a burn of `burn` takes of a creep of no magic resistance standing in a level-one
+/// presence, which since 7.42 lets 4% more magic through ("Now also reduces enemy Magic
+/// Resistance by 4/6/8/10%"): the mark of [`fiend_and_a_mark`].
+pub(crate) fn in_presence(burn: i32) -> i32 {
+    burn * (100 + bota_core::rules::PRESENCE_MAGIC_PCT[0]) / 100
+}
+
 pub(crate) fn fiend_and_a_mark(apart: i32) -> (World, Entity, Entity) {
     let mut world = World::new();
     let fiend = seated_hero(

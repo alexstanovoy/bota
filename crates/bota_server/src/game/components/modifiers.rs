@@ -238,18 +238,20 @@ impl Modifiers {
         self.0.push(modifier);
     }
 
+    /// Ticks the modifier of `kind`'s kind from `source` still holds: none when it is not on.
+    pub fn held_ticks(&self, kind: ModifierKind, source: Option<Entity>) -> u32 {
+        let same = std::mem::discriminant(&kind);
+        self.active()
+            .find(|held| std::mem::discriminant(&held.kind) == same && held.source == source)
+            .and_then(|held| held.ticks_left)
+            .unwrap_or(0)
+    }
+
     /// Puts a timed modifier on, adding its time to what the same kind from
     /// the same source already holds, up to `cap` ticks in all.
     pub fn extend(&mut self, modifier: Modifier, cap: u32) {
         let more = modifier.ticks_left.expect("an extended modifier runs out");
-        let same = std::mem::discriminant(&modifier.kind);
-        let held = self
-            .active()
-            .find(|held| {
-                std::mem::discriminant(&held.kind) == same && held.source == modifier.source
-            })
-            .and_then(|held| held.ticks_left)
-            .unwrap_or(0);
+        let held = self.held_ticks(modifier.kind, modifier.source);
         self.put(Modifier {
             ticks_left: Some(held.saturating_add(more).min(cap)),
             ..modifier

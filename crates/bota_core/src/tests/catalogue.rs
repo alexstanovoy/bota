@@ -90,8 +90,10 @@ fn adding_roshan_items_keeps_the_preexisting_catalogue_prefix_identical() {
         // Independently measured on pristine landing main bc20dfbb, before Roshan, and moved since
         // by two rules of items of that prefix: the Magic Wand waits under the Magic Stick's
         // cooldown (`AbilitySharedCooldown` "magicwand", digested as its `wait_key`), and the
-        // orbs' attack passives open their part of the digest with a tag of their own.
-        digest: 0xb793_0c5b_328e_746b,
+        // orbs' attack passives open their part of the digest with a tag of their own; and by
+        // Dota 7.42's numbers of items in it (the Wraith Band's attack speed, the Null
+        // Talisman's mana, the Phase Boots' speeds and damage, the Blood Grenade's restock, ...).
+        digest: 0xcbff_5500_a209_fdf4,
     };
     assert_eq!(
         crate::Catalogue::first(previous.items)

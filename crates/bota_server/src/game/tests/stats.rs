@@ -475,13 +475,14 @@ fn attack_speed_shortens_the_wait_between_attacks() {
 
 #[test]
 fn shadow_fiend_stands_at_dota_numbers_from_the_first_level_to_the_last() {
-    // Dota 7.41f with nothing bought: level, health, mana, attack damage
-    // (the middle of the spread), milliseconds between swings, and armor in
-    // thousandths. Health and mana show their whole points.
+    // With nothing bought: level, health, mana, attack damage (the middle of the spread),
+    // milliseconds between swings, and armor in thousandths. Health and mana show their whole
+    // points. Dota 7.42's base health (200, "increased from 120"), on the attribute rules of
+    // 7.41f (22 health a point of strength) until those move too.
     for (level, hp, mana, damage, swing, armor) in [
-        (1, 538, 267, 44, 1280, 4_166),
-        (15, 1369, 636, 94, 914, 12_565),
-        (30, 2260, 1032, 148, 698, 21_565),
+        (1, 618, 267, 44, 1280, 4_166),
+        (15, 1449, 636, 94, 914, 12_565),
+        (30, 2340, 1032, 148, 698, 21_565),
     ] {
         let mut world = World::new();
         let fiend = seated_hero(

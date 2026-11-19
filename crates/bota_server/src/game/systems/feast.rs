@@ -156,6 +156,7 @@ impl World {
                 0
             };
         let mut held = self.souls_of(caster);
+        let mut taken = 0u32;
         for (creep, _, other) in near.into_iter().take(room.min(rules::FEAST_PER_PERIOD)) {
             let souls = if creep {
                 rules::FEAST_SOULS_PER_UNIT
@@ -163,10 +164,18 @@ impl World {
                 per_hero
             };
             held = held.saturating_add(souls);
+            taken = taken.saturating_add(souls);
             feast.fed.push(Fed { from: other, souls });
         }
         assert!(feast.fed.len() <= rules::FEAST_TARGETS[level]);
         self.set_souls(caster, held);
+        // 7.42's level-15 talent: "Feast of Souls Heals 25 HP Per Soul", for every soul taken.
+        if taken > 0 && self.has_talent(caster, Talent::FeastHealPerSoul) {
+            let heal = i32::try_from(taken)
+                .unwrap_or(i32::MAX)
+                .saturating_mul(rules::TALENT_FEAST_HEAL_PER_SOUL);
+            self.refill_pools(caster, heal, 0);
+        }
         self.show_feast_souls(caster, feast.souls());
         self.feast.insert(caster, feast);
     }

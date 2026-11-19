@@ -147,7 +147,7 @@ fn a_raze_in_a_feast_burns_for_every_soul_the_feast_has_taken() {
     run(&mut world, 15);
     assert_eq!(souls(&world, fiend), 4);
     let events = cast_through(&mut world, 0, rules::RAZE_CAST_POINT_MS);
-    assert_eq!(burns_on(&events, near), vec![85 + 2 * 6]);
+    assert_eq!(burns_on(&events, near), vec![in_presence(85 + 2 * 6)]);
 }
 
 #[test]
@@ -163,7 +163,7 @@ fn the_feast_goes_off_beside_a_raze_without_breaking_its_cast_point() {
     }
     assert_eq!(
         burnt,
-        vec![rules::RAZE_DAMAGE[0]],
+        vec![in_presence(rules::RAZE_DAMAGE[0])],
         "and the raze lands on time"
     );
 }

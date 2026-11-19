@@ -1906,8 +1906,8 @@ fn an_aether_lens_lets_pudge_dismember_a_hero_300_off_without_walking_in() {
     }
 }
 
-/// A hook flies as far as its cast reaches: with an Aether Lens, its full range and the lens's 225
-/// (the reach the client draws).
+/// A hook flies as far as its cast reaches: with an Aether Lens, its full range and the lens's 200
+/// (7.42: "Cast Range bonus decreased from +225 to +200"; the reach the client draws).
 #[test]
 fn an_aether_lens_lengthens_the_hooks_flight_by_its_cast_range_bonus() {
     let (mut world, pudge) = lens_pudge(true, &[0]);
@@ -1925,7 +1925,7 @@ fn an_aether_lens_lengthens_the_hooks_flight_by_its_cast_range_bonus() {
             furthest = furthest.max(home.distance_squared(world.pos(entity).expect("flying")));
         }
     }
-    let reach = rules::HOOK_RANGE + 225;
+    let reach = rules::HOOK_RANGE + 200;
     assert!(
         furthest >= Fixed::from_int(reach - 1).squared_raw()
             && furthest <= Fixed::from_int(reach + 1).squared_raw(),

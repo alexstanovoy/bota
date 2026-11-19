@@ -28,9 +28,13 @@ pub(super) fn swing_at(world: &mut World, entity: Entity, speed: i32) {
     world.def.insert(entity, Def(quick));
 }
 
-/// Puts a freshly bought item in one of a hero's slots.
+/// Puts a freshly bought item in one of a hero's slots; one no shop sells (7.42's obsolete
+/// Javelin) is handed out as the item cheat hands it out, so its rules stay tested.
 pub(super) fn hold(world: &mut World, hero: Entity, slot: usize, item: ItemId) {
-    let stack = ItemStack::bought(item, SlotId(0), 0).expect("the item is sold");
+    let stack = ItemStack::bought(item, SlotId(0), 0).unwrap_or_else(|| {
+        let def = bota_core::item_def(item).expect("a catalogued item");
+        ItemStack::granted(item, SlotId(0), 0, def.charges)
+    });
     world.inventory.get_mut(hero).expect("has a bag").slots[slot] = Some(stack);
 }
 

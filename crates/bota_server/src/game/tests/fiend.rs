@@ -138,7 +138,7 @@ fn a_raze_stands_through_its_cast_point_and_lands_when_it_is_over() {
     let events = world.step();
     assert_eq!(
         burns_on(&events, mark),
-        vec![rules::RAZE_DAMAGE[0]],
+        vec![in_presence(rules::RAZE_DAMAGE[0])],
         "it lands on the tick its cast point runs out"
     );
     assert!(
@@ -255,7 +255,11 @@ fn a_move_in_the_cast_point_lets_the_raze_land_and_walks_from_that_tick() {
                     walked_by = Some(tick);
                 }
             }
-            assert_eq!(burnt, vec![rules::RAZE_DAMAGE[0]], "{order:?}: it lands");
+            assert_eq!(
+                burnt,
+                vec![in_presence(rules::RAZE_DAMAGE[0])],
+                "{order:?}: it lands"
+            );
             assert!(
                 cooldown(&world, fiend, RAZE_NEAR_SLOT) > 0,
                 "and is paid for"
@@ -387,8 +391,8 @@ fn every_soul_held_adds_two_to_a_raze() {
         let events = cast_through(&mut world, RAZE_MID_SLOT, rules::RAZE_CAST_POINT_MS);
         assert_eq!(
             burns_on(&events, mark),
-            vec![85 + 2 * held as i32],
-            "{held} souls, a creep with no magic resistance"
+            vec![in_presence(85 + 2 * held as i32)],
+            "{held} souls, a creep with no magic resistance in his presence"
         );
     }
 }
@@ -752,7 +756,7 @@ fn a_requiem_lets_a_line_fly_for_every_soul_and_a_line_burns_what_it_crosses_onc
     }
     assert_eq!(
         burns,
-        vec![rules::REQUIEM_LINE_DAMAGE[0]],
+        vec![in_presence(rules::REQUIEM_LINE_DAMAGE[0])],
         "one line's worth, once"
     );
     assert!(hp(&world, mark) < full, "and it was felt");
@@ -770,7 +774,7 @@ fn what_stands_at_the_fiend_is_crossed_by_every_line_and_held_the_longest() {
     let taken = full - hp(&world, mark);
     assert_eq!(
         taken,
-        Fixed::from_int(5 * rules::REQUIEM_LINE_DAMAGE[0]),
+        Fixed::from_int(5 * in_presence(rules::REQUIEM_LINE_DAMAGE[0])),
         "five lines, five burns"
     );
     let held = |kind: ModifierKind| {
@@ -784,13 +788,12 @@ fn what_stands_at_the_fiend_is_crossed_by_every_line_and_held_the_longest() {
                 .and_then(|held| held.ticks_left)
         })
     };
-    for kind in [
-        ModifierKind::Feared,
-        ModifierKind::Slowed { pct: 0 },
-        ModifierKind::MagicBroken { pct: 0 },
-    ] {
-        assert_eq!(held(kind), Some(65), "five lines' worth, held 2.15 s");
+    // 7.42: a level-one requiem holds 1.2 s, and 0.1 s more for every line: 1.7 s for five;
+    // it tears no magic resistance.
+    for kind in [ModifierKind::Feared, ModifierKind::Slowed { pct: 0 }] {
+        assert_eq!(held(kind), Some(51), "five lines' worth, held 1.7 s");
     }
+    assert_eq!(held(ModifierKind::MagicBroken { pct: 0 }), None);
     let projected = shown(&world, Some(Team::Dire), mark);
     assert_ne!(
         projected.statuses.bits & StatusFlags::FEARED,
@@ -799,8 +802,9 @@ fn what_stands_at_the_fiend_is_crossed_by_every_line_and_held_the_longest() {
     );
 }
 
+/// 7.42: the requiem "No longer reduces enemy Magic Resistance by 5/10/15%".
 #[test]
-fn a_requiem_line_tears_magic_resistance_by_a_share_of_what_it_keeps_out() {
+fn a_requiem_line_tears_no_magic_resistance() {
     let (mut world, fiend, _mark) = fiend_and_a_mark(1500);
     let foe = world.spawn_hero(
         Team::Dire,
@@ -813,19 +817,19 @@ fn a_requiem_line_tears_magic_resistance_by_a_share_of_what_it_keeps_out() {
     world.step();
     let resist = |world: &World| shown(world, None, foe).magic_resist;
     let own = world.stats.get(foe).expect("settled").magic_resist_bp;
-    assert!(own > 2_500, "a hero's quarter and its intelligence's");
+    // A hero's quarter and its intelligence's, less what his presence lets through.
+    assert!(own > 0, "a hero keeps some magic out");
     assert_eq!(resist(&world), Fixed::from_ratio(own, rules::NOMINAL_BP));
     cast_through(&mut world, REQUIEM_SLOT, rules::REQUIEM_CAST_POINT_MS);
     run(&mut world, 10);
-    // 1 - (1 - own) * 1.05: what came through grows by five percent.
-    let torn = rules::NOMINAL_BP - (rules::NOMINAL_BP - own) * 105 / 100;
-    assert_eq!(resist(&world), Fixed::from_ratio(torn, rules::NOMINAL_BP));
+    assert!(world.feared(foe), "the line crossed it");
+    assert_eq!(resist(&world), Fixed::from_ratio(own, rules::NOMINAL_BP));
     let shown = shown(&world, None, foe);
     assert!(
-        shown
+        !shown
             .effects
             .iter()
-            .any(|effect| effect.id == EffectId::MAGIC_BROKEN && effect.ticks_left.is_some())
+            .any(|effect| effect.id == EffectId::MAGIC_BROKEN)
     );
 }
 
@@ -917,7 +921,7 @@ fn a_fallen_fiend_lets_half_his_kept_souls_fly_whatever_the_cooldown_and_they_on
     world.step();
     assert_eq!(
         full - hp(&world, mark),
-        Fixed::from_int(3 * rules::REQUIEM_LINE_DAMAGE[0]),
+        Fixed::from_int(3 * in_presence(rules::REQUIEM_LINE_DAMAGE[0])),
         "what stands where he fell is crossed by every line"
     );
     assert!(!world.feared(mark), "and is not frightened");

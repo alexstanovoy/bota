@@ -20,7 +20,7 @@ fn raze_hit_one_tick_before_expiry_gets_bonus_and_refreshes_the_whole_stack() {
     for _ in 0..178 {
         world.tick_gear();
     }
-    assert_eq!(land(&mut world, caster, target, 0), 120);
+    assert_eq!(land(&mut world, caster, target, 0), 105);
     assert_eq!(effects(&world, target), vec![effect(2, 180)]);
     for _ in 0..179 {
         world.tick_gear();
@@ -46,10 +46,10 @@ fn raze_refresh_does_not_leave_an_independent_timer_for_each_hit() {
     for _ in 0..100 {
         world.tick_gear();
     }
-    assert_eq!(land(&mut world, caster, target, 0), 120);
+    assert_eq!(land(&mut world, caster, target, 0), 105);
     for _ in 0..140 {
         world.tick_gear();
     }
     assert_eq!(effects(&world, target), vec![effect(2, 40)]);
-    assert_eq!(land(&mut world, caster, target, 0), 155);
+    assert_eq!(land(&mut world, caster, target, 0), 125);
 }

@@ -3,12 +3,14 @@ use bota_proto::{Angle, Fixed, HeroId, SlotId, Team};
 
 use super::fixtures::*;
 
+/// The stack bonus is 7.42's 20/40/60/80 ("Bonus Damage per stack decreased from 35/50/65/80
+/// to 20/40/60/80").
 #[test]
 fn raze_successive_hits_deal_exact_base_plus_prior_stacks_at_every_level() {
     for (level, amounts) in [
-        [85, 120, 155, 190],
-        [150, 200, 250, 300],
-        [215, 280, 345, 410],
+        [85, 105, 125, 145],
+        [150, 190, 230, 270],
+        [215, 275, 335, 395],
         [280, 360, 440, 520],
     ]
     .into_iter()
@@ -33,7 +35,7 @@ fn raze_all_three_reaches_share_stacks_even_when_hits_resolve_together() {
     for reach in 0..3 {
         assert!(world.cast_raze(caster, 0, reach));
     }
-    assert_eq!(burns_on(&world.step(), target), vec![85, 120, 155]);
+    assert_eq!(burns_on(&world.step(), target), vec![85, 105, 125]);
     assert_eq!(effects(&world, target), vec![effect(3, 180)]);
 }
 
@@ -42,7 +44,7 @@ fn raze_stack_bonus_uses_the_current_cast_level() {
     let (mut world, caster, target) = fixture();
     assert_eq!(land(&mut world, caster, target, 0), 85);
     assert_eq!(land(&mut world, caster, target, 3), 360);
-    assert_eq!(land(&mut world, caster, target, 1), 250);
+    assert_eq!(land(&mut world, caster, target, 1), 230);
 }
 
 #[test]
@@ -52,7 +54,7 @@ fn raze_magic_resistance_reduces_the_total_after_adding_stack_bonus() {
     let amounts: Vec<i32> = (0..4)
         .map(|_| land(&mut world, caster, target, 0))
         .collect();
-    assert_eq!(amounts, vec![63, 90, 116, 142]);
+    assert_eq!(amounts, vec![63, 78, 93, 108]);
     assert_eq!(effects(&world, target), vec![effect(4, 180)]);
 }
 
@@ -60,18 +62,18 @@ fn raze_magic_resistance_reduces_the_total_after_adding_stack_bonus() {
 fn raze_outgoing_amplification_multiplies_base_and_prior_stacks_together() {
     let (mut amplified, caster, target) = fixture();
     assert_eq!(land(&mut amplified, caster, target, 0), 85);
-    assert_eq!(land(&mut amplified, caster, target, 0), 120);
+    assert_eq!(land(&mut amplified, caster, target, 0), 105);
     amplified.stats.get_mut(caster).unwrap().magic_amp_bp = 15_000;
     assert_eq!(
         land(&mut amplified, caster, target, 0),
-        (85 + 2 * 35) * 15_000 / 10_000,
+        (85 + 2 * 20) * 15_000 / 10_000,
         "the stack composition is multiplied once as a whole"
     );
 
     let (mut plain, caster, target) = fixture();
     assert_eq!(land(&mut plain, caster, target, 0), 85);
-    assert_eq!(land(&mut plain, caster, target, 0), 120);
-    assert_eq!(land(&mut plain, caster, target, 0), 85 + 2 * 35);
+    assert_eq!(land(&mut plain, caster, target, 0), 105);
+    assert_eq!(land(&mut plain, caster, target, 0), 85 + 2 * 20);
 }
 
 #[test]
@@ -82,7 +84,7 @@ fn raze_casters_of_one_side_or_both_sides_on_a_neutral_keep_independent_stacks()
             world.set_team(target, Team::Neutral);
         }
         let second = hero(&mut world, second_side, ORIGIN, SlotId(2));
-        for expected in [85, 120] {
+        for expected in [85, 105] {
             assert_eq!(land(&mut world, first, target, 0), expected);
             assert_eq!(land(&mut world, second, target, 0), expected);
         }
@@ -98,7 +100,7 @@ fn raze_dire_casts_along_its_facing_with_the_same_bonus() {
     let (mut world, target, caster) = fixture();
     world.transform.get_mut(caster).unwrap().facing = Angle { brads: 32768 };
     assert_eq!(land(&mut world, caster, target, 2), 215);
-    assert_eq!(land(&mut world, caster, target, 2), 280);
+    assert_eq!(land(&mut world, caster, target, 2), 275);
 }
 
 #[test]
