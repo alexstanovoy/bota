@@ -6,7 +6,7 @@ use bota_proto::{DamageKind, EffectId, EventKind, Fixed, ItemId, Team, Vec2};
 
 use crate::game::{Entity, Hit, HitEffect, Laid, World, wire_id};
 
-use super::item_numbers::{foe_hero, foe_illusion, out_of_fountain_after_buying};
+use super::item_numbers::{foe_hero, out_of_fountain_after_buying};
 use super::support::*;
 
 /// A world where the seat's hero bought `items` and its attack, given through the seat, has just
@@ -857,9 +857,40 @@ fn poison_attack_on_a_lane_creep_spends_no_cooldown_and_lays_no_poison() {
 
 #[test]
 fn poison_attack_on_an_enemy_hero_illusion_starts_its_cooldown() {
-    let (world, hero, illusion, _) = first_landing(&[ItemId::ORB_OF_VENOM], foe_illusion);
-    assert!(slot_of(&world, hero, 0).expect("orb").cooldown > 0);
-    assert_eq!(laid_on(&world, illusion, ItemId::ORB_OF_VENOM).0, 1);
+    use bota_proto::{Order, Target};
+
+    let (mut world, hero) = out_of_fountain_after_buying(&[ItemId::ORB_OF_VENOM]);
+    let at = world.pos(hero).expect("the attacker stands");
+    let enemy = foe_hero(&mut world, at + Vec2::from_ints(3000, 0));
+    world.settle();
+    let illusion =
+        super::illusions::stand_in_illusion(&mut world, enemy, at + Vec2::from_ints(120, 0));
+    world.all_vision = true;
+    world.settle();
+    assert!(world.alive(illusion), "the copy is alive");
+    assert!(
+        world.can_see_of(hero, illusion),
+        "the attacker sees the copy"
+    );
+    assert!(
+        world.may_attack_on_order(hero, illusion),
+        "the copy is an eligible target"
+    );
+    advance_validated(
+        &mut world,
+        None,
+        Order::Attack {
+            target: Target::Unit(wire_id(illusion)),
+        },
+    );
+    for _ in 0..120 {
+        if laid_on(&world, illusion, ItemId::ORB_OF_VENOM).0 != 0 {
+            assert!(slot_of(&world, hero, 0).expect("orb").cooldown > 0);
+            return;
+        }
+        world.step();
+    }
+    panic!("the attack did not inflict Poison Attack on the copy");
 }
 
 #[test]

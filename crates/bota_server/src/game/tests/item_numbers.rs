@@ -1119,7 +1119,7 @@ pub(super) fn foe_hero(world: &mut World, at: Vec2) -> Entity {
 }
 
 /// An illusion of an enemy hero at a spot: its hero stands far off.
-pub(super) fn foe_illusion(world: &mut World, at: Vec2) -> Entity {
+fn foe_illusion(world: &mut World, at: Vec2) -> Entity {
     let hero = foe_hero(world, at + Vec2::from_ints(3000, 0));
     world.settle();
     world.make_rune_illusions(hero);
