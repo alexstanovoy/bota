@@ -538,3 +538,36 @@ fn the_cast_speed_talent_shortens_a_cast_point_while_the_feast_runs() {
         assert_eq!(landed, Some(point), "{talent:?}, feasting {feasting}");
     }
 }
+
+#[test]
+fn the_feast_cast_speed_talent_leaves_requiems_backswing_at_its_base_length() {
+    use crate::game::{ActionPhase, ActionState};
+
+    let (mut world, fiend, _) = talented_fiend(1500, Some(7));
+    cast(&mut world, FEAST_SLOT, Target::None);
+    cast(&mut world, REQUIEM_SLOT, Target::None);
+    let progress = (0..=ticks_of(rules::REQUIEM_CAST_POINT_MS))
+        .find_map(|_| {
+            let action = world.action.get(fiend).expect("the caster has an action");
+            if let ActionState::CastAbility {
+                phase: ActionPhase::After { progress },
+                ..
+            } = action.state
+            {
+                return Some(progress);
+            }
+            world.step();
+            None
+        })
+        .expect("Requiem reached its backswing");
+    let expected_remaining = (bota_core::beats(rules::REQUIEM_BACKSWING_MS) - progress)
+        .div_ceil(bota_core::BEATS_PER_TICK);
+    let finished = (1..=ticks_of(rules::REQUIEM_BACKSWING_MS)).find(|_| {
+        world.step();
+        world
+            .action
+            .get(fiend)
+            .is_some_and(|action| action.state == ActionState::Ready)
+    });
+    assert_eq!(finished, Some(expected_remaining));
+}
