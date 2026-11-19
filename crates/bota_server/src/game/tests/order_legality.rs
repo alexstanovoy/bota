@@ -1613,3 +1613,262 @@ fn order_legality_buyback_is_proven_from_the_seats_own_row_in_every_state() {
         Verdict::Illegal(RejectReason::OnCooldown)
     );
 }
+
+#[test]
+fn order_legality_does_not_refuse_orders_to_a_created_hero_in_a_cheat_match() {
+    use bota_core::{HERO_DEMO_ID, rules};
+    use bota_proto::{RejectReason, UnitKind};
+
+    let cfg = crate::game::MatchConfig {
+        map: HERO_DEMO_ID,
+        cheats: true,
+        objectives: map_of(HERO_DEMO_ID).default_objectives,
+        runes: map_of(HERO_DEMO_ID).default_runes,
+        ..super::support::config()
+    };
+    let (mut local, _) = LocalMatch::new(&cfg, &[OrderDelay::NONE]).expect("match");
+    let mut seq = 1u32;
+    let mut give = |local: &mut LocalMatch, order: Order| {
+        seq += 1;
+        let given = OutgoingOrder {
+            seq,
+            unit: None,
+            order,
+            queue: false,
+            seen: local.tick(),
+        };
+        let stream = local.step(&[&[given]]).expect("step").remove(0);
+        assert!(
+            !stream
+                .iter()
+                .any(|msg| matches!(msg, ServerMsg::OrderRejected { .. })),
+            "setup {order:?} refused"
+        );
+    };
+    give(
+        &mut local,
+        Order::Cheat {
+            cheat: Cheat::AllVision { on: true },
+        },
+    );
+    give(
+        &mut local,
+        Order::Cheat {
+            cheat: Cheat::CreateHero {
+                hero: HeroId::PUDGE,
+                enemy: true,
+                at: rules::DEMO_LANE_CORNERS[1],
+            },
+        },
+    );
+    let view = snapshot(&mut local);
+    let created = view
+        .player(SlotId(1))
+        .and_then(|row| row.unit)
+        .expect("created Pudge handle");
+    let player = view.player(SlotId(0)).expect("player 0");
+
+    // In a cheat match, orders to a hero owned by another slot must be Unknown (not Illegal),
+    // because the server accepts them when that slot is a created hero.
+    for order in [
+        Order::Move {
+            target: Target::Pos(rules::DEMO_LANE_CORNERS[2]),
+        },
+        Order::Buy {
+            item: ItemId::BLINK_DAGGER,
+        },
+        Order::Cheat {
+            cheat: Cheat::Levels { count: 1 },
+        },
+    ] {
+        let verdict = OrderContext {
+            view: &view,
+            player,
+            map: local.world().map,
+            catalogue: Catalogue::FULL,
+            cheats: true,
+        }
+        .check(Some(created), order, false);
+        assert_eq!(
+            verdict,
+            Verdict::Unknown(UnknownReason::HiddenState),
+            "cheats on: {order:?} to created hero must not be called Illegal"
+        );
+        // Confirm the server actually accepts the order.
+        let mut probe = local.clone();
+        let given = OutgoingOrder {
+            seq: 9000,
+            unit: Some(created),
+            order,
+            queue: false,
+            seen: probe.tick(),
+        };
+        let stream = probe.step(&[&[given]]).expect("step").remove(0);
+        assert!(
+            !stream
+                .iter()
+                .any(|msg| matches!(msg, ServerMsg::OrderRejected { .. })),
+            "server accepted {order:?} to created hero"
+        );
+    }
+
+    // Without cheats, the same other-owned hero is still proven Illegal(NotYourUnit).
+    assert_eq!(
+        OrderContext {
+            view: &view,
+            player,
+            map: local.world().map,
+            catalogue: Catalogue::FULL,
+            cheats: false,
+        }
+        .check(
+            Some(created),
+            Order::Move {
+                target: Target::None,
+            },
+            false,
+        ),
+        Verdict::Illegal(RejectReason::NotYourUnit)
+    );
+
+    // Even with cheats on, an unowned unit (tower) is still proven Illegal(NotYourUnit).
+    let tower = view
+        .units
+        .iter()
+        .find(|u| u.kind == UnitKind::Tower)
+        .expect("a tower")
+        .id;
+    assert_eq!(
+        OrderContext {
+            view: &view,
+            player,
+            map: local.world().map,
+            catalogue: Catalogue::FULL,
+            cheats: true,
+        }
+        .check(
+            Some(tower),
+            Order::Move {
+                target: Target::None,
+            },
+            false,
+        ),
+        Verdict::Illegal(RejectReason::NotYourUnit)
+    );
+}
+
+#[test]
+fn order_legality_allows_free_purchases_on_the_hero_demo_map_at_zero_gold() {
+    use bota_core::HERO_DEMO_ID;
+    use bota_proto::Team;
+
+    let cfg = crate::game::MatchConfig {
+        map: HERO_DEMO_ID,
+        cheats: true,
+        objectives: map_of(HERO_DEMO_ID).default_objectives,
+        runes: map_of(HERO_DEMO_ID).default_runes,
+        ..super::support::config()
+    };
+    let (mut local, _) = LocalMatch::new(&cfg, &[OrderDelay::NONE]).expect("match");
+    let home = bota_core::hero_spawn_pos(map_of(HERO_DEMO_ID), Team::Radiant);
+    for (seq, cheat) in [
+        (1, Cheat::Gold { amount: -10_000 }),
+        (2, Cheat::Teleport { at: home }),
+    ] {
+        let given = OutgoingOrder {
+            seq,
+            unit: None,
+            order: Order::Cheat { cheat },
+            queue: false,
+            seen: local.tick(),
+        };
+        let stream = local.step(&[&[given]]).expect("step").remove(0);
+        assert!(
+            !stream
+                .iter()
+                .any(|msg| matches!(msg, ServerMsg::OrderRejected { .. })),
+            "setup {cheat:?} refused"
+        );
+    }
+    let view = snapshot(&mut local);
+    let player = view.player(SlotId(0)).expect("player 0");
+    assert_eq!(player.gold, Some(0), "player has zero gold");
+    let order = Order::Buy {
+        item: ItemId::BLINK_DAGGER,
+    };
+    let verdict = OrderContext {
+        view: &view,
+        player,
+        map: local.world().map,
+        catalogue: Catalogue::FULL,
+        cheats: true,
+    }
+    .check(None, order, false);
+    assert_eq!(
+        verdict,
+        Verdict::Legal,
+        "free purchases on Hero Demo map must be Legal even at 0 gold"
+    );
+    // Confirm the server accepts the free purchase.
+    let given = OutgoingOrder {
+        seq: 100,
+        unit: None,
+        order,
+        queue: false,
+        seen: local.tick(),
+    };
+    let stream = local.step(&[&[given]]).expect("step").remove(0);
+    assert!(
+        !stream
+            .iter()
+            .any(|msg| matches!(msg, ServerMsg::OrderRejected { .. })),
+        "server accepted free Blink Dagger purchase at 0 gold"
+    );
+}
+
+#[test]
+fn order_legality_refuses_panel_cheats_on_own_dead_hero_with_hero_dead() {
+    use bota_core::HERO_DEMO_ID;
+    use bota_proto::RejectReason;
+
+    let cfg = crate::game::MatchConfig {
+        map: HERO_DEMO_ID,
+        cheats: true,
+        objectives: map_of(HERO_DEMO_ID).default_objectives,
+        runes: map_of(HERO_DEMO_ID).default_runes,
+        ..super::support::config()
+    };
+    let (mut local, _) = LocalMatch::new(&cfg, &[OrderDelay::NONE]).expect("match");
+    let given = OutgoingOrder {
+        seq: 1,
+        unit: None,
+        order: Order::Cheat {
+            cheat: Cheat::Suicide,
+        },
+        queue: false,
+        seen: local.tick(),
+    };
+    let _ = local.step(&[&[given]]).expect("step");
+    let view = snapshot(&mut local);
+    let player = view.player(SlotId(0)).expect("player 0");
+    assert!(player.respawn_left > 0, "own hero lies dead");
+    for cheat in [
+        Cheat::RemoveHero,
+        Cheat::MaxAbilities,
+        Cheat::UnlearnAbilities,
+    ] {
+        let verdict = OrderContext {
+            view: &view,
+            player,
+            map: local.world().map,
+            catalogue: Catalogue::FULL,
+            cheats: true,
+        }
+        .check(None, Order::Cheat { cheat }, false);
+        assert_eq!(
+            verdict,
+            Verdict::Illegal(RejectReason::HeroDead),
+            "own dead hero must refuse {cheat:?} with HeroDead"
+        );
+    }
+}

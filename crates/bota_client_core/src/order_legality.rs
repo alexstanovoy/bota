@@ -177,6 +177,11 @@ impl OrderContext<'_> {
             return Verdict::Unknown(UnknownReason::HiddenState);
         };
         if body.owner != Some(self.player.slot) {
+            // In a cheat match, every created hero is controllable by every player, and
+            // PlayerView does not distinguish created seats from other players' seats.
+            if self.cheats && body.owner.is_some() {
+                return Verdict::Unknown(UnknownReason::HiddenState);
+            }
             return Verdict::Illegal(RejectReason::NotYourUnit);
         }
         if body.hp <= 0 {
@@ -560,7 +565,12 @@ impl OrderContext<'_> {
         if !has_body
             && matches!(
                 cheat,
-                Cheat::ApplyModifier { .. } | Cheat::ClearModifiers { .. } | Cheat::Teleport { .. }
+                Cheat::ApplyModifier { .. }
+                    | Cheat::ClearModifiers { .. }
+                    | Cheat::Teleport { .. }
+                    | Cheat::RemoveHero
+                    | Cheat::MaxAbilities
+                    | Cheat::UnlearnAbilities
             )
         {
             return Verdict::Illegal(RejectReason::HeroDead);

@@ -38,9 +38,13 @@ impl OrderContext<'_> {
             return Verdict::Unknown(UnknownReason::MalformedView);
         };
         let parts = plan.wanted();
-        let price = parts.iter().fold(0_i32, |sum, part| {
-            sum.saturating_add(item_def(*part).map_or(0, |def| def.cost))
-        });
+        let price = if self.map.free_purchases {
+            0
+        } else {
+            parts.iter().fold(0_i32, |sum, part| {
+                sum.saturating_add(item_def(*part).map_or(0, |def| def.cost))
+            })
+        };
         if self.player.gold.is_some_and(|gold| gold < price) {
             return Verdict::Illegal(RejectReason::NotEnoughGold);
         }
