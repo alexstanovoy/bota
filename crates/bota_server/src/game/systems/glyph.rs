@@ -1,6 +1,6 @@
 //! The Glyph of Fortification: a side's structures and lane creeps take no
-//! damage for a while, its towers shoot more targets, and one cooldown
-//! serves the whole side.
+//! damage for a while, its towers shoot more targets, and the side holds its
+//! charges (Dota 7.42: two, six minutes each, seven seconds between uses).
 
 use bota_core::{ModifierKind, attack_class_pct, kind_def, rules, side_index};
 use bota_proto::{GlyphView, RejectReason, SlotId, Team, UnitKind};
@@ -13,10 +13,7 @@ impl World {
     pub fn check_glyph(&self, slot: SlotId) -> Result<(), RejectReason> {
         let seat = self.seat(slot).ok_or(RejectReason::HeroDead)?;
         let index = side_index(seat.team).ok_or(RejectReason::NotYourUnit)?;
-        bota_core::glyph_refusal(
-            seat.team,
-            self.glyphs[index].ready_at.saturating_sub(self.tick),
-        )
+        bota_core::glyph_refusal(seat.team, self.glyphs[index].ready_after(self.tick))
     }
 
     /// Activates the Glyph of a seat's side, if it is ready.
@@ -32,7 +29,12 @@ impl World {
         };
         let now = self.tick;
         let glyph = &mut self.glyphs[index];
-        glyph.ready_at = now + rules::GLYPH_COOLDOWN_TICKS;
+        let mut held = glyph.held(now);
+        if !held.spend(now, rules::GLYPH_CHARGES) {
+            return;
+        }
+        glyph.keep(held);
+        glyph.usable_at = now + rules::GLYPH_USE_COOLDOWN_TICKS;
         glyph.structures_until = now + rules::GLYPH_STRUCTURE_TICKS;
         self.fortify(team);
     }
@@ -62,9 +64,18 @@ impl World {
         side_index(team).is_some_and(|index| self.tick < self.glyphs[index].structures_until)
     }
 
-    /// Refreshes a side's Glyph when the first tier one tower, the first
-    /// tier two tower or the first melee barracks of the side falls.
+    /// Refreshes a side's Glyph when the first tier one tower, the first tier two tower or the
+    /// first melee barracks of the side falls, where the rules say a fall does
+    /// ([`rules::GLYPH_REFRESHED_BY_FALLEN_BUILDINGS`]: 7.41f's, none since 7.42).
     pub(crate) fn refresh_glyph_for(&mut self, fallen: Entity) {
+        if rules::GLYPH_REFRESHED_BY_FALLEN_BUILDINGS {
+            self.refresh_glyph_after_fall(fallen);
+        }
+    }
+
+    /// 7.41f's refresh: the side's next Glyph charge arrives within [`rules::GLYPH_REFRESH_TICKS`]
+    /// of the first fall of each refreshing building, as 7.41f's single cooldown ended then.
+    pub(crate) fn refresh_glyph_after_fall(&mut self, fallen: Entity) {
         let (Some(kind), Some(team)) = (
             self.kind.get(fallen).copied(),
             self.team.get(fallen).copied(),
@@ -85,16 +96,22 @@ impl World {
             }
             _ => return,
         };
-        let ready = self.tick + rules::GLYPH_REFRESH_TICKS;
+        let now = self.tick;
+        let ready = now + rules::GLYPH_REFRESH_TICKS;
         let glyph = &mut self.glyphs[index];
         if glyph.refreshed & bit == 0 {
             glyph.refreshed |= bit;
-            glyph.ready_at = glyph.ready_at.min(ready);
+            let mut held = glyph.held(now);
+            if held.charges < rules::GLYPH_MAX_CHARGES {
+                held.next_charge = Some(held.next_charge.map_or(ready, |due| due.min(ready)));
+            }
+            glyph.keep(held);
+            glyph.usable_at = glyph.usable_at.min(ready);
         }
     }
 
-    /// The Glyphs a viewer is told of: both sides', the other side's without
-    /// its cooldown (Dota's announcer tells both teams when a Glyph is used).
+    /// The Glyphs a viewer is told of: both sides', the other side's without its wait or its
+    /// charges (Dota's announcer tells both teams when a Glyph is used).
     pub(crate) fn glyph_views(&self, viewer: Option<Team>) -> Vec<GlyphView> {
         [Team::Radiant, Team::Dire]
             .into_iter()
@@ -105,7 +122,8 @@ impl World {
                     team,
                     ready_in: 0,
                     active_for: glyph.structures_until.saturating_sub(self.tick),
-                    ready_after: own.then(|| glyph.ready_at.saturating_sub(self.tick)),
+                    ready_after: own.then(|| glyph.ready_after(self.tick)),
+                    charges: own.then(|| glyph.held(self.tick).charges),
                 })
             })
             .collect()

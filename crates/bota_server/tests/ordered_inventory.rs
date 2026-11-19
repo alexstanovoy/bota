@@ -45,11 +45,15 @@ fn game() -> LocalMatch {
 
 #[test]
 fn a_second_glyph_in_one_tick_is_refused_against_the_first_glyphs_cooldown() {
-    // Glyph has one shared cooldown; another request cannot cast it again:
-    // https://liquipedia.net/dota2/Buildings#Glyph_of_Fortification
+    // Dota 7.42: "Now has 2 charges with a 6 minute replenish time and a 7s cooldown between
+    // uses": with both charges held, a second request in the same tick waits out the seven
+    // seconds the first started.
     let mut game = game();
     let tick = game.tick();
-    game.world_mut().glyphs[0].ready_at = tick;
+    let glyph = &mut game.world_mut().glyphs[0];
+    glyph.charges = 2;
+    glyph.next_charge = None;
+    glyph.usable_at = tick;
     let messages = step(&mut game, &[Order::Glyph, Order::Glyph]);
     let refused: Vec<_> = messages
         .iter()
@@ -62,7 +66,12 @@ fn a_second_glyph_in_one_tick_is_refused_against_the_first_glyphs_cooldown() {
         refused,
         vec![(tick * 32 + 1, bota_proto::RejectReason::OnCooldown)]
     );
-    assert!(game.world().glyphs[0].ready_at > tick);
+    let glyph = game.world().glyphs[0];
+    assert!(glyph.usable_at > tick);
+    assert_eq!(
+        glyph.charges, 1,
+        "the first spent one charge, the second none"
+    );
 }
 
 fn queue_moves(game: &mut LocalMatch, count: usize) -> Vec<ServerMsg> {

@@ -25,8 +25,8 @@ const TICK_WINDOWS: [u32; 2] = [600, 3_000];
 
 /// The world and view fingerprints of each measured tick window.
 const TICK_WINDOW_DIGESTS: [(u32, u64, u64); 2] = [
-    (600, 0x0f8c_9e40_fa87_16a4, 0x803c_3fe0_9554_7575),
-    (3000, 0xa227_00d3_cd01_3820, 0x4f0a_003d_c5cf_6330),
+    (600, 0x8088_72eb_9164_f862, 0x803c_3fe0_9554_7575),
+    (3000, 0x7612_f925_e7f1_d862, 0x4f0a_003d_c5cf_6330),
 ];
 
 /// Ticks of the skirmish measured: the pregame and the lane
@@ -34,7 +34,7 @@ const TICK_WINDOW_DIGESTS: [(u32, u64, u64); 2] = [
 const SKIRMISH_TICKS: u32 = 9_000;
 
 /// The world and handed-out fingerprints at the end of the skirmish.
-const SKIRMISH_DIGEST: (u64, u64) = (0x5a11_9060_e9e4_ca70, 0xf466_b01c_e630_5c24);
+const SKIRMISH_DIGEST: (u64, u64) = (0xf281_54e0_591d_970a, 0xf466_b01c_e630_5c24);
 
 /// The fingerprint of the fixed isqrt64 answers.
 const ISQRT_DIGEST: u64 = 0x797c_0b4c_e20e_e1b1;

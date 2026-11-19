@@ -113,6 +113,35 @@ fn a_refresh_fills_the_pools_and_clears_every_wait() {
     assert!(world.seats[0].item_clocks.is_empty());
 }
 
+/// The refresh cheat brings a side's next Glyph charge now and ends its seven-second lock, as
+/// the game's cheat sets the Glyph's cooldown to nothing and clears the lock; a side holding
+/// both charges keeps them.
+#[test]
+fn a_refresh_brings_the_next_glyph_charge_and_ends_its_lock() {
+    let (mut world, _hero) = world_with(true);
+    let now = world.tick;
+    let glyph = &mut world.glyphs[0];
+    glyph.charges = 0;
+    glyph.next_charge = Some(now + 1_000);
+    glyph.usable_at = now + 100;
+    world.glyphs[1].charges = rules::GLYPH_MAX_CHARGES;
+    world.glyphs[1].next_charge = None;
+    cheat(&mut world, Cheat::Refresh);
+    let now = world.tick;
+    let refreshed = world.glyphs[0];
+    assert_eq!(refreshed.held(now).charges, 1, "the next charge came now");
+    assert!(
+        refreshed.held(now).next_charge > Some(now + rules::GLYPH_RECHARGE_TICKS - 2),
+        "and the next wait runs from it"
+    );
+    assert_eq!(refreshed.ready_after(now), 0, "the lock is over");
+    assert_eq!(
+        world.glyphs[1].held(now).charges,
+        rules::GLYPH_MAX_CHARGES,
+        "a full side keeps both"
+    );
+}
+
 #[test]
 fn an_item_is_handed_out_for_nothing_and_told_of_as_bought() {
     let (mut world, hero) = world_with(true);

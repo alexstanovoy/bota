@@ -1010,7 +1010,7 @@ fn a_player_ordering_the_other_sides_created_hero_spends_only_its_own_sides_glyp
     pair.run(rules::GLYPH_FIRST_USE_AFTER_HORN);
     let world = pair.local.world_mut();
     let now = world.tick;
-    assert!(world.glyphs.iter().all(|glyph| glyph.ready_at <= now));
+    assert!(world.glyphs.iter().all(|glyph| glyph.ready_after(now) == 0));
     let charges =
         |world: &crate::game::World| [world.scan_ledger(0).charges, world.scan_ledger(1).charges];
     let before = charges(world);
@@ -1029,11 +1029,11 @@ fn a_player_ordering_the_other_sides_created_hero_spends_only_its_own_sides_glyp
     let world = pair.local.world_mut();
     let now = world.tick;
     assert!(
-        world.glyphs[0].ready_at > now,
+        world.glyphs[0].ready_after(now) > 0,
         "Radiant's Glyph was not the one used"
     );
     assert!(
-        world.glyphs[1].ready_at <= now,
+        world.glyphs[1].ready_after(now) == 0,
         "Dire's Glyph was spent by a Radiant player"
     );
     assert_eq!(
@@ -2486,8 +2486,14 @@ fn a_match_without_cheats_refuses_every_order_kind_aimed_at_another_players_hero
     assert_eq!(pair.rejected[0], []);
     let world = pair.local.world_mut();
     let now = world.tick;
-    assert!(world.glyphs[0].ready_at > now, "Radiant's Glyph spent");
-    assert!(world.glyphs[1].ready_at <= now, "Dire's Glyph untouched");
+    assert!(
+        world.glyphs[0].ready_after(now) > 0,
+        "Radiant's Glyph spent"
+    );
+    assert!(
+        world.glyphs[1].ready_after(now) == 0,
+        "Dire's Glyph untouched"
+    );
     assert_eq!(
         [world.scan_ledger(0).charges, world.scan_ledger(1).charges,],
         [charges_before[0] - 1, charges_before[1]],

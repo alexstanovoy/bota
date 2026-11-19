@@ -893,7 +893,7 @@ fn a_glyph_fortifies_the_buildings_and_leaves_a_held_outpost_bare() {
     let outpost = the(&world, UnitKind::Outpost, map.outposts[0].at);
     assert_eq!(world.team.get(outpost), Some(&Team::Radiant), "held");
     let tower = structure_at(&world, map.radiant_towers[0].2);
-    world.glyphs[0].ready_at = 0;
+    world.glyphs[0].charges = 1;
     give(&mut world, &[(0, Order::Glyph)]);
     assert!(world.wears(tower, ModifierKind::Fortified), "a tower");
     for (kind, at) in [

@@ -1955,20 +1955,25 @@ fn a_side_view_that_tells_the_other_sides_creep_score_is_refused() {
 
 #[test]
 fn a_side_view_that_tells_the_other_sides_glyph_cooldown_is_refused() {
-    let glyph = |ready_after| bota_proto::GlyphView {
+    let glyph = |ready_after, charges| bota_proto::GlyphView {
         team: Team::Dire,
         ready_in: 0,
         active_for: 0,
         ready_after,
+        charges,
     };
-    for (ready_after, lost) in [(None, false), (Some(0), true)] {
+    for (ready_after, charges, lost) in [
+        (None, None, false),
+        (Some(0), None, true),
+        (None, Some(2), true),
+    ] {
         let (mut app, _, _) = a_duel_app();
         let mut msg = a_radiant_view_scoring_dire(None);
         if let bota_proto::ServerMsg::Snapshot { view } = &mut msg {
-            view.glyphs = vec![glyph(ready_after)];
+            view.glyphs = vec![glyph(ready_after, charges)];
         }
         app.handle(msg);
-        assert_eq!(app.lost, lost, "{ready_after:?}");
+        assert_eq!(app.lost, lost, "{ready_after:?} {charges:?}");
     }
 }
 

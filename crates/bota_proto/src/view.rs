@@ -726,6 +726,9 @@ pub struct GlyphView {
     /// Ticks until the side may activate it; zero when it is ready. Absent
     /// in the other side's view: its cooldown is its own.
     pub ready_after: Option<u32>,
+    /// Charges the side holds (Dota 7.42: two at most, each back six minutes after it was
+    /// spent). Absent in the other side's view, as its wait is.
+    pub charges: Option<u8>,
 }
 
 /// A teleport being channelled, as both sides see its destination.

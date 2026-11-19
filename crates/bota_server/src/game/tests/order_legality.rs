@@ -1301,7 +1301,11 @@ fn order_legality_glyph_is_ready_at_zero_but_not_one_tick() {
         (1, Verdict::Illegal(bota_proto::RejectReason::OnCooldown)),
     ] {
         let mut probe = local.clone();
-        probe.world_mut().glyphs[0].ready_at = probe.tick() + left;
+        // A charge held, and the seven seconds between uses `left` ticks from ending.
+        let tick = probe.tick();
+        let glyph = &mut probe.world_mut().glyphs[0];
+        glyph.charges = 1;
+        glyph.usable_at = tick + left;
         assert_eq!(compare(probe, Order::Glyph, false), expected);
     }
 }

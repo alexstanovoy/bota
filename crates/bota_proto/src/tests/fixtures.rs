@@ -336,6 +336,7 @@ pub fn world_view(creeps: u32) -> WorldView {
             ready_in: 0,
             active_for: 120,
             ready_after: Some(9000),
+            charges: Some(1),
         }],
         clock: Some(ClockShift {
             game: 600,

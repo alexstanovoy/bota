@@ -414,9 +414,23 @@ impl Schedule {
         self.first_wave() + FREE_AGGRO_AFTER_FIRST_WAVE
     }
 
-    /// The tick a side may first use its Glyph of Fortification.
+    /// The tick a side's first Glyph charge arrives, and so the first it may use one.
     pub const fn glyph_first_use(self) -> u32 {
         self.horn + GLYPH_FIRST_USE_AFTER_HORN
+    }
+
+    /// The whole of the wait a side's Glyph is in at game-clock tick `clock` while it holds
+    /// `charges`: the seven seconds between two uses while it holds one; else a charge's wait,
+    /// the first laid when the clock began (Dota: 270 s from the pregame's start), each later
+    /// one [`GLYPH_RECHARGE_TICKS`]. What a clock-face draws its sweep over.
+    pub const fn glyph_wait(self, clock: u32, charges: u8) -> u32 {
+        if charges > 0 {
+            GLYPH_USE_COOLDOWN_TICKS
+        } else if clock < self.glyph_first_use() {
+            self.glyph_first_use()
+        } else {
+            GLYPH_RECHARGE_TICKS
+        }
     }
 
     /// The tick a side's first Scan charge arrives.
@@ -837,20 +851,27 @@ pub const BACKDOOR_TOWER_RADIUS: i32 = 900;
 /// tier three and four, barracks and filler of its side, and itself.
 pub const BACKDOOR_BASE_RADIUS: i32 = 4000;
 
-/// Ticks from the horn until a side may first use its Glyph of
-/// Fortification. Dota puts it on its cooldown from the very first second
-/// of the match, pregame included, showing 4:30 then (checked in the Dota 2
-/// client, 7.41, 2026-10-24), so it cannot be pressed before then: 270
-/// seconds from the heroes coming in, which is three minutes past the horn
-/// (Liquipedia, *Glyph of Fortification*: "cannot be used until the 3:00
-/// minute mark"). Dota's heroes come in [`DOTA_PREGAME_TICKS`] before the
-/// horn; a map with a shorter pregame lays the wait on the game clock, as
-/// the first scroll's is.
+/// Ticks from the horn until a side's first Glyph charge arrives. Dota empties both sides'
+/// charges when the pregame begins and lays the first wait at 270 seconds (the game's server
+/// code), three minutes past the horn after Dota's ninety-second pregame (Liquipedia, *Glyph of
+/// Fortification*: "cannot be used until the 3:00 minute mark"); a map with a shorter pregame
+/// lays the wait on the game clock, as the first scroll's is.
 pub const GLYPH_FIRST_USE_AFTER_HORN: u32 = 270 * TICKS_PER_SECOND - DOTA_PREGAME_TICKS;
-/// Cooldown of a Glyph of Fortification, shared by a whole side: 300 seconds.
-pub const GLYPH_COOLDOWN_TICKS: u32 = 300 * TICKS_PER_SECOND;
+/// Charges a side's Glyph holds at most (Dota 7.42: "Now has 2 charges with a 6 minute
+/// replenish time and a 7s cooldown between uses").
+pub const GLYPH_MAX_CHARGES: u8 = 2;
+/// Ticks one Glyph charge takes to come back: 360 seconds.
+pub const GLYPH_RECHARGE_TICKS: u32 = 360 * TICKS_PER_SECOND;
+/// Ticks a side waits after a Glyph before it may use the next charge: 7 seconds.
+pub const GLYPH_USE_COOLDOWN_TICKS: u32 = 7 * TICKS_PER_SECOND;
+/// How a side's Glyph charges come back.
+pub const GLYPH_CHARGES: crate::ChargeRule = crate::ChargeRule {
+    max: GLYPH_MAX_CHARGES,
+    recharge: GLYPH_RECHARGE_TICKS,
+};
 /// How long a Glyph keeps a side's structures from taking damage: 7 seconds
-/// (`abilities_english.txt`, `fountain_glyph_duration_structures`).
+/// (`abilities_english.txt`, `fountain_glyph_duration_structures`; hard-coded in the game's
+/// server code since 7.42).
 pub const GLYPH_STRUCTURE_TICKS: u32 = 7 * TICKS_PER_SECOND;
 /// How long a Glyph keeps a side's lane creeps from taking damage: 3
 /// seconds (`fountain_glyph_duration_creeps`).
@@ -858,9 +879,12 @@ pub const GLYPH_CREEP_TICKS: u32 = 3 * TICKS_PER_SECOND;
 /// Extra targets a tower of tier two and above shoots at with each shot
 /// while its side's Glyph holds (`fountain_glyph_multishot_targets`).
 pub const GLYPH_MULTISHOT_TARGETS: usize = 5;
-/// Ticks after a side's first tier one tower, first tier two tower and first
-/// melee barracks fall before its Glyph is ready again: the cooldown is set
-/// to one second.
+/// Whether the fall of a side's first tier one tower, first tier two tower and first melee
+/// barracks brings its next Glyph charge within [`GLYPH_REFRESH_TICKS`]: 7.41f's rule, out
+/// since 7.42 ("No longer resets cooldown when specific buildings are destroyed"; nothing in the
+/// game's server code lays `modifier_glyph_reset` any more). Kept, to be offered again.
+pub const GLYPH_REFRESHED_BY_FALLEN_BUILDINGS: bool = false;
+/// Ticks after a refreshing fall before the next Glyph charge arrives: one second.
 pub const GLYPH_REFRESH_TICKS: u32 = TICKS_PER_SECOND;
 
 /// Charges a side's Scan holds at most: both are spent at once or one after the other, and

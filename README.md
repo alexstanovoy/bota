@@ -16,8 +16,8 @@ lockstep, no reproducible matches, no fair view of the map. bota gives you that:
   sockets, and a bot is a normal client in a few lines of Rust.
 - **Dota's numbers.** Heroes, creeps, towers, items and timings follow Dota 2, with the sources named next to the
   tables. The move from 7.41f to 7.42 is under way: the items' and the heroes' script numbers, Shadow Fiend's
-  abilities, the attributes and the buildings', Roshan's and the shrine's rewards are 7.42's; the map, the neutral
-  camps, experience and passive gold, hero kill bounties, waves and the Glyph are still 7.41f's.
+  abilities, the attributes, the buildings', Roshan's and the shrine's rewards and the Glyph are 7.42's; the map,
+  the neutral camps, experience and passive gold, hero kill bounties and waves are still 7.41f's.
 
 ## What you can play today
 

@@ -127,10 +127,9 @@ fn withheld(view: &WorldView) -> Result<(), SessionError> {
                 || player.backpack.is_some()
                 || player.buyback.is_some()
         })
-        || view
-            .glyphs
-            .iter()
-            .any(|glyph| glyph.team != team && glyph.ready_after.is_some())
+        || view.glyphs.iter().any(|glyph| {
+            glyph.team != team && (glyph.ready_after.is_some() || glyph.charges.is_some())
+        })
         || view.talents.iter().any(|talents| {
             (talents.may_learn.is_some() || talents.may_learn_attribute_bonus.is_some())
                 && view

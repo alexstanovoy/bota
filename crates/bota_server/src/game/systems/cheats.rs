@@ -420,7 +420,14 @@ impl World {
         }
         let now = self.tick;
         for glyph in &mut self.glyphs {
-            glyph.ready_at = glyph.ready_at.min(now);
+            // The game's refresh cheat brings the next charge now and ends the wait between
+            // uses.
+            let mut held = glyph.held(now);
+            if held.charges < rules::GLYPH_MAX_CHARGES {
+                held.next_charge = Some(now);
+            }
+            glyph.keep(held);
+            glyph.usable_at = now;
         }
         self.refresh_scans();
     }
@@ -561,7 +568,10 @@ impl World {
         let ahead = horn - next;
         self.clock_shift.game = self.clock_shift.game.saturating_add(ahead);
         for glyph in &mut self.glyphs {
-            glyph.ready_at = glyph.ready_at.saturating_sub(ahead);
+            if let Some(due) = &mut glyph.next_charge {
+                *due = due.saturating_sub(ahead);
+            }
+            glyph.usable_at = glyph.usable_at.saturating_sub(ahead);
         }
         for seat in &mut self.seats {
             for (_, left) in &mut seat.item_clocks {

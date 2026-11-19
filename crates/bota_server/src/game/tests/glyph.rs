@@ -1,7 +1,7 @@
-//! The Glyph of Fortification (Dota 7.41f): one cooldown per side, seven
-//! seconds for structures and three for lane creeps, five more targets for
-//! a tower of tier two and above, a refresh when the first tier one tower,
-//! tier two tower and melee barracks fall.
+//! The Glyph of Fortification (Dota 7.42): two charges per side, each back six minutes after it
+//! was spent, seven seconds between two uses; seven seconds for structures and three for lane
+//! creeps, five more targets for a tower of tier two and above; no refresh when buildings fall
+//! (7.41f's refresh is kept in the rules, out of play).
 
 use bota_core::{MELEE_CREEP, ModifierKind, UnitDef, map_of, rules, tower_def};
 use bota_proto::{
@@ -59,7 +59,7 @@ fn run_to(world: &mut World, tick: u32) {
 }
 
 #[test]
-fn the_glyph_protects_structures_seven_seconds_and_creeps_three_then_recharges() {
+fn the_glyph_protects_structures_seven_seconds_and_creeps_three_then_its_charge_comes_back() {
     let mut world = World::on_map(map_of(MapId(0)));
     let hero = seat_hero(&mut world, 0, Team::Radiant, Vec2::from_ints(3000, 3000));
     let enemy = seat_hero(&mut world, 1, Team::Dire, Vec2::from_ints(9000, 9000));
@@ -123,6 +123,7 @@ fn the_glyph_protects_structures_seven_seconds_and_creeps_three_then_recharges()
             ready_in: 0,
             active_for: mine[0].active_for,
             ready_after: None,
+            charges: None,
         },
         "and nothing of its cooldown, which is withheld"
     );
@@ -150,12 +151,149 @@ fn the_glyph_protects_structures_seven_seconds_and_creeps_three_then_recharges()
         Ok(()),
         "the other side has a Glyph of its own"
     );
-    run_to(&mut world, used + rules::GLYPH_COOLDOWN_TICKS);
+    // It held one charge, from three minutes; the second's six-minute wait began then, while it
+    // held fewer than two, and spending the first did not restart it.
+    let next = world.schedule().glyph_first_use() + rules::GLYPH_RECHARGE_TICKS;
+    assert!(used > world.schedule().glyph_first_use());
+    run_to(&mut world, next - 1);
+    assert_eq!(
+        world.validate_order(SlotId(0), None, &order),
+        Err(RejectReason::OnCooldown)
+    );
+    run_to(&mut world, next);
     assert_eq!(world.validate_order(SlotId(0), None, &order), Ok(()));
 }
 
+/// Dota 7.42: "Now has 2 charges with a 6 minute replenish time and a 7s cooldown between uses":
+/// the second charge arrives six minutes after the first (nine minutes past the horn), a side
+/// holding both spends one, waits seven seconds, spends the other, and its views tell its own
+/// charges alone.
 #[test]
-fn the_first_tier_one_tower_tier_two_tower_and_melee_barracks_to_fall_refresh_it() {
+fn the_glyph_holds_two_charges_six_minutes_apart_and_waits_seven_seconds_between_uses() {
+    let mut world = World::on_map(map_of(MapId(0)));
+    seat_hero(&mut world, 0, Team::Radiant, Vec2::from_ints(3000, 3000));
+    seat_hero(&mut world, 1, Team::Dire, Vec2::from_ints(9000, 9000));
+    let charges = |world: &World, viewer: Team| {
+        world
+            .glyph_views(Some(viewer))
+            .into_iter()
+            .find(|glyph| glyph.team == Team::Radiant)
+            .and_then(|glyph| glyph.charges)
+    };
+    let first = world.schedule().glyph_first_use();
+    run_to(&mut world, first);
+    assert_eq!(charges(&world, Team::Radiant), Some(1));
+    assert_eq!(
+        charges(&world, Team::Dire),
+        None,
+        "the other side's are its own"
+    );
+    run_to(&mut world, first + rules::GLYPH_RECHARGE_TICKS - 1);
+    assert_eq!(charges(&world, Team::Radiant), Some(1));
+    run_to(&mut world, first + rules::GLYPH_RECHARGE_TICKS);
+    assert_eq!(
+        world.schedule().glyph_first_use() + rules::GLYPH_RECHARGE_TICKS,
+        world.schedule().at_minute(9)
+    );
+    assert_eq!(charges(&world, Team::Radiant), Some(2), "and no more");
+    let later = world.tick + rules::GLYPH_RECHARGE_TICKS;
+    run_to(&mut world, later);
+    assert_eq!(charges(&world, Team::Radiant), Some(2));
+
+    let order = Order::Glyph;
+    seat_order(&mut world, order);
+    let used = world.tick;
+    assert_eq!(charges(&world, Team::Radiant), Some(1));
+    assert_eq!(
+        world.validate_order(SlotId(0), None, &order),
+        Err(RejectReason::OnCooldown),
+        "seven seconds between uses"
+    );
+    run_to(&mut world, used + rules::GLYPH_USE_COOLDOWN_TICKS);
+    assert_eq!(world.validate_order(SlotId(0), None, &order), Ok(()));
+    seat_order(&mut world, order);
+    let second = world.tick;
+    assert_eq!(charges(&world, Team::Radiant), Some(0));
+    // The wait the first use started runs on; the second use does not restart it.
+    run_to(&mut world, used + rules::GLYPH_RECHARGE_TICKS);
+    assert_eq!(charges(&world, Team::Radiant), Some(1));
+    assert!(world.tick < second + rules::GLYPH_RECHARGE_TICKS);
+}
+
+/// What a clock-face sweeps over (`Schedule::glyph_wait`) is the whole of the wait the view tells:
+/// the first charge's from the clock's start, the seven seconds after a use that left a charge, a
+/// charge's six minutes after one that left none.
+#[test]
+fn the_glyph_wait_a_clock_face_sweeps_is_the_wait_the_view_tells_from_its_start() {
+    let mut world = World::on_map(map_of(MapId(0)));
+    seat_hero(&mut world, 0, Team::Radiant, Vec2::from_ints(3000, 3000));
+    let schedule = world.schedule();
+    let told = |world: &World| {
+        let glyph = world
+            .glyph_views(Some(Team::Radiant))
+            .into_iter()
+            .find(|glyph| glyph.team == Team::Radiant)
+            .expect("its own");
+        (glyph.ready_after.expect("own"), glyph.charges.expect("own"))
+    };
+    let (left, charges) = told(&world);
+    assert_eq!(
+        left + world.tick,
+        schedule.glyph_wait(world.tick, charges),
+        "the first, from the clock's start"
+    );
+    assert_eq!(
+        schedule.glyph_wait(world.tick, charges),
+        schedule.glyph_first_use()
+    );
+    let both = schedule.glyph_first_use() + rules::GLYPH_RECHARGE_TICKS;
+    run_to(&mut world, both);
+    seat_order(&mut world, Order::Glyph);
+    let (left, charges) = told(&world);
+    assert_eq!(charges, 1);
+    // The use landed on the tick the order ran, one before the view's.
+    assert_eq!(
+        left + 1,
+        schedule.glyph_wait(world.tick, charges),
+        "the lock"
+    );
+    let past = world.tick + rules::GLYPH_USE_COOLDOWN_TICKS;
+    run_to(&mut world, past);
+    seat_order(&mut world, Order::Glyph);
+    let (left, charges) = told(&world);
+    assert_eq!(charges, 0);
+    assert!(left <= schedule.glyph_wait(world.tick, charges));
+    assert_eq!(
+        schedule.glyph_wait(world.tick, charges),
+        rules::GLYPH_RECHARGE_TICKS
+    );
+}
+
+/// Dota 7.42: the Glyph "No longer resets cooldown when specific buildings are destroyed": a
+/// side whose first tier one tower falls waits out its charge.
+#[test]
+fn no_fallen_building_refreshes_it() {
+    let mut world = World::on_map(map_of(MapId(0)));
+    seat_hero(&mut world, 0, Team::Radiant, Vec2::from_ints(3000, 3000));
+    let ready = world.schedule().glyph_first_use();
+    run_to(&mut world, ready);
+    let order = Order::Glyph;
+    seat_order(&mut world, order);
+    let it = structure_at(&world, rules::RADIANT_TOWERS[0].2);
+    world.bury(vec![(it, None)], &mut Vec::new());
+    let after = world.tick + rules::GLYPH_REFRESH_TICKS + 1;
+    run_to(&mut world, after);
+    assert_eq!(
+        world.validate_order(SlotId(0), None, &order),
+        Err(RejectReason::OnCooldown)
+    );
+}
+
+/// 7.41f's refresh stays in the rules, out of 7.42's play: where it is attached (as a test
+/// attaches retired content), the first tier one tower, tier two tower and melee barracks of a
+/// side to fall bring its next charge within a second, and a later fall nothing.
+#[test]
+fn the_kept_refresh_brings_the_charge_when_the_first_buildings_fall() {
     let mut world = World::on_map(map_of(MapId(0)));
     seat_hero(&mut world, 0, Team::Radiant, Vec2::from_ints(3000, 3000));
     let ready = world.schedule().glyph_first_use();
@@ -163,6 +301,7 @@ fn the_first_tier_one_tower_tier_two_tower_and_melee_barracks_to_fall_refresh_it
     let order = Order::Glyph;
     let fall = |world: &mut World, at: Vec2| {
         let it = structure_at(world, at);
+        world.refresh_glyph_after_fall(it);
         world.bury(vec![(it, None)], &mut Vec::new());
     };
     let spend = |world: &mut World| {
@@ -179,6 +318,9 @@ fn the_first_tier_one_tower_tier_two_tower_and_melee_barracks_to_fall_refresh_it
     ];
     for (n, at) in steps.into_iter().enumerate() {
         spend(&mut world);
+        // Past the seven seconds between uses, so only the charge waits.
+        let past = world.tick + rules::GLYPH_USE_COOLDOWN_TICKS;
+        run_to(&mut world, past);
         fall(&mut world, at);
         let after = world.tick + rules::GLYPH_REFRESH_TICKS + 1;
         run_to(&mut world, after);
@@ -190,6 +332,8 @@ fn the_first_tier_one_tower_tier_two_tower_and_melee_barracks_to_fall_refresh_it
     }
     // A second tier one tower, and every later one, refreshes nothing.
     spend(&mut world);
+    let past = world.tick + rules::GLYPH_USE_COOLDOWN_TICKS;
+    run_to(&mut world, past);
     fall(&mut world, rules::RADIANT_TOWERS[3].2);
     let after = world.tick + rules::GLYPH_REFRESH_TICKS + 1;
     run_to(&mut world, after);
