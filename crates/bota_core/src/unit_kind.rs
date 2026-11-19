@@ -197,9 +197,7 @@ pub const UNIT_KINDS: [KindDef; 20] = [
     building(UnitKind::Fountain, TargetClass::Building, true),
     KindDef {
         kind: UnitKind::Ward,
-        health_per_ranged_hit: Some(
-            crate::OBSERVER_WARD.max_hp / rules::WARD_HITS.ranged_hero as i32,
-        ),
+        health_per_ranged_hit: Some(rules::WARD_HITS.ranged_hero.to_int()),
 
         fixed: true,
         leaves_a_death: false,
@@ -211,7 +209,7 @@ pub const UNIT_KINDS: [KindDef; 20] = [
     },
     KindDef {
         kind: UnitKind::Courier,
-        health_per_ranged_hit: Some(crate::COURIER.max_hp / rules::COURIER_HITS.ranged_hero as i32),
+        health_per_ranged_hit: Some(rules::COURIER_HITS.ranged_hero.to_int()),
 
         death_announced: true,
         ..PLAIN
@@ -255,13 +253,10 @@ pub const UNIT_KINDS: [KindDef; 20] = [
     },
     KindDef {
         kind: UnitKind::Banner,
-        health_per_ranged_hit: Some(
-            crate::BANNERS[0].max_hp
-                / crate::BANNERS[0]
-                    .hit_count
-                    .expect("banner hit count")
-                    .ranged_hero as i32,
-        ),
+        health_per_ranged_hit: Some(match crate::BANNERS[0].hit_count {
+            Some(count) => count.ranged_hero.to_int(),
+            None => panic!("banner hit count"),
+        }),
 
         npc: Some("npc_dota_unit_roshans_banner"),
         fixed: true,

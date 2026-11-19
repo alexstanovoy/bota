@@ -1179,11 +1179,7 @@ pub const COURIER_HP: i32 = 6;
 /// hero missiles, six of a creep's or a building's (Dota 7.35: "Courier dies
 /// after 1 melee hero attack, 2 ranged hero attacks or 6 creep/tower
 /// attacks"; Liquipedia, *Courier*, the same in 7.41).
-pub const COURIER_HITS: crate::HitCount = crate::HitCount {
-    melee_hero: 1,
-    ranged_hero: 2,
-    other: 6,
-};
+pub const COURIER_HITS: crate::HitCount = crate::HitCount::hits(1, 2, 6, COURIER_HP);
 /// World units a second a courier walks at its owner's first level:
 /// `npc_dota_courier`'s MovementSpeed, on the ground
 /// (`DOTA_UNIT_CAP_MOVE_GROUND`).
@@ -1388,11 +1384,7 @@ pub const WARD_DENY_HP_PCT: i32 = 50;
 /// tower's or an illusion's, each a fifth of a hit (Liquipedia, *Observer
 /// Ward*: "Hero Hit Count: 2 Non-Hero Hit Count: 10"; the Sentry Ward's the
 /// same).
-pub const WARD_HITS: crate::HitCount = crate::HitCount {
-    melee_hero: 2,
-    ranged_hero: 2,
-    other: 10,
-};
+pub const WARD_HITS: crate::HitCount = crate::HitCount::hits(2, 2, 10, WARD_HP);
 
 /// How much further a melee attacker reaches when it attacks a ward.
 pub const WARD_MELEE_RANGE_BONUS: i32 = 150;

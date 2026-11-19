@@ -23,11 +23,12 @@ const fn banner(level: usize) -> crate::UnitDef {
         kind: bota_proto::UnitKind::Banner,
         base_level: U.first("Level").int() as u8,
         max_hp: QUARTERS_A_PIP * pips,
-        hit_count: Some(HitCount {
-            melee_hero: ((pips + 1) / 2) as u8,
-            ranged_hero: pips as u8,
-            other: (QUARTERS_A_PIP * pips) as u8,
-        }),
+        hit_count: Some(HitCount::hits(
+            ((pips + 1) / 2) as u8,
+            pips as u8,
+            (QUARTERS_A_PIP * pips) as u8,
+            QUARTERS_A_PIP * pips,
+        )),
         collision: 18, // Measured NPC hull; the script names HULL_SIZE_REGULAR.
         bound: 8,
         armor: U.first("ArmorPhysical").int(),
@@ -65,12 +66,11 @@ const _: () = assert!(ITEM_ROSHANS_BANNER.first("max_level").int() == BANNERS.le
 // The client may draw hit-count health by kind; this combat quantity is level-independent.
 const _: () = {
     let mut level = 0;
-    let block = BANNERS[0].max_hp / BANNERS[0].hit_count.expect("hits").ranged_hero as i32;
+    let block = BANNERS[0].hit_count.expect("hits").ranged_hero.raw;
     while level < BANNERS.len() {
-        let hits = BANNERS[level].hit_count.expect("hits").ranged_hero as i32;
-        assert!(hits > 0);
-        assert!(BANNERS[level].max_hp % hits == 0);
-        assert!(BANNERS[level].max_hp / hits == block);
+        let share = BANNERS[level].hit_count.expect("hits").ranged_hero;
+        assert!(share.raw == block);
+        assert!(share.raw & ((1 << bota_proto::Fixed::FRAC_BITS) - 1) == 0);
         level += 1;
     }
 };

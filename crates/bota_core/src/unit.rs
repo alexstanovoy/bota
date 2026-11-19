@@ -844,11 +844,7 @@ pub const fn lane_creep_def(kind: UnitKind) -> Option<&'static UnitDef> {
 pub const GROUND_ITEM: UnitDef = UnitDef {
     kind: UnitKind::Ward,
     max_hp: 1,
-    hit_count: Some(crate::HitCount {
-        melee_hero: 1,
-        ranged_hero: 1,
-        other: 1,
-    }),
+    hit_count: Some(crate::HitCount::hits(1, 1, 1, 1)),
     ..BARE_UNIT
 };
 pub const UNBREAKABLE_ITEM: UnitDef = UnitDef {
