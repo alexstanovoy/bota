@@ -598,6 +598,7 @@ pub fn modifier_cheat() -> Cheat {
             max_hp: 11_000,
             max_mana: 12_000,
             gold_income: 7_500,
+            attack_speed: 600,
         },
         ticks: 900,
     }

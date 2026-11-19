@@ -65,6 +65,9 @@ pub struct ModifierSpec {
     pub max_mana: i32,
     /// Scale on the gold the unit's seat earns, 10_000 nominal.
     pub gold_income: i32,
+    /// Attack speed added, flat, either way within [`ModifierSpec::MAX_ATTACK_SPEED`]: an own
+    /// cheat that reaches the attack-speed cap, which no 7.42 inventory does.
+    pub attack_speed: i32,
 }
 
 impl ModifierSpec {
@@ -81,6 +84,7 @@ impl ModifierSpec {
         max_hp: NOMINAL_RATE,
         max_mana: NOMINAL_RATE,
         gold_income: NOMINAL_RATE,
+        attack_speed: 0,
     };
 
     /// The widest magic resistance delta accepted, either way.
@@ -91,6 +95,8 @@ impl ModifierSpec {
     pub const MIN_SCALE: i32 = 2_500;
     /// The highest scale accepted for every scale field.
     pub const MAX_SCALE: i32 = 40_000;
+    /// The widest attack speed added accepted, either way.
+    pub const MAX_ATTACK_SPEED: i32 = 1_000;
 
     /// Whether every field lies within the accepted bounds.
     pub const fn is_bounded(&self) -> bool {
@@ -107,6 +113,8 @@ impl ModifierSpec {
             && bounded_scale(self.max_hp)
             && bounded_scale(self.max_mana)
             && bounded_scale(self.gold_income)
+            && self.attack_speed >= -Self::MAX_ATTACK_SPEED
+            && self.attack_speed <= Self::MAX_ATTACK_SPEED
     }
 
     /// Whether every field is neutral.

@@ -35,7 +35,8 @@ state_hash!(ModifierSpec {
     move_speed,
     max_hp,
     max_mana,
-    gold_income
+    gold_income,
+    attack_speed
 });
 state_hash!(DamageKind as u8: DamageKind::Physical, DamageKind::Magical);
 state_hash!(CreepTier as u8: CreepTier::Super, CreepTier::Mega);

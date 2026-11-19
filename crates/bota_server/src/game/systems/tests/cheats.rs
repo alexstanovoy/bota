@@ -201,7 +201,7 @@ type SpecChange = (&'static str, fn(&mut ModifierSpec));
 #[test]
 fn an_out_of_bounds_spec_is_refused_as_a_bad_cheat() {
     let (world, _hero) = world_with(true);
-    let changes: [SpecChange; 12] = [
+    let changes: [SpecChange; 14] = [
         ("magic_resist", |s| {
             s.magic_resist = ModifierSpec::MAX_RESIST + 1
         }),
@@ -227,6 +227,12 @@ fn an_out_of_bounds_spec_is_refused_as_a_bad_cheat() {
         ("max_mana", |s| s.max_mana = ModifierSpec::MIN_SCALE - 1),
         ("gold_income", |s| {
             s.gold_income = ModifierSpec::MAX_SCALE + 1
+        }),
+        ("attack_speed high", |s| {
+            s.attack_speed = ModifierSpec::MAX_ATTACK_SPEED + 1
+        }),
+        ("attack_speed low", |s| {
+            s.attack_speed = -ModifierSpec::MAX_ATTACK_SPEED - 1
         }),
     ];
     for (name, change) in changes {
@@ -291,6 +297,26 @@ fn a_modifier_cheat_must_be_aimed_at_a_standing_unit() {
             "{case}"
         );
     }
+}
+
+/// The modifier cheat's own attack speed, which no 7.42 inventory reaches the cap with: it adds
+/// flat, and the attack runs at the cap past it.
+#[test]
+fn a_modifier_cheat_adds_its_attack_speed_flat() {
+    let (mut world, hero) = world_with(true);
+    let plain = world.stats.get(hero).expect("settled").attack_speed;
+    let spec = ModifierSpec {
+        attack_speed: 600,
+        ..ModifierSpec::NOMINAL
+    };
+    cheat_modifier(&mut world, spec, 100);
+    let hasted = world.stats.get(hero).expect("settled").attack_speed;
+    assert_eq!(hasted - plain, Fixed::from_int(600));
+    assert_eq!(
+        bota_core::attack_gain(hasted),
+        bota_core::attack_gain(Fixed::from_int(rules::MAX_ATTACK_SPEED)),
+        "at the cap"
+    );
 }
 
 #[test]

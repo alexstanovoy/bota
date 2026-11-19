@@ -857,3 +857,4 @@ variant Cheat 27 RemoveHero
 variant Cheat 28 MaxAbilities
 variant Cheat 29 UnlearnAbilities
 field EventKind::Damaged 6 critical: bool
+field ModifierSpec 11 attack_speed: i32

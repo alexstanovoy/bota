@@ -835,6 +835,10 @@ fn fold_applied(now: &mut Stats, applied: &AppliedModifiers) -> i32 {
     now.pure_amp_bp = add(now.pure_amp_bp, pure, 0, most);
     now.cooldown_rate_bp = add(now.cooldown_rate_bp, cooldown, 1, most);
     now.mana_cost_rate_bp = add(now.mana_cost_rate_bp, mana_cost, 1, most);
+    let attack_speed = applied
+        .iter()
+        .fold(0i32, |sum, held| sum.saturating_add(held.spec.attack_speed));
+    now.attack_speed += Fixed::from_int(attack_speed);
     let pace_scale = combined_scale(move_speed);
     now.move_speed = scaled_bp(now.move_speed, pace_scale);
     now.max_hp = scaled_bp(now.max_hp, combined_scale(max_hp));

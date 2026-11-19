@@ -55,6 +55,7 @@ fn extreme_spec(scale: i32, magic_resist: i32, status_resist: i32) -> ModifierSp
         max_hp: scale,
         max_mana: scale,
         gold_income: scale,
+        attack_speed: 0,
     }
 }
 

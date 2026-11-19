@@ -115,5 +115,6 @@ pub(super) fn a_spec() -> ModifierSpec {
         max_hp: 11_000,
         max_mana: 12_000,
         gold_income: 7_500,
+        attack_speed: 600,
     }
 }

@@ -116,6 +116,7 @@ fn the_widest_cheat_order_fits_its_budget() {
                     max_hp: ModifierSpec::MAX_SCALE,
                     max_mana: ModifierSpec::MAX_SCALE,
                     gold_income: ModifierSpec::MAX_SCALE,
+                    attack_speed: -ModifierSpec::MAX_ATTACK_SPEED,
                 },
                 ticks: MAX_MODIFIER_TICKS,
             },
@@ -124,13 +125,13 @@ fn the_widest_cheat_order_fits_its_budget() {
         queue: true,
     };
     let len = encoded_len(&msg);
-    assert_eq!(len, 77, "the widest cheat order is pinned");
+    assert_eq!(len, 79, "the widest cheat order is pinned");
 }
 
 #[test]
 fn a_modifier_cheat_encodes_canonically() {
     // Postcard: order tag 10, cheat tag 4, target tag 2, entity idx and
-    // generation varints, eleven zigzag varints, then the tick count.
+    // generation varints, twelve zigzag varints, then the tick count.
     let order = Order::Cheat {
         cheat: modifier_cheat(),
     };
@@ -138,7 +139,7 @@ fn a_modifier_cheat_encodes_canonically() {
     assert_eq!(
         bytes,
         vec![
-            36, 0, 0, 0,  // frame length
+            38, 0, 0, 0,  // frame length
             10, // Order::Cheat
             4,  // Cheat::ApplyModifier
             2, 7, 1, // Target::Unit(entity(7))
@@ -153,6 +154,7 @@ fn a_modifier_cheat_encodes_canonically() {
             0xF0, 0xAB, 0x01, // max_hp 11_000 zigzag
             0xC0, 0xBB, 0x01, // max_mana 12_000 zigzag
             0x98, 0x75, // gold_income 7_500 zigzag
+            0xB0, 0x09, // attack_speed 600 zigzag
             0x84, 0x07, // ticks 900
         ]
     );
