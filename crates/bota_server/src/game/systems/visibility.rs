@@ -80,8 +80,9 @@ struct SightRow {
     vision: Fixed,
     true_sight: Fixed,
     kind: Option<UnitKind>,
-    /// Whether true sight alone finds it.
+    /// Whether ordinary sight misses it.
     hides: bool,
+    true_sight_immune: bool,
     /// Whether it flies, and sees past height and trees as a flyer does.
     flying: bool,
     tier: u8,
@@ -164,6 +165,7 @@ pub fn visibility_system(cx: SightCx<'_>) {
             true_sight: stats.map_or(Fixed::ZERO, |s| s.true_sight),
             kind: kind.get(entity).copied(),
             hides: stats.is_some_and(|s| s.hides),
+            true_sight_immune: stats.is_some_and(|s| s.true_sight_immune),
             flying: stats.is_some_and(|s| s.flies),
             tier: at.map_or(0, |at| ground.tier(at)),
             seen: visibility.get(entity).copied(),
@@ -280,6 +282,9 @@ impl SightScratch {
         let Some(at) = row.at else {
             return false;
         };
+        if row.true_sight_immune {
+            return false;
+        }
         let seen = self.reaches(team, at, row.tier, sight_block);
         seen && (!row.hides
             || row.team.is_none()
@@ -370,7 +375,7 @@ impl SightScratch {
     /// reach it.
     fn hide(&mut self) {
         for row in &mut self.rows {
-            if !row.hides {
+            if !row.hides && !row.true_sight_immune {
                 continue;
             }
             let (Some(side), Some(at), Some(already)) = (row.team, row.at, row.seen) else {
@@ -378,6 +383,10 @@ impl SightScratch {
             };
             let mut seen = Visibility::NONE;
             seen.add(side);
+            if row.true_sight_immune {
+                row.seen = Some(seen);
+                continue;
+            }
             for viewer in &self.true_viewers {
                 for team in [Team::Radiant, Team::Dire, Team::Neutral] {
                     if team != side
@@ -636,6 +645,7 @@ impl World {
             true_sight: Fixed::ZERO,
             kind: self.kind.get(entity).copied(),
             hides: stats.is_some_and(|stats| stats.hides),
+            true_sight_immune: stats.is_some_and(|stats| stats.true_sight_immune),
             flying: stats.is_some_and(|stats| stats.flies),
             tier: at.map_or(0, |at| self.ground.tier(at)),
             seen: None,

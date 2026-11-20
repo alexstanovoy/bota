@@ -1108,6 +1108,292 @@ fn an_invisibility_rune_fades_the_hero_from_the_other_side_after_two_seconds_unt
 }
 
 #[test]
+fn an_invisibility_rune_disguise_defeats_true_sight_until_an_enemy_tower_approaches() {
+    let (mut world, taker) = took(&radiant_and_dire(), RuneKind::Invisibility);
+    let at = world.pos(taker).unwrap();
+    world.set_order(taker, UnitOrder::Stand);
+    let eye = a_creep_at(&mut world, Team::Dire, at + Vec2::from_ints(150, 0));
+    world.set_order(eye, UnitOrder::Stand);
+    world.spawn_unit(
+        &bota_core::SENTRY_WARD,
+        Team::Dire,
+        at + Vec2::from_ints(80, 0),
+    );
+    world.settle();
+    assert!(
+        world.shows(Team::Dire, taker),
+        "the sentry has ordinary vision too"
+    );
+    let speed = world.stats.get(taker).unwrap().move_speed;
+    run(&mut world, bota_core::INVISIBILITY_FADE_TICKS + 1);
+    let view = world.view(Team::Radiant);
+    let unit = view
+        .units
+        .iter()
+        .find(|unit| unit.id == wire_id(taker))
+        .unwrap();
+    let disguise = unit
+        .effects
+        .iter()
+        .find(|effect| effect.id == EffectId::RUNE_DISGUISE)
+        .expect("the wearer sees its active Disguise");
+    assert!(disguise.ticks_left.is_some());
+    assert_eq!(
+        world.stats.get(taker).unwrap().move_speed,
+        speed,
+        "Disguise adds no speed"
+    );
+    assert!(
+        !world.shows(Team::Dire, taker),
+        "Disguise hides the hero from the sentry"
+    );
+
+    let tower = world.spawn_unit(
+        bota_core::tower_def(1),
+        Team::Dire,
+        at + Vec2::from_ints(900, 0),
+    );
+    world.step();
+    assert!(
+        world.shows(Team::Dire, taker),
+        "the tower breaks Disguise and the sentry reveals the hero"
+    );
+    assert!(carries(&world, taker, ModifierKind::RuneInvisibility));
+    world.despawn(tower);
+    world.step();
+    assert!(
+        world.shows(Team::Dire, taker),
+        "the same rune does not restore Disguise"
+    );
+}
+
+#[test]
+fn true_sight_and_a_revealing_effect_cannot_disclose_disguise() {
+    for source in ["sentry", "tower", "gem"] {
+        let (mut world, taker) = took(&radiant_and_dire(), RuneKind::Invisibility);
+        run(&mut world, bota_core::INVISIBILITY_FADE_TICKS + 1);
+        let at = world.pos(taker).unwrap();
+        let enemy = hero(&world, 1);
+        let nearby = at + Vec2::from_ints(80, 0);
+        match source {
+            "sentry" => {
+                place(&mut world, enemy, at + Vec2::from_ints(1100, 0));
+                let eye = a_creep_at(&mut world, Team::Dire, nearby);
+                world.set_order(eye, UnitOrder::Stand);
+                world.spawn_unit(&bota_core::SENTRY_WARD, Team::Dire, nearby);
+            }
+            "tower" => {
+                world.spawn_unit(bota_core::tower_def(1), Team::Dire, nearby);
+            }
+            "gem" => {
+                place(&mut world, enemy, nearby);
+            }
+            _ => unreachable!(),
+        }
+        world.settle();
+        // Stage a gem carrier's detection range. The item has no catalogue entry yet.
+        let refresh = |world: &mut World| {
+            if source == "gem" {
+                world.stats.get_mut(enemy).unwrap().true_sight = rules::units(900);
+            }
+            world.refresh_sight();
+        };
+        refresh(&mut world);
+
+        let mut ordinary = world.clone();
+        ordinary
+            .modifiers
+            .get_mut(taker)
+            .unwrap()
+            .0
+            .retain(|held| held.kind != ModifierKind::RuneDisguise);
+        ordinary.refresh_stats_of(taker);
+        refresh(&mut ordinary);
+        assert!(
+            ordinary.shows(Team::Dire, taker),
+            "{source} sees the faded rune"
+        );
+
+        put_on(
+            &mut world,
+            taker,
+            ModifierKind::Dismembered {
+                level: 0,
+                bites: 3,
+                channel_ms: 1000,
+            },
+            90,
+        );
+        world.refresh_stats_of(taker);
+        refresh(&mut world);
+        let own = world.view(Team::Radiant);
+        assert!(
+            own.units
+                .iter()
+                .find(|unit| unit.id == wire_id(taker))
+                .unwrap()
+                .effects
+                .iter()
+                .any(|effect| effect.id == EffectId::RUNE_DISGUISE && effect.ticks_left.is_some())
+        );
+        assert!(
+            !world.can_see(Team::Dire, taker),
+            "{source}: scheduled visibility"
+        );
+        assert_no_disguise_in_enemy_view(&world, taker, false);
+        // A displaced unit uses the immediate sight path rather than the stored row.
+        world.transform.get_mut(taker).unwrap().pos = at + Vec2::from_ints(1, 0);
+        assert!(
+            !world.shows(Team::Dire, taker),
+            "{source}: immediate visibility"
+        );
+        assert_no_disguise_in_enemy_view(&world, taker, false);
+
+        // Force the wearer into sight with its effect still attached to check
+        // the independent, own-side-only effect projection.
+        let stats = world.stats.get_mut(taker).unwrap();
+        stats.hides = false;
+        stats.true_sight_immune = false;
+        refresh(&mut world);
+        assert_no_disguise_in_enemy_view(&world, taker, true);
+
+        world.reveal_from_attack(taker);
+        refresh(&mut world);
+        assert_no_disguise_in_enemy_view(&world, taker, true);
+    }
+}
+
+fn assert_no_disguise_in_enemy_view(world: &World, hero: Entity, visible: bool) {
+    let view = world.view(Team::Dire);
+    assert_eq!(
+        view.units.iter().any(|unit| unit.id == wire_id(hero)),
+        visible
+    );
+    assert!(
+        !view
+            .units
+            .iter()
+            .flat_map(|unit| &unit.effects)
+            .any(|effect| effect.id == EffectId::RUNE_DISGUISE)
+    );
+}
+
+#[test]
+fn towers_and_fountains_prevent_disguise_at_fade_but_barracks_do_not() {
+    for (structure, grants) in [
+        (bota_core::tower_def(1), false),
+        (&bota_core::FOUNTAIN, false),
+        (&bota_core::BARRACKS_MELEE, true),
+    ] {
+        let (mut world, taker) = took(&radiant_and_dire(), RuneKind::Invisibility);
+        let at = world.pos(taker).unwrap();
+        world.spawn_unit(structure, Team::Dire, at + Vec2::from_ints(900, 0));
+        run(&mut world, bota_core::INVISIBILITY_FADE_TICKS + 1);
+        assert_eq!(
+            carries(&world, taker, ModifierKind::RuneDisguise),
+            grants,
+            "{:?}",
+            structure.kind
+        );
+    }
+}
+
+#[test]
+fn disguise_ends_at_the_first_runes_expiry_even_if_a_second_rune_is_active() {
+    use bota_core::{INVISIBILITY_FADE_TICKS, INVISIBILITY_RUNE_TICKS};
+    for take_second in [false, true] {
+        let (mut world, taker) = took(&radiant_and_dire(), RuneKind::Invisibility);
+        run(&mut world, INVISIBILITY_FADE_TICKS + 1);
+        assert!(carries(&world, taker, ModifierKind::RuneDisguise));
+        let elapsed = (INVISIBILITY_FADE_TICKS + 1) * 2;
+        if take_second {
+            world.activate_rune(taker, RuneKind::Invisibility, 0, false);
+        }
+        run(&mut world, elapsed - (INVISIBILITY_FADE_TICKS + 1));
+        run(&mut world, INVISIBILITY_RUNE_TICKS - elapsed - 2);
+        assert!(
+            carries(&world, taker, ModifierKind::RuneDisguise),
+            "just before 45 seconds"
+        );
+        run(&mut world, 2);
+        assert!(
+            !carries(&world, taker, ModifierKind::RuneDisguise),
+            "at 45 seconds"
+        );
+        assert_eq!(
+            carries(&world, taker, ModifierKind::RuneInvisibility),
+            take_second
+        );
+    }
+}
+
+#[test]
+fn an_attack_removes_disguise_even_after_casting_away_the_base_invisibility() {
+    let (mut world, taker) = took(&radiant_and_dire(), RuneKind::Invisibility);
+    let at = world.pos(taker).unwrap();
+    let target = a_creep_at(&mut world, Team::Dire, at + Vec2::from_ints(150, 0));
+    world.set_order(taker, UnitOrder::Stand);
+    world.set_order(target, UnitOrder::Stand);
+    world.spawn_unit(
+        &bota_core::SENTRY_WARD,
+        Team::Dire,
+        at + Vec2::from_ints(80, 0),
+    );
+    world
+        .level
+        .insert(taker, crate::game::Level(rules::HERO_MAX_LEVEL));
+    world.settle();
+    world.fill_pools(taker);
+    assert!(world.learn(taker, 0));
+    run(&mut world, bota_core::INVISIBILITY_FADE_TICKS + 1);
+    assert!(carries(&world, taker, ModifierKind::RuneDisguise));
+
+    cast(&mut world, 0, Target::None);
+    run(&mut world, 20);
+    assert!(!carries(&world, taker, ModifierKind::RuneInvisibility));
+    assert!(carries(&world, taker, ModifierKind::RuneDisguise));
+    assert!(!world.shows(Team::Dire, taker));
+
+    attack_click(&mut world, target);
+    for _ in 0..120 {
+        if !carries(&world, taker, ModifierKind::RuneDisguise) {
+            break;
+        }
+        world.step();
+    }
+    assert!(!carries(&world, taker, ModifierKind::RuneDisguise));
+    world.step();
+    assert!(world.shows(Team::Dire, taker));
+}
+
+#[test]
+fn an_enemy_hero_at_fade_prevents_disguise_for_the_life_of_the_rune() {
+    let (mut world, taker) = took(&radiant_and_dire(), RuneKind::Invisibility);
+    let at = world.pos(taker).unwrap();
+    let watcher = hero(&world, 1);
+    world.set_order(taker, UnitOrder::Stand);
+    place(&mut world, watcher, at + Vec2::from_ints(300, 0));
+    let eye = a_creep_at(&mut world, Team::Dire, at + Vec2::from_ints(150, 0));
+    world.set_order(eye, UnitOrder::Stand);
+    world.spawn_unit(
+        &bota_core::SENTRY_WARD,
+        Team::Dire,
+        at + Vec2::from_ints(80, 0),
+    );
+    run(&mut world, bota_core::INVISIBILITY_FADE_TICKS + 1);
+    assert!(
+        world.shows(Team::Dire, taker),
+        "the sentry sees the ordinary invisibility"
+    );
+    place(&mut world, watcher, at + Vec2::from_ints(1550, 0));
+    world.step();
+    assert!(
+        world.shows(Team::Dire, taker),
+        "the departed hero does not trigger another grant check"
+    );
+}
+
+#[test]
 fn a_cast_breaks_an_invisibility_rune() {
     let (mut world, taker) = took(&radiant_and_dire(), RuneKind::Invisibility);
     world

@@ -478,3 +478,4 @@ effect 129 live modifier_ogre_seal_pup_disapproval
 effect 130 live modifier_eimermole_miners_slam_slow
 effect 131 live modifier_warpine_raider_seed_shot_slow
 effect 132 live modifier_ogre_seal_flop_slow
+effect 133 live modifier_smoke_of_deceit

@@ -788,6 +788,7 @@ impl World {
         self.timed(Phase::Stats, World::refresh_stats);
         self.timed(Phase::Targeting, World::tick_targeting);
         self.timed(Phase::Movement, World::step_movement);
+        self.tick_rune_disguise();
         self.timed(Phase::Visibility, World::refresh_sight);
         self.timed(Phase::Actions, |world| world.step_actions(&mut events));
         self.timed(Phase::Damage, |world| world.step_damage(&mut events));
@@ -910,7 +911,7 @@ impl World {
     }
 
     /// Who sees what, from where everything stands.
-    fn refresh_sight(&mut self) {
+    pub(super) fn refresh_sight(&mut self) {
         let mut scroll_sights: Vec<(Team, Vec2, i32, bool)> = self.temporary_sights().collect();
         let viewers: Vec<_> = self
             .fow_viewer_sights()

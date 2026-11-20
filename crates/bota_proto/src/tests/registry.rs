@@ -400,6 +400,11 @@ const NAMED: &[(IdSpace, u16, &str)] = &[
         ItemId::ROYALE_WITH_CHEESE.0,
         "item_royale_with_cheese",
     ),
+    (
+        IdSpace::Effect,
+        EffectId::RUNE_DISGUISE.0,
+        "modifier_smoke_of_deceit",
+    ),
     (IdSpace::Hero, HeroId::PUDGE.0, "npc_dota_hero_pudge"),
     (
         IdSpace::Hero,

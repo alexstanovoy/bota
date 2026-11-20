@@ -121,6 +121,7 @@ fn every_modifier() -> Vec<ModifierKind> {
         ModifierKind::RuneArcane,
         ModifierKind::RuneRegeneration { damped: 0 },
         ModifierKind::RuneInvisibility,
+        ModifierKind::RuneDisguise,
         ModifierKind::RuneShield { left: 1 },
         ModifierKind::BottleRegeneration {
             hp_per_tick: 1,
@@ -195,6 +196,7 @@ fn every_modifier() -> Vec<ModifierKind> {
             | ModifierKind::RuneArcane
             | ModifierKind::RuneRegeneration { .. }
             | ModifierKind::RuneInvisibility
+            | ModifierKind::RuneDisguise
             | ModifierKind::RuneShield { .. }
             | ModifierKind::BottleRegeneration { .. }
             | ModifierKind::Laid { .. }
@@ -321,6 +323,7 @@ const MODIFIER_KEYS: &[(&str, &str)] = &[
     ("RuneArcane", "modifier_rune_arcane"),
     ("RuneRegeneration", "modifier_rune_regen"),
     ("RuneInvisibility", "modifier_rune_invis"),
+    ("RuneDisguise", "modifier_smoke_of_deceit"),
     ("RuneShield", "modifier_rune_shield"),
     ("BottleRegeneration", "modifier_bottle_regeneration"),
     ("Corruption", "modifier_blight_stone_buff"),

@@ -369,6 +369,8 @@ pub enum ModifierKind {
     },
     /// A timed form of the simulator's spell-immunity predicate.
     SpellImmunity,
+    /// The Invisibility Rune's separate protection from True Sight.
+    RuneDisguise,
 }
 
 impl ModifierKind {
@@ -376,6 +378,7 @@ impl ModifierKind {
     pub const fn effect_id(self) -> EffectId {
         match self {
             ModifierKind::SpellImmunity => EffectId(122),
+            ModifierKind::RuneDisguise => EffectId::RUNE_DISGUISE,
             ModifierKind::ItemBuff { item, index, .. } => {
                 crate::ITEMS[item.0 as usize].modifiers[index as usize].effect
             }

@@ -127,6 +127,8 @@ pub struct Stats {
     pub true_sight: Fixed,
     /// Whether the other side sees it only through true sight.
     pub hides: bool,
+    /// Whether True Sight leaves this hidden unit unrevealed.
+    pub true_sight_immune: bool,
     pub pit_blind: bool,
     pub neutral_ward_target: bool,
     /// Whether it flies: closed ground is nothing to it.

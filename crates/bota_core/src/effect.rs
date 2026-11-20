@@ -309,6 +309,10 @@ const EFFECT_ROWS: &[EffectDef] = &[
     debuff(130, "modifier_eimermole_miners_slam_slow"),
     debuff(131, "modifier_warpine_raider_seed_shot_slow"),
     debuff(132, "modifier_ogre_seal_flop_slow"),
+    EffectDef {
+        own_side_only: true,
+        ..buff(133, "modifier_smoke_of_deceit")
+    },
 ];
 
 /// How many effect ids the protocol has ever handed out, retired ones

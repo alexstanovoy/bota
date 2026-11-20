@@ -304,7 +304,9 @@ pub const REGENERATION_DAMPED_PCT: i32 = 1;
 pub const REGENERATION_DAMP_TICKS: u32 = 3 * TICKS_PER_SECOND;
 /// How long an Invisibility Rune holds.
 pub const INVISIBILITY_RUNE_TICKS: u32 = 45 * TICKS_PER_SECOND;
-/// How long the unit fades before it hides: "Fade Time: 2".
+/// The range at which enemy heroes, towers and fountains dispel the rune's Disguise.
+pub const INVISIBILITY_DISGUISE_RADIUS: i32 = 1025;
+/// How long the unit fades before it hides.
 pub const INVISIBILITY_FADE_TICKS: u32 = 2 * TICKS_PER_SECOND;
 /// How long a Shield Rune holds.
 pub const SHIELD_RUNE_TICKS: u32 = 75 * TICKS_PER_SECOND;

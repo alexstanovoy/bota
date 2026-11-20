@@ -213,7 +213,8 @@ pub fn derive_stats(cx: StatsCx<'_>) {
             + restoration_keep_bp * (100 - sums.restoration_redirect_pct) / 100)
             .clamp(0, 2 * rules::NOMINAL_BP);
         now.restoration_redirect_bp = (before_redirect - now.restoration_bp).max(0);
-        if working().any(|held| held.kind.reveals()) {
+        // Disguise masks the wearer even when ordinary invisibility is revealed.
+        if !now.true_sight_immune && working().any(|held| held.kind.reveals()) {
             now.hides = false;
         }
         if let Some(on_it) = modifiers.get(entity) {
@@ -660,6 +661,10 @@ fn add_modifiers<'a>(
                     });
                 now.hides |= faded;
             }
+            ModifierKind::RuneDisguise => {
+                now.hides = true;
+                now.true_sight_immune = true;
+            }
             ModifierKind::VisionGrant { side, day, night } => {
                 let radius = if wearer.night { night } else { day };
                 now.vision_grant = Some((side, Fixed::from_int(radius)));
@@ -956,6 +961,7 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32, night: bool) -> Stats {
         }),
         true_sight: Fixed::from_int(kind.true_sight),
         hides: kind.hides,
+        true_sight_immune: false,
         pit_blind: kind.pit_blind,
         neutral_ward_target: kind.neutral_ward_target,
         flies: kind.flies,

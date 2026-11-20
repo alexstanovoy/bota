@@ -8,7 +8,8 @@ use bota_core::{
     rune_ticks, runes_due, side_index,
 };
 use bota_proto::{
-    Angle, EntityId, EventKind, Fixed, Inflictor, ItemId, RuneKind, RuneSet, Target, Team, Vec2,
+    Angle, EntityId, EventKind, Fixed, Inflictor, ItemId, RuneKind, RuneSet, Target, Team,
+    UnitKind, Vec2,
 };
 
 use crate::game::{
@@ -626,8 +627,87 @@ impl World {
         }
     }
 
-    /// Takes an Invisibility Rune off a unit: it attacked, cast or used an
-    /// item [LOC DOTA_Tooltip_rune_invisibility_description].
+    /// Grants Disguise at the fade boundary and checks its proximity break after movement.
+    pub(crate) fn tick_rune_disguise(&mut self) {
+        const TOTAL: u32 = bota_core::INVISIBILITY_RUNE_TICKS;
+        const DISGUISE_TICKS: u32 = TOTAL - bota_core::INVISIBILITY_FADE_TICKS;
+        let range = rules::units(bota_core::INVISIBILITY_DISGUISE_RADIUS);
+        for index in 0..self.seats.len() {
+            let Some(hero) = self.seats[index].unit.filter(|&hero| self.alive(hero)) else {
+                continue;
+            };
+            let Some(modifiers) = self.modifiers.get(hero) else {
+                continue;
+            };
+            let disguised = modifiers
+                .active()
+                .any(|held| held.kind == ModifierKind::RuneDisguise);
+            let just_faded = modifiers.active().any(|held| {
+                held.kind == ModifierKind::RuneInvisibility
+                    && held.ticks_total == Some(TOTAL)
+                    && held.ticks_left == Some(DISGUISE_TICKS)
+            });
+            if !disguised && !just_faded {
+                continue;
+            }
+            let Some(at) = self.pos(hero) else { continue };
+            let side = self.seats[index].team;
+            let broken = self.enemy_breaks_disguise(side, at, range);
+            if disguised && broken {
+                self.end_disguise(hero);
+            } else if just_faded && !disguised && !broken {
+                self.put_modifier(
+                    hero,
+                    Modifier::new(
+                        ModifierKind::RuneDisguise,
+                        Some(hero),
+                        None,
+                        Some(DISGUISE_TICKS),
+                    ),
+                );
+                self.refresh_stats_of(hero);
+            }
+        }
+    }
+
+    // The proximity break counts only real heroes, towers and the fountain.
+    fn enemy_breaks_disguise(&self, side: Team, at: Vec2, range: Fixed) -> bool {
+        self.entities.iter().any(|enemy| {
+            let Some(enemy_team) = self.team.get(enemy) else {
+                return false;
+            };
+            if *enemy_team == side || *enemy_team == Team::Neutral || !self.alive(enemy) {
+                return false;
+            }
+            let Some(place) = self.pos(enemy) else {
+                return false;
+            };
+            if self.kind.get(enemy) == Some(&UnitKind::Tower) {
+                return place.distance_squared(at) < range.squared_raw();
+            }
+            (self.is_real_hero(enemy) || self.kind.get(enemy) == Some(&UnitKind::Fountain))
+                && place.within(at, range)
+        })
+    }
+
+    fn end_disguise(&mut self, unit: Entity) {
+        if let Some(on_it) = self.modifiers.get_mut(unit) {
+            let before = on_it.0.len();
+            on_it
+                .0
+                .retain(|held| held.kind != ModifierKind::RuneDisguise);
+            if on_it.0.len() != before {
+                self.refresh_stats_of(unit);
+            }
+        }
+    }
+
+    pub(crate) fn reveal_from_attack(&mut self, unit: Entity) {
+        self.reveal(unit);
+        self.end_disguise(unit);
+    }
+
+    /// An executed ability or item removes the rune's invisibility.
     pub(crate) fn reveal(&mut self, unit: Entity) {
         if let Some(on_it) = self.modifiers.get_mut(unit) {
             on_it

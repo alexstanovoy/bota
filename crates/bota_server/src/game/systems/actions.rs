@@ -914,7 +914,7 @@ impl World {
         }
 
         self.expose(attacker, on);
-        self.reveal(attacker);
+        self.reveal_from_attack(attacker);
         self.events.push(Event::AttackLaunched {
             attacker: wire_id(attacker),
             target: wire_id(on),

@@ -310,6 +310,7 @@ impl StateHash for ModifierKind {
                 mana_per_tick,
             } => hash_tagged(fnv, 49, &[hp_per_tick, mana_per_tick]),
             ModifierKind::SpellImmunity => fnv.u8(66),
+            ModifierKind::RuneDisguise => fnv.u8(67),
             ModifierKind::ItemBuff {
                 item,
                 index,

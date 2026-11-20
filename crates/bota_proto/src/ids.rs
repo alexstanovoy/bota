@@ -494,6 +494,8 @@ impl EffectId {
     /// (`modifier_pudge_meat_hook_followthrough`), never shown: stunned and muted until the
     /// hook latches or it runs out.
     pub const HOOK_FOLLOWTHROUGH: EffectId = EffectId(100);
+    /// Disguise granted by the Invisibility Rune when the fade completes.
+    pub const RUNE_DISGUISE: EffectId = EffectId(133);
 }
 
 /// An index into a unit's ability slots, as listed in
