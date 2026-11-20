@@ -863,7 +863,23 @@ fn a_mud_golem_hurls_a_big_boulder_that_stuns_everyone_within_175_of_where_it_la
         ),
         "it throws at the hero it fights"
     );
-    run(&mut world, 3);
+    run(&mut world, ticks_of_ms(800) - 1);
+    assert!(
+        !carries(&world, hit, ModifierKind::Stunned),
+        "the boulder is still flying"
+    );
+    assert!(
+        world.view_full().projectiles.iter().any(|shot| {
+            shot.inflictor == Some(Inflictor::Ability(NeutralAbility::HurlBigBoulder.id()))
+        }),
+        "the in-flight boulder is projected"
+    );
+    for _ in 0..=ticks_of_ms(400) {
+        world.step();
+        if carries(&world, hit, ModifierKind::Stunned) {
+            break;
+        }
+    }
     assert!(
         carries(&world, hit, ModifierKind::Stunned),
         "the hero it aimed at is stunned"
@@ -1291,4 +1307,42 @@ fn a_roused_frostmage_throws_its_snowball_at_a_hero_in_reach() {
         NeutralAbility::SnowballShot,
         30
     ));
+}
+
+#[test]
+fn a_controlled_big_boulder_hits_on_tick_thirty_at_half_cast_range() {
+    use bota_proto::{AbilitySlot, Order, Target};
+
+    let (mut world, _) = match_hero();
+    let golem = world.spawn_neutral(NeutralKind::MudGolem, CAMP, 1, 0);
+    world.set_team(golem, Team::Radiant);
+    world.owner.insert(golem, SlotId(0));
+    world.neutral_ai.remove(golem);
+    let ability = NeutralAbility::HurlBigBoulder;
+    let slot = world
+        .abilities
+        .get(golem)
+        .expect("the golem has abilities")
+        .slots
+        .iter()
+        .position(|state| state.id == ability.id())
+        .expect("the golem has Hurl Big Boulder");
+    let aim = CAMP + Vec2::from_ints(400, 0);
+    let target = world.spawn_unit(&bota_core::MELEE_CREEP, Team::Dire, aim);
+    world.set_order(target, UnitOrder::Stand);
+    world.settle();
+    advance_validated(
+        &mut world,
+        Some(golem),
+        Order::Cast {
+            slot: AbilitySlot(slot as u8),
+            target: Target::Pos(aim),
+        },
+    );
+    assert!(until_cast(&mut world, golem, ability, ticks_of_ms(1100)));
+    run(&mut world, 29);
+    assert!(!carries(&world, target, ModifierKind::Stunned));
+    world.step();
+    assert!(carries(&world, target, ModifierKind::Stunned));
+    assert!(world.boulder.is_empty());
 }

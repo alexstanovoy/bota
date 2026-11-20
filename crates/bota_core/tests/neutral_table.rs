@@ -27,7 +27,8 @@ fn dump() -> String {
 }
 
 /// The digest of the neutral definitions, including retained abilities.
-const PINNED: u64 = 0xff5c_be04_832e_c1e8;
+// Hurl Big Boulder adds its script-sourced 800–1200 ms flight bounds.
+const PINNED: u64 = 0xe41d_41c8_1fdb_5751;
 
 #[test]
 fn the_neutral_definitions_keep_their_reviewed_values() {

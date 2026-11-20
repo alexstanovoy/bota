@@ -1,12 +1,14 @@
 //! The neutral spells that strike: a missile, a chain, a smash and spikes.
 
 use bota_core::{
-    Act, Afflicts, ModifierKind, NeutralAbility, Spell, at_level, facing_towards, point_ahead,
-    point_along, rules, segment_distance_squared, ticks_of_ms,
+    Act, Afflicts, ModifierKind, NeutralAbility, Spell, at_level, facing_towards, isqrt64,
+    point_ahead, point_along, rules, segment_distance_squared, ticks_of_ms,
 };
 use bota_proto::{Aim, Angle, DamageKind, Fixed, Inflictor, Target, Team, Vec2};
 
-use crate::game::{Chain, Entity, HitEffect, Modifier, Projectile, Pulser, World};
+use crate::game::{
+    BoulderFlight, Chain, Entity, HitEffect, Modifier, Projectile, Pulser, Visibility, World,
+};
 
 use super::spell::Cast;
 
@@ -392,24 +394,95 @@ impl World {
         self.put_modifier(on, held);
     }
 
-    /// Lets a boulder land at the spot aimed at, within the reach of the cast: every foe within
-    /// its radius takes the damage and is stunned.
+    /// Launches a point-targeted boulder. Travel time scales with distance through cast range.
     pub(super) fn boulder(&mut self, cast: Cast, act: Act, target: Target) -> bool {
-        let Act::Boulder {
-            radius,
-            damage,
-            kind,
-            ms,
-        } = act
+        let (Act::Boulder { min_ms, max_ms, .. }, Target::Pos(aim), Some(origin)) =
+            (act, target, self.pos(cast.caster))
         else {
             return false;
         };
-        let Target::Pos(spot) = target else {
-            return false;
+        let range = self.reach_of(cast.caster, cast.ability.entry().def.range);
+        let range = i64::from(rules::units(range.max(1)).raw);
+        let distance = isqrt64(origin.distance_squared(aim)).min(range);
+        let milliseconds =
+            i64::from(min_ms) + (i64::from(max_ms) - i64::from(min_ms)) * distance / range;
+        let ticks = ticks_of_ms(i32::try_from(milliseconds).expect("bounded travel time"));
+        assert!(ticks > 0);
+        let shot = self.spawn_mark(cast.ability.id(), cast.caster, origin, 0);
+        self.transform
+            .get_mut(shot)
+            .expect("a placed boulder")
+            .facing = facing_towards(origin, aim);
+        self.visibility.insert(shot, Visibility::NONE);
+        self.boulder.insert(
+            shot,
+            BoulderFlight {
+                origin,
+                aim,
+                launched: self.tick,
+                ticks,
+                level: cast.level,
+            },
+        );
+        true
+    }
+
+    pub(crate) fn tick_boulders(&mut self) {
+        if self.boulder.is_empty() {
+            return;
+        }
+        let entities = self.take_entity_snapshot();
+        for shot in entities.iter().copied() {
+            let Some(boulder) = self.boulder.get(shot).copied() else {
+                continue;
+            };
+            let elapsed = self.tick.saturating_sub(boulder.launched);
+            if elapsed >= boulder.ticks {
+                self.boulder_impact(shot, boulder);
+                self.boulder.remove(shot);
+                self.mark.remove(shot);
+                self.discard(shot);
+                continue;
+            }
+            let progress = Fixed::from_ratio(elapsed as i32, boulder.ticks as i32);
+            let delta = boulder.aim - boulder.origin;
+            self.transform.get_mut(shot).expect("a placed boulder").pos = boulder.origin
+                + Vec2 {
+                    x: delta.x * progress,
+                    y: delta.y * progress,
+                };
+        }
+        self.recycle_entity_snapshot(entities);
+    }
+
+    fn boulder_impact(&mut self, shot: Entity, boulder: BoulderFlight) {
+        let mark = self
+            .mark
+            .get(shot)
+            .copied()
+            .expect("the boulder has a spell source");
+        let ability = NeutralAbility::of(mark.ability).expect("a neutral ability");
+        let Spell::Cast {
+            act:
+                Act::Boulder {
+                    radius,
+                    damage,
+                    kind,
+                    ms,
+                    ..
+                },
+            ..
+        } = *ability.spell()
+        else {
+            unreachable!("only boulder casts release boulders");
         };
-        let area = rules::units(radius);
+        let cast = Cast {
+            caster: mark.owner,
+            ability,
+            level: boulder.level,
+        };
         let ms = at_level(&ms, cast.level);
-        for foe in self.foes_within(cast.caster, spot, area) {
+        for foe in self.foes_within(shot, boulder.aim, rules::units(radius)) {
             self.stun_for(cast, foe, ms);
             self.push_hit(
                 Some(cast.caster),
@@ -419,6 +492,5 @@ impl World {
                 cast.inflictor(),
             );
         }
-        true
     }
 }

@@ -235,6 +235,7 @@ world_tables! {
         pub bouncer: crate::game::Bouncer;
         /// The next eligible attempt for a neutral that let a cast opportunity pass.
         pub neutral_cast_wait: u32;
+        pub boulder: crate::game::BoulderFlight;
     }
 
     derived {
@@ -831,6 +832,7 @@ impl World {
         self.tick_hooks();
         self.tick_requiem_lines();
         self.tick_grenades();
+        self.tick_boulders();
         self.tick_area_waves();
         self.tick_feasts();
         self.tick_forest();

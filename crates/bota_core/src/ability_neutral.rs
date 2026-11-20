@@ -578,9 +578,10 @@ pub enum Act {
         ms: Lv,
     },
     /// A big boulder that lands at the spot aimed at: every enemy within `radius` of it takes
-    /// `damage` of `kind` and is stunned for `ms`. Its flight (0.8 to 1.2 s in the script) is
-    /// not modelled: it lands as the cast goes off.
+    /// `damage` of `kind` and is stunned for `ms`. Flight time increases up to maximum range.
     Boulder {
+        min_ms: i32,
+        max_ms: i32,
         radius: i32,
         damage: Lv,
         kind: DamageKind,
@@ -2445,6 +2446,8 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
             cast_of!(D, Aim::Point, true),
             Spell::Cast {
                 act: Act::Boulder {
+                    min_ms: D.ms("min_travel_time"),
+                    max_ms: D.ms("max_travel_time"),
                     radius: D.int("impact_radius"),
                     damage: D.lv("base_damage"),
                     kind: DamageKind::Physical,
