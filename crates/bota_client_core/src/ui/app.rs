@@ -34,6 +34,10 @@ pub trait LiveLink {
     /// Sends one message upstream; a failure marks the link closed.
     fn send(&mut self, msg: &ClientMsg) -> std::io::Result<()>;
     fn is_closed(&self) -> bool;
+    /// The available reason for a closed link.
+    fn ending(&self) -> Option<LinkEnd> {
+        None
+    }
     /// Whether the connection broke and is being made again; the app keeps
     /// going meanwhile.
     fn is_redialing(&self) -> bool {
@@ -54,6 +58,23 @@ pub trait LiveLink {
     }
 }
 
+/// Why a game connection ended.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LinkEnd {
+    WebSocketIdle,
+    WebSocketClosed(u16),
+}
+
+impl LinkEnd {
+    pub(crate) fn websocket_status(code: u16) -> Self {
+        if code == bota_proto::WEBSOCKET_IDLE_CLOSE {
+            Self::WebSocketIdle
+        } else {
+            Self::WebSocketClosed(code)
+        }
+    }
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 impl LiveLink for crate::socket::Net {
     fn set_waker(&mut self, waker: std::task::Waker) {
@@ -70,6 +91,10 @@ impl LiveLink for crate::socket::Net {
 
     fn is_closed(&self) -> bool {
         crate::socket::Net::is_closed(self)
+    }
+
+    fn ending(&self) -> Option<LinkEnd> {
+        self.websocket_close_status().map(LinkEnd::websocket_status)
     }
 
     fn is_redialing(&self) -> bool {
@@ -505,6 +530,8 @@ pub enum FeedKind {
     ProtocolBroken { why: String },
     /// The socket died.
     ConnectionLost,
+    /// The transport knows why the connection ended.
+    LinkEnded(LinkEnd),
     /// The server warned that the match will be ended at its time limit.
     TimeLimitNear { remaining_secs: u32 },
     /// An outpost changed hands: the building as last seen (kind, side and
@@ -1444,8 +1471,11 @@ impl App {
         if let Source::Live(net) = &self.source
             && net.is_closed()
         {
+            let ended = net
+                .ending()
+                .map_or(FeedKind::ConnectionLost, FeedKind::LinkEnded);
             self.lost = true;
-            self.push_feed(FeedKind::ConnectionLost);
+            self.push_feed(ended);
         }
     }
 

@@ -21,6 +21,11 @@ pub(crate) trait FrameSource: Send {
     /// message is an error (`InvalidData` for the last).
     fn read_message(&mut self) -> std::io::Result<Option<ServerMsg>>;
 
+    /// Status supplied by the WebSocket close frame, if one arrived.
+    fn websocket_close_status(&self) -> Option<u16> {
+        None
+    }
+
     /// Time spent waiting on the socket since the last call.
     fn take_wait(&mut self) -> Duration {
         Duration::ZERO
@@ -82,6 +87,10 @@ fn next_unpacked(
 impl FrameSource for Unpacking<dyn FrameSource> {
     fn read_message(&mut self) -> std::io::Result<Option<ServerMsg>> {
         next_unpacked(&mut self.unpacker, &mut *self.inner)
+    }
+
+    fn websocket_close_status(&self) -> Option<u16> {
+        self.inner.websocket_close_status()
     }
 
     fn take_wait(&mut self) -> Duration {

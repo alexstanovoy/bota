@@ -79,8 +79,8 @@ impl Drop for Hold {
 pub struct Terms<'a> {
     pub events: &'a Sender<NetEvent>,
     pub inbound: &'a super::InboundBudget,
-    /// A peer that sends nothing for this long, or takes nothing of what is
-    /// sent for this long, is reported gone.
+    /// A peer that sends or takes no traffic for this long is reported gone.
+    /// WebSocket control frames count so a busy browser can keep its seat.
     pub idle_timeout: Option<Duration>,
     /// A peer that sends more than this many messages a second (see
     /// [`Allowance`]) is reported as a [`Breach::Flood`].
@@ -123,7 +123,7 @@ impl Connection {
             source,
             sink,
             socket,
-        } = stream.split(terms.idle_timeout)?;
+        } = stream.split(id, terms.idle_timeout)?;
         let outbox = Outbox::new(terms.linger);
         let reader_outbox = Arc::clone(&outbox);
         let writer_outbox = Arc::clone(&outbox);

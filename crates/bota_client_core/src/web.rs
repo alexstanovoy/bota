@@ -17,7 +17,7 @@ use web_sys::{BinaryType, CloseEvent, Event, MessageEvent, WebSocket};
 
 use crate::ping::PingMeter;
 use crate::receipts::OrderReceipts;
-use crate::ui::LiveLink;
+use crate::ui::{LinkEnd, LiveLink};
 use crate::ws_frame::decode;
 
 /// Messages held for the app at most; past them the link closes, since a
@@ -38,6 +38,7 @@ struct Shared {
     unopened: Vec<Vec<u8>>,
     open: bool,
     closed: bool,
+    close_status: Option<u16>,
     /// The round trip, timed with probes and their echoes.
     meter: PingMeter,
     /// The orders sent and their receipts.
@@ -126,8 +127,15 @@ impl WebSocketLink {
                 }
             }
         };
-        let (close, fail) = (closer(&shared), closer(&shared));
-        let on_close = Closure::<dyn FnMut(CloseEvent)>::new(move |_| close());
+        let fail = closer(&shared);
+        let on_close = {
+            let shared = Rc::clone(&shared);
+            Closure::<dyn FnMut(CloseEvent)>::new(move |event: CloseEvent| {
+                let mut shared = shared.borrow_mut();
+                shared.close_status = Some(event.code());
+                shared.closed = true;
+            })
+        };
         let on_error = Closure::<dyn FnMut(Event)>::new(move |_| fail());
 
         socket.set_onopen(Some(on_open.as_ref().unchecked_ref()));
@@ -237,6 +245,13 @@ impl LiveLink for WebSocketLink {
 
     fn is_closed(&self) -> bool {
         self.shared.borrow().closed
+    }
+
+    fn ending(&self) -> Option<LinkEnd> {
+        self.shared
+            .borrow()
+            .close_status
+            .map(LinkEnd::websocket_status)
     }
 
     fn ping(&self) -> Option<Duration> {

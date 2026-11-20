@@ -1132,3 +1132,181 @@ mod pick_clock;
 mod picks;
 mod reserved;
 mod spectators;
+
+#[cfg(feature = "websocket")]
+fn game_websocket(
+    idle: Duration,
+    hello_deadline: Option<Duration>,
+) -> tokio_tungstenite::tungstenite::WebSocket<TcpStream> {
+    use tokio_tungstenite::tungstenite::client;
+
+    let mut opts = realtime(12);
+    opts.idle_timeout = Some(idle);
+    opts.pick_time = Duration::from_secs(90);
+    let tcp = TcpListener::bind("127.0.0.1:0").expect("TCP listener");
+    let ws = TcpListener::bind("127.0.0.1:0").expect("WebSocket listener");
+    let address = ws.local_addr().expect("bound");
+    let listeners = Listeners::with_websocket(tcp, crate::net::WsListener::new(ws, None));
+    let hooks = crate::game_loop::TestHooks {
+        hello_deadline,
+        ..Default::default()
+    };
+    thread::spawn(move || crate::game_loop::run_hooked(listeners, opts, hooks));
+    let socket = TcpStream::connect(address).expect("connection");
+    socket
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .expect("read guard");
+    client(format!("ws://{address}"), socket)
+        .expect("upgrade")
+        .0
+}
+
+#[cfg(feature = "websocket")]
+fn seated_websocket(idle: Duration) -> tokio_tungstenite::tungstenite::WebSocket<TcpStream> {
+    use tokio_tungstenite::tungstenite::Message;
+
+    let mut link = game_websocket(idle, None);
+    let hello = ClientMsg::hello(
+        Role::Player,
+        "slow browser",
+        None,
+        bota_core::WIRE_FINGERPRINT,
+    );
+    link.send(Message::Binary(
+        encode_frame_to_vec(&hello).expect("a greeting").into(),
+    ))
+    .expect("send greeting");
+    link
+}
+
+#[cfg(feature = "websocket")]
+#[test]
+fn a_seat_with_only_websocket_control_replies_outlives_six_idle_windows() {
+    use tokio_tungstenite::tungstenite::Message;
+
+    let mut link = seated_websocket(Duration::from_millis(180));
+    // Production's thirty seconds are six five-second idle windows. Each
+    // window spans three control pings. Count replies instead of timing the test.
+    let mut replies = 0;
+    let mut seated = false;
+    for _ in 0..4096 {
+        match link
+            .read()
+            .expect("the transport still answers so the seat stays open")
+        {
+            Message::Ping(_) => {
+                link.flush().expect("automatically queued control Pong");
+                replies += 1;
+                if replies == 18 {
+                    assert!(seated, "the peer held a seat");
+                    return;
+                }
+            }
+            Message::Binary(frame) => {
+                seated |= matches!(
+                    bota_proto::decode_payload::<ServerMsg>(&frame[bota_proto::LEN_PREFIX..]),
+                    Ok(ServerMsg::Welcome { slot: Some(_), .. })
+                );
+            }
+            Message::Close(close) => panic!("transport-only seat closed: {close:?}"),
+            _ => {}
+        }
+    }
+    panic!("the transport did not send enough heartbeats");
+}
+
+#[cfg(feature = "websocket")]
+#[test]
+fn a_websocket_transport_that_stops_answering_gets_a_close_reason() {
+    let mut link = seated_websocket(Duration::from_millis(300));
+    let socket = link.get_mut();
+    let mut seated = false;
+    let mut replied = false;
+
+    // This raw peer answers one heartbeat, then leaves later pings unanswered.
+    for _ in 0..256 {
+        let mut header = [0; 2];
+        socket
+            .read_exact(&mut header)
+            .expect("a frame with the server's close reason");
+        assert_eq!(header[1] & 0x80, 0, "server frames are unmasked");
+        let size = match header[1] {
+            126 => {
+                let mut encoded = [0; 2];
+                socket.read_exact(&mut encoded).expect("a frame size");
+                u16::from_be_bytes(encoded).into()
+            }
+            127 => panic!("the waiting lobby should only send small frames"),
+            size => usize::from(size),
+        };
+        let mut frame = vec![0; size];
+        socket
+            .read_exact(&mut frame)
+            .expect("a complete WebSocket frame");
+        match header[0] & 0x0f {
+            2 => {
+                seated |= matches!(
+                    bota_proto::decode_payload::<ServerMsg>(&frame[bota_proto::LEN_PREFIX..]),
+                    Ok(ServerMsg::Welcome { slot: Some(_), .. })
+                );
+            }
+            9 if !replied => {
+                let mask = [1, 2, 3, 4];
+                let mut pong = vec![0x8a, 0x80 | u8::try_from(size).expect("control frame size")];
+                pong.extend(mask);
+                pong.extend(
+                    frame
+                        .iter()
+                        .zip(mask.iter().cycle())
+                        .map(|(byte, mask)| byte ^ mask),
+                );
+                socket
+                    .write_all(&pong)
+                    .expect("reply to the first transport heartbeat");
+                replied = true;
+            }
+            8 => {
+                assert!(
+                    seated,
+                    "the peer held a seat before its transport went silent"
+                );
+                assert!(frame.starts_with(&4001u16.to_be_bytes()), "{frame:?}");
+                assert_eq!(&frame[2..], b"game transport idle");
+                assert!(replied, "the transport first replied, then went silent");
+                return;
+            }
+            _ => {}
+        }
+    }
+    panic!("the silent transport never received a close frame");
+}
+
+#[cfg(feature = "websocket")]
+#[test]
+fn a_websocket_stranger_answering_control_pings_still_needs_hello() {
+    use tokio_tungstenite::tungstenite::Message;
+
+    let mut link = game_websocket(Duration::from_millis(300), Some(Duration::from_millis(650)));
+    let mut replied = false;
+    for _ in 0..32 {
+        match link.read().expect("the peer is let go with a close frame") {
+            Message::Ping(_) => {
+                link.flush().expect("the automatic WebSocket reply");
+                replied = true;
+            }
+            Message::Close(close) => {
+                assert!(
+                    replied,
+                    "the transport answered control pings before the Hello deadline"
+                );
+                assert!(
+                    close.is_none(),
+                    "Hello deadline, not transport idle: {close:?}"
+                );
+                return;
+            }
+            _ => {}
+        }
+    }
+    panic!("control replies kept a connection that never sent Hello");
+}

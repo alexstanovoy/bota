@@ -158,7 +158,7 @@ enum Read {
     Message(Box<ServerMsg>),
     /// Nothing to hand on yet (a WebSocket-level ping, pong).
     Nothing,
-    Closed,
+    Closed(Option<u16>),
 }
 
 fn read_one(ws: &mut Ws) -> std::io::Result<Read> {
@@ -167,9 +167,8 @@ fn read_one(ws: &mut Ws) -> std::io::Result<Read> {
         Ok(Message::Binary(bytes)) => {
             crate::ws_frame::decode(&bytes).map(|message| Read::Message(Box::new(message)))
         }
-        Ok(Message::Close(_)) | Err(Error::ConnectionClosed | Error::AlreadyClosed) => {
-            Ok(Read::Closed)
-        }
+        Ok(Message::Close(frame)) => Ok(Read::Closed(frame.map(|frame| frame.code.into()))),
+        Err(Error::ConnectionClosed | Error::AlreadyClosed) => Ok(Read::Closed(None)),
         Ok(Message::Text(_)) => Err(std::io::Error::new(
             ErrorKind::InvalidData,
             "the server sent a text message; bota speaks binary frames only",
@@ -194,7 +193,7 @@ impl FrameSource for WsFrames {
             self.wait = self.wait.saturating_add(started.elapsed());
             match read? {
                 Read::Message(message) => return Ok(Some(*message)),
-                Read::Closed => return Ok(None),
+                Read::Closed(_) => return Ok(None),
                 Read::Nothing => {}
             }
         }
@@ -241,6 +240,7 @@ impl FrameStream for WsFrames {
             io_timeout,
             active: Instant::now(),
             polling: POLL,
+            close_status: None,
         };
         let sink = WsSink {
             queue,
@@ -263,6 +263,7 @@ struct WsSource {
     active: Instant,
     /// The socket's current read timeout.
     polling: Duration,
+    close_status: Option<u16>,
 }
 
 impl WsSource {
@@ -284,6 +285,10 @@ impl WsSource {
 }
 
 impl FrameSource for WsSource {
+    fn websocket_close_status(&self) -> Option<u16> {
+        self.close_status
+    }
+
     fn read_message(&mut self) -> std::io::Result<Option<ServerMsg>> {
         let mut heard = Instant::now();
         loop {
@@ -302,7 +307,8 @@ impl FrameSource for WsSource {
                     self.active = Instant::now();
                     return Ok(Some(*message));
                 }
-                Ok(Read::Closed) => {
+                Ok(Read::Closed(status)) => {
+                    self.close_status = status;
                     self.ended.store(true, Ordering::Relaxed);
                     return Ok(None);
                 }

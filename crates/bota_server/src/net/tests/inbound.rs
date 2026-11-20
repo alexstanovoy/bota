@@ -20,9 +20,13 @@ impl Drop for WatchedSource {
     }
 }
 impl FrameStream for WatchedStream {
-    fn split(self: Box<Self>, timeout: Option<Duration>) -> std::io::Result<Split> {
+    fn split(
+        self: Box<Self>,
+        id: bota_proto::PlayerId,
+        timeout: Option<Duration>,
+    ) -> std::io::Result<Split> {
         let Self(stream, ended) = *self;
-        let mut split = Box::new(stream).split(timeout)?;
+        let mut split = Box::new(stream).split(id, timeout)?;
         split.source = Box::new(WatchedSource(split.source, ended));
         Ok(split)
     }

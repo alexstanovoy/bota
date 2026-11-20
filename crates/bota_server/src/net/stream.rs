@@ -61,7 +61,11 @@ pub trait FrameStream: Send {
     /// Splits the transport for a connection's reader and writer threads,
     /// with `idle_timeout` on every read and every write, and hands back the
     /// TCP socket underneath, kept to abort the connection.
-    fn split(self: Box<Self>, idle_timeout: Option<Duration>) -> io::Result<Split>;
+    fn split(
+        self: Box<Self>,
+        _id: bota_proto::PlayerId,
+        idle_timeout: Option<Duration>,
+    ) -> io::Result<Split>;
 
     /// The address the peer connects from, for the bounds per source; none when the transport
     /// cannot tell, and all such peers count as one source.
@@ -106,7 +110,11 @@ impl FrameStream for TcpStream {
         self.peer_addr().ok().map(|addr| addr.ip())
     }
 
-    fn split(self: Box<Self>, idle_timeout: Option<Duration>) -> io::Result<Split> {
+    fn split(
+        self: Box<Self>,
+        _id: bota_proto::PlayerId,
+        idle_timeout: Option<Duration>,
+    ) -> io::Result<Split> {
         let stream = *self;
         // Either failure only costs latency: Nagle's delay, or the kernel's default buffer, with
         // which the peer lags longer before it is skipped ahead.

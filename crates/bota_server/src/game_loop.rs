@@ -33,10 +33,8 @@ pub(crate) use crate::game::perspective::{side_events, side_view, visible_events
 mod chat;
 mod participants;
 
-/// How long a connection may stay silent before it is dropped as dead, by
-/// default: five pings missed. A seat is not handed to a new connection while
-/// a live one holds it, so this is also how long a player whose line died
-/// silently waits to take the seat back.
+/// How long a connection may stay silent before it is dropped as dead.
+/// WebSocket control replies count as traffic even while the client app is busy.
 pub const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// How long a connection has to say Hello. One that has not by then is let
@@ -263,6 +261,7 @@ pub fn run_with_profiles(
 #[cfg(test)]
 #[derive(Default)]
 pub(crate) struct TestHooks {
+    pub hello_deadline: Option<Duration>,
     /// The lobby's clock (the time to start the match, the time to give up on nobody coming)
     /// runs only once this is sent to: a test admits the connections it is about first.
     pub start_gate: Option<Receiver<()>>,
@@ -368,6 +367,8 @@ fn run_inner(
         start_gate: hooks.start_gate,
         #[cfg(test)]
         hold: hooks.hold,
+        #[cfg(test)]
+        hello_deadline: hooks.hello_deadline.unwrap_or(HELLO_DEADLINE),
     };
     match server.lobby_phase() {
         Lobby::Match(cfg) => server.match_phase(*cfg),
@@ -599,6 +600,8 @@ struct Server {
     /// Tests only: the lobby reads no event while this is held.
     #[cfg(test)]
     hold: Option<std::sync::Arc<Hold>>,
+    #[cfg(test)]
+    hello_deadline: Duration,
     referees: Vec<PlayerId>,
     rx: Receiver<NetEvent>,
     /// Cloned into every connection's reader thread; keeps `rx` open.
@@ -806,13 +809,20 @@ impl Server {
         None
     }
 
+    fn hello_deadline(&self) -> Duration {
+        #[cfg(test)]
+        return self.hello_deadline;
+        #[cfg(not(test))]
+        HELLO_DEADLINE
+    }
+
     /// Lets go of every connection that has not said Hello within
     /// [`HELLO_DEADLINE`].
     fn drop_strangers(&mut self) {
         let late: Vec<PlayerId> = self
             .conns
             .iter()
-            .filter(|c| c.opened.elapsed() >= HELLO_DEADLINE && !self.greeted(c.id))
+            .filter(|c| c.opened.elapsed() >= self.hello_deadline() && !self.greeted(c.id))
             .map(|c| c.id)
             .collect();
         for id in late {
@@ -825,7 +835,7 @@ impl Server {
         self.conns
             .iter()
             .filter(|c| !self.greeted(c.id))
-            .map(|c| c.opened + HELLO_DEADLINE)
+            .map(|c| c.opened + self.hello_deadline())
             .min()
     }
 

@@ -57,3 +57,6 @@ pub use status::*;
 pub use talents::*;
 pub use unpack::*;
 pub use view::*;
+
+/// Application close code of a game WebSocket whose transport stopped answering.
+pub const WEBSOCKET_IDLE_CLOSE: u16 = 4001;

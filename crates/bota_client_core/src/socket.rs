@@ -206,6 +206,7 @@ const CLOSED: u8 = 2;
 struct Shared {
     out: Mutex<Outgoing>,
     state: AtomicU8,
+    close_status: std::sync::atomic::AtomicU16,
     /// Payload bytes of the messages in the inbox.
     held: Mutex<usize>,
     /// Signalled when the caller takes messages out of the inbox.
@@ -407,6 +408,7 @@ impl Net {
                 broken: false,
             }),
             state: AtomicU8::new(UP),
+            close_status: std::sync::atomic::AtomicU16::new(0),
             held: Mutex::new(0),
             taken: Condvar::new(),
             epoch: Instant::now(),
@@ -480,6 +482,13 @@ impl Net {
         self.shared.state.load(Ordering::Acquire) == CLOSED
     }
 
+    /// The status from the final WebSocket close frame, when it had one.
+    #[cfg(feature = "ui")]
+    pub(crate) fn websocket_close_status(&self) -> Option<u16> {
+        let status = self.shared.close_status.load(Ordering::Relaxed);
+        (status != 0).then_some(status)
+    }
+
     /// Whether the connection broke and is not yet back: being dialed again,
     /// or dialed and not yet answered by the server.
     pub fn is_redialing(&self) -> bool {
@@ -539,7 +548,12 @@ fn read_on(
             Ok(()) if broken => {
                 std::io::Error::new(ErrorKind::BrokenPipe, "failed to send client message")
             }
-            Ok(()) => break,
+            Ok(()) => {
+                if let Some(status) = stream.websocket_close_status() {
+                    shared.close_status.store(status, Ordering::Relaxed);
+                }
+                break;
+            }
         };
         match shared.reconnect(endpoint, cause) {
             Ok(fresh) => stream = fresh,

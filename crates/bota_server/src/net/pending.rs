@@ -66,8 +66,12 @@ impl FrameStream for PendingStream {
         self.stream.peer()
     }
 
-    fn split(self: Box<Self>, timeout: Option<Duration>) -> io::Result<Split> {
+    fn split(
+        self: Box<Self>,
+        id: bota_proto::PlayerId,
+        timeout: Option<Duration>,
+    ) -> io::Result<Split> {
         let Self { stream, _admission } = *self;
-        stream.split(timeout)
+        stream.split(id, timeout)
     }
 }

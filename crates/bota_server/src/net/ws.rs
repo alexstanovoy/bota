@@ -13,13 +13,14 @@ use std::future::Future;
 use std::io;
 use std::net::{IpAddr, Shutdown, TcpStream as StdTcpStream};
 use std::path::Path;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc as std_mpsc;
+use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use bota_proto::{LEN_PREFIX, MAX_CLIENT_PAYLOAD_LEN, MAX_PAYLOAD_LEN};
+use bota_proto::{LEN_PREFIX, MAX_CLIENT_PAYLOAD_LEN, MAX_PAYLOAD_LEN, PlayerId};
+use futures_util::future::{Either, select};
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
 use rustls::pki_types::pem::PemObject;
@@ -27,11 +28,13 @@ use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::runtime::Handle;
-use tokio::sync::{Semaphore, mpsc};
+use tokio::sync::{Semaphore, mpsc, oneshot};
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::WebSocketStream;
 use tokio_tungstenite::tungstenite::error::CapacityError;
-use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
+use tokio_tungstenite::tungstenite::protocol::{
+    CloseFrame, WebSocketConfig, frame::coding::CloseCode,
+};
 use tokio_tungstenite::tungstenite::{Bytes, Error as WsError, Message};
 
 use crate::net::{
@@ -41,6 +44,9 @@ use crate::net::{
 
 /// How long a peer has for its TLS handshake and WebSocket upgrade together.
 const HANDSHAKE_DEADLINE: Duration = Duration::from_secs(10);
+/// Give the writer time to send the reason before disconnect handling can
+/// discard its connection, even if a game frame is already queued.
+const CLOSE_GRACE: Duration = Duration::from_secs(1);
 /// Handshakes do not consume the adoption slots used by the TCP listener.
 const MAX_HANDSHAKES: usize = 64;
 
@@ -164,6 +170,7 @@ async fn accept_all(
     let handshakes = Arc::new(Semaphore::new(MAX_HANDSHAKES));
     let sources = super::Places::default();
     let server_gone = Arc::new(AtomicBool::new(false));
+    let logs = Arc::new(Mutex::new((Instant::now(), 0)));
     while !server_gone.load(Ordering::Relaxed) {
         let (tcp, peer) = match listener.accept().await {
             Ok(accepted) => accepted,
@@ -180,12 +187,14 @@ async fn accept_all(
         };
         let (tls, events, server_gone) = (tls.clone(), events.clone(), Arc::clone(&server_gone));
         let pending = pending.clone();
+        let logs = Arc::clone(&logs);
         #[cfg(test)]
         let held_handshakes = held_handshakes.clone();
         tokio::spawn(async move {
             let opened = open_timed(
                 tcp,
                 tls,
+                logs,
                 #[cfg(test)]
                 held_handshakes,
             )
@@ -206,20 +215,25 @@ async fn accept_all(
 async fn open_timed(
     tcp: TcpStream,
     tls: Option<TlsAcceptor>,
+    logs: LogBudget,
     #[cfg(test)] held: Option<std_mpsc::Sender<()>>,
 ) -> io::Result<Box<dyn FrameStream>> {
     #[cfg(test)]
     if let Some(started) = held {
         let _ = started.send(());
-        return open(tcp, tls).await;
+        return open(tcp, tls, logs).await;
     }
-    tokio::time::timeout(HANDSHAKE_DEADLINE, open(tcp, tls))
+    tokio::time::timeout(HANDSHAKE_DEADLINE, open(tcp, tls, logs))
         .await
         .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "WebSocket handshake deadline"))?
 }
 
 /// The TLS handshake when there is TLS, then the WebSocket upgrade.
-async fn open(tcp: TcpStream, tls: Option<TlsAcceptor>) -> io::Result<Box<dyn FrameStream>> {
+async fn open(
+    tcp: TcpStream,
+    tls: Option<TlsAcceptor>,
+    logs: LogBudget,
+) -> io::Result<Box<dyn FrameStream>> {
     // Either failure only costs latency, as on the TCP port.
     let _ = tcp.set_nodelay(true);
     let socket = {
@@ -228,12 +242,16 @@ async fn open(tcp: TcpStream, tls: Option<TlsAcceptor>) -> io::Result<Box<dyn Fr
         StdTcpStream::from(socket.try_clone()?)
     };
     match tls {
-        None => upgrade(tcp, socket).await,
-        Some(tls) => upgrade(tls.accept(tcp).await?, socket).await,
+        None => upgrade(tcp, socket, logs).await,
+        Some(tls) => upgrade(tls.accept(tcp).await?, socket, logs).await,
     }
 }
 
-async fn upgrade<S>(stream: S, socket: StdTcpStream) -> io::Result<Box<dyn FrameStream>>
+async fn upgrade<S>(
+    stream: S,
+    socket: StdTcpStream,
+    logs: LogBudget,
+) -> io::Result<Box<dyn FrameStream>>
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
@@ -250,6 +268,7 @@ where
         ws,
         socket,
         runtime: Handle::current(),
+        logs,
     }))
 }
 
@@ -259,6 +278,7 @@ struct WsStream<S> {
     /// The TCP socket underneath, shared with the runtime.
     socket: StdTcpStream,
     runtime: Handle,
+    logs: LogBudget,
 }
 
 impl<S> FrameStream for WsStream<S>
@@ -269,28 +289,90 @@ where
         self.socket.peer_addr().ok().map(|addr| addr.ip())
     }
 
-    fn split(self: Box<Self>, idle_timeout: Option<Duration>) -> io::Result<Split> {
+    fn split(self: Box<Self>, id: PlayerId, idle_timeout: Option<Duration>) -> io::Result<Split> {
+        let (source, sink, socket) = self.spawn_tasks(id, idle_timeout)?;
+        Ok(Split {
+            source: Box::new(source),
+            sink: Box::new(sink),
+            socket,
+        })
+    }
+}
+
+impl<S: AsyncRead + AsyncWrite + Unpin + Send + 'static> WsStream<S> {
+    fn spawn_tasks(
+        self,
+        id: PlayerId,
+        idle_timeout: Option<Duration>,
+    ) -> io::Result<(WsSource, WsSink, StdTcpStream)> {
         let WsStream {
             ws,
             socket,
             runtime,
-        } = *self;
+            logs,
+        } = self;
+        let log = SocketLog { id, budget: logs };
         let (sink_socket, task_socket) = (socket.try_clone()?, socket.try_clone()?);
         let (inbound, frames) = mpsc::channel(INBOUND_FRAMES);
         let (outbound, queued) = mpsc::channel(1);
         let (done, finished) = std_mpsc::channel();
         let (sink, stream) = ws.split();
-        runtime.spawn(read_side(stream, inbound, idle_timeout));
-        runtime.spawn(write_side(sink, queued, idle_timeout, task_socket, done));
-        Ok(Split {
-            source: Box::new(WsSource(frames)),
-            sink: Box::new(WsSink {
+        runtime.spawn(read_side(
+            stream,
+            inbound,
+            outbound.clone(),
+            idle_timeout,
+            log.clone(),
+        ));
+        runtime.spawn(write_side(
+            sink,
+            queued,
+            idle_timeout,
+            task_socket,
+            done,
+            log,
+        ));
+        Ok((
+            WsSource(frames),
+            WsSink {
                 outbound,
                 finished,
                 socket: sink_socket,
-            }),
+            },
             socket,
-        })
+        ))
+    }
+}
+
+type LogBudget = Arc<Mutex<(Instant, u8)>>;
+
+#[derive(Clone)]
+struct SocketLog {
+    id: PlayerId,
+    budget: LogBudget,
+}
+
+impl SocketLog {
+    fn ended(&self, reason: std::fmt::Arguments<'_>) {
+        let allowed = if let Ok(mut budget) = self.budget.lock() {
+            if budget.0.elapsed() >= Duration::from_secs(1) {
+                *budget = (Instant::now(), 0);
+            }
+            if budget.1 >= 16 {
+                false
+            } else {
+                budget.1 += 1;
+                true
+            }
+        } else {
+            false
+        };
+        if allowed {
+            eprintln!(
+                "bota_server: game WebSocket connection {} {reason}",
+                self.id.0
+            );
+        }
     }
 }
 
@@ -302,14 +384,28 @@ type Inbound = Result<Vec<u8>, ReadEnd>;
 async fn read_side<S>(
     mut stream: SplitStream<WebSocketStream<S>>,
     inbound: mpsc::Sender<Inbound>,
+    outbound: mpsc::Sender<Outbound>,
     idle_timeout: Option<Duration>,
+    log: SocketLog,
 ) where
     S: AsyncRead + AsyncWrite + Unpin,
 {
     loop {
         let read = match within(idle_timeout, stream.next()).await {
-            None => Err(ReadEnd::Gone),
-            Some(next) => match frame_of(next) {
+            None => {
+                log.ended(format_args!(
+                    "closed after {idle_timeout:?} without inbound traffic"
+                ));
+                let (sent, received) = oneshot::channel();
+                if matches!(
+                    within(Some(CLOSE_GRACE), outbound.send(Outbound::Idle(sent))).await,
+                    Some(Ok(()))
+                ) {
+                    let _ = within(Some(CLOSE_GRACE), received).await;
+                }
+                Err(ReadEnd::Gone)
+            }
+            Some(next) => match frame_of(next, &log) {
                 Ok(None) => continue,
                 Ok(Some(frame)) => Ok(frame),
                 Err(end) => Err(end),
@@ -324,13 +420,23 @@ async fn read_side<S>(
 
 /// What one read brings the reader thread: a frame, nothing (a control
 /// message, answered by the WebSocket layer), or the end.
-fn frame_of(next: Option<Result<Message, WsError>>) -> Result<Option<Vec<u8>>, ReadEnd> {
+fn frame_of(
+    next: Option<Result<Message, WsError>>,
+    log: &SocketLog,
+) -> Result<Option<Vec<u8>>, ReadEnd> {
     let message = match next {
         Some(Ok(message)) => message,
         Some(Err(WsError::Capacity(CapacityError::MessageTooLong { size, .. }))) => {
             return Err(ReadEnd::Breach(Breach::Oversized { len: size }));
         }
-        Some(Err(_)) | None => return Err(ReadEnd::Gone),
+        Some(Err(error)) => {
+            log.ended(format_args!("read failed: {error}"));
+            return Err(ReadEnd::Gone);
+        }
+        None => {
+            log.ended(format_args!("ended without a close frame"));
+            return Err(ReadEnd::Gone);
+        }
     };
     match message {
         Message::Binary(bytes) => whole_frame(bytes)
@@ -338,7 +444,11 @@ fn frame_of(next: Option<Result<Message, WsError>>) -> Result<Option<Vec<u8>>, R
             .ok_or(ReadEnd::Breach(Breach::Unframed)),
         Message::Text(_) => Err(ReadEnd::Breach(Breach::Unframed)),
         Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => Ok(None),
-        Message::Close(_) => Err(ReadEnd::Gone),
+        Message::Close(frame) => {
+            let code = frame.as_ref().map(|frame| u16::from(frame.code));
+            log.ended(format_args!("closed by its peer, status {code:?}"));
+            Err(ReadEnd::Gone)
+        }
     }
 }
 
@@ -356,6 +466,9 @@ enum Outbound {
     Frame(Bytes),
     /// Close the WebSocket once what came before is sent.
     HangUp,
+    /// The reader timed out. Acknowledge after flushing the reason so its
+    /// disconnect event cannot race ahead and abort the writer.
+    Idle(oneshot::Sender<()>),
 }
 
 /// Sends what the writer thread hands on, one frame per message. A frame the
@@ -368,24 +481,88 @@ async fn write_side<S>(
     idle_timeout: Option<Duration>,
     socket: StdTcpStream,
     done: std_mpsc::Sender<()>,
+    log: SocketLog,
 ) where
     S: AsyncRead + AsyncWrite + Unpin,
 {
-    while let Some(next) = queued.recv().await {
-        let frame = match next {
-            Outbound::Frame(frame) => frame,
-            Outbound::HangUp => {
-                let _ = within(idle_timeout, sink.close()).await;
+    let mut heartbeat = idle_timeout.map(|timeout| {
+        let period = (timeout / 3).max(Duration::from_millis(10));
+        let mut heartbeat = tokio::time::interval_at(tokio::time::Instant::now() + period, period);
+        heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        heartbeat
+    });
+    loop {
+        // Chromium answers control pings in its network service even while
+        // the page is busy; they test the transport, independently of the UI.
+        let next = match select(
+            std::pin::pin!(heartbeat_tick(&mut heartbeat)),
+            std::pin::pin!(queued.recv()),
+        )
+        .await
+        {
+            Either::Right((next, _)) => next,
+            Either::Left(((), _)) => {
+                if send(&mut sink, Message::Ping(Bytes::new()), idle_timeout, &log).await {
+                    continue;
+                }
+                let _ = socket.shutdown(Shutdown::Read);
                 break;
             }
         };
-        let sent = within(idle_timeout, sink.send(Message::Binary(frame))).await;
-        if !matches!(sent, Some(Ok(()))) {
-            let _ = socket.shutdown(Shutdown::Read);
-            break;
+        match next {
+            Some(Outbound::Frame(frame)) => {
+                if !send(&mut sink, Message::Binary(frame), idle_timeout, &log).await {
+                    let _ = socket.shutdown(Shutdown::Read);
+                    break;
+                }
+            }
+            Some(Outbound::Idle(sent)) => {
+                let close = Message::Close(Some(CloseFrame {
+                    code: CloseCode::from(bota_proto::WEBSOCKET_IDLE_CLOSE),
+                    reason: "game transport idle".into(),
+                }));
+                let _ = within(Some(CLOSE_GRACE), sink.send(close)).await;
+                let _ = sent.send(());
+                break;
+            }
+            Some(Outbound::HangUp) => {
+                let _ = within(idle_timeout, sink.close()).await;
+                break;
+            }
+            None => break,
         }
     }
     drop(done);
+}
+
+async fn heartbeat_tick(heartbeat: &mut Option<tokio::time::Interval>) {
+    if let Some(timer) = heartbeat {
+        timer.tick().await;
+    } else {
+        std::future::pending().await
+    }
+}
+
+async fn send<S>(
+    sink: &mut SplitSink<WebSocketStream<S>, Message>,
+    message: Message,
+    deadline: Option<Duration>,
+    log: &SocketLog,
+) -> bool
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    match within(deadline, sink.send(message)).await {
+        Some(Ok(())) => true,
+        Some(Err(error)) => {
+            log.ended(format_args!("write failed: {error}"));
+            false
+        }
+        None => {
+            log.ended(format_args!("write timed out after {deadline:?}"));
+            false
+        }
+    }
 }
 
 /// `future`, given at most `limit`; nothing when it ran out.
@@ -448,4 +625,59 @@ fn frame_len(frames: &[u8]) -> usize {
     let len = LEN_PREFIX + u32::from_le_bytes(*prefix) as usize;
     assert!(len <= frames.len(), "frames are whole");
     len
+}
+
+#[cfg(test)]
+#[test]
+fn a_websocket_writer_ends_after_the_socket_is_aborted_without_an_idle_timer() {
+    use tokio_tungstenite::tungstenite::client;
+
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("listener");
+    let address = listener.local_addr().expect("address");
+    let peer = thread::spawn(move || {
+        let socket = StdTcpStream::connect(address).expect("socket");
+        client(format!("ws://{address}"), socket)
+            .expect("upgrade")
+            .0
+    });
+    let (socket, _) = listener.accept().expect("connected");
+    socket.set_nonblocking(true).expect("asynchronous socket");
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_io()
+        .enable_time()
+        .build()
+        .expect("runtime");
+    let (mut source, sink, socket) = runtime.block_on(async {
+        let tcp = TcpStream::from_std(socket.try_clone().expect("socket")).expect("async socket");
+        let ws = tokio_tungstenite::accept_async(tcp).await.expect("upgrade");
+        WsStream {
+            ws,
+            socket,
+            runtime: Handle::current(),
+            logs: Arc::new(Mutex::new((Instant::now(), 0))),
+        }
+        .spawn_tasks(PlayerId(1), None)
+        .expect("transport tasks")
+    });
+    let peer = peer.join().expect("upgraded peer");
+    // These are the two actions of Connection::abort and its outbox: shut
+    // the read side and drop the writer's sender, leaving the peer open.
+    socket.shutdown(Shutdown::Read).expect("abort socket");
+    let WsSink {
+        finished, outbound, ..
+    } = sink;
+    drop(outbound);
+    thread::scope(|scope| {
+        let (finish, done) = oneshot::channel();
+        let waiter = scope.spawn(move || {
+            let _ = finish.send(finished.recv_timeout(Duration::from_secs(5)));
+        });
+        assert_eq!(
+            runtime.block_on(done).expect("writer result"),
+            Err(std_mpsc::RecvTimeoutError::Disconnected)
+        );
+        waiter.join().expect("observer finished");
+    });
+    assert!(matches!(source.next_frame(), Err(ReadEnd::Gone)));
+    drop(peer);
 }

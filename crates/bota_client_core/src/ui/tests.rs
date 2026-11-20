@@ -2,7 +2,7 @@
 
 use crate::BAG_SLOTS;
 use crate::ui::ChannelStops;
-use crate::ui::app::{App, CueKind, FeedKind, Killer, Tap, Victim, tap_again};
+use crate::ui::app::{App, CueKind, FeedKind, Killer, LinkEnd, Tap, Victim, tap_again};
 use crate::ui::slots::{Look, Press, Slot, ability_look, decide, item_look, order_for};
 use bota_proto::{
     AbilityId, AbilitySlot, AbilityView, AbortReason, Aim, Angle, Attributes, EntityId, EventKind,
@@ -4045,4 +4045,16 @@ fn a_backpacked_banner_is_usable_and_ordinary_items_stay_inactive() {
             "{item:?}",
         );
     }
+}
+
+#[test]
+fn websocket_idle_close_has_a_distinct_connection_end() {
+    assert_eq!(
+        LinkEnd::websocket_status(bota_proto::WEBSOCKET_IDLE_CLOSE),
+        LinkEnd::WebSocketIdle
+    );
+    assert_eq!(
+        LinkEnd::websocket_status(1006),
+        LinkEnd::WebSocketClosed(1006)
+    );
 }
