@@ -7,6 +7,9 @@ use crate::game::{
     DEMO_FOW_BLOCKERS, DEMO_TERRAIN_RLE, DEMO_TREES, DOTA_TREES, FOW_BLOCKERS, TERRAIN_RLE,
 };
 
+/// Cells per terrain axis: the layout of [`bota_core::rules::GRID_CELLS`].
+pub const TERRAIN_CELLS: usize = bota_core::rules::GRID_CELLS;
+
 /// The forest and the ground of one map.
 #[derive(Clone, Copy, Debug)]
 pub struct MapTerrain {

@@ -125,20 +125,25 @@ step test-groups python3 tools/test_groups.py check $selection
 run_steps < <(fuzz_steps "$fuzz")
 run_steps < <(lint_steps "$crates")
 run_steps < <(wasm_steps "$crates")
-if has "$groups" import_items && [ -z "$(installs)" ]; then
-    echo "GATE-FAIL test (group import_items runs, and there is no Dota 2 install: the committed item table cannot be checked against it)"
-    exit 1
-fi
+for importer in import_items import_map; do
+    if has "$groups" "$importer" && [ -z "$(installs)" ]; then
+        echo "GATE-FAIL test (group $importer runs, and there is no Dota 2 install: its committed tables cannot be checked against it)"
+        exit 1
+    fi
+done
 # shellcheck disable=SC2086
 step_if '[ -n "$groups" ]' "no test group" test python3 tools/test_groups.py run $groups
 step deny cargo deny check
 
-# The importer reads the install with heatel, a checkout beside this one.
+# The importers read the install with heatel.
 importer=(--manifest-path tools/import_items/Cargo.toml)
+map_importer=(--manifest-path tools/import_map/Cargo.toml)
 step_if 'has "$groups" import_items' "group import_items does not run" import-clippy cargo clippy "${importer[@]}" --all-targets -- -D warnings
+step_if 'has "$groups" import_map' "group import_map does not run" import-map-clippy cargo clippy "${map_importer[@]}" --all-targets -- -D warnings
 # Formatting changes no code, so it comes last: a gate that fails only here needs `cargo fmt` and an amend, not a rerun.
 step fmt cargo fmt --all --check
 step import-fmt cargo fmt "${importer[@]}" --check
+step import-map-fmt cargo fmt "${map_importer[@]}" --check
 
 if [ "$skipped" = 1 ]; then
     echo "GATE-FAIL steps were skipped (GATE_SKIP): that is not a pass"

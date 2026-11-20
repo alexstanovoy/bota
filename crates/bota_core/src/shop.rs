@@ -98,49 +98,14 @@ pub fn shop_access(map: &impl ShopGeometry, pos: Vec2, bound: Fixed) -> ShopAcce
     }
 }
 
-const fn point(x: i32, y: i32) -> Vec2 {
+pub(crate) const fn point(x: i32, y: i32) -> Vec2 {
     Vec2 {
         x: Fixed { raw: x },
         y: Fixed { raw: y },
     }
 }
 
-// Dota 7.41f, maps/dota/entities/unnamed_3010_2431_58.vmdl_c and
-// unnamed_3010_4090_43.vmdl_c, PHYS convex hulls, transformed by their
-// trigger_shop entities in the default entity lump (shoptype=2).
-// Positions are in the simulator's frame, Q16.16; no circular approximation.
-pub const DOTA_SECRET_SHOPS: [ShopZone; 2] = [
-    ShopZone {
-        pos: point(271050048, 731640824),
-        corners: &[
-            point(239994861, 726534663),
-            point(240634981, 716457405),
-            point(245371291, 707651417),
-            point(264109244, 695208337),
-            point(278123363, 695935633),
-            point(296322715, 707137205),
-            point(302111520, 718612887),
-            point(299436415, 735969813),
-            point(292825101, 747712552),
-            point(278818706, 755250112),
-            point(259230514, 755070925),
-            point(243667418, 748720584),
-        ],
-    },
-    ShopZone {
-        pos: point(924197952, 524834464),
-        corners: &[
-            point(881058100, 516940337),
-            point(897128081, 488601273),
-            point(929045995, 482074899),
-            point(957385058, 498144888),
-            point(963911405, 530062794),
-            point(947841455, 558401863),
-            point(915923541, 564928237),
-            point(887584478, 548858248),
-        ],
-    },
-];
+pub use crate::map_data::DOTA_SECRET_SHOPS;
 
 const _: () = {
     assert!(DOTA_SECRET_SHOPS.len() <= bota_proto::MAX_SECRET_SHOPS);

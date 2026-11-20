@@ -10,7 +10,7 @@
 //! 6966 build; `[PN v]` Valve's patch notes of version `v`; `[LIQ page]`
 //! Liquipedia's article (read 2026-11-06).
 
-use bota_proto::{Fixed, ObjectiveKind, UnitKind, Vec2};
+use bota_proto::{Fixed, ObjectiveKind, UnitKind};
 
 use crate::roshan_data::ROSHAN_UNIT as U;
 use crate::unit::BARE_UNIT;
@@ -86,10 +86,10 @@ pub const ROSHAN_HOME: HomeDef = HomeDef {
 /// 15:00 [LIQ Roshan "On The Move"; PN 7.41 "pit preference has switched"]:
 /// `info_player_start_dota` "roshan_location_2" (-3194.28, 2394.62)
 /// [ENT:186935].
-pub const ROSHAN_DAY_PIT: Vec2 = Vec2::from_ints(6022, 11611);
+pub use crate::map_data::ROSHAN_DAY_PIT;
 /// The Radiant pit, bottom-right of the river, where he stands by night:
 /// "roshan_location_1" (2859.76, -2764.77) [ENT:187040].
-pub const ROSHAN_NIGHT_PIT: Vec2 = Vec2::from_ints(12076, 6451);
+pub use crate::map_data::ROSHAN_NIGHT_PIT;
 
 /// Further falls can shorten either end of the respawn window, down to three minutes for this bound.
 const ROSHAN_LATE_BOUND_FLOOR_SECONDS: u32 = 3 * 60;

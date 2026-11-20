@@ -48,6 +48,7 @@ mod local;
 mod lotus;
 mod magic_block;
 mod map2;
+mod map_invariants;
 mod match_flow;
 mod movement;
 mod neutral_casts;

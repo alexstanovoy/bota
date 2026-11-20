@@ -1,0 +1,14 @@
+[package]
+name = "import_map"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+description = "Writes bota's map from map packages: the ground, the forest, the vision blockers and every landmark's position."
+
+# A tool of its own, outside the bota workspace: building bota never needs it or what it reads with.
+[workspace]
+
+[dependencies]
+heatel = { version = "0.2.0", default-features = false }
+sha2 = { version = "0.11.1", default-features = false }

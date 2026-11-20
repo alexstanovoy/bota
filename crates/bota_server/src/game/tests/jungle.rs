@@ -63,7 +63,7 @@ fn no_camp_roster_contains_or_spawns_a_gold_variant() {
 fn a_camp_with_one_roster_refills_with_it_after_clearing() {
     static CAMP: CampDef = CampDef {
         kind: CampKind::Small,
-        rosters: 1,
+        rosters: (1, 1),
         flooded: false,
         ..CAMPS[0]
     };

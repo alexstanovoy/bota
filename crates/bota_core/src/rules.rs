@@ -129,14 +129,15 @@ pub const BODY_INDEX_SLACK: i32 = 32;
 
 // Landmarks: the current Dota 2 map, every position shifted by half the map
 // so Dota's origin sits at the center. The two sides are not mirror images;
-// each carries its own table.
+// each carries its own table. Generated from the install's map by
+// `tools/import_map` into `map_data.rs`.
 
-/// Center of the Radiant fountain area.
-pub const RADIANT_FOUNTAIN_POS: Vec2 = Vec2::from_ints(1760, 2278);
-/// Center of the Dire fountain area.
-pub const DIRE_FOUNTAIN_POS: Vec2 = Vec2::from_ints(16624, 16064);
-pub const RADIANT_ANCIENT_POS: Vec2 = Vec2::from_ints(3296, 3864);
-pub const DIRE_ANCIENT_POS: Vec2 = Vec2::from_ints(14744, 14216);
+pub use crate::map_data::{
+    BOT_CORNER, DIRE_ANCIENT_POS, DIRE_BARRACKS, DIRE_CREEP_SPAWNS, DIRE_FILLERS,
+    DIRE_FOUNTAIN_POS, DIRE_TOWERS, RADIANT_ANCIENT_POS, RADIANT_BARRACKS, RADIANT_CREEP_SPAWNS,
+    RADIANT_FILLERS, RADIANT_FOUNTAIN_POS, RADIANT_TOWERS, TOP_CORNER,
+};
+
 /// How far from the fountain center a hero appears, along both axes towards
 /// the map center.
 pub const HERO_SPAWN_OFFSET: i32 = 280;
@@ -148,123 +149,17 @@ pub const LANE_MID: u8 = 0;
 pub const LANE_TOP: u8 = 1;
 /// The bottom lane.
 pub const LANE_BOT: u8 = 2;
-/// Corner of the top lane, where the west edge meets the north edge.
-pub const TOP_CORNER: Vec2 = Vec2::from_ints(3050, 15150);
-/// Corner of the bottom lane.
-pub const BOT_CORNER: Vec2 = Vec2::from_ints(15400, 2900);
 /// A lane waypoint counts as passed within this distance.
 pub const LANE_WAYPOINT_RADIUS: i32 = 250;
 
-/// Radiant towers: lane, tier and position, straight from the map.
-pub const RADIANT_TOWERS: [(u8, u8, Vec2); 11] = [
-    (LANE_MID, 1, Vec2::from_ints(7672, 7808)),
-    (LANE_MID, 2, Vec2::from_ints(6026, 6290)),
-    (LANE_MID, 3, Vec2::from_ints(4576, 5072)),
-    (LANE_TOP, 1, Vec2::from_ints(2880, 11072)),
-    (LANE_TOP, 2, Vec2::from_ints(2715, 8344)),
-    (LANE_TOP, 3, Vec2::from_ints(2624, 5808)),
-    (LANE_BOT, 1, Vec2::from_ints(14076, 2837)),
-    (LANE_BOT, 2, Vec2::from_ints(8856, 2960)),
-    (LANE_BOT, 3, Vec2::from_ints(5264, 3104)),
-    (LANE_MID, 4, Vec2::from_ints(3504, 4352)),
-    (LANE_MID, 4, Vec2::from_ints(3824, 4024)),
-];
-
-/// Dire towers: lane, tier and position, straight from the map.
-pub const DIRE_TOWERS: [(u8, u8, Vec2); 11] = [
-    (LANE_MID, 1, Vec2::from_ints(9740, 9868)),
-    (LANE_MID, 2, Vec2::from_ints(11712, 11328)),
-    (LANE_MID, 3, Vec2::from_ints(13488, 12975)),
-    (LANE_TOP, 1, Vec2::from_ints(3941, 15252)),
-    (LANE_TOP, 2, Vec2::from_ints(9088, 15232)),
-    (LANE_TOP, 3, Vec2::from_ints(12768, 14992)),
-    (LANE_BOT, 1, Vec2::from_ints(15485, 6976)),
-    (LANE_BOT, 2, Vec2::from_ints(15616, 9600)),
-    (LANE_BOT, 3, Vec2::from_ints(15552, 12248)),
-    (LANE_MID, 4, Vec2::from_ints(14160, 13992)),
-    (LANE_MID, 4, Vec2::from_ints(14496, 13648)),
-];
-
-/// Where Radiant creep waves appear, indexed by lane: the map's own lane
-/// spawner positions.
-pub const RADIANT_CREEP_SPAWNS: [Vec2; 3] = [
-    Vec2::from_ints(4208, 4728),
-    Vec2::from_ints(2608, 5152),
-    Vec2::from_ints(5568, 3104),
-];
-
-/// Where Dire creep waves appear, indexed by lane.
-pub const DIRE_CREEP_SPAWNS: [Vec2; 3] = [
-    Vec2::from_ints(13312, 12800),
-    Vec2::from_ints(12384, 15008),
-    Vec2::from_ints(15488, 12864),
-];
-
-/// Radiant barracks: lane, whether it feeds the ranged creeps, and position,
-/// straight from the map.
-pub const RADIANT_BARRACKS: [(u8, bool, Vec2); 6] = [
-    (LANE_MID, false, Vec2::from_ints(4544, 4664)),
-    (LANE_MID, true, Vec2::from_ints(4156, 5017)),
-    (LANE_TOP, false, Vec2::from_ints(2880, 5458)),
-    (LANE_TOP, true, Vec2::from_ints(2372, 5457)),
-    (LANE_BOT, false, Vec2::from_ints(4936, 2856)),
-    (LANE_BOT, true, Vec2::from_ints(4937, 3363)),
-];
-
-/// Dire barracks: lane, whether it feeds the ranged creeps, and position.
-pub const DIRE_BARRACKS: [(u8, bool, Vec2); 6] = [
-    (LANE_MID, false, Vec2::from_ints(13918, 13040)),
-    (LANE_MID, true, Vec2::from_ints(13552, 13399)),
-    (LANE_TOP, false, Vec2::from_ints(13114, 14712)),
-    (LANE_TOP, true, Vec2::from_ints(13110, 15241)),
-    (LANE_BOT, false, Vec2::from_ints(15808, 12608)),
-    (LANE_BOT, true, Vec2::from_ints(15280, 12592)),
-];
-
-/// Radiant fillers, straight from the map (`npc_dota_goodguys_fillers`).
-pub const RADIANT_FILLERS: [Vec2; 7] = [
-    Vec2::from_ints(2626, 5009),
-    Vec2::from_ints(3378, 4924),
-    Vec2::from_ints(3904, 4416),
-    Vec2::from_ints(4434, 3948),
-    Vec2::from_ints(4464, 3136),
-    Vec2::from_ints(3618, 5505),
-    Vec2::from_ints(4951, 4054),
-];
-
-/// Dire fillers, straight from the map (`npc_dota_badguys_fillers`).
-pub const DIRE_FILLERS: [Vec2; 7] = [
-    Vec2::from_ints(15542, 13014),
-    Vec2::from_ints(14737, 13165),
-    Vec2::from_ints(14110, 13586),
-    Vec2::from_ints(13697, 14205),
-    Vec2::from_ints(13627, 14969),
-    Vec2::from_ints(14502, 12590),
-    Vec2::from_ints(13000, 13934),
-];
-
 // The hero demo map, `hero_demo_main`: the same frame as the big map, every
-// landmark the game's own, shifted by half the map.
+// landmark the game's own, shifted by half the map; generated with the big
+// map's.
 
-/// The demo map's Radiant fountain.
-pub const DEMO_RADIANT_FOUNTAIN_POS: Vec2 = Vec2::from_ints(6528, 7040);
-/// The demo map's Dire fountain.
-pub const DEMO_DIRE_FOUNTAIN_POS: Vec2 = Vec2::from_ints(11470, 10484);
-/// The demo map's one Radiant tower.
-pub const DEMO_RADIANT_TOWERS: [(u8, u8, Vec2); 1] = [(LANE_MID, 1, Vec2::from_ints(7744, 7872))];
-/// The demo map's one Dire tower.
-pub const DEMO_DIRE_TOWERS: [(u8, u8, Vec2); 1] = [(LANE_MID, 1, Vec2::from_ints(10240, 9536))];
-/// Where the demo map's Radiant wave appears.
-pub const DEMO_RADIANT_CREEP_SPAWN: Vec2 = Vec2::from_ints(7360, 7712);
-/// Where the demo map's Dire wave appears.
-pub const DEMO_DIRE_CREEP_SPAWN: Vec2 = Vec2::from_ints(10432, 9984);
-/// The corners the demo lane bends through between the two towers, the
-/// map's own path corners.
-pub const DEMO_LANE_CORNERS: [Vec2; 3] = [
-    Vec2::from_ints(8128, 8512),
-    Vec2::from_ints(8768, 9024),
-    Vec2::from_ints(9312, 9376),
-];
+pub use crate::map_data::{
+    DEMO_DIRE_CREEP_SPAWN, DEMO_DIRE_FOUNTAIN_POS, DEMO_DIRE_TOWERS, DEMO_LANE_CORNERS,
+    DEMO_RADIANT_CREEP_SPAWN, DEMO_RADIANT_FOUNTAIN_POS, DEMO_RADIANT_TOWERS,
+};
 /// Where heroes start on the demo map, Radiant then Dire: the map's
 /// `info_player_start_goodguys` and `info_player_start_badguys`, between
 /// Roshan's pit and the lane.

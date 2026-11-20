@@ -60,30 +60,7 @@ impl PitZone {
 /// origins (`default_ents.vents`: yaw 181.62 at (2947.97, -3042.49) and yaw
 /// 341.82 at (-3075.14, 2678.24)), shifted as the map is and rounded to the
 /// unit.
-pub const DOTA_BOSS_ZONES: [PitZone; 2] = [
-    PitZone {
-        corners: &[
-            Vec2::from_ints(11528, 6581),
-            Vec2::from_ints(11744, 6299),
-            Vec2::from_ints(12003, 6226),
-            Vec2::from_ints(12206, 6261),
-            Vec2::from_ints(12427, 6494),
-            Vec2::from_ints(12322, 6809),
-            Vec2::from_ints(11870, 6958),
-        ],
-    },
-    PitZone {
-        corners: &[
-            Vec2::from_ints(5777, 11350),
-            Vec2::from_ints(6152, 11056),
-            Vec2::from_ints(6601, 11296),
-            Vec2::from_ints(6493, 11634),
-            Vec2::from_ints(6275, 11790),
-            Vec2::from_ints(6072, 11826),
-            Vec2::from_ints(5785, 11682),
-        ],
-    },
-];
+pub use crate::map_data::DOTA_BOSS_ZONES;
 
 /// Whether a unit standing at `from` may attack a unit of the kind `target` on `map`: any unit may,
 /// except one whose attackers must stand inside a boss pit (Roshan), and then only from inside one
@@ -215,7 +192,7 @@ const DEMO_CAMPS: [CampDef; 2] = [
         Vec2::from_ints(8992, 7968),
         CampKind::Small,
         true,
-        6,
+        (1, 6),
         0,
         camp::spawn_box(8692, 7668, 9292, 8268),
     ),
@@ -223,7 +200,7 @@ const DEMO_CAMPS: [CampDef; 2] = [
         Vec2::from_ints(8864, 9952),
         CampKind::Small,
         true,
-        6,
+        (1, 6),
         0,
         camp::spawn_box(8564, 9652, 9164, 10252),
     ),

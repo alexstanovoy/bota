@@ -69,18 +69,7 @@ pub struct OutpostDef {
 }
 
 /// The Dota map's two Outposts [PN 7.38: the corner ones are gone].
-pub const DOTA_OUTPOSTS: [OutpostDef; 2] = [
-    // "npc_dota_watch_tower_bottom" (-4096, -448) [ENT:193780].
-    OutpostDef {
-        at: Vec2::from_ints(5120, 8768),
-        home: Team::Radiant,
-    },
-    // "npc_dota_watch_tower_top" (3392, -448) [ENT:193871].
-    OutpostDef {
-        at: Vec2::from_ints(12608, 8768),
-        home: Team::Dire,
-    },
-];
+pub use crate::map_data::DOTA_OUTPOSTS;
 
 /// When the other side may capture an Outpost of its home side: once any
 /// of that side's tier-two towers is down.
@@ -157,28 +146,7 @@ pub const LAMP_OFF_TICKS: u32 = 120 * rules::TICKS_PER_SECOND;
 
 /// The Dota map's ten Watchers, all of the neutral team; none stands within
 /// about 2300 of the mid lane since 7.40.
-pub const DOTA_WATCHERS: [Vec2; 10] = [
-    // (7917.52, -1523.73) [ENT:185729].
-    Vec2::from_ints(17134, 7692),
-    // (-6464, 6656) [ENT:185831].
-    Vec2::from_ints(2752, 15872),
-    // (2717.69, -657.45) [ENT:185974].
-    Vec2::from_ints(11934, 8559),
-    // (-3483.5, 34.38) [ENT:186076].
-    Vec2::from_ints(5733, 9250),
-    // (1032.26, -4260.07) [ENT:186178].
-    Vec2::from_ints(10248, 4956),
-    // (6528, -6592) [ENT:186403].
-    Vec2::from_ints(15744, 2624),
-    // (768, -7648) [ENT:186733].
-    Vec2::from_ints(9984, 1568),
-    // (-670.88, 7129.75) [ENT:186835].
-    Vec2::from_ints(8545, 16346),
-    // (-1527.40, 3925.89) [ENT:187288].
-    Vec2::from_ints(7689, 13142),
-    // (-7808, 1056) [ENT:188210].
-    Vec2::from_ints(1408, 10272),
-];
+pub use crate::map_data::DOTA_WATCHERS;
 
 /// A Watcher: an invulnerable lantern of the neutral team, on the small hull
 /// [U:21460-21482]. Its sight is the neutral team's; a side sees through it
@@ -241,12 +209,7 @@ pub const SHRINE_XP_FIRST: i32 = 200;
 pub const SHRINE_XP_STEP: i32 = 200;
 
 /// The Dota map's two Shrines of Wisdom.
-pub const DOTA_SHRINES: [Vec2; 2] = [
-    // (-8088, 768) [ENT:187174].
-    Vec2::from_ints(1128, 9984),
-    // (8167.43, -1142.11) [ENT:188562].
-    Vec2::from_ints(17383, 8074),
-];
+pub use crate::map_data::DOTA_SHRINES;
 
 /// A Shrine of Wisdom: an invulnerable building of the neutral team with no
 /// sight, a plaza with no body that heroes walk onto and stand in, as Dota
@@ -332,7 +295,7 @@ pub struct TwinGateDef {
 
 /// A Twin Gate at a world spot given in hundredths of a unit, already
 /// shifted by half the map, facing `yaw` in hundredths of a degree.
-const fn twin_gate(
+pub(crate) const fn twin_gate(
     x_hundredths: i32,
     y_hundredths: i32,
     yaw_hundredths: i32,
@@ -357,14 +320,7 @@ const fn twin_gate(
 
 /// The Dota map's two Twin Gates, at the map's north-western and
 /// south-eastern corners [PN 7.38, PN 7.41]; each carries to the other.
-pub const DOTA_TWIN_GATES: [TwinGateDef; 2] = [
-    // "npc_dota_portal1" (-6457.690918, 7599.036621), yaw 270.000061
-    // [ENT:193962].
-    twin_gate(275_831, 1_681_504, 27_000, Team::Dire),
-    // "npc_dota_portal2" (6425.52832, -7313.782715), yaw 267.599823
-    // [ENT:194065].
-    twin_gate(1_564_153, 190_222, 26_760, Team::Radiant),
-];
+pub use crate::map_data::DOTA_TWIN_GATES;
 
 /// A Twin Gate: an invulnerable building of the neutral team on the filler
 /// hull, with no attack and no mana [U:20700-20788; LIQ Twin Gate].

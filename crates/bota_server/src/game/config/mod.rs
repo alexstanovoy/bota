@@ -1,5 +1,6 @@
 pub mod ability;
-mod blockers;
+mod demo_map;
+mod dota_map;
 mod economy_event;
 mod item;
 mod map_terrain;
@@ -7,11 +8,10 @@ mod match_config;
 mod place;
 mod secrets;
 mod spawn_modifier;
-mod terrain;
-mod trees;
 
 pub use ability::*;
-pub use blockers::*;
+pub use demo_map::*;
+pub use dota_map::*;
 pub use economy_event::*;
 pub use item::*;
 pub use map_terrain::*;
@@ -19,5 +19,3 @@ pub use match_config::*;
 pub use place::*;
 pub use secrets::*;
 pub use spawn_modifier::*;
-pub use terrain::*;
-pub use trees::*;

@@ -42,6 +42,10 @@ dependents = ["bota_radovid"]
 manifest = "tools/import_items/Cargo.toml"
 profile = "release"
 
+[crate.import_map]
+manifest = "tools/import_map/Cargo.toml"
+profile = "release"
+
 # Files outside the crates.
 [[route]]
 paths = ["Cargo.toml", "Cargo.lock", "tools/*.sh", "tools/test_groups.py", "tools/test_groups.toml"]
@@ -100,6 +104,13 @@ also_paths = ["crates/bota_core/src/data/items.rs", "crates/bota_core/src/roshan
 tests = [{ crate = "import_items", args = ["--include-ignored"] }]
 
 [[group]]
+name = "import_map"
+about = "the map importer and its committed source tables"
+# the tables it writes and checks
+also_paths = ["crates/bota_core/src/map_data.rs", "crates/bota_server/src/game/config/dota_map.rs", "crates/bota_server/src/game/config/demo_map.rs"]
+tests = [{ crate = "import_map", args = ["--include-ignored"] }]
+
+[[group]]
 name = "tooling"
 about = "the gate's own machinery: test groups, routing, stamps and the gate and precheck flow (Python unittest)"
 paths = ["tools/test_*.py", "tools/bot_api_census.py", "tools/bot_api_reference.tsv"]
@@ -152,8 +163,8 @@ paths = [
     "crates/bota_server/src/game/config/map_terrain.rs",
     "crates/bota_server/src/game/config/place.rs",
     "crates/bota_server/src/game/config/secrets.rs",
-    "crates/bota_server/src/game/config/terrain.rs",
-    "crates/bota_server/src/game/config/trees.rs",
+    "crates/bota_server/src/game/config/demo_map.rs",
+    "crates/bota_server/src/game/config/dota_map.rs",
 ]
 groups = ["@bota_server"]
 
@@ -312,6 +323,7 @@ paths = [
     "crates/bota_server/src/game/tests/base_blockers.rs",
     "crates/bota_server/src/game/tests/base_blockers/**",
     "crates/bota_server/src/game/tests/tree_gaps.rs",
+    "crates/bota_server/src/game/tests/map_invariants.rs",
     "crates/bota_server/src/game/tests/orders.rs",
     "crates/bota_server/src/game/tests/order_legality.rs",
     "crates/bota_server/src/game/tests/queue.rs",
@@ -324,6 +336,7 @@ tests = [{ crate = "bota_server", target = "lib", filters = [
     "game::tests::forest_paths::",
     "game::tests::base_blockers::",
     "game::tests::tree_gaps::",
+    "game::tests::map_invariants::",
     "game::tests::orders::",
     "game::tests::order_legality::",
     "game::tests::queue::",
@@ -488,7 +501,6 @@ paths = [
     "crates/bota_server/src/game/systems/visibility.rs",
     "crates/bota_server/src/game/components/vision.rs",
     "crates/bota_server/src/game/vision.rs",
-    "crates/bota_server/src/game/config/blockers.rs",
     "crates/bota_server/src/game/tests/vision.rs",
     "crates/bota_server/src/game/tests/wards.rs",
     "crates/bota_server/src/game/tests/ward_stacks.rs",

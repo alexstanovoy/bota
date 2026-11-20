@@ -35,15 +35,9 @@ impl BaseBlockerDef {
     }
 }
 
-// The four permanent fields and their orientation.
-pub const DOTA_BASE_BLOCKERS: [BaseBlockerDef; 4] = [
-    blocker(152340, 628660, 0, Team::Radiant, 27357),
-    blocker(1657600, 1164800, 0, Team::Dire, 27648),
-    blocker(577102, 174088, 49152, Team::Radiant, 27357),
-    blocker(1216000, 1651200, 49152, Team::Dire, 27648),
-];
+pub use crate::map_data::DOTA_BASE_BLOCKERS;
 
-const fn blocker(x: i32, y: i32, brads: u16, team: Team, height: i32) -> BaseBlockerDef {
+pub(crate) const fn blocker(x: i32, y: i32, brads: u16, team: Team, height: i32) -> BaseBlockerDef {
     BaseBlockerDef {
         at: Vec2 {
             x: Fixed::from_ratio(x, 100),

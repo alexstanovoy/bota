@@ -44,30 +44,7 @@ pub struct RuneSpot {
 }
 
 /// The Dota map's rune spots, the river first.
-pub const DOTA_RUNE_SPOTS: [RuneSpot; 4] = [
-    // `dota_item_rune_spawner_powerup`, runeposition "top":
-    // (-1640, 1112).
-    RuneSpot {
-        at: Vec2::from_ints(7576, 10328),
-        kind: RuneSpotKind::River,
-    },
-    // runeposition "bot": (1180, -1216).
-    RuneSpot {
-        at: Vec2::from_ints(10396, 8000),
-        kind: RuneSpotKind::River,
-    },
-    // `dota_item_rune_spawner_bounty`, runeteam 3 (the Dire primary jungle):
-    // (-996.48, 4431.43).
-    RuneSpot {
-        at: Vec2::from_ints(8220, 13647),
-        kind: RuneSpotKind::Jungle(Team::Dire),
-    },
-    // runeteam 2 (the Radiant primary jungle): (595.0, -4659.99).
-    RuneSpot {
-        at: Vec2::from_ints(9811, 4556),
-        kind: RuneSpotKind::Jungle(Team::Radiant),
-    },
-];
+pub use crate::map_data::DOTA_RUNE_SPOTS;
 
 /// A schedule that fires once every `period` ticks of the game clock from
 /// `first` ticks past the horn on.

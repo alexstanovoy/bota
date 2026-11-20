@@ -243,14 +243,17 @@ pub const ROSTERS: [Roster; 22] = [
     },
 ];
 
-/// The rosters a dry camp draws from, with their numbers: the first
-/// [`CampDef::rosters`] of its size.
+/// The rosters a dry camp draws from, with their numbers: those of its size
+/// numbered [`CampDef::rosters`] among them, counted from one.
 pub fn rosters_of(camp: &CampDef) -> impl Iterator<Item = (u8, &'static Roster)> {
+    let (first, last) = camp.rosters;
+    let skipped = usize::from(first.saturating_sub(1));
     ROSTERS
         .iter()
         .enumerate()
         .filter(move |(_, roster)| roster.kind == camp.kind)
-        .take(usize::from(camp.rosters))
+        .skip(skipped)
+        .take(usize::from(last).saturating_sub(skipped))
         .filter(|(_, roster)| {
             roster.offered && roster.creeps.iter().all(|kind| kind.neutral().offered)
         })
@@ -455,7 +458,7 @@ mod tests {
             // The maximal range also checks rows omitted by narrower current maps.
             let camp = CampDef {
                 kind: class,
-                rosters: u8::MAX,
+                rosters: (1, u8::MAX),
                 ..crate::CAMPS[0]
             };
             assert!(

@@ -11,7 +11,7 @@
 //! `dota_lotuses_max`); `[PN v]` Valve's patch notes of version `v`; `[LIQ
 //! page]` Liquipedia's *Lotus Pool* and *Healing Lotus* (read 2026-10-30).
 
-use bota_proto::{ItemId, LotusTier, Vec2};
+use bota_proto::{ItemId, LotusTier};
 
 use crate::rules::{self, Schedule, TICKS_PER_SECOND};
 use crate::{BARE_UNIT, Cadence, ITEMS, UnitDef};
@@ -51,12 +51,7 @@ pub const FIRST_PLUCK_TICKS: u32 = 45;
 pub const PLUCK_TICKS: [u32; 6] = [FIRST_PLUCK_TICKS, 32, 22, 15, 11, 9];
 
 /// The Dota map's two Lotus Pools, shifted like every landmark.
-pub const DOTA_LOTUS_POOLS: [Vec2; 2] = [
-    // "npc_dota_lotus_pool_dire" (-7548.28, 4209.10) [ENT:194168].
-    Vec2::from_ints(1668, 13425),
-    // "npc_dota_lotus_pool_radiant" (7503.98, -4404.69) [ENT:194273].
-    Vec2::from_ints(16720, 4811),
-];
+pub use crate::map_data::DOTA_LOTUS_POOLS;
 
 /// A Lotus Pool: an invulnerable building of the neutral team on the filler
 /// hull that sees 500 round it by day and by night [U].

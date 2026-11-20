@@ -28,6 +28,7 @@ mod damage;
 mod data;
 mod growth_clock;
 mod lifesteal;
+mod map_data;
 mod placement_data;
 mod roshan_data;
 pub mod unit_data;
