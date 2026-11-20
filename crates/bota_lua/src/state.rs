@@ -120,6 +120,8 @@ pub(crate) struct Snapshot {
     pub glyph_cooldown: Option<u32>,
     pub attacks: Vec<AttackFact>,
     pub action_impacts: Vec<bota_client_core::bot_actions::BotActionImpact>,
+    pub item_uses: [Option<bota_client_core::ItemUseObservation>;2],
+    pub item_refusals: [Option<bota_client_core::ItemUseRefusal>;2],
     pub projectiles: Vec<bota_proto::ProjectileView>,
 }
 
@@ -192,6 +194,7 @@ impl Snapshot {
                     std::mem::size_of::<bota_client_core::bot_actions::BotActionImpact>(),
                 )?)
             });
+        let players = players.and_then(|bytes| bytes.checked_add(std::mem::size_of::<([Option<bota_client_core::ItemUseObservation>;2],[Option<bota_client_core::ItemUseRefusal>;2])>()));
         let players = players.and_then(|bytes| {
             bytes.checked_add(
                 view.projectiles
@@ -307,6 +310,8 @@ impl Snapshot {
                 .find(|glyph| glyph.team == session.team())
                 .and_then(|glyph| glyph.ready_after),
             attacks: attack_facts(session, view),
+            item_uses: session.item_use_observations(),
+            item_refusals: session.item_use_refusals(),
             action_impacts: session
                 .recent_events()
                 .iter()
@@ -774,6 +779,12 @@ impl State {
 }
 
 impl bota_client_core::bot_actions::BotActionView for Snapshot {
+    fn item_use_refusal(&self,id:EntityId)->Option<bota_client_core::ItemUseRefusal> {
+        self.item_refusals.iter().flatten().copied().find(|fact|fact.source==id)
+    }
+    fn item_use_observation(&self, id: EntityId) -> Option<bota_client_core::ItemUseObservation> {
+        self.item_uses.iter().flatten().copied().find(|fact|fact.source==id)
+    }
     fn deaths(&self, id: EntityId) -> Option<u16> {
         self.players
             .iter()

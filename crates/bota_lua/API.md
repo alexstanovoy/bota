@@ -639,21 +639,30 @@ Queued movement follows the impact. A continuous attack stays current through wi
 and backswing. Visible dead/missing targets and dead/replaced controlled bodies release
 their controller work. Direct moves finish within 10 units; MoveTo and attack-move finish
 within 25 units of their destinations. Spell actions use observed cast/channel identity
-and matching damage-impact events. Item-use actions also finish on a matching observed
-item application by the controlled unit, including uses that deal no damage.
+and matching damage-impact events. An item entry succeeds only on its controlled body's
+matching observed application, including uses that deal no damage. The shared client retains
+the latest received item application separately for the hero and courier; unrelated events
+cannot evict it, and observation-only replay embeddings need not number outgoing requests.
+Refusals are retained separately and matched to the issued request's sequence before the
+controller reads them. A fact older than the current entry cannot finish it.
 
-An ability or item whose effect cannot be identified from the received sheet releases
-its controller action after five seconds of simulation ticks. This is a safety bound;
-it does not invent a cast-completion fact. A following action then issues its own order.
+An item entry fails on its observed refusal, a missing or changed slot, backpack mute,
+stun, a dead/missing target, or an observed cast ending without application. Every item entry
+also has a five-second simulation-tick bound from when it starts, covering missing replies
+and replaced local request records. Failure advances to the next queued entry; with no tail
+it issues Stop to cancel pending body work. Damage from an item does not prove a new use.
+An unidentified spell effect has the same five-second safety bound. Bounds are failures,
+never invented application facts.
 Controller request fuel pays for one roster scan, two bounded queue copies and the number
 of submitted entries: `16 + units + 2*32 + entries`, in addition to binding/argument costs.
 The shared controller operations prepay their roster lookup before checking control,
 including a declined receiver. Binding errors that need no controller lookup do not
 incur that controller work.
 
-Some action endings remain unsupported. Full bot waypoint planning, item cast identity
-and mute, nightmare state, zero-damage/missed attack notifications, and completion of
-identified casts that never start or end instantly without a damage impact are deferred.
+Some action endings remain unsupported. Full bot waypoint planning, nightmare state,
+zero-damage/missed attack notifications, and completion of identified spell casts that
+never start or end instantly without a damage impact are deferred. Item identity during
+a cast is not exposed separately; terminal item facts and the stated failure bound apply.
 A body walking into cast range is not declared inactive because no cast phase is visible.
 Controller substance lives in `bota_client_core::bot_actions`; bindings map names, validate
 handles/arguments and charge bounded work.
