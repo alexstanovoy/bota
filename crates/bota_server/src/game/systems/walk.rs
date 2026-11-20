@@ -40,6 +40,20 @@ impl World {
             || self.def.get(entity).is_some_and(|def| def.0.pathing_flight)
     }
 
+    /// 7.42 lets wild neutrals travel through either base's gates. Controlled creeps
+    /// and summoned units still use the gate permissions of their side.
+    fn walking_base_blockers(&self, entity: Entity) -> &'static [bota_core::BaseBlockerDef] {
+        if self.neutral.contains(entity)
+            && self.team.get(entity) == Some(&Team::Neutral)
+            && !self.owner.contains(entity)
+            && !self.expiry.contains(entity)
+        {
+            &[]
+        } else {
+            self.map.base_blockers
+        }
+    }
+
     /// The ground and map bodies this particular unit meets while walking.
     pub(crate) fn walking_obstacles<'a>(
         &'a self,
@@ -49,7 +63,7 @@ impl World {
         Obstacles {
             field: self.walking_field(entity),
             extra,
-            base_blockers: self.map.base_blockers,
+            base_blockers: self.walking_base_blockers(entity),
             team: self.team.get(entity).copied().unwrap_or(Team::Neutral),
         }
     }
@@ -951,7 +965,7 @@ impl World {
                 &self.clearance
             },
             extra: &[],
-            base_blockers: self.map.base_blockers,
+            base_blockers: self.walking_base_blockers(entity),
             team: self.team.get(entity).copied().unwrap_or(Team::Neutral),
         };
         let kept = keeps_route(

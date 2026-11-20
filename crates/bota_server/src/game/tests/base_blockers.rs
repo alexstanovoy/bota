@@ -73,6 +73,99 @@ fn collision_radius(world: &World, unit: Entity) -> Fixed {
 }
 
 #[test]
+fn a_wild_neutral_creep_walks_through_both_sides_defender_gates() {
+    use crate::game::UnitOrder;
+
+    for (centre, vertical, owner) in GATES {
+        let mut world = match_world();
+        let across = if vertical {
+            Vec2::from_ints(70, 0)
+        } else {
+            Vec2::from_ints(0, 70)
+        };
+        let destination = centre + across;
+        let creep = world.spawn_neutral(bota_core::NeutralKind::Kobold, centre - across, 0, 0);
+        world.settle();
+        world.set_order(creep, UnitOrder::Move { pos: destination });
+
+        let mut crossed_field = false;
+        for _ in 0..120 {
+            world.step();
+            let place = at(&world, creep);
+            crossed_field |= place.within(centre, rules::units(35));
+            if place.within(destination, rules::units(12)) {
+                break;
+            }
+        }
+        assert!(
+            crossed_field,
+            "the neutral walked through the {owner:?} field"
+        );
+        assert!(at(&world, creep).within(destination, rules::units(12)));
+    }
+}
+
+#[test]
+fn roshan_can_walk_through_a_defender_gate_without_a_camp() {
+    let (centre, _, _) = GATES[0];
+    let mut world = match_world();
+    let across = Vec2::from_ints(0, 70);
+    let roshan = world.spawn_neutral_home(bota_core::NeutralKind::Roshan, centre - across, None, 0);
+    world.settle();
+    world.set_order(
+        roshan,
+        crate::game::UnitOrder::Move {
+            pos: centre + across,
+        },
+    );
+
+    assert!(
+        (0..120).any(|_| {
+            world.step();
+            at(&world, roshan).within(centre, rules::units(35))
+        }),
+        "Roshan can cross the field during his travels"
+    );
+}
+
+#[test]
+fn a_dominated_creep_cannot_walk_through_the_enemy_defender_gate() {
+    let (centre, vertical, owner) = GATES[0];
+    let mut world = match_world();
+    let across = Vec2::from_ints(0, 90);
+    let creep = world.spawn_neutral(bota_core::NeutralKind::Kobold, centre - across, 0, 0);
+    world.set_team(creep, Team::Dire);
+    world.owner.insert(creep, SlotId(1));
+    world.neutral_ai.remove(creep);
+    world.settle();
+    assert_eq!(owner, Team::Radiant);
+    issue_to(
+        &mut world,
+        1,
+        Some(creep),
+        Order::Move {
+            target: Target::Pos(centre + across),
+        },
+    );
+    let mut previous = at(&world, creep);
+    let mut moved = false;
+    for _ in 0..120 {
+        world.step();
+        let next = at(&world, creep);
+        moved |= previous != next;
+        assert_clear_field(
+            centre,
+            vertical,
+            previous,
+            next,
+            collision_radius(&world, creep),
+        );
+        previous = next;
+    }
+    assert!(moved, "the controlled creep attempts the route");
+}
+
+#[test]
 fn enemy_ground_orders_never_cross_any_of_the_four_base_fields() {
     for (centre, vertical, owner) in GATES {
         let mut world = match_world();
