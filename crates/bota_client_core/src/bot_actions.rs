@@ -42,7 +42,10 @@ pub struct RunningBotAction {
 pub struct BotActionQueueFull;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ItemActionEnd { Applied, Failed }
+enum ItemActionEnd {
+    Applied,
+    Failed,
+}
 
 /// A bounded waiting FIFO and one current action. A pending entry becomes current
 /// in the same controller step, after the callback finishes.
@@ -220,18 +223,28 @@ pub trait BotActionView {
     fn visible_unit(&self, id: EntityId) -> Option<&UnitView>;
     fn damage_dealt_at(&self, id: EntityId) -> Option<u32>;
     fn impacts(&self) -> impl Iterator<Item = BotActionImpact>;
-    fn item_use_observation(&self, _id: EntityId) -> Option<crate::ItemUseObservation> { None }
-    fn item_use_refusal(&self, _id: EntityId) -> Option<crate::ItemUseRefusal> { None }
+    fn item_use_observation(&self, _id: EntityId) -> Option<crate::ItemUseObservation> {
+        None
+    }
+    fn item_use_refusal(&self, _id: EntityId) -> Option<crate::ItemUseRefusal> {
+        None
+    }
     fn deaths(&self, _id: EntityId) -> Option<u16> {
         None
     }
 }
 impl BotActionView for crate::ClientSession {
-    fn item_use_refusal(&self,id:EntityId)->Option<crate::ItemUseRefusal> {
-        self.item_use_refusals().into_iter().flatten().find(|fact|fact.source==id)
+    fn item_use_refusal(&self, id: EntityId) -> Option<crate::ItemUseRefusal> {
+        self.item_use_refusals()
+            .into_iter()
+            .flatten()
+            .find(|fact| fact.source == id)
     }
     fn item_use_observation(&self, id: EntityId) -> Option<crate::ItemUseObservation> {
-        self.item_use_observations().into_iter().flatten().find(|fact| fact.source==id)
+        self.item_use_observations()
+            .into_iter()
+            .flatten()
+            .find(|fact| fact.source == id)
     }
     fn deaths(&self, id: EntityId) -> Option<u16> {
         let unit = self.current()?.unit(id)?;
@@ -339,29 +352,56 @@ impl BotActions {
         }
     }
     /// Application and failed prerequisites both release the head, but only failures cancel body work.
-    fn item_ending(&self, view: &impl BotActionView, source: EntityId, current: RunningBotAction) -> Option<ItemActionEnd> {
-        let Order::Use { slot, .. } = current.action.order else { return None };
-        if let Some(ending)=Self::observed_item_ending(view,source,current) {return Some(ending);}
+    fn item_ending(
+        &self,
+        view: &impl BotActionView,
+        source: EntityId,
+        current: RunningBotAction,
+    ) -> Option<ItemActionEnd> {
+        let Order::Use { slot, .. } = current.action.order else {
+            return None;
+        };
+        if let Some(ending) = Self::observed_item_ending(view, source, current) {
+            return Some(ending);
+        }
         let unit = view.visible_unit(source)?;
-        if self.invalid_target(view,current.action)
+        if self.invalid_target(view, current.action)
             || unit.statuses.bits & StatusFlags::STUNNED != 0
-            || view.tick().saturating_sub(current.started_at)>=ITEM_ACTION_TIMEOUT_TICKS
-        {return Some(ItemActionEnd::Failed);}
+            || view.tick().saturating_sub(current.started_at) >= ITEM_ACTION_TIMEOUT_TICKS
+        {
+            return Some(ItemActionEnd::Failed);
+        }
         if let Some(BotActionEffect::Item(expected)) = current.action.effect {
-            let item = if slot==bota_proto::ItemSlot::TOWN_PORTAL {unit.town_portal.as_ref()}
-                else {unit.items.get(usize::from(slot.0)).and_then(Option::as_ref)};
-            if item.is_none_or(|item|item.id!=expected || item.mute_left>0) {return Some(ItemActionEnd::Failed);}
+            let item = if slot == bota_proto::ItemSlot::TOWN_PORTAL {
+                unit.town_portal.as_ref()
+            } else {
+                unit.items.get(usize::from(slot.0)).and_then(Option::as_ref)
+            };
+            if item.is_none_or(|item| item.id != expected || item.mute_left > 0) {
+                return Some(ItemActionEnd::Failed);
+            }
         }
         None
     }
-    fn observed_item_ending(view: &impl BotActionView, source: EntityId, current: RunningBotAction) -> Option<ItemActionEnd> {
-        if let Some(fact)=view.item_use_refusal(source)
-            && fact.source==source && fact.order==current.action.order && fact.issued_at>=current.started_at
-        {return Some(ItemActionEnd::Failed);}
-        if let Some(fact)=view.item_use_observation(source)
-            && fact.source==source && fact.tick>current.started_at
+    fn observed_item_ending(
+        view: &impl BotActionView,
+        source: EntityId,
+        current: RunningBotAction,
+    ) -> Option<ItemActionEnd> {
+        if let Some(fact) = view.item_use_refusal(source)
+            && fact.source == source
+            && fact.order == current.action.order
+            && fact.issued_at >= current.started_at
+        {
+            return Some(ItemActionEnd::Failed);
+        }
+        if let Some(fact) = view.item_use_observation(source)
+            && fact.source == source
+            && fact.tick > current.started_at
             && matches!(current.action.effect,Some(BotActionEffect::Item(item)) if item==fact.item)
-        {return Some(ItemActionEnd::Applied);}
+        {
+            return Some(ItemActionEnd::Applied);
+        }
         None
     }
     fn finished(
@@ -370,7 +410,9 @@ impl BotActions {
         source: EntityId,
         current: RunningBotAction,
     ) -> bool {
-        if matches!(current.action.order, Order::Use {..}) {return false;}
+        if matches!(current.action.order, Order::Use { .. }) {
+            return false;
+        }
         if self.invalid_target(view, current.action) {
             return true;
         }

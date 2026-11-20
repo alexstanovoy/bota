@@ -11,8 +11,8 @@ mod confirmations;
 mod damage;
 pub use damage::{DamageSource, RecentDamage};
 mod error;
-mod memory;
 mod item_uses;
+mod memory;
 pub use item_uses::{ItemUseObservation, ItemUseRefusal};
 mod missiles;
 mod scan;
@@ -469,8 +469,11 @@ impl ClientSession {
         Ingested::Rejected { seq, reason }
     }
 
-    fn item_bodies(&self)->[Option<EntityId>;2] {
-        [self.own_player().and_then(|player|player.unit),self.own_courier().map(|unit|unit.id)]
+    fn item_bodies(&self) -> [Option<EntityId>; 2] {
+        [
+            self.own_player().and_then(|player| player.unit),
+            self.own_courier().map(|unit| unit.id),
+        ]
     }
 
     /// Numbers an order and records it as given on the current snapshot. The
@@ -484,10 +487,13 @@ impl ClientSession {
         let ends_body = crate::ends_body(self, order);
         self.ledger.record(seq, order, ends_body)?;
         self.confirmations.record(seq, seen);
-        if matches!(order.order, Order::Use {..}) && !order.waits() {
-            let bodies=self.item_bodies();self.item_uses.bind(bodies);
-            let source=order.unit.or(bodies[0]);
-            if let Some(source)=source {self.item_uses.record(seq,seen,order,source);}
+        if matches!(order.order, Order::Use { .. }) && !order.waits() {
+            let bodies = self.item_bodies();
+            self.item_uses.bind(bodies);
+            let source = order.unit.or(bodies[0]);
+            if let Some(source) = source {
+                self.item_uses.record(seq, seen, order, source);
+            }
         }
         if order.unit.is_none()
             && matches!(
@@ -642,9 +648,13 @@ impl ClientSession {
 /// What the session reads out.
 impl ClientSession {
     /// Latest received applications by the hero and courier, independent of local sends and event-ring eviction.
-    pub fn item_use_observations(&self) -> [Option<ItemUseObservation>; 2] {self.item_uses.applications()}
+    pub fn item_use_observations(&self) -> [Option<ItemUseObservation>; 2] {
+        self.item_uses.applications()
+    }
     /// Refusal of each body's latest unqueued item request, correlated by its sequence.
-    pub fn item_use_refusals(&self) -> [Option<ItemUseRefusal>; 2] {self.item_uses.refusals()}
+    pub fn item_use_refusals(&self) -> [Option<ItemUseRefusal>; 2] {
+        self.item_uses.refusals()
+    }
 
     /// The match's immutable inputs.
     #[inline]

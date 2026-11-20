@@ -492,8 +492,16 @@ fn lazy_mode_setup_preserves_the_active_turn_fuel_budget() {
     let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
     let turn = lua.think(&sessions[0]).expect("turn");
     assert!(turn.bots[0].orders.is_empty());
-    assert_eq!(turn.failures.len(),2,"exactly two continued hook failures share the exhausted tick budget");
-    assert_eq!(turn.failure_count(),2,"no additional failures may be hidden by diagnostic retention");
+    assert_eq!(
+        turn.failures.len(),
+        2,
+        "exactly two continued hook failures share the exhausted tick budget"
+    );
+    assert_eq!(
+        turn.failure_count(),
+        2,
+        "no additional failures may be hidden by diagnostic retention"
+    );
     assert!(
         turn.failures.iter().all(|failure| matches!(
             failure.error,
