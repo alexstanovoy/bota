@@ -758,10 +758,16 @@ fn at_the_flying_level_the_courier_takes_flight_and_every_attack_at_it_is_disjoi
     let away = rules::DEMO_LANE_CORNERS[0];
     world.transform.get_mut(courier).expect("standing").pos = away;
     hand_item(&mut world, courier, ItemId::BOOTS, 0);
-    // A tower and a hero: neither marches off on a lane of its own.
+    // Issue explicit attacks so automatic targeting cannot choose a different victim.
     let archer = world.spawn_unit(&TOWERS[0], Team::Dire, away + Vec2::from_ints(250, 0));
     world.settle();
-    world.set_target(archer, courier);
+    world.set_order(
+        archer,
+        UnitOrder::Attack {
+            target: courier,
+            last_seen: away,
+        },
+    );
     let in_the_air = |world: &World| {
         world.entities.iter().any(|e| {
             world
@@ -771,12 +777,19 @@ fn at_the_flying_level_the_courier_takes_flight_and_every_attack_at_it_is_disjoi
         })
     };
     step_until(&mut world, 300, in_the_air);
+    assert!(in_the_air(&world), "the tower fired at the courier");
     // A melee hero stands up beside it and winds a swing up while the missile
     // flies.
     let pudge = hero_def(HeroId::PUDGE).expect("a hero").unit;
     let brute = world.spawn_unit(pudge, Team::Dire, away - Vec2::from_ints(100, 0));
     world.settle();
-    world.set_target(brute, courier);
+    world.set_order(
+        brute,
+        UnitOrder::Attack {
+            target: courier,
+            last_seen: away,
+        },
+    );
     step_until(&mut world, 30, |world| {
         swinging(world, brute) == Some(courier)
     });
