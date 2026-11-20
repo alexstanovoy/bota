@@ -501,6 +501,18 @@ impl ModifierKind {
     /// The [`StatusFlags`] bits it sets on whatever wears it: what holds,
     /// slows, burns or frightens it and what keeps magic off it. A neutral's
     /// spell sets what its own modifier does ([`spell_statuses`]).
+    /// Seal of Disapproval's slow stays attached during debuff immunity so it can resume.
+    pub fn seal_slow_suppressed(self, immune: bool) -> bool {
+        immune
+            && matches!(
+                self,
+                Self::Spell {
+                    ability: NeutralAbility::SealDisapprovalAura,
+                    ..
+                }
+            )
+    }
+
     /// The control semantics, including the older dedicated modifier kinds.
     pub fn controls(self, kind: Control) -> bool {
         match self {

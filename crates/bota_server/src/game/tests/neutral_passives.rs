@@ -1078,3 +1078,66 @@ fn every_creep_dota_7_42_added_fights_a_hero_it_stands_beside() {
         );
     }
 }
+
+#[test]
+fn controlled_seal_pups_slow_once_within_range_and_leave_an_immune_hero_at_full_speed() {
+    let mut world = day();
+    let hero = passive_hero(&mut world, at(0));
+    let outside = passive_hero(&mut world, at(-2));
+    world.settle();
+    let full = speed(&world, hero);
+    let [_, nearer] = [1199, 1000].map(|offset| {
+        let pup = awake(&mut world, NeutralKind::OgreSealPup, at(offset));
+        world.set_team(pup, Team::Dire);
+        world.neutral_ai.remove(pup);
+        world.set_order(pup, UnitOrder::Stand);
+        pup
+    });
+    run(&mut world, 5);
+    assert_eq!(worn(&world, hero, NeutralAbility::SealDisapprovalAura), 1);
+    assert!(
+        (speed(&world, hero) - full * Fixed::from_ratio(85, 100))
+            .raw
+            .abs()
+            <= 300
+    );
+
+    world.despawn(nearer);
+    run(&mut world, rules::AURA_LINGER_TICKS + 2);
+    assert_eq!(
+        speed(&world, outside),
+        full,
+        "just outside controlled aura range"
+    );
+    afflict(&mut world, hero, ModifierKind::SpellImmunity, 90);
+    world.settle();
+    assert_eq!(
+        speed(&world, hero),
+        full,
+        "debuff immunity suppresses the slow"
+    );
+    let visible_slow = |world: &World| {
+        world
+            .view(Team::Radiant)
+            .units
+            .iter()
+            .find(|unit| unit.id == crate::game::wire_id(hero))
+            .expect("the hero sees their effects")
+            .effects
+            .iter()
+            .any(|effect| effect.id == bota_proto::EffectId(129))
+    };
+    assert!(
+        !visible_slow(&world),
+        "the inactive slow should leave the buff bar"
+    );
+    run(&mut world, 91);
+    assert!(
+        speed(&world, hero) < full,
+        "the nearby pup slows again as immunity ends"
+    );
+    assert!(
+        visible_slow(&world),
+        "the active slow returns to the buff bar"
+    );
+}

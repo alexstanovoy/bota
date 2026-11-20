@@ -134,6 +134,7 @@ pub fn derive_stats(cx: StatsCx<'_>) {
                 .filter(|held| {
                     !disabled_in(modifiers, held)
                         && super::support::item_works(held.kind, spell_immune)
+                        && !held.kind.seal_slow_suppressed(spell_immune)
                 })
                 .filter(|held| {
                     !item_buff_outranked(held, modifiers.get(entity), spell_immune, modifiers)

@@ -1127,6 +1127,10 @@ impl World {
     /// one, and with what. One a Break disables shows a count of zero, as
     /// Dota's HUD shows a broken aura's icon.
     fn effects_on(&self, viewer: Option<Team>, entity: Entity) -> Vec<EffectView> {
+        let spell_immune = self
+            .stats
+            .get(entity)
+            .is_some_and(|stats| stats.spell_immune);
         let journey = self
             .lairs
             .iter()
@@ -1139,6 +1143,7 @@ impl World {
             .into_iter()
             .flat_map(|on_it| on_it.active())
             .chain(journey.iter())
+            .filter(|held| !held.kind.seal_slow_suppressed(spell_immune))
             .filter(|held| effect_def(held.kind.effect_id()).is_none_or(|def| !def.hidden))
             .map(|held| EffectView {
                 id: held.kind.effect_id(),
