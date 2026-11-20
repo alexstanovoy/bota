@@ -815,6 +815,101 @@ fn swapping_a_banner_does_not_clear_its_cooldown() {
     );
 }
 
+// Place Banner can be used from the backpack (https://www.dota2.com/patches/7.42).
+// The six-second mute starts when the item leaves it (https://www.dota2.com/700/gameplay).
+// Use up 7.38b's first-visit grace to start that timer before returning the Banner.
+#[test]
+fn banner_stays_muted_after_returning_to_the_backpack_until_the_timer_ends() {
+    use bota_client_core::order_legality::Verdict;
+    use bota_proto::RejectReason;
+
+    let (mut world, hero, spot) = a_hero_with_a_ward(ItemId::ROSHANS_BANNER);
+    assert!(!world.at_any_shop(hero));
+    let inventory = ItemSlot(0);
+    let backpack = ItemSlot(rules::INVENTORY_SLOTS as u8);
+    for (from, to) in [
+        (inventory, backpack),
+        (backpack, inventory),
+        (inventory, backpack),
+        (backpack, inventory),
+        (inventory, backpack),
+    ] {
+        advance_validated(&mut world, None, Order::Swap { from, to });
+    }
+    let item = slot_of(&world, hero, usize::from(backpack.0)).expect("returned Banner");
+    assert_eq!(item.id, ItemId::ROSHANS_BANNER);
+    assert_eq!(item.mute, rules::BACKPACK_MUTE_TICKS - 2);
+
+    let at = spot + Vec2::from_ints(200, 0);
+    let use_banner = Order::Use {
+        slot: backpack,
+        target: Target::Pos(at),
+    };
+    run(&mut world, item.mute - 1);
+    assert_eq!(
+        world.validate_order(SlotId(0), None, &use_banner),
+        Err(RejectReason::NotReady)
+    );
+    assert_eq!(
+        check_banner_order_as_seen_by_its_owner(&world, use_banner),
+        Verdict::Illegal(RejectReason::NotReady),
+    );
+
+    world.step();
+    assert_eq!(
+        check_banner_order_as_seen_by_its_owner(&world, use_banner),
+        Verdict::Legal
+    );
+    advance_validated(&mut world, None, use_banner);
+    assert!(world.entities.iter().any(|entity| {
+        world.kind.get(entity) == Some(&UnitKind::Banner) && world.pos(entity) == Some(at)
+    }));
+}
+
+// The Banner exception in https://www.dota2.com/patches/7.42 makes this a usable
+// slot. The order contract reports EmptySlot when the slot holds nothing.
+#[test]
+fn using_an_empty_backpack_slot_reports_empty_slot_to_its_owner() {
+    use bota_client_core::order_legality::Verdict;
+    use bota_proto::RejectReason;
+
+    let (world, hero, spot) = a_hero_with_a_ward(ItemId::ROSHANS_BANNER);
+    let backpack = ItemSlot(rules::INVENTORY_SLOTS as u8);
+    assert!(slot_of(&world, hero, usize::from(backpack.0)).is_none());
+    let order = Order::Use {
+        slot: backpack,
+        target: Target::Pos(spot),
+    };
+    assert_eq!(
+        world.validate_order(SlotId(0), None, &order),
+        Err(RejectReason::EmptySlot)
+    );
+    assert_eq!(
+        check_banner_order_as_seen_by_its_owner(&world, order),
+        Verdict::Illegal(RejectReason::EmptySlot),
+    );
+}
+
+fn check_banner_order_as_seen_by_its_owner(
+    world: &World,
+    order: Order,
+) -> bota_client_core::order_legality::Verdict {
+    use bota_client_core::order_legality::OrderContext;
+    let view = world.view(Team::Radiant);
+    let context = OrderContext {
+        player: view
+            .players
+            .iter()
+            .find(|player| player.slot == SlotId(0))
+            .expect("the seat in the snapshot"),
+        view: &view,
+        map: world.map,
+        catalogue: bota_core::Catalogue::FULL,
+        cheats: false,
+    };
+    context.check(None, order, false)
+}
+
 #[test]
 fn a_backpacked_banner_cannot_be_planted_while_stunned_dead_or_an_illusion() {
     use crate::game::wire_id;

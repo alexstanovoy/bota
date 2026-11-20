@@ -893,6 +893,101 @@ fn poison_attack_on_an_enemy_hero_illusion_starts_its_cooldown() {
     panic!("the attack did not inflict Poison Attack on the copy");
 }
 
+// https://www.dota2.com/wanderingwaters adds Poison Attack's cooldown.
+// https://www.dota2.com/patches/7.42 limits it to hero targets.
+// World::laid_by books the cooldown at the attack point.
+#[test]
+fn losing_the_target_midflight_does_not_refund_poison_attacks_cooldown() {
+    use bota_proto::{Order, Target};
+
+    let (mut world, hero) = out_of_fountain_after_buying(&[ItemId::ORB_OF_VENOM]);
+    let at = world.pos(hero).expect("attacker stands");
+    let enemy = foe_hero(&mut world, at + Vec2::from_ints(480, 0));
+    world.all_vision = true;
+    world.set_order(enemy, crate::game::UnitOrder::Stand);
+    world.settle();
+    let attack = Order::Attack {
+        target: Target::Unit(wire_id(enemy)),
+    };
+    let mut events = advance_validated(&mut world, None, attack);
+    let launched = (0..rules::TICKS_PER_SECOND * 2).any(|_| {
+        if events.iter().any(|event| {
+            matches!(event.kind(),
+            EventKind::AttackLaunched { attacker, target: Some(target) }
+                if attacker == wire_id(hero) && target == wire_id(enemy))
+        }) {
+            return true;
+        }
+        events = world.step();
+        false
+    });
+    assert!(launched, "the ranged attack was released");
+    assert!(world.alive(enemy));
+    assert_eq!(laid_on(&world, enemy, ItemId::ORB_OF_VENOM).0, 0);
+    let cooldown = slot_of(&world, hero, 0).expect("orb").cooldown;
+    assert!(
+        cooldown > 0,
+        "the attack point spends the cooldown before impact"
+    );
+
+    world.push_hit(None, enemy, 1_000_000, DamageKind::Pure, None);
+    let events = advance_validated(
+        &mut world,
+        None,
+        Order::Move {
+            target: Target::None,
+        },
+    );
+    assert!(!world.alive(enemy));
+    assert!(
+        !events.iter().any(|event| matches!(event.kind(),
+            EventKind::Damaged { source: Some(source), target, .. }
+                if source == wire_id(hero) && target == wire_id(enemy)
+        )),
+        "the attack had not reached the target at death"
+    );
+    run(&mut world, rules::TICKS_PER_SECOND);
+    assert_eq!(
+        slot_of(&world, hero, 0).expect("orb").cooldown,
+        cooldown - rules::TICKS_PER_SECOND - 1,
+        "the original cooldown continues after the missile loses its target",
+    );
+}
+
+#[test]
+fn denying_an_allied_creep_does_not_spend_poison_attacks_cooldown() {
+    // https://www.dota2.com/patches/7.42 limits Poison Attack to heroes.
+    // The lane-creep deny rule still allows the attack to land.
+    use bota_proto::{Order, Target};
+    let mut world = World::new();
+    let at = Vec2::from_ints(1000, 1000);
+    let hero = seated_hero(&mut world, at, bota_proto::HeroId::SHADOW_FIEND);
+    hand_item(&mut world, hero, ItemId::ORB_OF_VENOM, 0);
+    let creep = world.spawn_unit(
+        &bota_core::MELEE_CREEP,
+        Team::Radiant,
+        at + Vec2::from_ints(120, 0),
+    );
+    world.set_order(creep, crate::game::UnitOrder::Stand);
+    world.settle();
+    world.health.get_mut(creep).expect("the creep is alive").hp = Fixed::from_int(1);
+    assert!(
+        world.deniable(creep),
+        "the creep is below the deny threshold"
+    );
+    let attack = Order::Attack {
+        target: Target::Unit(wire_id(creep)),
+    };
+    advance_validated(&mut world, None, attack);
+    let credited = (0..rules::TICKS_PER_SECOND * 2).any(|_| {
+        world.step();
+        world.seats[0].denies == 1
+    });
+    assert!(credited, "the ranged deny landed");
+    assert!(!world.alive(creep));
+    assert_eq!(slot_of(&world, hero, 0).expect("orb").cooldown, 0);
+}
+
 #[test]
 fn frost_and_blight_still_affect_enemy_creeps() {
     for item in [ItemId::ORB_OF_FROST, ItemId::BLIGHT_STONE] {
