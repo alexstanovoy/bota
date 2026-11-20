@@ -6,6 +6,7 @@
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
+use std::task::Waker;
 use std::time::Duration;
 
 use bota_proto::{ClientMsg, ServerMsg, Unpacker, encode_frame_to_vec};
@@ -41,6 +42,15 @@ struct Shared {
     meter: PingMeter,
     /// The orders sent and their receipts.
     receipts: OrderReceipts,
+    waker: Option<Waker>,
+}
+
+fn notify(shared: std::cell::RefMut<'_, Shared>) {
+    let waker = shared.waker.clone();
+    drop(shared);
+    if let Some(waker) = waker {
+        waker.wake();
+    }
 }
 
 /// The browser's monotonic clock, from the page's start.
@@ -80,12 +90,16 @@ impl WebSocketLink {
                         shared.closed = true;
                     }
                 }
+                if shared.closed {
+                    notify(shared);
+                }
             })
         };
         let on_message = {
             let (shared, socket) = (Rc::clone(&shared), socket.clone());
             Closure::<dyn FnMut(MessageEvent)>::new(move |event: MessageEvent| {
                 let mut shared = shared.borrow_mut();
+                let previous_len = shared.inbox.len();
                 let message = event
                     .data()
                     .dyn_into::<js_sys::ArrayBuffer>()
@@ -97,11 +111,20 @@ impl WebSocketLink {
                     shared.closed = true;
                     let _ = socket.close();
                 }
+                if !kept || shared.inbox.len() != previous_len {
+                    notify(shared);
+                }
             })
         };
         let closer = |shared: &Rc<RefCell<Shared>>| {
             let shared = Rc::clone(shared);
-            move || shared.borrow_mut().closed = true
+            move || {
+                let mut shared = shared.borrow_mut();
+                if !shared.closed {
+                    shared.closed = true;
+                    notify(shared);
+                }
+            }
         };
         let (close, fail) = (closer(&shared), closer(&shared));
         let on_close = Closure::<dyn FnMut(CloseEvent)>::new(move |_| close());
@@ -174,6 +197,11 @@ fn js_error(error: wasm_bindgen::JsValue) -> std::io::Error {
 }
 
 impl LiveLink for WebSocketLink {
+    fn set_waker(&mut self, waker: Waker) {
+        self.shared.borrow_mut().waker = Some(waker.clone());
+        waker.wake();
+    }
+
     fn poll(&mut self) -> Vec<ServerMsg> {
         let probe = self.shared.borrow_mut().meter.probe(now());
         if let Some(probe) = probe {

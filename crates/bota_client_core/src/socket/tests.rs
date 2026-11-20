@@ -19,6 +19,55 @@ fn hello() -> ClientMsg {
 }
 
 #[test]
+fn an_inbound_message_and_link_end_wake_a_caller_without_polling() {
+    use std::sync::Arc;
+    use std::task::{Wake, Waker};
+
+    struct Notify(mpsc::Sender<()>);
+    impl Wake for Notify {
+        fn wake(self: Arc<Self>) {
+            let _ = self.0.send(());
+        }
+    }
+
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let address = listener.local_addr().expect("address").to_string();
+    let (advance, steps) = mpsc::channel();
+    let peer = thread::spawn(move || {
+        let (mut peer, _) = listener.accept().expect("accept");
+        steps.recv().expect("send after registration");
+        let message = ServerMsg::Refused {
+            reason: RejectReason::SeatHeld,
+        };
+        peer.write_all(&encode_frame_to_vec(&message).expect("encode"))
+            .expect("deliver message");
+        steps.recv().expect("close after delivery");
+    });
+    let mut link = Net::connect_with(&address, Redial::OFF).expect("connect");
+    let (notify, wakes) = mpsc::channel();
+    link.set_waker(Waker::from(Arc::new(Notify(notify))));
+    wakes
+        .recv_timeout(Duration::from_secs(10))
+        .expect("registration wakes for any queued data");
+    advance.send(()).expect("send a message");
+    wakes
+        .recv_timeout(Duration::from_secs(10))
+        .expect("inbound message must wake its caller");
+    assert!(matches!(
+        link.poll().as_slice(),
+        [ServerMsg::Refused {
+            reason: RejectReason::SeatHeld
+        }]
+    ));
+    advance.send(()).expect("close the link");
+    wakes
+        .recv_timeout(Duration::from_secs(10))
+        .expect("link end must wake its caller");
+    assert!(link.is_closed());
+    peer.join().expect("peer closed");
+}
+
+#[test]
 fn a_clean_close_is_no_message() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
     let addr = listener.local_addr().expect("addr").to_string();

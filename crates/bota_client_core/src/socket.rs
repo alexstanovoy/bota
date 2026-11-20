@@ -13,6 +13,7 @@ use std::io::ErrorKind;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+use std::task::Waker;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -215,6 +216,7 @@ struct Shared {
     meter: Mutex<PingMeter>,
     /// The orders sent and their receipts.
     receipts: Mutex<OrderReceipts>,
+    waker: Mutex<Option<Waker>>,
 }
 
 struct Outgoing {
@@ -273,7 +275,18 @@ impl Shared {
         }
         *held += bytes;
         drop(held);
-        tx.send((Ok(msg), bytes)).is_ok()
+        if tx.send((Ok(msg), bytes)).is_err() {
+            return false;
+        }
+        self.wake();
+        true
+    }
+
+    fn wake(&self) {
+        let waker = self.waker.lock().expect("waker lock").clone();
+        if let Some(waker) = waker {
+            waker.wake();
+        }
     }
 
     /// The caller took messages of `bytes` payload bytes out of the inbox.
@@ -284,10 +297,10 @@ impl Shared {
         }
     }
 
-    fn heard_from_server(&self) {
-        let _ = self
-            .state
-            .compare_exchange(REDIALING, UP, Ordering::Relaxed, Ordering::Relaxed);
+    fn heard_from_server(&self) -> bool {
+        self.state
+            .compare_exchange(REDIALING, UP, Ordering::AcqRel, Ordering::Relaxed)
+            .is_ok()
     }
 
     /// Sends a probe when one is due, stamped as the socket takes it.
@@ -342,7 +355,9 @@ impl Shared {
             }
             (out.redial, out.rejoin.spent)
         };
-        self.state.store(REDIALING, Ordering::Relaxed);
+        if self.state.swap(REDIALING, Ordering::AcqRel) != REDIALING {
+            self.wake();
+        }
         let mut fresh = None;
         let dialed = redial(
             policy,
@@ -397,6 +412,7 @@ impl Net {
             epoch: Instant::now(),
             meter: Mutex::new(PingMeter::default()),
             receipts: Mutex::new(OrderReceipts::default()),
+            waker: Mutex::new(None),
         });
         let thread_shared = Arc::clone(&shared);
         thread::spawn(move || read_on(thread_shared, &endpoint, reader, &tx));
@@ -405,6 +421,13 @@ impl Net {
             inbox,
             failure: None,
         })
+    }
+
+    /// Replace the notification target. Wakes once at registration and when a message
+    /// arrives or the connection state changes. The caller can then drain [`Self::poll`].
+    pub fn set_waker(&self, waker: Waker) {
+        *self.shared.waker.lock().expect("waker lock") = Some(waker.clone());
+        waker.wake();
     }
 
     /// Everything that arrived since the last poll.
@@ -478,20 +501,26 @@ fn read_on(
         let (mut gone, mut held) = (false, false);
         let read = read_messages(&mut *stream, |msg| {
             if matches!(msg, ServerMsg::Ping) {
-                shared.heard_from_server();
+                if shared.heard_from_server() {
+                    shared.wake();
+                }
                 gone = caller_gone(&shared);
                 shared.answer_ping();
                 return !gone;
             }
             if let ServerMsg::OrderReceived { seq, tick, .. } = msg {
                 shared.order_received(seq, tick);
-                shared.heard_from_server();
+                if shared.heard_from_server() {
+                    shared.wake();
+                }
                 gone = caller_gone(&shared);
                 return !gone;
             }
             if let ServerMsg::Echo { id } = msg {
                 shared.echoed(id);
-                shared.heard_from_server();
+                if shared.heard_from_server() {
+                    shared.wake();
+                }
                 gone = caller_gone(&shared);
                 return !gone;
             }
@@ -521,6 +550,7 @@ fn read_on(
         }
     }
     shared.state.store(CLOSED, Ordering::Release);
+    shared.wake();
 }
 
 /// Hands every message read to `take` until the server closes cleanly or

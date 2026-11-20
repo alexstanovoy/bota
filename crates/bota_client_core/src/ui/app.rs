@@ -25,6 +25,10 @@ use crate::ui::smooth::Smooth;
 /// desktop ([`Net`](crate::Net)), a transport of the embedder's own where
 /// there are no sockets (a browser).
 pub trait LiveLink {
+    /// Replace the notification target if the transport supports it. A wake tells the caller
+    /// to poll for messages or observe a connection state change.
+    fn set_waker(&mut self, _waker: std::task::Waker) {}
+
     /// Everything that arrived since the last call, without waiting.
     fn poll(&mut self) -> Vec<ServerMsg>;
     /// Sends one message upstream; a failure marks the link closed.
@@ -52,6 +56,10 @@ pub trait LiveLink {
 
 #[cfg(not(target_arch = "wasm32"))]
 impl LiveLink for crate::socket::Net {
+    fn set_waker(&mut self, waker: std::task::Waker) {
+        crate::socket::Net::set_waker(self, waker);
+    }
+
     fn poll(&mut self) -> Vec<ServerMsg> {
         crate::socket::Net::poll(self)
     }
@@ -88,6 +96,13 @@ pub enum Source {
 }
 
 impl Source {
+    /// Set the notification target for a live source. Replay advancement uses the caller's clock.
+    pub fn set_waker(&mut self, waker: std::task::Waker) {
+        if let Self::Live(link) = self {
+            link.set_waker(waker);
+        }
+    }
+
     /// Everything due since the last frame.
     pub fn poll(&mut self, dt: f32) -> Vec<ServerMsg> {
         match self {

@@ -52,6 +52,13 @@ pub struct Client {
 }
 
 impl Client {
+    /// Forward control connection notifications to an embedding caller.
+    pub fn set_waker(&mut self, waker: std::task::Waker) {
+        if let Some(backend) = &mut self.backend {
+            backend.set_waker(waker);
+        }
+    }
+
     /// Starts connecting to `url` (`wss://host:port`, with or without
     /// `/control`) and queues the Hello that names bota's wire fingerprint.
     /// The Welcome arrives as the reply to sequence number 1.
