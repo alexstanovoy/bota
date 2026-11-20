@@ -1253,7 +1253,9 @@ impl World {
                 ..
             } => {
                 let ability = self.ability_in(entity, slot);
-                let point = bota_core::ability_def(ability).map_or(0, |def| def.point);
+                let point = bota_core::ability_def(ability).map_or(0, |def| {
+                    self.base_ability_cast_point(entity, ability, def.point)
+                });
                 (Some(ability), point, progress)
             }
             ActionState::UseItem {

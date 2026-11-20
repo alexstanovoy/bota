@@ -17,6 +17,8 @@
 
 use bota_proto::{AbilityId, Aim, DamageKind, EffectId};
 
+use crate::neutral_cast_points::{OGRE_SMASH_CAST_POINT, OGRE_SMASH_PLAYER_CAST_POINT};
+
 use crate::{
     ABILITY_COUNT, AbilityDef, Among, Aura, AuraModifier, BARE_ABILITY, CastRule, Mark, Need,
     NeutralKind, Pick, Reach, When, Whom, Within, rules,
@@ -1170,7 +1172,15 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
         AbilityId(40),
         "ogre_bruiser_ogre_smash",
         N::OgreSmash,
-        cast(Aim::Point, true, &[0], &[secs(12)], 0, 2800, 850),
+        cast(
+            Aim::Point,
+            true,
+            &[0],
+            &[secs(12)],
+            0,
+            OGRE_SMASH_CAST_POINT,
+            850,
+        ),
         Spell::Cast {
             act: Act::Smash {
                 reach: 200,
@@ -2066,6 +2076,14 @@ pub fn ability_cast_view_ticks(id: AbilityId) -> u32 {
         _ => 0,
     };
     ordinary.max(delayed)
+}
+
+/// Override for an ability cast by a player-controlled neutral, in milliseconds.
+pub fn controlled_neutral_cast_point(id: AbilityId) -> Option<u32> {
+    match NeutralAbility::of(id)? {
+        NeutralAbility::OgreSmash => Some(OGRE_SMASH_PLAYER_CAST_POINT),
+        _ => None,
+    }
 }
 
 pub const fn migration_of(ability: NeutralAbility) -> Option<&'static crate::Migration> {

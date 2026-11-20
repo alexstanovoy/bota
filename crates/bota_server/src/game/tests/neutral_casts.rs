@@ -604,6 +604,62 @@ fn the_bruiser_smashes_ahead_of_itself_when_hurt() {
 }
 
 #[test]
+fn a_player_controlled_ogre_releases_smash_after_its_shorter_cast_point() {
+    use bota_proto::{AbilitySlot, Order, Target};
+
+    let (mut world, _) = match_hero();
+    let ogre = world.spawn_neutral(NeutralKind::OgreMauler, CAMP, 1, 0);
+    world.set_team(ogre, Team::Radiant);
+    world.owner.insert(ogre, SlotId(0));
+    world.neutral_ai.remove(ogre);
+    let ability = NeutralAbility::OgreSmash;
+    let slot = world
+        .abilities
+        .get(ogre)
+        .unwrap()
+        .slots
+        .iter()
+        .position(|state| state.id == ability.id())
+        .unwrap();
+    world.settle();
+    let target = Target::Pos(CAMP);
+    advance_validated(
+        &mut world,
+        Some(ogre),
+        Order::Cast {
+            slot: AbilitySlot(slot as u8),
+            target,
+        },
+    );
+    assert!(
+        matches!(
+            world.action.get(ogre).map(|action| action.state),
+            Some(crate::game::ActionState::CastAbility {
+                phase: crate::game::ActionPhase::Before { progress: 0 },
+                ..
+            })
+        ),
+        "the player starts the Ogre's cast"
+    );
+
+    let cast_point = ticks_of_ms(1400);
+    let view = world.view(Team::Radiant);
+    let cast = view
+        .unit(crate::game::wire_id(ogre))
+        .expect("visible Ogre")
+        .cast
+        .expect("projected Smash windup");
+    assert_eq!(cast.ability, Some(ability.id()));
+    assert_eq!(cast.goes_off_in, cast_point);
+
+    assert!(!until_cast(&mut world, ogre, ability, cast_point - 1));
+    assert!(
+        until_cast(&mut world, ogre, ability, 1),
+        "the cast releases at 1.4 seconds"
+    );
+}
+
+#[test]
 fn a_ripper_dying_in_a_camp_sometimes_has_the_wildwing_raise_a_tornado() {
     let mut raised = 0;
     for stream in 0..60 {

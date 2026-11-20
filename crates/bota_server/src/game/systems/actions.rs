@@ -746,7 +746,8 @@ impl World {
                 } else {
                     base
                 };
-                (def.point, def.backswing, duration)
+                let point = self.base_ability_cast_point(entity, id, def.point);
+                (point, def.backswing, duration)
             }
             PendingCast::Item { slot, .. } => {
                 let def = self.item_def_in(entity, usize::from(slot.0))?;
@@ -784,6 +785,20 @@ impl World {
             return 0;
         }
         super::modifiers::resisted_ticks(&self.stats, on, ModifierKind::Stunned, base)
+    }
+
+    /// The ordinary windup may change when a player has taken control of the caster.
+    pub(crate) fn base_ability_cast_point(
+        &self,
+        entity: Entity,
+        ability: bota_proto::AbilityId,
+        ordinary: u32,
+    ) -> u32 {
+        if self.owner.contains(entity) {
+            bota_core::controlled_neutral_cast_point(ability).unwrap_or(ordinary)
+        } else {
+            ordinary
+        }
     }
 
     /// Milliseconds a cast point lasts for an entity: its own length, or

@@ -115,6 +115,10 @@ fn stale(path: &Path, committed: &str, build: &str) -> String {
     )
 }
 
+fn neutral_cast_points_path() -> std::path::PathBuf {
+    repo().join("crates/bota_core/src/neutral_cast_points.rs")
+}
+
 fn run() -> Result<(), String> {
     let args = args()?;
     if args.creeps_only && !args.add.is_empty() {
@@ -193,10 +197,9 @@ fn run() -> Result<(), String> {
         std::fs::write(&registry_path, &registry).map_err(|e| format!("{registry_path:?}: {e}"))?;
     }
     let table = rustfmt(&emit::table(&source, &registry::items(&registry)?)?)?;
-    let heroes = rustfmt(&emit_heroes::table(&install::read_heroes(
-        args.dota.as_deref(),
-        HEROES,
-    )?)?)?;
+    let hero_source = install::read_heroes(args.dota.as_deref(), HEROES)?;
+    let heroes = rustfmt(&emit_heroes::table(&hero_source)?)?;
+    let neutral_cast_points = rustfmt(&ability::neutral_cast_points(&hero_source)?)?;
     let neutral = rustfmt(&neutral_crafting::table(
         &source,
         &install::read_neutral_items(args.dota.as_deref())?,
@@ -205,6 +208,7 @@ fn run() -> Result<(), String> {
         (table_path(), table),
         (heroes_path(), heroes),
         (wave_path, waves),
+        (neutral_cast_points_path(), neutral_cast_points),
         (
             repo().join("crates/bota_core/src/neutral_item_data.rs"),
             neutral,
@@ -404,6 +408,22 @@ mod tests {
         assert!(
             crate::emit::same_items(&committed, &table),
             "the committed table is stale: run import_items"
+        );
+    }
+
+    #[test]
+    #[ignore = "needs a Dota 2 install"]
+    fn the_committed_neutral_cast_points_are_what_the_install_gives() {
+        assert_the_install_is_the_tables_build();
+        let source = crate::install::read_heroes(crate::pinned_install().as_deref(), crate::HEROES)
+            .expect("ability scripts");
+        let generated = crate::ability::neutral_cast_points(&source).expect("neutral cast points");
+        let generated = crate::rustfmt(&generated).expect("formatted cast points");
+        let committed = std::fs::read_to_string(crate::neutral_cast_points_path())
+            .expect("committed cast points");
+        assert_eq!(
+            committed, generated,
+            "neutral cast points are stale: run import_items"
         );
     }
 
