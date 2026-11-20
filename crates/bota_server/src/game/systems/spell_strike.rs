@@ -1,12 +1,12 @@
 //! The neutral spells that strike: a missile, a chain, a smash and spikes.
 
 use bota_core::{
-    Act, at_level, facing_towards, point_ahead, point_along, rules, segment_distance_squared,
-    ticks_of_ms,
+    Act, Afflicts, ModifierKind, NeutralAbility, Spell, at_level, facing_towards, point_ahead,
+    point_along, rules, segment_distance_squared, ticks_of_ms,
 };
 use bota_proto::{Aim, Angle, DamageKind, Fixed, Inflictor, Target, Team, Vec2};
 
-use crate::game::{Chain, Entity, HitEffect, Projectile, World};
+use crate::game::{Chain, Entity, HitEffect, Modifier, Projectile, Pulser, World};
 
 use super::spell::Cast;
 
@@ -211,6 +211,109 @@ impl World {
         true
     }
 
+    /// Strikes at the spot ahead of the caster as the cast goes off, and sets the pulses after it
+    /// going.
+    pub(super) fn pulses(&mut self, cast: Cast, act: Act) -> bool {
+        let Act::Pulses {
+            reach,
+            count,
+            interval_ms,
+            ..
+        } = act
+        else {
+            return false;
+        };
+        let (Some(from), Some(side)) = (
+            self.transform.get(cast.caster).copied(),
+            self.team.get(cast.caster).copied(),
+        ) else {
+            return false;
+        };
+        assert!(count > 0, "a pulsing spell strikes at least once");
+        let spot = point_ahead(from.pos, from.facing, rules::units(reach));
+        let interval = ticks_of_ms(interval_ms).max(1);
+        let marker = self.spawn_placed(spot, Angle::default(), side);
+        let pulser = Pulser {
+            source: cast.caster,
+            ability: cast.ability.id(),
+            level: cast.level,
+            left: count - 1,
+            interval,
+            due: self.tick + interval,
+        };
+        self.pulse(marker, pulser);
+        if pulser.left > 0 {
+            self.pulser.insert(marker, pulser);
+        } else {
+            self.discard(marker);
+        }
+        true
+    }
+
+    /// Strikes everything of the other side within the spell's radius of the marker.
+    fn pulse(&mut self, marker: Entity, pulser: Pulser) {
+        let Some(ability) = NeutralAbility::of(pulser.ability) else {
+            return;
+        };
+        let Spell::Cast {
+            act:
+                Act::Pulses {
+                    radius,
+                    damage,
+                    slow_ms,
+                    ..
+                },
+            ..
+        } = *ability.spell()
+        else {
+            return;
+        };
+        let Some(spot) = self.pos(marker) else {
+            return;
+        };
+        let cast = Cast {
+            caster: pulser.source,
+            ability,
+            level: pulser.level,
+        };
+        for foe in self.foes_within(marker, spot, rules::units(radius)) {
+            if !self.spell_reaches(cast.ability.id(), foe) {
+                continue;
+            }
+            self.wear(cast, foe, slow_ms, 0);
+            self.push_hit(
+                Some(cast.caster),
+                foe,
+                at_level(&damage, cast.level),
+                DamageKind::Magical,
+                cast.inflictor(),
+            );
+        }
+    }
+
+    /// Strikes the pulse each pulsing spell is due.
+    pub(super) fn tick_pulsers(&mut self) {
+        let entities = self.take_entity_snapshot();
+        for marker in entities.iter().copied() {
+            let Some(mut pulser) = self.pulser.get(marker).copied() else {
+                continue;
+            };
+            if self.tick < pulser.due {
+                continue;
+            }
+            self.pulse(marker, pulser);
+            pulser.left -= 1;
+            pulser.due += pulser.interval;
+            if pulser.left == 0 {
+                self.pulser.remove(marker);
+                self.discard(marker);
+            } else {
+                self.pulser.insert(marker, pulser);
+            }
+        }
+        self.recycle_entity_snapshot(entities);
+    }
+
     /// Raises spikes in lines from the caster: centred on the aim, or, for
     /// a spell cast at nothing, round the caster from where it faces. Every
     /// foe within the width of a line takes the damage and the stun once.
@@ -221,6 +324,7 @@ impl World {
             length,
             width,
             damage,
+            afflicts,
             ms,
         } = act
         else {
@@ -259,14 +363,59 @@ impl World {
                 }
             }
         }
+        let ms = at_level(&ms, cast.level);
         for foe in struck {
-            self.stun_for(cast, foe, ms);
+            match afflicts {
+                Afflicts::Stun => self.stun_for(cast, foe, ms),
+                Afflicts::Break => self.break_for(cast, foe, ms),
+            }
             let blow = at_level(&damage, cast.level);
             self.push_hit(
                 Some(cast.caster),
                 foe,
                 blow,
                 DamageKind::Magical,
+                cast.inflictor(),
+            );
+        }
+        true
+    }
+
+    /// A Break on a foe for `ms`: its passives are silenced.
+    fn break_for(&mut self, cast: Cast, on: Entity, ms: i32) {
+        let held = Modifier::new(
+            ModifierKind::Broken,
+            Some(cast.caster),
+            cast.inflictor(),
+            Some(ticks_of_ms(ms)),
+        );
+        self.put_modifier(on, held);
+    }
+
+    /// Lets a boulder land at the spot aimed at, within the reach of the cast: every foe within
+    /// its radius takes the damage and is stunned.
+    pub(super) fn boulder(&mut self, cast: Cast, act: Act, target: Target) -> bool {
+        let Act::Boulder {
+            radius,
+            damage,
+            kind,
+            ms,
+        } = act
+        else {
+            return false;
+        };
+        let Target::Pos(spot) = target else {
+            return false;
+        };
+        let area = rules::units(radius);
+        let ms = at_level(&ms, cast.level);
+        for foe in self.foes_within(cast.caster, spot, area) {
+            self.stun_for(cast, foe, ms);
+            self.push_hit(
+                Some(cast.caster),
+                foe,
+                at_level(&damage, cast.level),
+                kind,
                 cast.inflictor(),
             );
         }

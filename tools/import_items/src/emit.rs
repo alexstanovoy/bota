@@ -252,6 +252,18 @@ pub(crate) fn script_row(
     key: &str,
     block: &Kv,
 ) -> Result<(), String> {
+    script_row_with(out, constant, key, block, &[])
+}
+
+/// As [`script_row`], with `extra` numbers (a name and its levels as a script writes them) that
+/// the script does not hold: none may be one it holds.
+pub(crate) fn script_row_with(
+    out: &mut String,
+    constant: &str,
+    key: &str,
+    block: &Kv,
+    extra: &[(&str, &str)],
+) -> Result<(), String> {
     let mut fields = Vec::new();
     for (key, value) in block.block().ok_or("not a block")? {
         if let Kv::Text(text) = value
@@ -261,6 +273,14 @@ pub(crate) fn script_row(
         }
     }
     fields.extend(crate::item::values(block)?);
+    for (name, levels) in extra {
+        if fields.iter().any(|(held, _)| held == name) {
+            return Err(format!(
+                "override of {key} {name}: the install holds it already: drop the override"
+            ));
+        }
+        fields.push(((*name).to_owned(), crate::dec::levels(levels)?));
+    }
     let _ = writeln!(
         out,
         "pub const {constant}: ScriptData = ScriptData {{ key: {key:?}, values: &["

@@ -43,7 +43,23 @@ pub struct Landing {
     pub kind: DamageKind,
     pub stun: u32,
     pub damage_amp_bp: i32,
+    /// Set when the one that lands is the caster of a leaping spell: it lands on the foes round
+    /// it, not on itself.
+    pub leap: Option<Leaping>,
 }
+
+/// A leap of the caster, with those it has yet to make.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Leaping {
+    pub ability: bota_proto::AbilityId,
+    pub level: u8,
+    pub leaps_left: u8,
+}
+state_hash!(Leaping {
+    ability,
+    level,
+    leaps_left
+});
 
 impl Push {
     pub fn carries(self) -> bool {
@@ -78,6 +94,7 @@ state_hash!(Push {
     effect,
     phase
 });
+// A landing that is not a leap's hashes as one before the field was.
 state_hash!(Landing {
     damage,
     health_growth,
@@ -85,7 +102,7 @@ state_hash!(Landing {
     kind,
     stun,
     damage_amp_bp
-});
+}; 1 => { leap: None });
 impl StateHash for bota_core::DamageGrowth {
     fn state_hash(&self, h: &mut Fnv) {
         self.clock.first_after_horn.state_hash(h);

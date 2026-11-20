@@ -54,6 +54,45 @@ fn the_item_table_holds_keys_and_numbers_and_no_player_text() {
     assert_no_player_text(&[("item.rs", include_str!("../item.rs"))]);
 }
 
+/// The CamelCase keys the neutral tables read: Dota's unit and ability script keys, and the two
+/// names the importer's override file gives what the scripts do not hold (`AttackBackswing`,
+/// `AbilityCastBackswing`).
+const SCRIPT_KEYS: [&str; 33] = [
+    "AbilityCastAnimationSlot",
+    "AbilityCastBackswing",
+    "AbilityCastPoint",
+    "AbilityCastRange",
+    "AbilityChannelTime",
+    "AbilityCooldown",
+    "AbilityDamage",
+    "AbilityManaCost",
+    "ArmorPhysical",
+    "AttackAcquisitionRange",
+    "AttackAnimationPoint",
+    "AttackBackswing",
+    "AttackDamageMax",
+    "AttackDamageMin",
+    "AttackRange",
+    "AttackRate",
+    "BaseAttackSpeed",
+    "BountyGoldMax",
+    "BountyGoldMin",
+    "BountyXP",
+    "IsAncient",
+    "IsBreakable",
+    "MagicalResistance",
+    "MaxLevel",
+    "MovementSpeed",
+    "MovementTurnRate",
+    "ProjectileSpeed",
+    "StatusHealth",
+    "StatusHealthRegen",
+    "StatusMana",
+    "StatusManaRegen",
+    "VisionDaytimeRange",
+    "VisionNighttimeRange",
+];
+
 fn assert_no_player_text(files: &[(&str, &str)]) {
     for (file, source) in files {
         if let Ok(syntax) = syn::parse_file(source) {
@@ -81,13 +120,7 @@ fn assert_no_player_text(files: &[(&str, &str)]) {
             let close = after.find('"').expect("a closed string");
             let text = &after[..close];
             assert!(
-                [
-                    "AbilityCooldown",
-                    "AbilityCastRange",
-                    "AbilityCastPoint",
-                    "AbilityManaCost"
-                ]
-                .contains(&text)
+                SCRIPT_KEYS.contains(&text)
                     || text.bytes().all(|b| b.is_ascii_lowercase()
                         || b.is_ascii_digit()
                         || b"_.-".contains(&b)),
@@ -134,6 +167,7 @@ fn the_unit_tables_hold_no_player_text() {
         ("unit_kind.rs", include_str!("../unit_kind.rs")),
         ("ward.rs", include_str!("../ward.rs")),
         ("unit_neutral.rs", include_str!("../unit_neutral.rs")),
+        ("neutral_data.rs", include_str!("../neutral_data.rs")),
     ]);
 }
 

@@ -30,6 +30,22 @@ fn awake(world: &mut World, kind: NeutralKind, pos: Vec2) -> Entity {
     beast
 }
 
+/// Gives a unit an ability Dota 7.42 no longer gives its kind, so that the mechanic it kept
+/// still plays (7.42 took Break off the Hill Troll Berserker and reworked Steal Weapon from a
+/// passive into a cast).
+fn give(world: &mut World, unit: Entity, ability: NeutralAbility) {
+    world
+        .abilities
+        .get_mut(unit)
+        .expect("a neutral's book")
+        .slots
+        .push(crate::game::AbilityState {
+            id: ability.id(),
+            level: 1,
+            cooldown: 0,
+        });
+}
+
 /// A hero that takes nothing on of its own accord.
 fn passive_hero(world: &mut World, pos: Vec2) -> Entity {
     let hero = hero_at(world, pos);
@@ -365,10 +381,11 @@ fn riverborn_works_only_for_a_bearer_standing_in_the_water() {
 }
 
 #[test]
-fn a_kobold_soldier_disarms_on_the_third_blow_then_waits_nine_seconds() {
+fn a_neutral_with_the_7_41f_steal_weapon_disarms_on_the_third_blow_then_waits_nine_seconds() {
     let mut world = day();
     let hero = passive_hero(&mut world, at(0));
-    let soldier = awake(&mut world, NeutralKind::KoboldTunneler, at(100));
+    let soldier = awake(&mut world, NeutralKind::Kobold, at(100));
+    give(&mut world, soldier, NeutralAbility::StealWeapon);
     world.settle();
     let mut landed = 0;
     let mut disarmed_at = None;
@@ -437,6 +454,7 @@ fn a_breaking_blow_breaks_for_three_seconds_and_waits_ten() {
     let mut world = day();
     let hero = passive_hero(&mut world, at(0));
     let troll = awake(&mut world, NeutralKind::ForestTrollBerserker, at(300));
+    give(&mut world, troll, NeutralAbility::Break);
     world.settle();
     let mut broke = None;
     for _ in 0..300 {
@@ -935,4 +953,128 @@ fn accuracy_lets_blows_through_evasion() {
         accurate * 10 < plain * 8,
         "{accurate} misses with drums, {plain} without"
     );
+}
+
+/// Dota 7.42, Odobenus Footman: "Odobenus Blight: Attacks reduce the target's armor by 2/3/4/5 for
+/// 4 seconds" (`armor_reduction` and `armor_reduction_duration` of `odobenus_blight`).
+#[test]
+fn an_odobenus_footman_strikes_armor_off_whoever_it_hits_for_four_seconds() {
+    let mut world = day();
+    let hero = passive_hero(&mut world, at(0));
+    let footman = awake(&mut world, NeutralKind::OdobenusFootman, at(100));
+    world.settle();
+    let armor_before = world.stats.get(hero).expect("derived").armor;
+    let hit =
+        |world: &mut World, source| (0..90).any(|_| !blows(world, 1, source, hero).is_empty());
+    let blight = |world: &World| {
+        world.modifiers.get(hero).expect("modifiers").active()
+            .filter(|held| matches!(held.kind, ModifierKind::Spell { ability, .. } if ability == NeutralAbility::OdobenusBlight))
+            .map(|held| (held.source, held.ticks_left))
+            .collect::<Vec<_>>()
+    };
+    let four_seconds = 4 * rules::TICKS_PER_SECOND;
+    assert!(hit(&mut world, footman));
+    assert_eq!(blight(&world), [(Some(footman), Some(four_seconds))]);
+    world.neutral_ai.remove(footman);
+    world.set_order(footman, crate::game::UnitOrder::Stand);
+    for _ in 0..rules::TICKS_PER_SECOND {
+        world.step();
+    }
+    assert_eq!(
+        blight(&world),
+        [(Some(footman), Some(four_seconds - rules::TICKS_PER_SECOND))]
+    );
+
+    let second = awake(&mut world, NeutralKind::OdobenusFootman, at(-100));
+    world.settle();
+    assert!(hit(&mut world, second));
+    assert_eq!(blight(&world), [(Some(second), Some(four_seconds))]);
+    world.settle();
+    assert_eq!(
+        world.stats.get(hero).expect("derived").armor,
+        armor_before - Fixed::from_int(2)
+    );
+}
+
+/// Dota 7.42, Eimermole: "Miner's Aura: All enemies within a 1000 range have their health
+/// restoration decreased by 20%. Doesn't stack" (a neutral camp's aura reaches 800 at most).
+#[test]
+fn an_eimermole_cuts_the_restoration_of_enemies_near_it_and_two_do_not_stack() {
+    let mut world = day();
+    let near = passive_hero(&mut world, at(0));
+    let far = passive_hero(&mut world, at(300 + rules::NEUTRAL_AURA_RADIUS + 200));
+    let first = awake(&mut world, NeutralKind::Eimermole, at(300));
+    let second = awake(&mut world, NeutralKind::Eimermole, at(350));
+    world.settle();
+    run(&mut world, 5);
+    world.settle();
+    let nominal = world.stats.get(far).expect("derived").restoration_bp;
+    assert!(wears(&world, near, NeutralAbility::MinersAura));
+    assert_eq!(
+        world.stats.get(near).expect("derived").restoration_bp,
+        nominal - 2_000,
+        "twenty percent less, once for two Eimermoles"
+    );
+    assert!(
+        !wears(&world, far, NeutralAbility::MinersAura),
+        "none out of its reach"
+    );
+    let _ = (first, second);
+}
+
+/// Dota 7.42, Ancient Ogre Seal Pup: "Seal of Disapproval Aura: All enemies within a 1200 range
+/// have their movement slowed by 15/17/19/21%. Doesn't stack" (800 at most for a neutral camp).
+#[test]
+fn an_ogre_seal_pup_slows_the_enemies_near_it_by_fifteen_percent() {
+    let mut world = day();
+    let hero = passive_hero(&mut world, at(0));
+    world.settle();
+    let free = speed(&world, hero);
+    let _pup = awake(&mut world, NeutralKind::OgreSealPup, at(400));
+    world.settle();
+    run(&mut world, 5);
+    world.settle();
+    assert!(wears(&world, hero, NeutralAbility::SealDisapprovalAura));
+    let expected = Fixed::from_ratio(free.to_int() * 85, 100);
+    assert!(
+        (speed(&world, hero) - expected).raw.abs() <= 3,
+        "fifteen percent slower: {} against {expected}",
+        speed(&world, hero)
+    );
+}
+
+/// Every creep Dota 7.42 added to the server's table walks out of its data into a fight: it
+/// wakes, reaches a hero and hurts it, the golden ones and the ones whose abilities are present in
+/// the data but not cast (Eggstremism, Miner's Slam, Seal Flop, Snowball Shot) alike.
+#[test]
+fn every_creep_dota_7_42_added_fights_a_hero_it_stands_beside() {
+    for kind in [
+        NeutralKind::Radigull,
+        NeutralKind::OdobenusFootman,
+        NeutralKind::OdobenusFrostmage,
+        NeutralKind::Eimermole,
+        NeutralKind::EimermoleForeman,
+        NeutralKind::OgreSeal,
+        NeutralKind::OgreSealPup,
+        NeutralKind::KoboldTunnelerGold,
+        NeutralKind::GnollAssassinGold,
+        NeutralKind::AlphaWolfGold,
+        NeutralKind::MudGolemGold,
+        NeutralKind::EnragedWildkinGold,
+        NeutralKind::PolarFurbolgChampionGold,
+    ] {
+        let mut world = day();
+        let hero = passive_hero(&mut world, at(0));
+        let creep = awake(&mut world, kind, at(90));
+        world.settle();
+        let before = hp(&world, hero);
+        let hit = !blows(&mut world, 240, creep, hero).is_empty();
+        assert!(hit, "{kind:?} lands no blow");
+        assert!(hp(&world, hero) < before, "{kind:?} does not hurt the hero");
+        assert_eq!(
+            world.stats.get(creep).expect("derived").max_hp.to_int(),
+            kind.def().max_hp,
+            "{kind:?} stands at the health of its script"
+        );
+    }
 }

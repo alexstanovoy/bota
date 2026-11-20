@@ -229,6 +229,12 @@ world_tables! {
         pub creep_tier: CreepTier;
         /// Expanding item waves, with independent per-cast hit history.
         pub area_wave: crate::game::AreaWave;
+        /// The spell each entity that is one is striking in pulses.
+        pub pulser: crate::game::Pulser;
+        /// The shot each entity that is one is bouncing on.
+        pub bouncer: crate::game::Bouncer;
+        /// The next eligible attempt for a neutral that let a cast opportunity pass.
+        pub neutral_cast_wait: u32;
     }
 
     derived {

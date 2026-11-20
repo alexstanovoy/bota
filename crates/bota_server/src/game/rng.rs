@@ -51,6 +51,9 @@ pub enum Purpose {
     /// of the rings of spots, drawn from the stream of each placement alone, keyed by the game
     /// clock and the spawner.
     RunePlace = 19,
+    /// Which unit a Snowball Shot bounces to, drawn from the stream of each bounce alone,
+    /// keyed by the shot's marker and the bounces it has left.
+    SeedShot = 20,
 }
 
 /// The purposes with a stream of the match as a whole, whose draws the

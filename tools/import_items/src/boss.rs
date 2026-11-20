@@ -49,7 +49,10 @@ pub fn table(dota: Option<&Path>) -> Result<String, String> {
             .get("DOTAAbilities")
             .and_then(|a| a.get(key))
             .ok_or("missing boss passive")?;
-        crate::emit::script_row(&mut out, constant, key, ability)?;
+        let extra: Vec<(&str, &str)> = crate::neutral_overrides::ability_numbers(key)
+            .map(|number| (number.name, number.levels))
+            .collect();
+        crate::emit::script_row_with(&mut out, constant, key, ability, &extra)?;
     }
     Ok(out)
 }

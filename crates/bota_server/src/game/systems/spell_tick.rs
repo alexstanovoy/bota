@@ -155,7 +155,12 @@ impl World {
                     continue;
                 };
                 let Spell::Cast {
-                    act: Act::Purge { start_pct, .. },
+                    act:
+                        Act::Purge {
+                            start_pct,
+                            rate,
+                            ms,
+                        },
                     ..
                 } = *ability.spell()
                 else {
@@ -165,7 +170,9 @@ impl World {
                     continue;
                 }
                 let seconds_left = (left - 1) / rules::TICKS_PER_SECOND + 1;
-                *amount = (start_pct as u32 * seconds_left / 5).min(start_pct as u32) as u16;
+                let seconds_in = (ms as u32).div_ceil(1000).saturating_sub(seconds_left);
+                let fallen = start_pct as u32 * seconds_in / rate as u32;
+                *amount = (start_pct as u32).saturating_sub(fallen) as u16;
             }
         }
         self.recycle_entity_snapshot(entities);

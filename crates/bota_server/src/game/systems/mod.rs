@@ -48,6 +48,7 @@ mod spawn;
 mod spell;
 mod spell_block;
 mod spell_call;
+mod spell_ricochet;
 mod spell_strike;
 mod spell_tick;
 mod stats;

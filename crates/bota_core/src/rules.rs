@@ -323,18 +323,36 @@ pub const NEUTRAL_SHORT_WINDOW: u32 = 3 * TICKS_PER_SECOND;
 pub const NEUTRAL_REAGGRO_BLOCK: u32 = 3 * TICKS_PER_SECOND;
 /// Being this close to its spawn spot ends a neutral's walk home.
 pub const NEUTRAL_RETURN: i32 = 100;
-/// Ticks between neutral upgrades; the same cadence as creep waves.
-pub const NEUTRAL_UPGRADE_PERIOD_TICKS: u32 = 450 * TICKS_PER_SECOND;
-/// Upgrades a neutral may carry at most.
-pub const NEUTRAL_UPGRADE_CAP: i32 = 30;
-/// Health one upgrade adds to a neutral.
-pub const NEUTRAL_UPGRADE_HP: i32 = 30;
-/// Half-points of armor one upgrade adds to a neutral.
-pub const NEUTRAL_UPGRADE_ARMOR_HALVES: i32 = 1;
-/// Attack damage one upgrade adds to a neutral.
-pub const NEUTRAL_UPGRADE_DAMAGE: i32 = 3;
-/// Attack speed one neutral upgrade interval adds.
-pub const NEUTRAL_UPGRADE_ATTACK_SPEED: i32 = 5;
+/// Ticks between neutral upgrades; the same cadence as creep waves: the `neutral_upgrade`
+/// ability's `increase_time`.
+pub const NEUTRAL_UPGRADE_PERIOD_TICKS: u32 = crate::neutral_data::NEUTRAL_UPGRADE
+    .first("increase_time")
+    .secs()
+    .ticks();
+/// Upgrades a neutral may carry at most: the ability's `max_level`.
+pub const NEUTRAL_UPGRADE_CAP: i32 = crate::neutral_data::NEUTRAL_UPGRADE
+    .first("max_level")
+    .int();
+/// Health one upgrade adds to a neutral: the ability's `increase_health`.
+pub const NEUTRAL_UPGRADE_HP: i32 = crate::neutral_data::NEUTRAL_UPGRADE
+    .first("increase_health")
+    .int();
+/// Half-points of armor one upgrade adds to a neutral: twice the ability's `increase_armor`.
+pub const NEUTRAL_UPGRADE_ARMOR_HALVES: i32 = {
+    let armor = crate::neutral_data::NEUTRAL_UPGRADE
+        .first("increase_armor")
+        .0;
+    assert!(armor * 2 % 1000 == 0, "armor in half points");
+    armor * 2 / 1000
+};
+/// Attack damage one upgrade adds to a neutral: the ability's `increase_damage`.
+pub const NEUTRAL_UPGRADE_DAMAGE: i32 = crate::neutral_data::NEUTRAL_UPGRADE
+    .first("increase_damage")
+    .int();
+/// Attack speed one neutral upgrade interval adds: the ability's `increase_aspd`.
+pub const NEUTRAL_UPGRADE_ATTACK_SPEED: i32 = crate::neutral_data::NEUTRAL_UPGRADE
+    .first("increase_aspd")
+    .int();
 /// Ticks between the levels a neutral spawns its abilities at: Dota's
 /// `neutral_upgrade` ability upgrade interval, 900 s.
 pub const NEUTRAL_ABILITY_LEVEL_PERIOD_TICKS: u32 = 900 * TICKS_PER_SECOND;
@@ -349,10 +367,14 @@ pub const NEUTRAL_AURA_RADIUS: i32 = 800;
 /// after the last of them. The game's files give no figure; it is longer
 /// than a fight's gap between two blows and shorter than the ability's wait.
 pub const STRIKE_COUNTER_TICKS: u32 = 5 * TICKS_PER_SECOND;
-/// Gold bounty one upgrade adds to a neutral.
-pub const NEUTRAL_UPGRADE_GOLD: i32 = 1;
-/// Experience one upgrade adds to a neutral.
-pub const NEUTRAL_UPGRADE_XP: i32 = 5;
+/// Gold bounty one upgrade adds to a neutral: the ability's `increase_gold`.
+pub const NEUTRAL_UPGRADE_GOLD: i32 = crate::neutral_data::NEUTRAL_UPGRADE
+    .first("increase_gold")
+    .int();
+/// Experience one upgrade adds to a neutral: the ability's `increase_xp`.
+pub const NEUTRAL_UPGRADE_XP: i32 = crate::neutral_data::NEUTRAL_UPGRADE
+    .first("increase_xp")
+    .int();
 /// A wave spawns facing the first waypoint of its lane further than this
 /// from its spawn.
 pub const WAVE_FACING_LOOKAHEAD: i32 = 200;

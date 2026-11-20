@@ -416,29 +416,98 @@ fn a_cut_player_game_reports_no_result_and_no_metadata() {
     assert!(finished.meta.is_none());
 }
 
-/// The native cap of the mid-only map ends the match with `MatchOver`, a draw: every seat is
-/// told the final statistics, which the game hands on as its result.
+/// A creep can finish the first mid tower while both heroes are idle.
 #[test]
-fn a_finished_match_tells_every_seat_its_result() {
-    let spec = MatchSpec::new(
-        bota_core::MAP2_ID,
-        support::picks(),
-        17,
-        bota_core::MAP2_TICK_CAP + 10,
-    );
-    let (mut game, _) = Game::<bota_gym::Player>::new(&spec).expect("a game");
-    let mut told = None;
-    while told.is_none() {
-        let streams = game.step(&[None, None]).expect("a tick");
-        told = streams[0].iter().find_map(|message| match message {
-            ServerMsg::MatchOver { winner, stats } => Some((*winner, stats.clone())),
-            _ => None,
+fn a_lane_creep_killing_the_first_mid_tower_finishes_the_match_for_both_seats() {
+    use bota_core::{MELEE_CREEP, rules};
+    use bota_proto::{EventKind, Fixed, UnitKind, Vec2};
+    use bota_server::game::wire_id;
+
+    for (defender, attacker, offset) in [
+        (Team::Radiant, Team::Dire, 100),
+        (Team::Dire, Team::Radiant, -100),
+    ] {
+        let spec = MatchSpec::new(
+            bota_core::MAP2_ID,
+            support::picks(),
+            17,
+            bota_core::MAP2_TICK_CAP,
+        );
+        let (mut game, _) = Game::<Privileged>::new(&spec).expect("a game");
+        let horn = game.truth().world().schedule().horn;
+        game.advance::<GymError>(&[None, None], horn, |_| Ok(()))
+            .expect("reach the horn");
+
+        let mut staged = None;
+        game.arrange(|world| {
+            let tower = world
+                .entities
+                .iter()
+                .find(|&entity| {
+                    world.kind.get(entity) == Some(&UnitKind::Tower)
+                        && world.team.get(entity) == Some(&defender)
+                        && world
+                            .lane
+                            .get(entity)
+                            .is_some_and(|lane| lane.0 == rules::LANE_MID)
+                        && world.tier.get(entity).is_some_and(|tier| tier.0 == 1)
+                })
+                .expect("the defending mid tier one");
+            let pos = world
+                .transform
+                .get(tower)
+                .expect("the tower's position")
+                .pos;
+            world.health.get_mut(tower).expect("tower health").hp = Fixed::from_int(1);
+            let creep = world.spawn_creep(
+                &MELEE_CREEP,
+                attacker,
+                pos + Vec2::from_ints(offset, offset),
+                rules::LANE_MID,
+                0,
+            );
+            world.settle();
+            staged = Some((wire_id(tower), wire_id(creep)));
         });
+        let (tower, creep) = staged.expect("the staged tower and creep");
+        let mut killer = None;
+        let mut told = [None, None];
+        game.advance_with_facts::<GymError>(
+            &[&[], &[]],
+            3 * rules::TICKS_PER_SECOND,
+            |streams, _, events, _| {
+                for event in events {
+                    if let EventKind::Died {
+                        unit,
+                        killer: source,
+                        ..
+                    } = event.kind()
+                        && unit == tower
+                    {
+                        killer = source;
+                    }
+                }
+                for (seat, stream) in streams.into_iter().enumerate() {
+                    for message in stream {
+                        if let ServerMsg::MatchOver { winner, stats } = message {
+                            told[seat] = Some((winner, stats));
+                        }
+                    }
+                }
+                Ok(())
+            },
+        )
+        .expect("advance without hero orders");
+        assert_eq!(killer, Some(creep), "{defender:?} tower");
+        let [Some((winner, stats)), Some((other_winner, other_stats))] = told else {
+            panic!("every seat should receive the result");
+        };
+        assert_eq!(winner, attacker);
+        assert_eq!(other_winner, winner);
+        assert_eq!(other_stats, stats);
+        assert_eq!(game.result(), Some((winner, &stats)));
+        assert_eq!(stats.duration, game.tick());
     }
-    let (winner, stats) = told.expect("told");
-    assert_eq!(winner, Team::Neutral);
-    assert_eq!(game.result(), Some((winner, &stats)));
-    assert_eq!(stats.duration, game.tick());
 }
 
 #[test]

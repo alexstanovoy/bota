@@ -1,16 +1,18 @@
 //! `import_items`: writes `crates/bota_core/src/data/items.rs` from the `scripts/npc/items.txt`
 //! of a local Dota 2 install, for every item the id registry names, and
-//! `crates/bota_core/src/heroes_data.rs` from the hero scripts, for every hero of [`HEROES`]. A
+//! `crates/bota_core/src/heroes_data.rs` from the hero scripts, for every hero of [`HEROES`], and
+//! `crates/bota_core/src/neutral_data.rs` from the unit and ability scripts, for every neutral kind
+//! of the id registry but Roshan (whose rows `boss.rs` writes). A
 //! development tool, never a build step: the tables it writes are committed, hold numbers and
 //! Dota's internal names only, and name the client build they were read from.
 //!
 //! ```text
-//! import_items [--dota <"dota 2 beta" folder>] [--check] [--add <item key>]... [--creeps-only]
+//! import_items [--dota <"dota 2 beta" folder>] [--check] [--add <item key>]... [--creeps-only | --neutrals-only]
 //! ```
 //!
 //! `--add` appends a registry line for each new item key first. `--check` writes nothing and
 //! fails when a committed table holds other rows than the install gives (the client build it
-//! names aside). `--creeps-only` updates or checks the lane creep numeric table alone.
+//! names aside). `--creeps-only` checks or updates lane creeps alone. `--neutrals-only` does the same for the jungle.
 //!
 //! Without `--dota`, `BOTA_DOTA_PATH` names the install (a `dota 2 beta` folder), else the first
 //! Steam library's is read; the tests read the same one.
@@ -25,7 +27,9 @@ mod hero;
 mod install;
 mod item;
 mod name;
+mod neutral;
 mod neutral_crafting;
+mod neutral_overrides;
 mod overrides;
 mod registry;
 mod units;
@@ -59,6 +63,11 @@ const TABLES_BUILD: &str = "client 6983 (Nov 18 2026)";
 /// numbers in its own module until it moves over.
 const HEROES: &[&str] = &["npc_dota_hero_pudge", "npc_dota_hero_nevermore"];
 
+/// The committed neutral creep table.
+fn neutrals_path() -> PathBuf {
+    repo().join("crates/bota_core/src/neutral_data.rs")
+}
+
 /// The id registry.
 fn registry_path() -> PathBuf {
     repo().join("crates/bota_proto/registry/ids.txt")
@@ -76,6 +85,7 @@ struct Args {
     check: bool,
     add: Vec<String>,
     creeps_only: bool,
+    neutrals_only: bool,
 }
 
 fn args() -> Result<Args, String> {
@@ -84,6 +94,7 @@ fn args() -> Result<Args, String> {
         check: false,
         add: Vec::new(),
         creeps_only: false,
+        neutrals_only: false,
     };
     let mut words = std::env::args().skip(1);
     while let Some(word) = words.next() {
@@ -91,6 +102,7 @@ fn args() -> Result<Args, String> {
             "--dota" => parsed.dota = Some(words.next().ok_or("--dota needs a folder")?.into()),
             "--check" => parsed.check = true,
             "--creeps-only" => parsed.creeps_only = true,
+            "--neutrals-only" => parsed.neutrals_only = true,
             "--add" => parsed
                 .add
                 .push(words.next().ok_or("--add needs an item key")?),
@@ -115,14 +127,35 @@ fn stale(path: &Path, committed: &str, build: &str) -> String {
     )
 }
 
-fn neutral_cast_points_path() -> std::path::PathBuf {
-    repo().join("crates/bota_core/src/neutral_cast_points.rs")
+fn import_neutrals(args: &Args) -> Result<(), String> {
+    let registry_text =
+        std::fs::read_to_string(registry_path()).map_err(|e| format!("the registry: {e}"))?;
+    let committed_neutrals = std::fs::read_to_string(neutrals_path()).ok();
+    let neutrals = rustfmt(&neutral::table(
+        args.dota.as_deref(),
+        &registry_text,
+        committed_neutrals.as_deref(),
+    )?)?;
+    if args.check {
+        let committed = std::fs::read_to_string(neutrals_path())
+            .map_err(|e| format!("{:?}: {e}", neutrals_path()))?;
+        if !emit::same_items(&committed, &neutrals) {
+            return Err("neutral creep script data is stale".into());
+        }
+    } else {
+        std::fs::write(neutrals_path(), neutrals)
+            .map_err(|e| format!("{:?}: {e}", neutrals_path()))?;
+    }
+    Ok(())
 }
 
 fn run() -> Result<(), String> {
     let args = args()?;
-    if args.creeps_only && !args.add.is_empty() {
-        return Err("--creeps-only and --add exclude each other".into());
+    if (args.creeps_only || args.neutrals_only) && !args.add.is_empty() {
+        return Err("--creeps-only, --neutrals-only and --add exclude each other".into());
+    }
+    if args.neutrals_only {
+        return import_neutrals(&args);
     }
     let game = install::game_dir(args.dota.as_deref())?;
     let build = install::build(&game.join("steam.inf"))?;
@@ -151,6 +184,7 @@ fn run() -> Result<(), String> {
     if args.creeps_only {
         return Ok(());
     }
+    import_neutrals(&args)?;
     let boss = rustfmt(&boss::table(args.dota.as_deref())?)?;
     let boss_path = repo().join("crates/bota_core/src/roshan_data.rs");
     if args.check {
@@ -199,7 +233,6 @@ fn run() -> Result<(), String> {
     let table = rustfmt(&emit::table(&source, &registry::items(&registry)?)?)?;
     let hero_source = install::read_heroes(args.dota.as_deref(), HEROES)?;
     let heroes = rustfmt(&emit_heroes::table(&hero_source)?)?;
-    let neutral_cast_points = rustfmt(&ability::neutral_cast_points(&hero_source)?)?;
     let neutral = rustfmt(&neutral_crafting::table(
         &source,
         &install::read_neutral_items(args.dota.as_deref())?,
@@ -208,7 +241,6 @@ fn run() -> Result<(), String> {
         (table_path(), table),
         (heroes_path(), heroes),
         (wave_path, waves),
-        (neutral_cast_points_path(), neutral_cast_points),
         (
             repo().join("crates/bota_core/src/neutral_item_data.rs"),
             neutral,
@@ -408,22 +440,6 @@ mod tests {
         assert!(
             crate::emit::same_items(&committed, &table),
             "the committed table is stale: run import_items"
-        );
-    }
-
-    #[test]
-    #[ignore = "needs a Dota 2 install"]
-    fn the_committed_neutral_cast_points_are_what_the_install_gives() {
-        assert_the_install_is_the_tables_build();
-        let source = crate::install::read_heroes(crate::pinned_install().as_deref(), crate::HEROES)
-            .expect("ability scripts");
-        let generated = crate::ability::neutral_cast_points(&source).expect("neutral cast points");
-        let generated = crate::rustfmt(&generated).expect("formatted cast points");
-        let committed = std::fs::read_to_string(crate::neutral_cast_points_path())
-            .expect("committed cast points");
-        assert_eq!(
-            committed, generated,
-            "neutral cast points are stale: run import_items"
         );
     }
 

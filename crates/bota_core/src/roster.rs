@@ -1,11 +1,7 @@
-//! What each size of jungle camp may fill with.
+//! Dry-camp rosters for maps that use the legacy spawn ranges.
 //!
-//! The dry camps' rosters are Liquipedia's camp articles (read 2026-10-18),
-//! in the order of its *Neutral Creeps* tables: a camp whose map entry draws
-//! from fewer rosters than its size has takes the first ones. A flooded
-//! camp's creeps are not drawn: they evolve with the clock, as
-//! [`flooded_creeps`] works out. Which camp stands where is the map's
-//! business; this is only what it draws from.
+//! The compositions for side-specific draws are defined separately and held until
+//! the matching map ranges and the new unit art are available.
 
 use crate::{CampDef, CampKind, NeutralKind, rules};
 
@@ -16,9 +12,10 @@ pub struct Roster {
     pub kind: CampKind,
     /// The creeps it puts out.
     pub creeps: &'static [NeutralKind],
+    pub offered: bool,
 }
 
-/// The most creeps any roster puts out.
+/// Capacity for a camp roster, including the five-creep compositions used by older maps.
 pub const MAX_CAMP_CREEPS: usize = 5;
 
 const _: () = {
@@ -30,16 +27,16 @@ const _: () = {
         }
         at += 1;
     }
-    assert!(most == MAX_CAMP_CREEPS);
+    assert!(most <= MAX_CAMP_CREEPS);
 };
 
 /// Every roster in the jungle, grouped by camp size.
 pub const ROSTERS: [Roster; 22] = [
     // Kobold Camp
     Roster {
+        offered: true,
         kind: CampKind::Small,
         creeps: &[
-            NeutralKind::Kobold,
             NeutralKind::Kobold,
             NeutralKind::Kobold,
             NeutralKind::KoboldTunneler,
@@ -48,6 +45,7 @@ pub const ROSTERS: [Roster; 22] = [
     },
     // Hill Troll Camp
     Roster {
+        offered: true,
         kind: CampKind::Small,
         creeps: &[
             NeutralKind::ForestTrollBerserker,
@@ -57,6 +55,7 @@ pub const ROSTERS: [Roster; 22] = [
     },
     // Hill Troll and Kobold Camp
     Roster {
+        offered: true,
         kind: CampKind::Small,
         creeps: &[
             NeutralKind::ForestTrollBerserker,
@@ -66,6 +65,7 @@ pub const ROSTERS: [Roster; 22] = [
     },
     // Vhoul Assassin Camp
     Roster {
+        offered: true,
         kind: CampKind::Small,
         creeps: &[
             NeutralKind::GnollAssassin,
@@ -75,6 +75,7 @@ pub const ROSTERS: [Roster; 22] = [
     },
     // Ghost Camp
     Roster {
+        offered: true,
         kind: CampKind::Small,
         creeps: &[
             NeutralKind::FelBeast,
@@ -84,6 +85,7 @@ pub const ROSTERS: [Roster; 22] = [
     },
     // Harpy Camp
     Roster {
+        offered: true,
         kind: CampKind::Small,
         creeps: &[
             NeutralKind::HarpyScout,
@@ -93,11 +95,13 @@ pub const ROSTERS: [Roster; 22] = [
     },
     // Centaur Camp
     Roster {
+        offered: false,
         kind: CampKind::Medium,
         creeps: &[NeutralKind::CentaurOutrunner, NeutralKind::CentaurKhan],
     },
     // Wolf Camp
     Roster {
+        offered: true,
         kind: CampKind::Medium,
         creeps: &[
             NeutralKind::GiantWolf,
@@ -107,6 +111,7 @@ pub const ROSTERS: [Roster; 22] = [
     },
     // Satyr Camp
     Roster {
+        offered: true,
         kind: CampKind::Medium,
         creeps: &[
             NeutralKind::SatyrTrickster,
@@ -117,6 +122,7 @@ pub const ROSTERS: [Roster; 22] = [
     },
     // Ogre Camp
     Roster {
+        offered: true,
         kind: CampKind::Medium,
         creeps: &[
             NeutralKind::OgreMauler,
@@ -126,11 +132,13 @@ pub const ROSTERS: [Roster; 22] = [
     },
     // Golem Camp
     Roster {
+        offered: true,
         kind: CampKind::Medium,
         creeps: &[NeutralKind::MudGolem, NeutralKind::MudGolem],
     },
     // Large Centaur Camp
     Roster {
+        offered: true,
         kind: CampKind::Large,
         creeps: &[
             NeutralKind::CentaurOutrunner,
@@ -140,15 +148,17 @@ pub const ROSTERS: [Roster; 22] = [
     },
     // Large Satyr Camp
     Roster {
+        offered: true,
         kind: CampKind::Large,
         creeps: &[
-            NeutralKind::SatyrTrickster,
+            NeutralKind::SatyrSoulstealer,
             NeutralKind::SatyrSoulstealer,
             NeutralKind::SatyrHellcaller,
         ],
     },
     // Hellbear Camp
     Roster {
+        offered: true,
         kind: CampKind::Large,
         creeps: &[
             NeutralKind::PolarFurbolgChampion,
@@ -157,6 +167,7 @@ pub const ROSTERS: [Roster; 22] = [
     },
     // Wildwing Camp
     Roster {
+        offered: true,
         kind: CampKind::Large,
         creeps: &[
             NeutralKind::Wildkin,
@@ -166,6 +177,7 @@ pub const ROSTERS: [Roster; 22] = [
     },
     // Troll Camp
     Roster {
+        offered: true,
         kind: CampKind::Large,
         creeps: &[
             NeutralKind::DarkTroll,
@@ -175,11 +187,13 @@ pub const ROSTERS: [Roster; 22] = [
     },
     // Warpine Camp
     Roster {
+        offered: false,
         kind: CampKind::Large,
         creeps: &[NeutralKind::WarpineRaider, NeutralKind::WarpineRaider],
     },
     // Dragon Camp
     Roster {
+        offered: true,
         kind: CampKind::Ancient,
         creeps: &[
             NeutralKind::BlackDrake,
@@ -189,6 +203,7 @@ pub const ROSTERS: [Roster; 22] = [
     },
     // Large Golem Camp
     Roster {
+        offered: true,
         kind: CampKind::Ancient,
         creeps: &[
             NeutralKind::RockGolem,
@@ -198,6 +213,7 @@ pub const ROSTERS: [Roster; 22] = [
     },
     // Thunderhide Camp
     Roster {
+        offered: false,
         kind: CampKind::Ancient,
         creeps: &[
             NeutralKind::SmallThunderLizard,
@@ -207,6 +223,7 @@ pub const ROSTERS: [Roster; 22] = [
     },
     // Frostbitten Camp
     Roster {
+        offered: true,
         kind: CampKind::Ancient,
         creeps: &[
             NeutralKind::FrostbittenGolem,
@@ -216,6 +233,7 @@ pub const ROSTERS: [Roster; 22] = [
     },
     // Prowler Camp
     Roster {
+        offered: true,
         kind: CampKind::Ancient,
         creeps: &[
             NeutralKind::ProwlerAcolyte,
@@ -233,6 +251,9 @@ pub fn rosters_of(camp: &CampDef) -> impl Iterator<Item = (u8, &'static Roster)>
         .enumerate()
         .filter(move |(_, roster)| roster.kind == camp.kind)
         .take(usize::from(camp.rosters))
+        .filter(|(_, roster)| {
+            roster.offered && roster.creeps.iter().all(|kind| kind.neutral().offered)
+        })
         .map(|(index, roster)| (index as u8, roster))
 }
 
@@ -297,4 +318,232 @@ pub const fn flooded_creeps(camp: &CampDef, evolutions: u32) -> [NeutralKind; FL
         at += 1;
     }
     creeps
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{MAPS, PATCH_CAMP_ROSTERS};
+
+    #[test]
+    fn every_legacy_roster_keeps_its_order_composition_and_eligibility() {
+        use CampKind::{Ancient, Large, Medium, Small};
+        use NeutralKind::*;
+
+        let expected: [(CampKind, bool, &[NeutralKind]); 22] = [
+            // Kobold Camp
+            (
+                Small,
+                true,
+                &[Kobold, Kobold, KoboldTunneler, KoboldTaskmaster],
+            ),
+            // Hill Troll Camp
+            (
+                Small,
+                true,
+                &[
+                    ForestTrollBerserker,
+                    ForestTrollBerserker,
+                    ForestTrollHighPriest,
+                ],
+            ),
+            // Hill Troll and Kobold Camp
+            (
+                Small,
+                true,
+                &[ForestTrollBerserker, ForestTrollBerserker, KoboldTaskmaster],
+            ),
+            // Vhoul Assassin Camp
+            (Small, true, &[GnollAssassin, GnollAssassin, GnollAssassin]),
+            // Ghost Camp
+            (Small, true, &[FelBeast, FelBeast, Ghost]),
+            // Harpy Camp
+            (Small, true, &[HarpyScout, HarpyScout, HarpyStorm]),
+            // Centaur Camp
+            (Medium, false, &[CentaurOutrunner, CentaurKhan]),
+            // Wolf Camp
+            (Medium, true, &[GiantWolf, GiantWolf, AlphaWolf]),
+            // Satyr Camp
+            (
+                Medium,
+                true,
+                &[
+                    SatyrTrickster,
+                    SatyrTrickster,
+                    SatyrSoulstealer,
+                    SatyrSoulstealer,
+                ],
+            ),
+            // Ogre Camp
+            (Medium, true, &[OgreMauler, OgreMauler, OgreMagi]),
+            // Golem Camp
+            (Medium, true, &[MudGolem, MudGolem]),
+            // Large Centaur Camp
+            (
+                Large,
+                true,
+                &[CentaurOutrunner, CentaurOutrunner, CentaurKhan],
+            ),
+            // Large Satyr Camp
+            (
+                Large,
+                true,
+                &[SatyrSoulstealer, SatyrSoulstealer, SatyrHellcaller],
+            ),
+            // Hellbear Camp
+            (
+                Large,
+                true,
+                &[PolarFurbolgChampion, PolarFurbolgUrsaWarrior],
+            ),
+            // Wildwing Camp
+            (Large, true, &[Wildkin, Wildkin, EnragedWildkin]),
+            // Troll Camp
+            (Large, true, &[DarkTroll, DarkTroll, DarkTrollWarlord]),
+            // Warpine Camp
+            (Large, false, &[WarpineRaider, WarpineRaider]),
+            // Dragon Camp
+            (Ancient, true, &[BlackDrake, BlackDrake, BlackDragon]),
+            // Large Golem Camp
+            (Ancient, true, &[RockGolem, RockGolem, GraniteGolem]),
+            // Thunderhide Camp
+            (
+                Ancient,
+                false,
+                &[SmallThunderLizard, SmallThunderLizard, BigThunderLizard],
+            ),
+            // Frostbitten Camp
+            (
+                Ancient,
+                true,
+                &[FrostbittenGolem, FrostbittenGolem, IceShaman],
+            ),
+            // Prowler Camp
+            (
+                Ancient,
+                true,
+                &[ProwlerAcolyte, ProwlerAcolyte, ProwlerShaman],
+            ),
+        ];
+        for (index, (roster, expected)) in ROSTERS.iter().zip(expected).enumerate() {
+            assert_eq!(
+                (roster.kind, roster.offered, roster.creeps),
+                expected,
+                "legacy roster {index}"
+            );
+        }
+    }
+
+    #[test]
+    fn retired_legacy_rosters_are_kept_but_never_drawn() {
+        use NeutralKind::*;
+        let retired: [(CampKind, &[NeutralKind]); 3] = [
+            (CampKind::Medium, &[CentaurOutrunner, CentaurKhan]),
+            (CampKind::Large, &[WarpineRaider, WarpineRaider]),
+            (
+                CampKind::Ancient,
+                &[SmallThunderLizard, SmallThunderLizard, BigThunderLizard],
+            ),
+        ];
+        let actual: Vec<_> = ROSTERS
+            .iter()
+            .filter(|row| !row.offered)
+            .map(|row| (row.kind, row.creeps))
+            .collect();
+        assert_eq!(actual, retired);
+        for (class, retired_creeps) in retired {
+            // The maximal range also checks rows omitted by narrower current maps.
+            let camp = CampDef {
+                kind: class,
+                rosters: u8::MAX,
+                ..crate::CAMPS[0]
+            };
+            assert!(
+                rosters_of(&camp).all(|(_, row)| row.creeps != retired_creeps),
+                "a camp can draw the retired {class:?} roster {retired_creeps:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn offered_legacy_rosters_match_their_side_specific_compositions() {
+        // One entry per legacy row, in order. A replacement may move a roster to a different
+        // spawn type or list the same creeps in a different order.
+        let patch_rows = [
+            Some(0),
+            Some(2),
+            Some(1),
+            Some(3),
+            Some(4),
+            Some(5),
+            None,
+            Some(1),
+            Some(3),
+            Some(0),
+            Some(4),
+            Some(0),
+            Some(4),
+            Some(3),
+            Some(2),
+            Some(5),
+            None,
+            Some(3),
+            Some(0),
+            None,
+            Some(2),
+            Some(4),
+        ];
+        for (index, (legacy, patch_row)) in ROSTERS.iter().zip(patch_rows).enumerate() {
+            let Some(patch_row) = patch_row else {
+                assert!(!legacy.offered, "legacy roster {index}");
+                continue;
+            };
+            assert!(legacy.offered, "legacy roster {index}");
+            let mut actual: Vec<_> = legacy.creeps.iter().map(|kind| kind.id()).collect();
+            let mut expected: Vec<_> = PATCH_CAMP_ROSTERS[legacy.kind as usize][patch_row]
+                .iter()
+                .map(|kind| kind.id())
+                .collect();
+            actual.sort_unstable();
+            expected.sort_unstable();
+            assert_eq!(
+                actual,
+                expected,
+                "legacy roster {index}, patch row {}",
+                patch_row + 1
+            );
+        }
+    }
+
+    #[test]
+    fn known_patch_rows_are_ordered_and_retain_the_flooded_rows_and_ancient_gap() {
+        use NeutralKind::*;
+        let [small, medium, large, ancient] = PATCH_CAMP_ROSTERS;
+        assert_eq!(small[0], [Kobold, Kobold, KoboldTunneler, KoboldTaskmaster]);
+        assert_eq!(small[6], [Tadpole, Tadpole, Tadpole]);
+        assert_eq!(medium[2], [Radigull, Radigull]);
+        assert_eq!(
+            medium[5],
+            [OdobenusFootman, OdobenusFootman, OdobenusFrostmage]
+        );
+        assert_eq!(large[1], [EimermoleForeman, Eimermole]);
+        assert_eq!(ancient[1], [OgreSealPup, OgreSealPup, OgreSeal]);
+        assert!(ancient[5].is_empty());
+        assert_eq!(ancient[6], [AncientFrogMage, AncientFrog, AncientFrog]);
+    }
+
+    #[test]
+    fn every_dry_camp_keeps_a_playable_roster_while_patch_rosters_are_held() {
+        for map in MAPS {
+            for camp in map.camps.iter().filter(|camp| !camp.flooded) {
+                let rosters: Vec<_> = rosters_of(camp).map(|(_, roster)| roster).collect();
+                assert!(!rosters.is_empty(), "{camp:?}");
+                for roster in rosters {
+                    assert_eq!(roster.kind, camp.kind);
+                    assert!(roster.offered);
+                    assert!(roster.creeps.iter().all(|kind| kind.neutral().offered));
+                }
+            }
+        }
+    }
 }

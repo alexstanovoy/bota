@@ -3,11 +3,15 @@
 //! read.
 //!
 //! The numbers are the game's `scripts/npc/npc_abilities.txt` (and, for Ice
-//! Armor, Ensnare and Raise Dead, the hero files that hold them), client 6957
-//! (7.41f). When the neutral AI casts an ability, and the parts of an effect
-//! the files leave out, are Liquipedia's article of each creep (read
-//! 2026-10-18). A neutral's abilities come in four levels; one spawns with
-//! them at the level of [`neutral_ability_level`] and keeps it.
+//! Armor, Ensnare and Raise Dead, the hero files that hold them), read by
+//! `tools/import_items` into [`neutral_data`](crate::neutral_data) and taken
+//! from it by Dota's own keys. What the scripts leave out is in the
+//! importer's `neutral_overrides.rs`, each with its source: the backswings.
+//! When the neutral AI casts an ability, and the parts of an effect the files
+//! leave out, are Liquipedia's article of each creep (read 2026-10-18). A
+//! neutral's abilities come in four levels (the scripts say `MaxLevel 1` and
+//! list four numbers); one spawns with them at the level of
+//! [`neutral_ability_level`] and keeps it.
 //!
 //! A new ability that one of the mechanics below already covers is one
 //! variant appended to [`NeutralAbility`], one entry appended to
@@ -17,11 +21,10 @@
 
 use bota_proto::{AbilityId, Aim, DamageKind, EffectId};
 
-use crate::neutral_cast_points::{OGRE_SMASH_CAST_POINT, OGRE_SMASH_PLAYER_CAST_POINT};
-
+use crate::neutral_data as script;
 use crate::{
-    ABILITY_COUNT, AbilityDef, Among, Aura, AuraModifier, BARE_ABILITY, CastRule, Mark, Need,
-    NeutralKind, Pick, Reach, When, Whom, Within, rules,
+    ABILITY_COUNT, AbilityDef, Among, Aura, AuraModifier, BARE_ABILITY, CastRule, Dec, Mark, Need,
+    NeutralKind, Pick, Reach, ScriptData, When, Whom, Within, rules,
 };
 
 /// One neutral ability. Its place is its entry's in [`NEUTRAL_ABILITIES`];
@@ -95,6 +98,18 @@ pub enum NeutralAbility {
     RoshanSlam,
     RevengeRoar,
     GrabAndThrow,
+    HurlBigBoulder,
+    Reserved89,
+    Eggstremism,
+    OdobenusBlight,
+    MinersAura,
+    MinersSlam,
+    SealFlop,
+    SealDisapprovalAura,
+    GoldUpgrade,
+    StealWeaponCast,
+    SnowballShot,
+    SearingSwoop,
 }
 
 impl NeutralAbility {
@@ -129,7 +144,9 @@ impl NeutralAbility {
     pub const fn per_source(self) -> bool {
         match self.spell() {
             Spell::Aura(aura) => aura.stacks,
-            Spell::Strike(_) => true,
+            // Odobenus Blight is one instance on a target whoever laid it: a second blow, of the
+            // same Footman or another, refreshes it.
+            Spell::Strike(_) => !matches!(self, NeutralAbility::OdobenusBlight),
             _ => false,
         }
     }
@@ -549,14 +566,25 @@ pub enum Act {
     },
     /// `lines` spikes from the caster, `spread_deg` degrees apart and centred
     /// on its aim, each `length` long and `width` wide: every enemy they
-    /// cross takes `damage` magical and is stunned for `ms`.
+    /// cross takes `damage` magical and, for `ms`, is stunned or broken as
+    /// `afflicts` says.
     Spikes {
         lines: u8,
         spread_deg: i32,
         length: i32,
         width: i32,
         damage: Lv,
-        ms: i32,
+        afflicts: Afflicts,
+        ms: Lv,
+    },
+    /// A big boulder that lands at the spot aimed at: every enemy within `radius` of it takes
+    /// `damage` of `kind` and is stunned for `ms`. Its flight (0.8 to 1.2 s in the script) is
+    /// not modelled: it lands as the cast goes off.
+    Boulder {
+        radius: i32,
+        damage: Lv,
+        kind: DamageKind,
+        ms: Lv,
     },
     /// A barrier on an ally soaking `absorb` magical damage for `ms`; as it
     /// goes, it mends `heal_pct` percent of `absorb` on the ally and on every
@@ -573,10 +601,12 @@ pub enum Act {
         distance: i32,
         speed: i32,
     },
-    /// Takes the target's buffs off and slows it, the slow falling from
-    /// `start_pct` by a fifth of it each second over `ms`.
+    /// Takes the target's buffs off and slows it for `ms`, the slow falling from `start_pct` by
+    /// `start_pct / rate` each second (`rate` is the script's `purge_rate`: the seconds it takes
+    /// to fall away).
     Purge {
         start_pct: i32,
+        rate: i32,
         ms: i32,
     },
     /// A tornado of `kind` stands at the target for `life_ms`.
@@ -584,6 +614,54 @@ pub enum Act {
         kind: NeutralKind,
         life_ms: i32,
     },
+    /// `count` pulses `interval_ms` apart, the first as the cast goes off, at the spot `reach` in
+    /// front of the caster along its facing: each deals the whole `damage` (magical) to every
+    /// enemy within `radius` of the spot, and slows it by `slow` for `slow_ms`.
+    Pulses {
+        reach: i32,
+        radius: i32,
+        damage: Lv,
+        count: u8,
+        interval_ms: i32,
+        slow: Buff,
+        slow_ms: i32,
+        effect: EffectId,
+    },
+    /// `damage` (magical) and a `slow` for `slow_ms` to the enemy aimed at, or a heal of `damage`
+    /// to an ally; then, `delay_ms` after each hit, on to a unit of either side picked at random
+    /// within `range` of the last, never the one just hit, until it has bounced `bounces` times.
+    Ricochet {
+        damage: Lv,
+        bounces: Lv,
+        range: i32,
+        delay_ms: i32,
+        slow: Buff,
+        slow_ms: i32,
+        effect: EffectId,
+    },
+    /// The caster leaps `distance` forward along its facing, starting at `speed` and speeding up
+    /// by `acceleration` each second, and lands with `damage` (magical) and `slow` for `slow_ms`
+    /// on every enemy within `radius`; then it leaps again until it has made `leaps`.
+    Leap {
+        distance: i32,
+        speed: i32,
+        acceleration: i32,
+        radius: i32,
+        damage: i32,
+        leaps: u8,
+        slow: Buff,
+        slow_ms: i32,
+        effect: EffectId,
+    },
+}
+
+/// What spikes do to the enemies they cross, besides their damage.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Afflicts {
+    /// A stun.
+    Stun,
+    /// A Break: their passives are silenced.
+    Break,
 }
 
 /// A channeled grip followed by an airborne throw and a landing effect.
@@ -639,6 +717,13 @@ pub struct Shared {
     pub ms: i32,
 }
 
+/// The cast probability and attempt cooldown from the neutral's script values.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CastChance {
+    pub pct: i32,
+    pub wait_ms: i32,
+}
+
 /// What a neutral ability does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Spell {
@@ -676,6 +761,9 @@ pub enum Spell {
         act: Act,
         when: When,
         shared: Option<Shared>,
+        /// How often the neutral AI follows through when the rule picks something: the script's
+        /// `neutral_chance_to_cast`. Absent when the script has none: it casts at once.
+        chance: Option<CastChance>,
     },
     /// A permanent self modifier, optionally also carrying an aura.
     Intrinsic {
@@ -747,8 +835,29 @@ pub struct NeutralAbilityDef {
     pub ability: NeutralAbility,
     /// The ability as any ability is, its id included.
     pub def: AbilityDef,
+    /// The numbered cast animation named by the ability, when it has one.
+    pub cast_animation_slot: Option<u8>,
     pub spell: Spell,
 }
+
+// Every ability row the generated table holds has an entry here: a patch that gives a unit an
+// ability bota has no entry for fails the build.
+const _: () = {
+    let mut row = 0;
+    while row < script::ABILITY_ROWS.len() {
+        let mut at = 0;
+        let mut found = false;
+        while at < NEUTRAL_ABILITIES.len() {
+            found |= crate::item_data::str_eq(
+                NEUTRAL_ABILITIES[at].def.key,
+                script::ABILITY_ROWS[row].key,
+            );
+            at += 1;
+        }
+        assert!(found, "a neutral ability of the script has no entry");
+        row += 1;
+    }
+};
 
 const _: () = {
     let mut at = 0;
@@ -807,24 +916,28 @@ const fn cast(
     }
 }
 
-/// Seconds as ticks, for a cooldown.
-const fn secs(seconds: u32) -> u32 {
-    seconds * rules::TICKS_PER_SECOND
-}
-
 /// One entry, its ability carrying the aura its spell is, if it is one.
 const fn entry(
     id: AbilityId,
-    key: &'static str,
+    data: &'static ScriptData,
     ability: NeutralAbility,
     def: AbilityDef,
     spell: Spell,
 ) -> NeutralAbilityDef {
+    let cast_animation_slot = match data.find("AbilityCastAnimationSlot") {
+        Some(slots) => {
+            let slot = slots[0].int();
+            assert!(1 <= slot && slot <= 7);
+            Some(slot as u8)
+        }
+        None => None,
+    };
     NeutralAbilityDef {
         ability,
+        cast_animation_slot,
         def: AbilityDef {
             id,
-            key,
+            key: data.key,
             aura: spell.aura(ability),
             block: if matches!(
                 spell,
@@ -844,23 +957,23 @@ const fn entry(
     }
 }
 
-/// An aura for its own side.
-const fn allies(radius: i32, buff: Buff, effect: u16) -> Spell {
-    Spell::Aura(AuraSpell::allies(radius, buff, effect))
+/// An aura for its own side, reaching its script's `radius`.
+const fn allies(data: &ScriptData, buff: Buff, effect: u16) -> Spell {
+    Spell::Aura(AuraSpell::allies(data, buff, effect))
 }
 
 impl AuraSpell {
-    /// An aura for its own side: one modifier whatever the sources, silenced
-    /// by a Break, working anywhere.
-    const fn allies(radius: i32, buff: Buff, effect: u16) -> AuraSpell {
+    /// An aura for its own side: one modifier whatever the sources, silenced by a Break when its
+    /// script says `IsBreakable`, working anywhere.
+    const fn allies(data: &ScriptData, buff: Buff, effect: u16) -> AuraSpell {
         AuraSpell {
             whom: Whom::Allies,
-            radius,
+            radius: data.int("radius"),
             buff,
             effect: EffectId(effect),
             stacks: false,
             water: false,
-            breakable: true,
+            breakable: data.breakable(),
         }
     }
 }
@@ -872,936 +985,1251 @@ const OGRE_SMASH: u8 = 2;
 
 /// The hold the frogs' spikes put on each other (7.41: "all copies ... on
 /// other neutral Boglets, Croakers, and Ancient Croakers within 1200 range
-/// are put on 5s cooldown"). The golems and the ogres "can't do it if
-/// recently other golem used this ability", with no numbers given; the frogs'
-/// are used for them.
+/// are put on 5s cooldown": their scripts' `neutral_shared_cooldown`). The
+/// golems and the ogres "can't do it if recently other golem used this
+/// ability", with no numbers given; the frogs' are used for them.
 const fn hold(family: u8) -> Option<Shared> {
     Some(Shared {
         family,
-        radius: 1200,
-        ms: 5000,
+        radius: script::FROGMEN_ARM_OF_THE_DEEP.int("neutral_shared_radius"),
+        ms: script::FROGMEN_ARM_OF_THE_DEEP.ms("neutral_shared_cooldown"),
     })
+}
+
+/// When a Marshmage puts up its bubble.
+const BUBBLE_WHEN: When = When::Think(CastRule {
+    among: Among::Allies(Within::CastRange),
+    needs: &[],
+    marks: &[Mark::HurtBelow { pct: 50 }, Mark::Unmarked],
+    pick: Pick::LeastHealthPct,
+});
+
+/// What a script row of an ability gives, by level: a list shorter than the four levels holds
+/// its last number for the rest. Anything a row lacks that the code asks for fails the build:
+/// the importer writes what a script leaves out into its row, with the reason (an override or a
+/// default of its override file), so nothing is defaulted here.
+impl ScriptData {
+    /// The first level's number, whole.
+    const fn int(&self, key: &str) -> i32 {
+        self.first(key).int()
+    }
+
+    /// The first level's number of seconds, in milliseconds.
+    const fn ms(&self, key: &str) -> i32 {
+        self.first(key).0
+    }
+
+    /// Whole numbers, a level.
+    const fn lv(&self, key: &str) -> Lv {
+        self.lv_per(key, 1)
+    }
+
+    /// Seconds as milliseconds, a level.
+    const fn lv_ms(&self, key: &str) -> Lv {
+        self.lv_per(key, 1000)
+    }
+
+    /// `per_unit` of the result for each unit of the script's number, a level: a tenth of a
+    /// point a second is `10`. Fails the build for a number that does not come out whole.
+    const fn lv_per(&self, key: &str, per_unit: i32) -> Lv {
+        let levels = self.value(key);
+        let mut out = [0; 4];
+        let mut level = 0;
+        while level < 4 {
+            let at = if level < levels.len() {
+                level
+            } else {
+                levels.len() - 1
+            };
+            let scaled = levels[at].0 as i64 * per_unit as i64;
+            assert!(
+                scaled % 1000 == 0,
+                "a number that is not whole in the unit asked"
+            );
+            out[level] = (scaled / 1000) as i32;
+            level += 1;
+        }
+        out
+    }
+
+    /// The numbers of `key` in the row, if it has them: the one key a row may lack by design.
+    const fn find(&self, key: &str) -> Option<&'static [Dec]> {
+        let mut at = 0;
+        while at < self.values.len() {
+            if crate::item_data::str_eq(self.values[at].0, key) {
+                return Some(self.values[at].1);
+            }
+            at += 1;
+        }
+        None
+    }
+
+    /// The hesitation the script gives a neutral before this cast, if it gives one.
+    const fn chance(&self) -> Option<CastChance> {
+        match (
+            self.find("neutral_chance_to_cast"),
+            self.find("neutral_cast_attempt_cooldown"),
+        ) {
+            (Some(pct), Some(wait)) => Some(CastChance {
+                pct: pct[0].int(),
+                wait_ms: wait[0].0,
+            }),
+            (None, None) => None,
+            _ => panic!("a script gives a cast chance without its wait, or the wait without it"),
+        }
+    }
+
+    /// Whether the script says `IsBreakable`: a Break silences the ability.
+    const fn breakable(&self) -> bool {
+        self.first("IsBreakable").0 == 1000
+    }
+}
+
+/// `value`, which the build refuses unless it is above zero (a rate a slow falls by).
+const fn positive(value: i32) -> i32 {
+    assert!(value > 0, "a rate that is not above zero");
+    value
+}
+
+/// `100` less each level's number.
+const fn complement(values: Lv) -> Lv {
+    lv(
+        100 - values[0],
+        100 - values[1],
+        100 - values[2],
+        100 - values[3],
+    )
+}
+
+/// Each level's number, its sign reversed.
+const fn negated(values: Lv) -> Lv {
+    lv(-values[0], -values[1], -values[2], -values[3])
+}
+
+/// The whole numbers of a key of the row, one for each level it lists: a slice for an
+/// [`AbilityDef`].
+macro_rules! whole_levels {
+    ($data:expr, $key:literal) => {{
+        const LEVELS: &[Dec] = $data.value($key);
+        &whole_array::<{ LEVELS.len() }>(LEVELS)
+    }};
+}
+
+/// The cooldowns of a key of the row in ticks, one for each level it lists.
+macro_rules! tick_levels {
+    ($data:expr, $key:literal) => {{
+        const LEVELS: &[Dec] = $data.value($key);
+        &tick_array::<{ LEVELS.len() }>(LEVELS)
+    }};
+}
+
+const fn whole_array<const N: usize>(levels: &[Dec]) -> [i32; N] {
+    let mut out = [0; N];
+    let mut level = 0;
+    while level < N {
+        out[level] = levels[level].int();
+        level += 1;
+    }
+    out
+}
+
+const fn tick_array<const N: usize>(levels: &[Dec]) -> [u32; N] {
+    let mut out = [0; N];
+    let mut level = 0;
+    while level < N {
+        out[level] = levels[level].secs().ticks();
+        level += 1;
+    }
+    out
+}
+
+/// An ability that is cast, as its script has it: its mana and cooldown a level, its cast range
+/// (that of the fourth argument when given, else its `AbilityCastRange`: a no-target cast has none,
+/// and one that reaches by a value of its own names it), cast point, and the backswing the scripts
+/// do not hold. The range is that of the first level: `AbilityDef` has one range, not one a level.
+macro_rules! cast_of {
+    ($data:expr, $aim:expr, $enemy:expr) => {
+        cast_of!($data, $aim, $enemy, $data.int("AbilityCastRange"))
+    };
+    ($data:expr, $aim:expr, $enemy:expr, $range:expr) => {
+        cast(
+            $aim,
+            $enemy,
+            whole_levels!($data, "AbilityManaCost"),
+            tick_levels!($data, "AbilityCooldown"),
+            $range,
+            $data.ms("AbilityCastPoint") as u32,
+            $data.ms("AbilityCastBackswing") as u32,
+        )
+    };
+}
+
+const fn count(value: i32) -> u8 {
+    assert!(
+        value >= 0 && value <= u8::MAX as i32,
+        "neutral cast count is out of range"
+    );
+    value as u8
+}
+
+/// An entry over the row of its script, `D`.
+macro_rules! with {
+    ($data:path, $entry:expr) => {{
+        const D: &ScriptData = &$data;
+        $entry
+    }};
 }
 
 use NeutralAbility as N;
 
+const RESERVED_89: ScriptData = ScriptData {
+    key: "bota_kobold_disarm_passive",
+    values: &[],
+};
+
 /// Every neutral ability, in the order of [`NeutralAbility`].
 pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
-    entry(
-        AbilityId(17),
-        "kobold_tunneler_prospecting",
-        N::ProspectingAura,
-        passive(),
-        Spell::Idle,
+    with!(
+        script::KOBOLD_TUNNELER_PROSPECTING,
+        entry(AbilityId(17), D, N::ProspectingAura, passive(), Spell::Idle,)
     ),
-    entry(
-        AbilityId(18),
-        "neutral_upgrade",
-        N::NeutralUpgrade,
-        passive(),
-        Spell::Upgrade,
+    with!(
+        script::NEUTRAL_UPGRADE,
+        entry(
+            AbilityId(18),
+            D,
+            N::NeutralUpgrade,
+            passive(),
+            Spell::Upgrade
+        )
     ),
-    entry(
-        AbilityId(19),
-        "kobold_disarm",
-        N::StealWeapon,
-        passive_cooling(&[secs(9)]),
-        Spell::Strike(Strike::Disarm {
-            hits: 3,
-            ms: lv(3000, 3500, 4000, 5000),
-            counter: EffectId(25),
-        }),
-    ),
-    entry(
-        AbilityId(20),
-        "kobold_taskmaster_speed_aura",
-        N::SpeedAura,
-        passive(),
-        allies(1200, Buff::of(Stat::MovePct, lv(12, 13, 14, 16)), 26),
-    ),
-    entry(
-        AbilityId(21),
-        "berserker_troll_break",
-        N::Break,
-        passive_cooling(&[secs(10), secs(9), secs(8), secs(6)]),
-        Spell::Strike(Strike::Break { ms: 3000 }),
-    ),
-    entry(
-        AbilityId(22),
-        "creep_piercing",
-        N::Piercing,
-        passive(),
-        Spell::Piercing,
-    ),
-    entry(
-        AbilityId(23),
-        "forest_troll_high_priest_heal",
-        N::Heal,
-        cast(
-            Aim::Unit,
-            false,
-            &[60],
-            &[secs(10), secs(9), secs(8), secs(6)],
-            350,
-            500,
-            700,
-        ),
-        Spell::Uncast,
-    ),
-    entry(
-        AbilityId(24),
-        "forest_troll_high_priest_heal_amp_aura",
-        N::HealAmplificationAura,
-        passive(),
-        Spell::Idle,
-    ),
-    entry(
-        AbilityId(25),
-        "gnoll_assassin_envenomed_weapon",
-        N::EnvenomedWeapon,
-        passive(),
-        Spell::Strike(Strike::Lay {
-            buff: Buff::of(Stat::RegenCutPct, lv(75, 80, 85, 90)),
-            effect: EffectId(27),
-            hero_ms: 2000,
-            other_ms: 20000,
-            dps: lv(0, 20, 40, 80),
-        }),
-    ),
-    entry(
-        AbilityId(26),
-        "fel_beast_haunt",
-        N::Vex,
-        cast(
-            Aim::Unit,
-            true,
-            &[75],
-            &[secs(15), secs(13), secs(11), secs(7)],
-            600,
-            0,
-            500,
-        ),
-        Spell::Uncast,
-    ),
-    entry(
-        AbilityId(27),
-        "ghost_frost_attack",
-        N::FrostAttack,
-        passive(),
-        Spell::Strike(Strike::Lay {
-            buff: chill(lv(-25, -28, -31, -37), lv(-25, -28, -31, -37)),
-            effect: EffectId(28),
-            hero_ms: 1500,
-            other_ms: 1500,
-            dps: all(0),
-        }),
-    ),
-    entry(
-        AbilityId(28),
-        "harpy_scout_take_off",
-        N::TakeOff,
-        cast(Aim::Own, false, &[20], &[secs(10)], 0, 1500, 0),
-        Spell::Uncast,
-    ),
-    entry(
-        AbilityId(29),
-        "harpy_storm_chain_lightning",
-        N::ChainLightning,
-        cast(Aim::Unit, true, &[60], &[secs(4)], 900, 300, 670),
-        Spell::Cast {
-            act: Act::Chain {
-                damage: lv(120, 170, 220, 270),
-                targets: 4,
-                radius: 500,
-                delay_ms: 250,
-                keep_pct: lv(75, 80, 85, 90),
-            },
-            when: When::Think(CastRule {
-                among: Among::Foes(Within::CastRange),
-                needs: &[],
-                marks: &[Mark::HpBelow { hp: 330 }, Mark::AttacksCaster],
-                pick: Pick::LeastHp,
+    with!(
+        script::RETIRED_KOBOLD_DISARM,
+        entry(
+            AbilityId(19),
+            D,
+            N::StealWeapon,
+            passive_cooling(tick_levels!(D, "AbilityCooldown")),
+            Spell::Strike(Strike::Disarm {
+                hits: D.int("hits") as u8,
+                ms: D.lv_ms("duration"),
+                counter: EffectId(25),
             }),
-            shared: None,
-        },
+        )
     ),
-    entry(
-        AbilityId(30),
-        "mudgolem_cloak_aura",
-        N::CloakAura,
-        passive(),
-        allies(
-            1200,
-            Buff::two(
-                Stat::MagicResistPct,
-                lv(10, 12, 14, 16),
-                Stat::MagicResistCreepPct,
-                lv(20, 24, 28, 32),
+    with!(
+        script::KOBOLD_TASKMASTER_SPEED_AURA,
+        entry(
+            AbilityId(20),
+            D,
+            N::SpeedAura,
+            passive(),
+            allies(D, Buff::of(Stat::MovePct, D.lv("bonus_movement_speed")), 26),
+        )
+    ),
+    // Retired by Dota 7.42, frozen at its last live values (the importer's retired table): the
+    // key `berserker_troll_break` names another ability in the new scripts.
+    with!(
+        script::RETIRED_BERSERKER_TROLL_BREAK,
+        entry(
+            AbilityId(21),
+            D,
+            N::Break,
+            passive_cooling(tick_levels!(D, "AbilityCooldown")),
+            Spell::Strike(Strike::Break {
+                ms: D.ms("duration")
+            }),
+        )
+    ),
+    with!(
+        script::CREEP_PIERCING,
+        entry(AbilityId(22), D, N::Piercing, passive(), Spell::Piercing)
+    ),
+    with!(
+        script::FOREST_TROLL_HIGH_PRIEST_HEAL,
+        entry(
+            AbilityId(23),
+            D,
+            N::Heal,
+            cast_of!(D, Aim::Unit, false),
+            Spell::Uncast,
+        )
+    ),
+    with!(
+        script::FOREST_TROLL_HIGH_PRIEST_HEAL_AMP_AURA,
+        entry(
+            AbilityId(24),
+            D,
+            N::HealAmplificationAura,
+            passive(),
+            Spell::Idle,
+        )
+    ),
+    with!(
+        script::GNOLL_ASSASSIN_ENVENOMED_WEAPON,
+        entry(
+            AbilityId(25),
+            D,
+            N::EnvenomedWeapon,
+            passive(),
+            Spell::Strike(Strike::Lay {
+                buff: Buff::of(Stat::RegenCutPct, D.lv("regen_reduction")),
+                effect: EffectId(27),
+                hero_ms: D.ms("hero_duration"),
+                other_ms: D.ms("non_hero_duration"),
+                dps: D.lv("damage_per_second"),
+            }),
+        )
+    ),
+    with!(
+        script::FEL_BEAST_HAUNT,
+        entry(
+            AbilityId(26),
+            D,
+            N::Vex,
+            cast_of!(D, Aim::Unit, true),
+            Spell::Uncast,
+        )
+    ),
+    with!(
+        script::GHOST_FROST_ATTACK,
+        entry(
+            AbilityId(27),
+            D,
+            N::FrostAttack,
+            passive(),
+            Spell::Strike(Strike::Lay {
+                buff: chill(D.lv("movespeed_slow"), D.lv("attackspeed_slow")),
+                effect: EffectId(28),
+                hero_ms: D.ms("duration"),
+                other_ms: D.ms("duration"),
+                dps: all(0),
+            }),
+        )
+    ),
+    with!(
+        script::HARPY_SCOUT_TAKE_OFF,
+        entry(
+            AbilityId(28),
+            D,
+            N::TakeOff,
+            cast_of!(D, Aim::Own, false),
+            Spell::Uncast,
+        )
+    ),
+    with!(
+        script::HARPY_STORM_CHAIN_LIGHTNING,
+        entry(
+            AbilityId(29),
+            D,
+            N::ChainLightning,
+            cast_of!(D, Aim::Unit, true),
+            Spell::Cast {
+                act: Act::Chain {
+                    damage: D.lv("initial_damage"),
+                    targets: D.int("max_targets") as u8,
+                    radius: D.int("jump_range"),
+                    delay_ms: D.ms("jump_delay"),
+                    keep_pct: complement(D.lv("damage_percent_loss")),
+                },
+                when: When::Think(CastRule {
+                    among: Among::Foes(Within::CastRange),
+                    needs: &[],
+                    marks: &[Mark::HpBelow { hp: 330 }, Mark::AttacksCaster],
+                    pick: Pick::LeastHp,
+                }),
+                shared: None,
+                chance: D.chance(),
+            },
+        )
+    ),
+    with!(
+        script::MUDGOLEM_CLOAK_AURA,
+        entry(
+            AbilityId(30),
+            D,
+            N::CloakAura,
+            passive(),
+            allies(
+                D,
+                Buff::two(
+                    Stat::MagicResistPct,
+                    D.lv("bonus_magical_armor"),
+                    Stat::MagicResistCreepPct,
+                    D.lv("bonus_magical_armor_creeps"),
+                ),
+                29,
             ),
-            29,
-        ),
+        )
     ),
-    entry(
-        AbilityId(31),
-        "centaur_khan_war_stomp",
-        N::WarStomp,
-        cast(Aim::Own, false, &[50], &[secs(12)], 0, 400, 570),
-        Spell::Cast {
-            act: Act::Stomp {
-                growth: None,
-                other_pct: 100,
-                radius: all(250),
-                damage: lv(25, 50, 75, 150),
-                kind: DamageKind::Magical,
-                hero_ms: all(1600),
-                other_ms: all(3000),
-                then: Then::Stun,
-            },
-            when: When::Think(CastRule::on_itself(&[Need::Crowd {
-                radius: 250,
-                at_least: 3,
-                heroes: 0,
-                on_it: false,
-            }])),
-            shared: None,
-        },
-    ),
-    entry(
-        AbilityId(32),
-        "giant_wolf_intimidate",
-        N::Intimidate,
-        cast(Aim::Own, false, &[50], &[secs(16)], 0, 200, 800),
-        Spell::Cast {
-            act: Act::Stomp {
-                growth: None,
-                other_pct: 100,
-                radius: lv(300, 350, 400, 500),
-                damage: all(0),
-                kind: DamageKind::Magical,
-                hero_ms: all(4000),
-                other_ms: all(4000),
-                then: Then::Wear {
-                    buff: Buff::of(Stat::DamagePct, all(-60)),
-                    effect: EffectId(30),
+    with!(
+        script::CENTAUR_KHAN_WAR_STOMP,
+        entry(
+            AbilityId(31),
+            D,
+            N::WarStomp,
+            cast_of!(D, Aim::Own, false),
+            Spell::Cast {
+                act: Act::Stomp {
+                    growth: None,
+                    other_pct: 100,
+                    radius: D.lv("radius"),
+                    damage: D.lv("AbilityDamage"),
+                    kind: DamageKind::Magical,
+                    hero_ms: D.lv_ms("hero_stun_duration"),
+                    other_ms: D.lv_ms("non_hero_stun_duration"),
+                    then: Then::Stun,
                 },
-            },
-            when: When::Think(CastRule {
-                among: Among::Foes(Within::Radius(300)),
-                needs: &[Need::HurtBelow { pct: 51 }],
-                marks: &[],
-                pick: Pick::Nearest,
-            }),
-            shared: None,
-        },
-    ),
-    entry(
-        AbilityId(33),
-        "alpha_wolf_critical_strike",
-        N::CriticalStrike,
-        passive(),
-        Spell::Strike(Strike::Crit {
-            chance_pct: 20,
-            mult_pct: lv(200, 225, 250, 300),
-            magic: false,
-            targets: ProcTargets::Any,
-        }),
-    ),
-    entry(
-        AbilityId(34),
-        "alpha_wolf_command_aura",
-        N::PackleadersAura,
-        passive(),
-        allies(1200, Buff::of(Stat::DamagePct, all(20)), 31),
-    ),
-    entry(
-        AbilityId(35),
-        "satyr_trickster_purge",
-        N::Purge,
-        cast(
-            Aim::Unit,
-            false,
-            &[120, 115, 110, 100],
-            &[secs(3)],
-            350,
-            200,
-            800,
-        ),
-        Spell::Cast {
-            act: Act::Purge {
-                start_pct: 50,
-                ms: 5000,
-            },
-            when: When::Think(CastRule {
-                among: Among::Foes(Within::Radius(500)),
-                needs: &[],
-                marks: &[Mark::Hero, Mark::Buffed, Mark::InCastRange],
-                pick: Pick::Nearest,
-            }),
-            shared: None,
-        },
-    ),
-    entry(
-        AbilityId(36),
-        "satyr_soulstealer_mana_burn",
-        N::ManaBurn,
-        cast(Aim::Unit, true, &[50], &[secs(18)], 600, 300, 800),
-        Spell::Uncast,
-    ),
-    entry(
-        AbilityId(37),
-        "forest_troll_high_priest_mana_aura",
-        N::ManaAura,
-        passive(),
-        allies(1200, Buff::of(Stat::ManaRegen, all(175)), 32),
-    ),
-    entry(
-        AbilityId(38),
-        "satyr_hellcaller_shockwave",
-        N::Shockwave,
-        cast(Aim::Point, true, &[100], &[secs(8)], 700, 500, 830),
-        Spell::Uncast,
-    ),
-    entry(
-        AbilityId(39),
-        "satyr_hellcaller_unholy_aura",
-        N::UnholyAura,
-        passive(),
-        allies(1200, Buff::of(Stat::HpRegen, lv(30, 50, 70, 110)), 33),
-    ),
-    entry(
-        AbilityId(40),
-        "ogre_bruiser_ogre_smash",
-        N::OgreSmash,
-        cast(
-            Aim::Point,
-            true,
-            &[0],
-            &[secs(12)],
-            0,
-            OGRE_SMASH_CAST_POINT,
-            850,
-        ),
-        Spell::Cast {
-            act: Act::Smash {
-                reach: 200,
-                radius: lv(200, 210, 220, 230),
-                damage: lv(200, 250, 300, 400),
-                current_pct: 8,
-                ms: 2400,
-            },
-            when: When::Think(CastRule {
-                among: Among::Foes(Within::Radius(400)),
-                needs: &[Need::HurtBelow { pct: 70 }],
-                marks: &[],
-                pick: Pick::Nearest,
-            }),
-            shared: hold(OGRE_SMASH),
-        },
-    ),
-    entry(
-        AbilityId(41),
-        "ogre_magi_frost_armor",
-        N::IceArmor,
-        cast(Aim::Unit, false, &[40], &[secs(5)], 800, 560, 500),
-        Spell::Uncast,
-    ),
-    entry(
-        AbilityId(42),
-        "mud_golem_hurl_boulder",
-        N::HurlBoulder,
-        cast(Aim::Unit, true, &[0], &[secs(30)], 800, 300, 600),
-        Spell::Cast {
-            act: Act::Bolt {
-                speed: 800,
-                hero_damage: 75,
-                other_damage: 150,
-                ms: 500,
-                root: false,
-            },
-            when: When::Think(CastRule {
-                among: Among::Foes(Within::CastRange),
-                needs: &[],
-                marks: &[Mark::HpBelow { hp: 300 }],
-                pick: Pick::LeastHp,
-            }),
-            shared: hold(GOLEM_BOULDER),
-        },
-    ),
-    entry(
-        AbilityId(43),
-        "mud_golem_rock_destroy",
-        N::ShardSplit,
-        passive(),
-        Spell::Throe(Throe::Split {
-            kind: NeutralKind::MudGolemSplit,
-            count: lv(2, 2, 3, 3),
-            hp: lv(250, 280, 310, 370),
-            damage: lv(12, 16, 20, 28),
-            life_ms: 60_000,
-            radius: 250,
-            slow_pct: 25,
-            slow_ms: 2000,
-            effect: EffectId(34),
-        }),
-    ),
-    entry(
-        AbilityId(44),
-        "centaur_khan_endurance_aura",
-        N::SwiftnessAura,
-        passive(),
-        allies(1200, Buff::of(Stat::AttackSpeed, lv(15, 18, 21, 27)), 35),
-    ),
-    entry(
-        AbilityId(45),
-        "furbolg_enrage_attack_speed",
-        N::DeathThroeRush,
-        passive(),
-        Spell::Throe(Throe::Rouse {
-            radius: 700,
-            ms: 5000,
-            buff: Buff::of(Stat::AttackSpeed, all(120)),
-            effect: EffectId(36),
-        }),
-    ),
-    entry(
-        AbilityId(46),
-        "polar_furbolg_ursa_warrior_thunder_clap",
-        N::ThunderClap,
-        cast(
-            Aim::Own,
-            false,
-            &[50],
-            &[secs(12), secs(11), secs(10), secs(9)],
-            0,
-            400,
-            600,
-        ),
-        Spell::Cast {
-            act: Act::Stomp {
-                growth: None,
-                other_pct: 100,
-                radius: all(300),
-                damage: lv(150, 200, 250, 350),
-                kind: DamageKind::Magical,
-                hero_ms: all(3000),
-                other_ms: all(3000),
-                then: Then::Wear {
-                    buff: chill(all(-25), all(-25)),
-                    effect: EffectId(37),
-                },
-            },
-            when: When::Think(CastRule::on_itself(&[Need::Crowd {
-                radius: 300,
-                at_least: 2,
-                heroes: 0,
-                on_it: false,
-            }])),
-            shared: None,
-        },
-    ),
-    entry(
-        AbilityId(47),
-        "furbolg_enrage_damage",
-        N::DeathThroePower,
-        passive(),
-        Spell::Throe(Throe::Rouse {
-            radius: 700,
-            ms: 5000,
-            buff: Buff::of(Stat::DamagePct, all(60)),
-            effect: EffectId(38),
-        }),
-    ),
-    entry(
-        AbilityId(48),
-        "enraged_wildkin_tornado",
-        N::Tornado,
-        cast(
-            Aim::Point,
-            true,
-            &[100],
-            &[secs(40), secs(36), secs(32), secs(26)],
-            500,
-            400,
-            0,
-        ),
-        Spell::Cast {
-            act: Act::Tornado {
-                kind: NeutralKind::WildkinTornado,
-                life_ms: 15_000,
-            },
-            when: When::MateFalls {
-                kind: NeutralKind::EnragedWildkin,
-                chance_pct: 33,
-            },
-            shared: None,
-        },
-    ),
-    entry(
-        AbilityId(49),
-        "enraged_wildkin_hurricane",
-        N::Hurricane,
-        cast(
-            Aim::Unit,
-            true,
-            &[100],
-            &[secs(30), secs(28), secs(26), secs(22)],
-            400,
-            0,
-            800,
-        ),
-        Spell::Cast {
-            act: Act::Push {
-                distance: 400,
-                speed: 800,
-            },
-            when: When::Think(CastRule::on_held(&[
-                Mark::Hero,
-                Mark::InCastRange,
-                Mark::Chasing { radius: 1200 },
-            ])),
-            shared: None,
-        },
-    ),
-    entry(
-        AbilityId(50),
-        "enraged_wildkin_toughness_aura",
-        N::ToughnessAura,
-        passive(),
-        allies(1200, Buff::of(Stat::Armor, all(3)), 39),
-    ),
-    entry(
-        AbilityId(51),
-        "dark_troll_warlord_ensnare",
-        N::Ensnare,
-        cast(Aim::Unit, true, &[75], &[secs(15)], 550, 300, 360),
-        Spell::Cast {
-            act: Act::Bolt {
-                speed: 1500,
-                hero_damage: 0,
-                other_damage: 0,
-                ms: 1750,
-                root: true,
-            },
-            when: When::Think(CastRule::on_held(&[
-                Mark::Hero,
-                Mark::InCastRange,
-                Mark::RivalNear { radius: 1200 },
-            ])),
-            shared: None,
-        },
-    ),
-    entry(
-        AbilityId(52),
-        "dark_troll_warlord_raise_dead",
-        N::RaiseDead,
-        cast(Aim::Own, false, &[50], &[secs(20)], 0, 300, 1200),
-        Spell::Cast {
-            act: Act::Summon {
-                kind: NeutralKind::SkeletonWarrior,
-                count: 3,
-                hp: lv(250, 275, 300, 375),
-                damage: lv(12, 15, 18, 21),
-                life_ms: 35_000,
-            },
-            when: When::Think(CastRule {
-                among: Among::Held,
-                needs: &[Need::HurtBelow { pct: 50 }],
-                marks: &[],
-                pick: Pick::First,
-            }),
-            shared: None,
-        },
-    ),
-    entry(
-        AbilityId(53),
-        "warpine_raider_seed_shot",
-        N::SeedShot,
-        cast(Aim::Unit, true, &[100], &[secs(15)], 575, 200, 0),
-        Spell::Uncast,
-    ),
-    entry(
-        AbilityId(54),
-        "black_drake_magic_amplification_aura",
-        N::MagicAmplificationAura,
-        passive(),
-        Spell::Aura(AuraSpell {
-            whom: Whom::Enemies,
-            radius: 1200,
-            buff: Buff::of(Stat::MagicTakenPct, lv(5, 6, 7, 9)),
-            effect: EffectId(40),
-            stacks: false,
-            water: false,
-            breakable: true,
-        }),
-    ),
-    entry(
-        AbilityId(55),
-        "black_dragon_fireball",
-        N::Fireball,
-        cast(Aim::Point, true, &[200], &[secs(15)], 1000, 300, 1100),
-        Spell::Uncast,
-    ),
-    entry(
-        AbilityId(56),
-        "black_dragon_splash_attack",
-        N::SplashAttack,
-        passive(),
-        Spell::Strike(Strike::Splash {
-            radius: 250,
-            pct: 100,
-        }),
-    ),
-    entry(
-        AbilityId(57),
-        "black_dragon_dragonhide_aura",
-        N::DragonhideAura,
-        passive(),
-        Spell::Aura(AuraSpell {
-            whom: Whom::Allies,
-            radius: 1200,
-            buff: Buff::of(Stat::Armor, all(3)),
-            effect: EffectId(41),
-            stacks: true,
-            water: false,
-            breakable: true,
-        }),
-    ),
-    entry(
-        AbilityId(58),
-        "ancient_rock_golem_weakening_aura",
-        N::WeakeningAura,
-        passive(),
-        Spell::Aura(AuraSpell {
-            whom: Whom::Enemies,
-            radius: 1200,
-            buff: Buff::of(Stat::Armor, lv(-3, -4, -5, -6)),
-            effect: EffectId(42),
-            stacks: false,
-            water: false,
-            breakable: true,
-        }),
-    ),
-    entry(
-        AbilityId(59),
-        "granite_golem_hp_aura",
-        N::GraniteAura,
-        passive(),
-        Spell::Aura(AuraSpell {
-            breakable: false,
-            ..AuraSpell::allies(1200, Buff::of(Stat::MaxHpPct, lv(16, 17, 18, 19)), 43)
-        }),
-    ),
-    entry(
-        AbilityId(60),
-        "big_thunder_lizard_wardrums_aura",
-        N::WarDrumsAura,
-        passive(),
-        allies(
-            1200,
-            Buff::two(
-                Stat::AttackSpeed,
-                all(25),
-                Stat::AccuracyPct,
-                lv(40, 43, 46, 51),
-            ),
-            44,
-        ),
-    ),
-    entry(
-        AbilityId(61),
-        "big_thunder_lizard_slam",
-        N::Slam,
-        cast(Aim::Own, false, &[150], &[secs(6)], 0, 300, 430),
-        Spell::Cast {
-            act: Act::Stomp {
-                growth: None,
-                other_pct: 100,
-                radius: all(350),
-                damage: all(250),
-                kind: DamageKind::Magical,
-                hero_ms: lv(2000, 2250, 2500, 3000),
-                other_ms: all(4000),
-                then: Then::Wear {
-                    buff: chill(all(-60), all(-60)),
-                    effect: EffectId(45),
-                },
-            },
-            when: When::Think(CastRule::on_itself(&[
-                Need::Swinging,
-                Need::Crowd {
-                    radius: 350,
+                when: When::Think(CastRule::on_itself(&[Need::Crowd {
+                    radius: 250,
                     at_least: 3,
                     heroes: 0,
-                    on_it: true,
+                    on_it: false,
+                }])),
+                shared: None,
+                chance: D.chance(),
+            },
+        )
+    ),
+    with!(
+        script::GIANT_WOLF_INTIMIDATE,
+        entry(
+            AbilityId(32),
+            D,
+            N::Intimidate,
+            cast_of!(D, Aim::Own, false),
+            Spell::Cast {
+                act: Act::Stomp {
+                    growth: None,
+                    other_pct: 100,
+                    radius: D.lv("radius"),
+                    damage: all(0),
+                    kind: DamageKind::Magical,
+                    hero_ms: D.lv_ms("duration"),
+                    other_ms: D.lv_ms("duration"),
+                    then: Then::Wear {
+                        buff: Buff::of(Stat::DamagePct, negated(D.lv("damage_reduction"))),
+                        effect: EffectId(30),
+                    },
                 },
-            ])),
-            shared: None,
-        },
-    ),
-    entry(
-        AbilityId(62),
-        "big_thunder_lizard_frenzy",
-        N::Frenzy,
-        cast(Aim::Unit, false, &[75], &[secs(8)], 900, 0, 800),
-        Spell::Cast {
-            act: Act::Enrage {
-                buff: Buff::of(Stat::AttackSpeed, all(75)),
-                effect: EffectId(46),
-                ms: 8000,
+                when: When::Think(CastRule {
+                    among: Among::Foes(Within::Radius(300)),
+                    needs: &[Need::HurtBelow { pct: 51 }],
+                    marks: &[],
+                    pick: Pick::Nearest,
+                }),
+                shared: None,
+                chance: D.chance(),
             },
-            when: When::Think(CastRule::on_itself(&[Need::Fighting])),
-            shared: None,
-        },
+        )
     ),
-    entry(
-        AbilityId(63),
-        "frostbitten_golem_time_warp_aura",
-        N::TimeWarpAura,
-        passive(),
-        allies(1200, Buff::of(Stat::CooldownPct, lv(8, 9, 10, 11)), 47),
+    with!(
+        script::ALPHA_WOLF_CRITICAL_STRIKE,
+        entry(
+            AbilityId(33),
+            D,
+            N::CriticalStrike,
+            passive(),
+            Spell::Strike(Strike::Crit {
+                chance_pct: D.int("crit_chance"),
+                mult_pct: D.lv("crit_mult"),
+                magic: false,
+                targets: ProcTargets::Any,
+            }),
+        )
     ),
-    entry(
-        AbilityId(64),
-        "ice_shaman_incendiary_bomb",
-        N::IcefireBomb,
-        cast(
-            Aim::Unit,
-            true,
-            &[100, 95, 90, 80],
-            &[secs(30)],
-            700,
-            350,
-            650,
-        ),
-        Spell::Uncast,
+    with!(
+        script::ALPHA_WOLF_COMMAND_AURA,
+        entry(
+            AbilityId(34),
+            D,
+            N::PackleadersAura,
+            passive(),
+            allies(D, Buff::of(Stat::DamagePct, D.lv("bonus_damage_pct")), 31),
+        )
     ),
-    entry(
-        AbilityId(65),
-        "spawnlord_aura",
-        N::ProwlerAura,
-        passive(),
-        allies(
-            1200,
-            Buff::two(
-                Stat::LifestealPct,
-                lv(9, 10, 11, 12),
-                Stat::HpRegen,
-                lv(90, 100, 110, 120),
-            ),
-            48,
-        ),
-    ),
-    entry(
-        AbilityId(66),
-        "spawnlord_master_stomp",
-        N::Desecrate,
-        cast(Aim::Own, false, &[100], &[secs(12)], 0, 400, 1370),
-        Spell::Cast {
-            act: Act::Stomp {
-                growth: None,
-                other_pct: 100,
-                radius: all(300),
-                damage: all(200),
-                kind: DamageKind::Physical,
-                hero_ms: all(6000),
-                other_ms: all(6000),
-                then: Then::Wear {
-                    buff: Buff::of(Stat::BaseArmorPct, all(-50)),
-                    effect: EffectId(49),
+    with!(
+        script::SATYR_TRICKSTER_PURGE,
+        entry(
+            AbilityId(35),
+            D,
+            N::Purge,
+            cast_of!(D, Aim::Unit, false),
+            Spell::Cast {
+                act: Act::Purge {
+                    start_pct: D.int("base_slow"),
+                    rate: positive(D.int("purge_rate")),
+                    ms: D.ms("duration"),
                 },
+                when: When::Think(CastRule {
+                    among: Among::Foes(Within::Radius(500)),
+                    needs: &[],
+                    marks: &[Mark::Hero, Mark::Buffed, Mark::InCastRange],
+                    pick: Pick::Nearest,
+                }),
+                shared: None,
+                chance: D.chance(),
             },
-            when: When::Think(CastRule::on_itself(&[Need::Crowd {
-                radius: 300,
-                at_least: 3,
-                heroes: 0,
-                on_it: false,
-            }])),
-            shared: None,
-        },
+        )
     ),
-    entry(
-        AbilityId(67),
-        "spawnlord_master_freeze",
-        N::Petrify,
-        passive_cooling(&[secs(15)]),
-        Spell::Strike(Strike::Petrify {
-            below_pct: 90,
-            ms: lv(1200, 1300, 1400, 1500),
-            dps: 100,
-            effect: EffectId(50),
-        }),
+    with!(
+        script::SATYR_SOULSTEALER_MANA_BURN,
+        entry(
+            AbilityId(36),
+            D,
+            N::ManaBurn,
+            cast_of!(D, Aim::Unit, true),
+            Spell::Uncast,
+        )
     ),
-    entry(
-        AbilityId(68),
-        "frogmen_riverborn_aura",
-        N::RiverbornAura,
-        passive(),
-        Spell::Aura(AuraSpell {
-            whom: Whom::Allies,
-            radius: 1200,
-            buff: Buff::two(
-                Stat::MovePct,
-                lv(10, 12, 14, 16),
-                Stat::OutgoingPct,
-                lv(10, 12, 14, 16),
+    with!(
+        script::FOREST_TROLL_HIGH_PRIEST_MANA_AURA,
+        entry(
+            AbilityId(37),
+            D,
+            N::ManaAura,
+            passive(),
+            allies(
+                D,
+                Buff::of(Stat::ManaRegen, D.lv_per("mana_regen", 100)),
+                32
             ),
-            effect: EffectId(51),
-            stacks: false,
-            water: true,
-            breakable: true,
-        }),
+        )
     ),
-    entry(
-        AbilityId(69),
-        "frogmen_arm_of_the_deep",
-        N::ArmOfTheDeep,
-        cast(Aim::Point, true, &[40], &[secs(16)], 275, 300, 0),
-        Spell::Cast {
-            act: Act::Spikes {
-                lines: 1,
-                spread_deg: 0,
-                length: 275,
-                width: 100,
-                damage: lv(80, 100, 120, 140),
-                ms: 800,
-            },
-            when: When::Think(CastRule::on_held(&[Mark::InCastRange])),
-            shared: hold(FROG_SPIKES),
-        },
+    with!(
+        script::SATYR_HELLCALLER_SHOCKWAVE,
+        entry(
+            AbilityId(38),
+            D,
+            N::Shockwave,
+            cast_of!(D, Aim::Point, true),
+            Spell::Uncast,
+        )
     ),
-    entry(
-        AbilityId(70),
-        "frogmen_tendrils_of_the_deep",
-        N::TendrilsOfTheDeep,
-        cast(Aim::Point, true, &[50], &[secs(18)], 300, 300, 0),
-        Spell::Cast {
-            act: Act::Spikes {
-                lines: 2,
-                spread_deg: 34,
-                length: 300,
-                width: 100,
-                damage: lv(120, 140, 160, 180),
-                ms: 1200,
-            },
-            when: When::Think(CastRule::on_held(&[Mark::InCastRange])),
-            shared: hold(FROG_SPIKES),
-        },
+    with!(
+        script::SATYR_HELLCALLER_UNHOLY_AURA,
+        entry(
+            AbilityId(39),
+            D,
+            N::UnholyAura,
+            passive(),
+            allies(D, Buff::of(Stat::HpRegen, D.lv_per("health_regen", 10)), 33),
+        )
     ),
-    entry(
-        AbilityId(71),
-        "frogmen_congregation_of_the_deep",
-        N::CongregationsOfTheDeep,
-        cast(Aim::Own, false, &[70], &[secs(20)], 300, 300, 200),
-        Spell::Cast {
-            act: Act::Spikes {
-                lines: 6,
-                spread_deg: 60,
-                length: 300,
-                width: 100,
-                damage: lv(250, 275, 300, 325),
-                ms: 1400,
+    with!(
+        script::OGRE_BRUISER_OGRE_SMASH,
+        entry(
+            AbilityId(40),
+            D,
+            N::OgreSmash,
+            cast_of!(D, Aim::Point, true),
+            Spell::Cast {
+                act: Act::Smash {
+                    reach: D.int("reach"),
+                    radius: D.lv("radius"),
+                    damage: D.lv("damage"),
+                    current_pct: D.int("damage_pct"),
+                    ms: D.ms("hero_stun_duration"),
+                },
+                when: When::Think(CastRule {
+                    among: Among::Foes(Within::Radius(400)),
+                    needs: &[Need::HurtBelow { pct: 70 }],
+                    marks: &[],
+                    pick: Pick::Nearest,
+                }),
+                shared: hold(OGRE_SMASH),
+                chance: D.chance(),
             },
-            when: When::Think(CastRule::on_held(&[Mark::InCastRange])),
-            shared: hold(FROG_SPIKES),
-        },
+        )
     ),
-    entry(
-        AbilityId(72),
-        "frogmen_water_bubble_small",
-        N::WaterBubbleSmall,
-        cast(Aim::Unit, false, &[90], &[secs(16)], 550, 300, 1100),
-        Spell::Cast {
-            act: Act::Bubble {
-                absorb: lv(100, 120, 140, 160),
-                ms: 10_000,
-                heal_pct: 0,
-                radius: 0,
+    with!(
+        script::OGRE_MAGI_FROST_ARMOR,
+        entry(
+            AbilityId(41),
+            D,
+            N::IceArmor,
+            cast_of!(D, Aim::Unit, false),
+            Spell::Uncast,
+        )
+    ),
+    with!(
+        script::MUD_GOLEM_HURL_BOULDER,
+        entry(
+            AbilityId(42),
+            D,
+            N::HurlBoulder,
+            cast_of!(D, Aim::Unit, true),
+            Spell::Cast {
+                act: Act::Bolt {
+                    speed: D.int("speed"),
+                    hero_damage: D.int("damage"),
+                    other_damage: D.int("damage_creeps"),
+                    ms: D.ms("duration"),
+                    root: false,
+                },
+                when: When::Think(CastRule {
+                    among: Among::Foes(Within::CastRange),
+                    needs: &[],
+                    marks: &[Mark::HpBelow { hp: 300 }],
+                    pick: Pick::LeastHp,
+                }),
+                shared: hold(GOLEM_BOULDER),
+                chance: D.chance(),
             },
-            when: When::Think(CastRule {
-                among: Among::Allies(Within::CastRange),
-                needs: &[],
-                marks: &[Mark::HurtBelow { pct: 50 }, Mark::Unmarked],
-                pick: Pick::LeastHealthPct,
+        )
+    ),
+    with!(
+        script::MUD_GOLEM_ROCK_DESTROY,
+        entry(
+            AbilityId(43),
+            D,
+            N::ShardSplit,
+            passive(),
+            Spell::Throe(Throe::Split {
+                kind: NeutralKind::MudGolemSplit,
+                count: D.lv("shard_amount"),
+                hp: D.lv("shard_health"),
+                damage: D.lv("shard_damage"),
+                life_ms: D.ms("shard_duration"),
+                radius: D.int("radius"),
+                slow_pct: -D.int("movespeed"),
+                slow_ms: D.ms("duration"),
+                effect: EffectId(34),
             }),
-            shared: None,
-        },
+        )
     ),
-    entry(
-        AbilityId(73),
-        "frogmen_water_bubble_medium",
-        N::WaterBubbleMedium,
-        cast(Aim::Unit, false, &[100], &[secs(16)], 550, 300, 1100),
-        Spell::Cast {
-            act: Act::Bubble {
-                absorb: lv(150, 180, 210, 240),
-                ms: 10_000,
-                heal_pct: 50,
-                radius: 0,
-            },
-            when: When::Think(CastRule {
-                among: Among::Allies(Within::CastRange),
-                needs: &[],
-                marks: &[Mark::HurtBelow { pct: 50 }, Mark::Unmarked],
-                pick: Pick::LeastHealthPct,
+    with!(
+        script::CENTAUR_KHAN_ENDURANCE_AURA,
+        entry(
+            AbilityId(44),
+            D,
+            N::SwiftnessAura,
+            passive(),
+            allies(
+                D,
+                Buff::of(Stat::AttackSpeed, D.lv("bonus_attack_speed")),
+                35
+            ),
+        )
+    ),
+    with!(
+        script::FURBOLG_ENRAGE_ATTACK_SPEED,
+        entry(
+            AbilityId(45),
+            D,
+            N::DeathThroeRush,
+            passive(),
+            Spell::Throe(Throe::Rouse {
+                radius: D.int("radius"),
+                ms: D.ms("duration"),
+                buff: Buff::of(Stat::AttackSpeed, D.lv("bonus_aspd")),
+                effect: EffectId(36),
             }),
-            shared: None,
-        },
+        )
     ),
-    entry(
-        AbilityId(74),
-        "frogmen_water_bubble_large",
-        N::WaterBubbleLarge,
-        cast(Aim::Unit, false, &[110], &[secs(16)], 550, 300, 1100),
-        Spell::Cast {
-            act: Act::Bubble {
-                absorb: lv(210, 240, 270, 300),
-                ms: 10_000,
-                heal_pct: 50,
-                radius: 675,
+    with!(
+        script::POLAR_FURBOLG_URSA_WARRIOR_THUNDER_CLAP,
+        entry(
+            AbilityId(46),
+            D,
+            N::ThunderClap,
+            cast_of!(D, Aim::Own, false),
+            Spell::Cast {
+                act: Act::Stomp {
+                    growth: None,
+                    other_pct: 100,
+                    radius: D.lv("radius"),
+                    damage: D.lv("AbilityDamage"),
+                    kind: DamageKind::Magical,
+                    hero_ms: D.lv_ms("duration"),
+                    other_ms: D.lv_ms("duration"),
+                    then: Then::Wear {
+                        buff: chill(D.lv("movespeed_slow"), D.lv("attackspeed_slow")),
+                        effect: EffectId(37),
+                    },
+                },
+                when: When::Think(CastRule::on_itself(&[Need::Crowd {
+                    radius: 300,
+                    at_least: 2,
+                    heroes: 0,
+                    on_it: false,
+                }])),
+                shared: None,
+                chance: D.chance(),
             },
-            when: When::Think(CastRule {
-                among: Among::Allies(Within::CastRange),
-                needs: &[],
-                marks: &[Mark::HurtBelow { pct: 50 }, Mark::Unmarked],
-                pick: Pick::LeastHealthPct,
+        )
+    ),
+    with!(
+        script::FURBOLG_ENRAGE_DAMAGE,
+        entry(
+            AbilityId(47),
+            D,
+            N::DeathThroePower,
+            passive(),
+            Spell::Throe(Throe::Rouse {
+                radius: D.int("radius"),
+                ms: D.ms("duration"),
+                buff: Buff::of(Stat::DamagePct, D.lv("bonus_dmg_pct")),
+                effect: EffectId(38),
             }),
-            shared: None,
-        },
+        )
     ),
-    entry(
-        AbilityId(75),
-        "hill_troll_rally",
-        N::Rally,
-        passive(),
-        Spell::Aura(AuraSpell {
-            whom: Whom::Allies,
-            radius: 1200,
-            buff: Buff::of(Stat::Damage, all(2)),
-            effect: EffectId(52),
-            stacks: true,
-            water: false,
-            breakable: true,
-        }),
+    with!(
+        script::ENRAGED_WILDKIN_TORNADO,
+        entry(
+            AbilityId(48),
+            D,
+            N::Tornado,
+            cast_of!(D, Aim::Point, true),
+            Spell::Cast {
+                act: Act::Tornado {
+                    kind: NeutralKind::WildkinTornado,
+                    life_ms: D.ms("duration"),
+                },
+                when: When::MateFalls {
+                    kind: NeutralKind::EnragedWildkin,
+                    chance_pct: D.int("neutral_chance_to_cast"),
+                },
+                shared: None,
+                chance: None,
+            },
+        )
     ),
-    entry(
-        AbilityId(76),
-        "tornado_tempest",
-        N::Tempest,
-        passive(),
-        Spell::Storm {
-            radius: 600,
-            near_radius: 150,
-            near_dps: 45,
-            far_dps: 15,
-            period_ms: 250,
-            buff: chill(all(-15), all(-15)),
-            effect: EffectId(53),
-            breakable: false,
-        },
+    with!(
+        script::ENRAGED_WILDKIN_HURRICANE,
+        entry(
+            AbilityId(49),
+            D,
+            N::Hurricane,
+            cast_of!(D, Aim::Unit, true),
+            Spell::Cast {
+                act: Act::Push {
+                    distance: D.int("distance"),
+                    speed: D.int("speed"),
+                },
+                when: When::Think(CastRule::on_held(&[
+                    Mark::Hero,
+                    Mark::InCastRange,
+                    Mark::Chasing { radius: 1200 },
+                ])),
+                shared: None,
+                chance: D.chance(),
+            },
+        )
+    ),
+    with!(
+        script::ENRAGED_WILDKIN_TOUGHNESS_AURA,
+        entry(
+            AbilityId(50),
+            D,
+            N::ToughnessAura,
+            passive(),
+            allies(D, Buff::of(Stat::Armor, D.lv("bonus_armor")), 39),
+        )
+    ),
+    with!(
+        script::DARK_TROLL_WARLORD_ENSNARE,
+        entry(
+            AbilityId(51),
+            D,
+            N::Ensnare,
+            cast_of!(D, Aim::Unit, true),
+            Spell::Cast {
+                act: Act::Bolt {
+                    speed: D.int("net_speed"),
+                    hero_damage: 0,
+                    other_damage: 0,
+                    ms: D.ms("duration"),
+                    root: true,
+                },
+                when: When::Think(CastRule::on_held(&[
+                    Mark::Hero,
+                    Mark::InCastRange,
+                    Mark::RivalNear { radius: 1200 },
+                ])),
+                shared: None,
+                chance: D.chance(),
+            },
+        )
+    ),
+    with!(
+        script::DARK_TROLL_WARLORD_RAISE_DEAD,
+        entry(
+            AbilityId(52),
+            D,
+            N::RaiseDead,
+            cast_of!(D, Aim::Own, false),
+            Spell::Cast {
+                act: Act::Summon {
+                    kind: NeutralKind::SkeletonWarrior,
+                    count: D.int("skeletons_created") as u8,
+                    hp: D.lv("skeletons_health"),
+                    damage: D.lv("skeletons_damage"),
+                    life_ms: D.ms("duration"),
+                },
+                when: When::Think(CastRule {
+                    among: Among::Held,
+                    needs: &[Need::HurtBelow { pct: 50 }],
+                    marks: &[],
+                    pick: Pick::First,
+                }),
+                shared: None,
+                chance: D.chance(),
+            },
+        )
+    ),
+    with!(
+        script::RETIRED_WARPINE_RAIDER_SEED_SHOT,
+        entry(
+            AbilityId(53),
+            D,
+            N::SeedShot,
+            cast_of!(D, Aim::Unit, true),
+            Spell::Uncast
+        )
+    ),
+    with!(
+        script::BLACK_DRAKE_MAGIC_AMPLIFICATION_AURA,
+        entry(
+            AbilityId(54),
+            D,
+            N::MagicAmplificationAura,
+            passive(),
+            Spell::Aura(AuraSpell {
+                whom: Whom::Enemies,
+                radius: D.int("radius"),
+                buff: Buff::of(Stat::MagicTakenPct, D.lv("spell_amp")),
+                effect: EffectId(40),
+                stacks: false,
+                water: false,
+                breakable: D.breakable(),
+            }),
+        )
+    ),
+    with!(
+        script::RETIRED_BLACK_DRAGON_FIREBALL,
+        entry(
+            AbilityId(55),
+            D,
+            N::Fireball,
+            cast_of!(D, Aim::Point, true),
+            Spell::Uncast
+        )
+    ),
+    with!(
+        script::BLACK_DRAGON_SPLASH_ATTACK,
+        entry(
+            AbilityId(56),
+            D,
+            N::SplashAttack,
+            passive(),
+            Spell::Strike(Strike::Splash {
+                radius: D.int("range"),
+                pct: D.int("damage_percent"),
+            }),
+        )
+    ),
+    with!(
+        script::BLACK_DRAGON_DRAGONHIDE_AURA,
+        entry(
+            AbilityId(57),
+            D,
+            N::DragonhideAura,
+            passive(),
+            Spell::Aura(AuraSpell {
+                whom: Whom::Allies,
+                radius: D.int("radius"),
+                buff: Buff::of(Stat::Armor, D.lv("bonus_armor")),
+                effect: EffectId(41),
+                stacks: true,
+                water: false,
+                breakable: D.breakable(),
+            }),
+        )
+    ),
+    with!(
+        script::ANCIENT_ROCK_GOLEM_WEAKENING_AURA,
+        entry(
+            AbilityId(58),
+            D,
+            N::WeakeningAura,
+            passive(),
+            Spell::Aura(AuraSpell {
+                whom: Whom::Enemies,
+                radius: D.int("radius"),
+                buff: Buff::of(Stat::Armor, negated(D.lv("armor_reduction"))),
+                effect: EffectId(42),
+                stacks: false,
+                water: false,
+                breakable: D.breakable(),
+            }),
+        )
+    ),
+    with!(
+        script::GRANITE_GOLEM_HP_AURA,
+        entry(
+            AbilityId(59),
+            D,
+            N::GraniteAura,
+            passive(),
+            Spell::Aura(AuraSpell::allies(
+                D,
+                Buff::of(Stat::MaxHpPct, D.lv("bonus_hp")),
+                43
+            )),
+        )
+    ),
+    with!(
+        script::BIG_THUNDER_LIZARD_WARDRUMS_AURA,
+        entry(
+            AbilityId(60),
+            D,
+            N::WarDrumsAura,
+            passive(),
+            allies(
+                D,
+                Buff::two(
+                    Stat::AttackSpeed,
+                    D.lv("speed_bonus"),
+                    Stat::AccuracyPct,
+                    D.lv("accuracy"),
+                ),
+                44,
+            ),
+        )
+    ),
+    with!(
+        script::BIG_THUNDER_LIZARD_SLAM,
+        entry(
+            AbilityId(61),
+            D,
+            N::Slam,
+            cast_of!(D, Aim::Own, false),
+            Spell::Cast {
+                act: Act::Stomp {
+                    growth: None,
+                    other_pct: 100,
+                    radius: D.lv("radius"),
+                    damage: D.lv("AbilityDamage"),
+                    kind: DamageKind::Magical,
+                    hero_ms: D.lv_ms("hero_duration"),
+                    other_ms: D.lv_ms("non_hero_duration"),
+                    then: Then::Wear {
+                        buff: chill(D.lv("movespeed_slow"), D.lv("attack_slow_tooltip")),
+                        effect: EffectId(45),
+                    },
+                },
+                when: When::Think(CastRule::on_itself(&[
+                    Need::Swinging,
+                    Need::Crowd {
+                        radius: 350,
+                        at_least: 3,
+                        heroes: 0,
+                        on_it: true,
+                    },
+                ])),
+                shared: None,
+                chance: D.chance(),
+            },
+        )
+    ),
+    with!(
+        script::BIG_THUNDER_LIZARD_FRENZY,
+        entry(
+            AbilityId(62),
+            D,
+            N::Frenzy,
+            cast_of!(D, Aim::Unit, false),
+            Spell::Cast {
+                act: Act::Enrage {
+                    buff: Buff::of(Stat::AttackSpeed, D.lv("attackspeed_bonus")),
+                    effect: EffectId(46),
+                    ms: D.ms("duration"),
+                },
+                when: When::Think(CastRule::on_itself(&[Need::Fighting])),
+                shared: None,
+                chance: D.chance(),
+            },
+        )
+    ),
+    with!(
+        script::FROSTBITTEN_GOLEM_TIME_WARP_AURA,
+        entry(
+            AbilityId(63),
+            D,
+            N::TimeWarpAura,
+            passive(),
+            allies(D, Buff::of(Stat::CooldownPct, D.lv("bonus_cdr")), 47),
+        )
+    ),
+    with!(
+        script::ICE_SHAMAN_INCENDIARY_BOMB,
+        entry(
+            AbilityId(64),
+            D,
+            N::IcefireBomb,
+            cast_of!(D, Aim::Unit, true),
+            Spell::Uncast,
+        )
+    ),
+    with!(
+        script::SPAWNLORD_AURA,
+        entry(
+            AbilityId(65),
+            D,
+            N::ProwlerAura,
+            passive(),
+            allies(
+                D,
+                Buff::two(
+                    Stat::LifestealPct,
+                    D.lv("lifesteal"),
+                    Stat::HpRegen,
+                    D.lv_per("hp_regen", 10),
+                ),
+                48,
+            ),
+        )
+    ),
+    with!(
+        script::SPAWNLORD_MASTER_STOMP,
+        entry(
+            AbilityId(66),
+            D,
+            N::Desecrate,
+            cast_of!(D, Aim::Own, false),
+            Spell::Cast {
+                act: Act::Stomp {
+                    growth: None,
+                    other_pct: 100,
+                    radius: D.lv("radius"),
+                    damage: D.lv("damage"),
+                    kind: DamageKind::Physical,
+                    hero_ms: D.lv_ms("duration"),
+                    other_ms: D.lv_ms("duration"),
+                    then: Then::Wear {
+                        buff: Buff::of(Stat::BaseArmorPct, negated(D.lv("armor_reduction_pct"))),
+                        effect: EffectId(49),
+                    },
+                },
+                when: When::Think(CastRule::on_itself(&[Need::Crowd {
+                    radius: 300,
+                    at_least: 3,
+                    heroes: 0,
+                    on_it: false,
+                }])),
+                shared: None,
+                chance: D.chance(),
+            },
+        )
+    ),
+    with!(
+        script::SPAWNLORD_MASTER_FREEZE,
+        entry(
+            AbilityId(67),
+            D,
+            N::Petrify,
+            passive_cooling(tick_levels!(D, "AbilityCooldown")),
+            Spell::Strike(Strike::Petrify {
+                below_pct: D.int("health_threshold_pct"),
+                ms: D.lv_ms("duration"),
+                dps: D.int("damage"),
+                effect: EffectId(50),
+            }),
+        )
+    ),
+    with!(
+        script::FROGMEN_RIVERBORN_AURA,
+        entry(
+            AbilityId(68),
+            D,
+            N::RiverbornAura,
+            passive(),
+            Spell::Aura(AuraSpell {
+                whom: Whom::Allies,
+                radius: D.int("radius"),
+                buff: Buff::two(
+                    Stat::MovePct,
+                    D.lv("bonus_movement_speed"),
+                    Stat::OutgoingPct,
+                    D.lv("bonus_outgoing_damage"),
+                ),
+                effect: EffectId(51),
+                stacks: false,
+                water: true,
+                breakable: D.breakable(),
+            }),
+        )
+    ),
+    with!(
+        script::FROGMEN_ARM_OF_THE_DEEP,
+        entry(
+            AbilityId(69),
+            D,
+            N::ArmOfTheDeep,
+            cast_of!(D, Aim::Point, true),
+            Spell::Cast {
+                act: Act::Spikes {
+                    lines: 1,
+                    spread_deg: 0,
+                    length: D.int("range"),
+                    width: D.int("projectile_width"),
+                    damage: D.lv("damage"),
+                    afflicts: Afflicts::Stun,
+                    ms: D.lv_ms("duration"),
+                },
+                when: When::Think(CastRule::on_held(&[Mark::InCastRange])),
+                shared: hold(FROG_SPIKES),
+                chance: D.chance(),
+            },
+        )
+    ),
+    with!(
+        script::FROGMEN_TENDRILS_OF_THE_DEEP,
+        entry(
+            AbilityId(70),
+            D,
+            N::TendrilsOfTheDeep,
+            cast_of!(D, Aim::Point, true),
+            Spell::Cast {
+                act: Act::Spikes {
+                    lines: 2,
+                    spread_deg: 2 * D.int("yaw_offset"),
+                    length: D.int("range"),
+                    width: D.int("projectile_width"),
+                    damage: D.lv("damage"),
+                    afflicts: Afflicts::Stun,
+                    ms: D.lv_ms("duration"),
+                },
+                when: When::Think(CastRule::on_held(&[Mark::InCastRange])),
+                shared: hold(FROG_SPIKES),
+                chance: D.chance(),
+            },
+        )
+    ),
+    with!(
+        script::FROGMEN_CONGREGATION_OF_THE_DEEP,
+        entry(
+            AbilityId(71),
+            D,
+            N::CongregationsOfTheDeep,
+            cast_of!(D, Aim::Own, false, D.int("range")),
+            Spell::Cast {
+                act: Act::Spikes {
+                    lines: D.int("projectile_count") as u8,
+                    spread_deg: D.int("spread_angle"),
+                    length: D.int("range"),
+                    width: D.int("projectile_width"),
+                    damage: D.lv("damage"),
+                    afflicts: Afflicts::Stun,
+                    ms: D.lv_ms("duration"),
+                },
+                when: When::Think(CastRule::on_held(&[Mark::InCastRange])),
+                shared: hold(FROG_SPIKES),
+                chance: D.chance(),
+            },
+        )
+    ),
+    with!(
+        script::FROGMEN_WATER_BUBBLE_SMALL,
+        entry(
+            AbilityId(72),
+            D,
+            N::WaterBubbleSmall,
+            cast_of!(D, Aim::Unit, false),
+            Spell::Cast {
+                act: Act::Bubble {
+                    absorb: D.lv("damage_absorb"),
+                    ms: D.ms("duration"),
+                    heal_pct: D.int("heal_pct"),
+                    radius: D.int("radius"),
+                },
+                when: BUBBLE_WHEN,
+                shared: None,
+                chance: D.chance(),
+            },
+        )
+    ),
+    with!(
+        script::FROGMEN_WATER_BUBBLE_MEDIUM,
+        entry(
+            AbilityId(73),
+            D,
+            N::WaterBubbleMedium,
+            cast_of!(D, Aim::Unit, false),
+            Spell::Cast {
+                act: Act::Bubble {
+                    absorb: D.lv("damage_absorb"),
+                    ms: D.ms("duration"),
+                    heal_pct: D.int("heal_pct"),
+                    radius: D.int("radius"),
+                },
+                when: BUBBLE_WHEN,
+                shared: None,
+                chance: D.chance(),
+            },
+        )
+    ),
+    with!(
+        script::FROGMEN_WATER_BUBBLE_LARGE,
+        entry(
+            AbilityId(74),
+            D,
+            N::WaterBubbleLarge,
+            cast_of!(D, Aim::Unit, false),
+            Spell::Cast {
+                act: Act::Bubble {
+                    absorb: D.lv("damage_absorb"),
+                    ms: D.ms("duration"),
+                    heal_pct: D.int("heal_pct"),
+                    radius: D.int("radius"),
+                },
+                when: BUBBLE_WHEN,
+                shared: None,
+                chance: D.chance(),
+            },
+        )
+    ),
+    with!(
+        script::HILL_TROLL_RALLY,
+        entry(
+            AbilityId(75),
+            D,
+            N::Rally,
+            passive(),
+            Spell::Aura(AuraSpell {
+                whom: Whom::Allies,
+                radius: D.int("radius"),
+                buff: Buff::of(Stat::Damage, D.lv("damage_bonus")),
+                effect: EffectId(52),
+                stacks: true,
+                water: false,
+                breakable: D.breakable(),
+            }),
+        )
+    ),
+    with!(
+        script::TORNADO_TEMPEST,
+        entry(
+            AbilityId(76),
+            D,
+            N::Tempest,
+            passive(),
+            Spell::Storm {
+                radius: D.int("far_radius"),
+                near_radius: D.int("near_radius"),
+                near_dps: D.int("near_damage"),
+                far_dps: D.int("far_damage"),
+                period_ms: D.ms("tick_rate"),
+                buff: chill(D.lv("movespeed_slow"), D.lv("attackspeed_slow")),
+                effect: EffectId(53),
+                breakable: D.breakable(),
+            },
+        )
     ),
     entry(
         AbilityId(80),
-        crate::roshan_data::ROSHAN_INHERENT_BUFFS.key,
+        &crate::roshan_data::ROSHAN_INHERENT_BUFFS,
         NeutralAbility::StrengthOfTheImmortal,
         AbilityDef {
             max_level: 1,
@@ -1818,7 +2246,7 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
     ),
     entry(
         AbilityId(81),
-        crate::roshan_data::ROSHAN_DEVOTION.key,
+        &crate::roshan_data::ROSHAN_DEVOTION,
         NeutralAbility::Devotion,
         AbilityDef {
             max_level: 1,
@@ -1839,7 +2267,7 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
     ),
     entry(
         AbilityId(82),
-        crate::roshan_data::ROSHAN_SPELL_BLOCK.key,
+        &crate::roshan_data::ROSHAN_SPELL_BLOCK,
         NeutralAbility::SpellBlock,
         AbilityDef {
             max_level: 1,
@@ -1862,7 +2290,7 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
     ),
     entry(
         AbilityId(83),
-        crate::roshan_data::ROSHAN_BASH.key,
+        &crate::roshan_data::ROSHAN_BASH,
         N::Bash,
         AbilityDef {
             max_level: 1,
@@ -1880,7 +2308,7 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
     ),
     entry(
         AbilityId(84),
-        crate::roshan_data::ROSHAN_SLAM.key,
+        &crate::roshan_data::ROSHAN_SLAM,
         N::RoshanSlam,
         AbilityDef {
             max_level: 1,
@@ -1931,11 +2359,12 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
                 on_it: false,
             }])),
             shared: None,
+            chance: None,
         },
     ),
     entry(
         AbilityId(85),
-        crate::roshan_data::ROSHAN_REVENGEROAR.key,
+        &crate::roshan_data::ROSHAN_REVENGEROAR,
         N::RevengeRoar,
         AbilityDef {
             max_level: 1,
@@ -1952,7 +2381,7 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
                     .ticks()],
                 0,
                 0,
-                0,
+                crate::roshan_data::ROSHAN_REVENGEROAR.ms("AbilityCastBackswing") as u32,
             )
         },
         Spell::Cast {
@@ -1962,11 +2391,12 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
             ])),
             act: Act::Roar(&ROSHAN_ROAR),
             shared: None,
+            chance: None,
         },
     ),
     entry(
         AbilityId(86),
-        crate::roshan_data::ROSHAN_GRAB.key,
+        &crate::roshan_data::ROSHAN_GRAB,
         N::GrabAndThrow,
         AbilityDef {
             max_level: 1,
@@ -2003,7 +2433,234 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
             }),
             act: Act::Grab(&ROSHAN_THROW),
             shared: None,
+            chance: None,
         },
+    ),
+    with!(
+        script::MUD_GOLEM_HURL_BIG_BOULDER,
+        entry(
+            AbilityId(88),
+            D,
+            N::HurlBigBoulder,
+            cast_of!(D, Aim::Point, true),
+            Spell::Cast {
+                act: Act::Boulder {
+                    radius: D.int("impact_radius"),
+                    damage: D.lv("base_damage"),
+                    kind: DamageKind::Physical,
+                    ms: D.lv_ms("stun_duration"),
+                },
+                when: When::Think(CastRule::on_held(&[Mark::InCastRange])),
+                shared: hold(GOLEM_BOULDER),
+                chance: D.chance(),
+            },
+        )
+    ),
+    entry(
+        AbilityId(89),
+        &RESERVED_89,
+        N::Reserved89,
+        AbilityDef {
+            retired: true,
+            ..passive()
+        },
+        Spell::Idle,
+    ),
+    // Dota 7.42's Radigull. Present in the data, not cast: Eggstremism lays eggs (units of one pip
+    // of health that a blow destroys) which explode after a fuse; bota has no such unit yet.
+    with!(
+        script::RADIGULL_EGGSTREMISM,
+        entry(
+            AbilityId(90),
+            D,
+            N::Eggstremism,
+            cast_of!(D, Aim::Unit, true),
+            Spell::Uncast,
+        )
+    ),
+    // Odobenus Blight: attacks reduce the target's armor for a while.
+    with!(
+        script::ODOBENUS_BLIGHT,
+        entry(
+            AbilityId(91),
+            D,
+            N::OdobenusBlight,
+            AbilityDef {
+                pierces: crate::Pierces::Yes,
+                ..passive()
+            },
+            Spell::Strike(Strike::Lay {
+                buff: Buff::of(Stat::Armor, negated(D.lv("armor_reduction"))),
+                effect: EffectId(127),
+                hero_ms: D.ms("armor_reduction_duration"),
+                other_ms: D.ms("armor_reduction_duration"),
+                dps: all(0),
+            }),
+        )
+    ),
+    // Miner's Aura: enemies near an Eimermole get less health restoration.
+    with!(
+        script::EIMERMOLE_MINERS_AURA,
+        entry(
+            AbilityId(92),
+            D,
+            N::MinersAura,
+            passive(),
+            Spell::Aura(AuraSpell {
+                whom: Whom::Enemies,
+                radius: D.int("radius"),
+                buff: Buff::of(Stat::RestorationCutPct, D.lv("restoration_reduction")),
+                effect: EffectId(128),
+                stacks: false,
+                water: false,
+                breakable: D.breakable(),
+            }),
+        )
+    ),
+    // Present in the data, not cast: Miner's Slam hammers the ground in front of the Foreman
+    // several times (pulses), and bota's slams strike once.
+    with!(
+        script::EIMERMOLE_MINERS_SLAM,
+        entry(
+            AbilityId(93),
+            D,
+            N::MinersSlam,
+            cast_of!(D, Aim::Point, true),
+            Spell::Cast {
+                act: Act::Pulses {
+                    // The script has one `radius`: the spot is that far in front of the
+                    // Foreman and the pulse reaches that far round it.
+                    reach: D.int("radius"),
+                    radius: D.int("radius"),
+                    damage: D.lv("damage"),
+                    count: count(D.int("pulse_count")),
+                    interval_ms: D.ms("pulse_interval"),
+                    slow: Buff::of(Stat::MovePct, negated(D.lv("slow_pct"))),
+                    slow_ms: D.ms("slow_duration"),
+                    effect: EffectId(130),
+                },
+                // The wild acquisition condition is still unknown.
+                when: When::Manual,
+                shared: None,
+                chance: D.chance(),
+            },
+        )
+    ),
+    // Seal Flop: the seal leaps forward, lands with a slam, and leaps again (`max_bounces` leaps
+    // in all). The script's `slow` is negative (-100); a pulse's slow is a positive percent.
+    with!(
+        script::OGRE_SEAL_FLOP,
+        entry(
+            AbilityId(94),
+            D,
+            N::SealFlop,
+            cast_of!(D, Aim::Own, false),
+            Spell::Cast {
+                act: Act::Leap {
+                    distance: D.int("leap_distance"),
+                    speed: D.int("leap_speed"),
+                    acceleration: D.int("leap_acceleration"),
+                    radius: D.int("radius"),
+                    damage: D.int("flop_damage"),
+                    leaps: count(D.int("max_bounces")),
+                    slow: Buff::of(Stat::MovePct, D.lv("slow")),
+                    slow_ms: D.ms("slow_duration"),
+                    effect: EffectId(132),
+                },
+                // The wild acquisition condition is still unknown.
+                when: When::Manual,
+                shared: None,
+                chance: D.chance(),
+            },
+        )
+    ),
+    // Seal of Disapproval: enemies near the pup are slowed.
+    with!(
+        script::OGRE_SEAL_PUP_DISAPPROVAL_AURA,
+        entry(
+            AbilityId(95),
+            D,
+            N::SealDisapprovalAura,
+            passive(),
+            Spell::Aura(AuraSpell {
+                whom: Whom::Enemies,
+                radius: D.int("radius"),
+                buff: Buff::of(Stat::MovePct, negated(D.lv("movespeed_slow"))),
+                effect: EffectId(129),
+                stacks: false,
+                water: false,
+                breakable: D.breakable(),
+            }),
+        )
+    ),
+    // The golden neutrals' multipliers (Dota 7.42: experience x2, one gold roll x2 with the
+    // least and greatest end both set to it, damage and maximum health +200%), present in the data
+    // and not applied: no camp table row holds a golden neutral and nothing found in the
+    // game spawns one, so none is ever spawned.
+    with!(
+        script::NEUTRAL_GOLD_UPGRADE_ABILITY,
+        entry(AbilityId(96), D, N::GoldUpgrade, passive(), Spell::Idle)
+    ),
+    with!(
+        script::BOTA_KOBOLD_STEAL_WEAPON,
+        entry(
+            AbilityId(97),
+            D,
+            N::StealWeaponCast,
+            cast_of!(D, Aim::Point, true),
+            Spell::Cast {
+                act: Act::Spikes {
+                    lines: 1,
+                    spread_deg: 0,
+                    length: D.int("AbilityCastRange"),
+                    width: D.int("radius"),
+                    damage: D.lv("base_damage"),
+                    afflicts: Afflicts::Break,
+                    ms: D.lv_ms("break_duration"),
+                },
+                when: When::Think(CastRule::on_held(&[Mark::InCastRange])),
+                shared: None,
+                chance: D.chance(),
+            },
+        )
+    ),
+    with!(
+        script::BOTA_ODOBENUS_SNOWBALL_SHOT,
+        entry(
+            AbilityId(98),
+            D,
+            N::SnowballShot,
+            cast_of!(D, Aim::Unit, true),
+            Spell::Cast {
+                act: Act::Ricochet {
+                    damage: D.lv("damage"),
+                    bounces: D.lv("bounces"),
+                    range: D.int("bounce_range"),
+                    delay_ms: D.ms("bounce_delay"),
+                    slow: Buff::of(Stat::MovePct, negated(D.lv("slow"))),
+                    slow_ms: D.ms("duration"),
+                    effect: EffectId(131),
+                },
+                when: When::Think(CastRule {
+                    among: Among::Foes(Within::CastRange),
+                    needs: &[],
+                    marks: &[],
+                    pick: Pick::Nearest,
+                }),
+                shared: None,
+                chance: D.chance(),
+            },
+        )
+    ),
+    with!(
+        script::BOTA_BLACK_DRAGON_SEARING_SWOOP,
+        entry(
+            AbilityId(99),
+            D,
+            N::SearingSwoop,
+            cast_of!(D, Aim::Point, true),
+            Spell::Uncast,
+        )
     ),
 ];
 
@@ -2081,7 +2738,10 @@ pub fn ability_cast_view_ticks(id: AbilityId) -> u32 {
 /// Override for an ability cast by a player-controlled neutral, in milliseconds.
 pub fn controlled_neutral_cast_point(id: AbilityId) -> Option<u32> {
     match NeutralAbility::of(id)? {
-        NeutralAbility::OgreSmash => Some(OGRE_SMASH_PLAYER_CAST_POINT),
+        NeutralAbility::OgreSmash => Some(
+            u32::try_from(script::OGRE_BRUISER_OGRE_SMASH.ms("player_cast_point"))
+                .expect("a nonnegative cast point"),
+        ),
         _ => None,
     }
 }

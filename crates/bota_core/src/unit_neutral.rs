@@ -1,32 +1,29 @@
 //! Every kind of neutral creep: one entry each, its numbers and what it
 //! can do.
 //!
-//! Transcribed from the game's own files, client 6957 (7.41f, 2026-10-09):
-//! `scripts/npc/npc_units.txt` for the numbers (health and its regeneration,
-//! mana and its regeneration, damage range, attack range, acquisition range,
-//! base attack time, base attack speed, attack point, missile speed, armor,
-//! magic resistance, move speed, turn rate, day and night vision, the hull,
-//! whether it is ancient, bounty) and for the abilities each carries, and
-//! `resource/localization/abilities_english.txt` for the names. Every kind
-//! but the summons has the hero's hull: none sets `BoundsHullName`, and the
-//! template they inherit is hero-sized. What an ability does is
-//! [`NeutralAbility`]'s; the camp a kind belongs to and what a camp draws are
+//! The numbers are the game's own, read from `scripts/npc/npc_units.txt` by `tools/import_items`
+//! into [`neutral_data`](crate::neutral_data) (health and its regeneration, mana and its
+//! regeneration, damage range, attack range, acquisition range, base attack time, base attack
+//! speed, attack point, missile speed, armor, magic resistance, move speed, turn rate, day and
+//! night vision, whether it is ancient, bounty) with the abilities each carries; what that file
+//! does not hold is kept, with its source, in the importer's `neutral_overrides.rs`. The hull is
+//! the game's: a unit that names none has the hero's, as the template they inherit does. What an
+//! ability does is [`NeutralAbility`]'s; the camp a kind belongs to and what a camp draws are
 //! [`ROSTERS`](crate::ROSTERS)'.
 //!
-//! The npc files carry no backswing, so `attack_backswing` is Liquipedia's
-//! *Attack Animation* table (kobolds 0.6, wolves 0.64, Rumblehide, Thunderhide
-//! and the drakes 0.56, Granite Golem 0.5, skeleton 0.44, the rest 0.3); a
-//! kind the table lacks has the 0.3 s most of it shares.
+//! The npc files carry no backswing, so `attack_backswing` is Liquipedia's *Attack Animation*
+//! table (see the importer's overrides). `Level` is not read: a neutral's `base_level` stays 1.
 //!
 //! A new kind that needs no new mechanic is one variant appended to
 //! [`NeutralKind`] (its id on the wire, never renumbered), one entry appended
-//! to [`NEUTRALS`], and its line in the protocol's id registry.
+//! to [`NEUTRALS`], and its line in the protocol's id registry, then a run of the importer.
 
 use bota_proto::{Fixed, NeutralId, UnitKind};
 
+use crate::neutral_data as script;
 use crate::table::placed_by_id;
 use crate::unit::{BARE_UNIT, NO_GROWTH};
-use crate::{GoldRange, Growth, NeutralAbility, UnitDef, rules};
+use crate::{Dec, GoldRange, Growth, NeutralAbility, ScriptData, UnitDef, rules, turn_rate_brads};
 
 use NeutralAbility as A;
 
@@ -130,6 +127,32 @@ pub enum NeutralKind {
     WildkinTornado,
     /// Boss of the river pits: `npc_dota_roshan`.
     Roshan,
+    /// Radigull: `npc_dota_neutral_radigull` (Dota 7.42).
+    Radigull,
+    /// Odobenus Footman: `npc_dota_neutral_odobenus_footman` (Dota 7.42).
+    OdobenusFootman,
+    /// Odobenus Frostmage: `npc_dota_neutral_odobenus_frostmage` (Dota 7.42).
+    OdobenusFrostmage,
+    /// Eimermole: `npc_dota_neutral_eimermole` (Dota 7.42).
+    Eimermole,
+    /// Eimermole Foreman: `npc_dota_neutral_eimermole_foreman` (Dota 7.42).
+    EimermoleForeman,
+    /// Ancient Ogre Seal: `npc_dota_neutral_ogre_seal` (Dota 7.42).
+    OgreSeal,
+    /// Ancient Ogre Seal Pup: `npc_dota_neutral_ogre_seal_pup` (Dota 7.42).
+    OgreSealPup,
+    /// The golden Kobold Soldier: `npc_dota_neutral_kobold_tunneler_gold` (Dota 7.42).
+    KoboldTunnelerGold,
+    /// The golden Vhoul Assassin: `npc_dota_neutral_gnoll_assassin_gold` (Dota 7.42).
+    GnollAssassinGold,
+    /// The golden Alpha Wolf: `npc_dota_neutral_alpha_wolf_gold` (Dota 7.42).
+    AlphaWolfGold,
+    /// The golden Mud Golem: `npc_dota_neutral_mud_golem_gold` (Dota 7.42).
+    MudGolemGold,
+    /// The golden Wildwing Ripper: `npc_dota_neutral_enraged_wildkin_gold` (Dota 7.42).
+    EnragedWildkinGold,
+    /// The golden Hellbear: `npc_dota_neutral_polar_furbolg_champion_gold` (Dota 7.42).
+    PolarFurbolgChampionGold,
 }
 
 impl NeutralKind {
@@ -168,6 +191,8 @@ pub struct NeutralDef {
     /// Its permanent self growth: the source ability and the clock that raises
     /// stats and bounty. Absent for a neutral that does not grow.
     pub growth: Option<crate::NeutralGrowth>,
+    /// Whether camps may put it out: false for a kind the registry retired.
+    pub offered: bool,
     /// The plain form it spawns with.
     pub def: UnitDef,
     /// Its wake and leash policy.
@@ -244,6 +269,56 @@ const _: () = {
     }
 };
 
+// The kinds are the script rows, in the registry's order (Roshan, whose rows are his own, aside),
+// and each carries the abilities its script lists in slot order (`neutral_upgrade` is its growth,
+// not a slot of ours): a patch that changes a unit's slots fails the build, naming nothing to
+// guess at.
+const _: () = {
+    use crate::item_data::str_eq;
+    assert!(
+        script::UNIT_ROWS.len() + 1 == NEUTRALS.len(),
+        "the script rows and the kinds differ in number"
+    );
+    let mut at = 0;
+    let mut row = 0;
+    while at < NEUTRALS.len() {
+        let neutral = &NEUTRALS[at];
+        at += 1;
+        if neutral.kind as u8 == NeutralKind::Roshan as u8 {
+            continue;
+        }
+        let data = script::UNIT_ROWS[row];
+        row += 1;
+        assert!(
+            str_eq(neutral.unit, data.key),
+            "the neutral kinds are not the script rows in the registry's order"
+        );
+        let mut slot = 0;
+        let mut carried = 0;
+        while slot < data.abilities.len() {
+            if !str_eq(data.abilities[slot], "neutral_upgrade") {
+                assert!(
+                    carried < neutral.abilities.len(),
+                    "a slot of a neutral's script is no ability of its kind"
+                );
+                assert!(
+                    str_eq(
+                        neutral.abilities[carried].entry().def.key,
+                        data.abilities[slot]
+                    ),
+                    "a neutral kind's abilities are not its script's slots in order"
+                );
+                carried += 1;
+            }
+            slot += 1;
+        }
+        assert!(
+            carried == neutral.abilities.len(),
+            "a neutral kind carries an ability its script does not list"
+        );
+    }
+};
+
 /// What one upgrade interval adds to any neutral: Dota's `neutral_upgrade`.
 const NEUTRAL_GROWTH: Growth = Growth {
     hp: rules::NEUTRAL_UPGRADE_HP,
@@ -251,6 +326,7 @@ const NEUTRAL_GROWTH: Growth = Growth {
     armor_halves: rules::NEUTRAL_UPGRADE_ARMOR_HALVES,
     attack_speed: rules::NEUTRAL_UPGRADE_ATTACK_SPEED,
     gold_halves: 2 * rules::NEUTRAL_UPGRADE_GOLD,
+    gold_alternates: true,
     xp: rules::NEUTRAL_UPGRADE_XP,
     ..NO_GROWTH
 };
@@ -262,18 +338,148 @@ const NEUTRAL_BASE: UnitDef = UnitDef {
     ..BARE_UNIT
 };
 
-/// Regeneration of `tenths` tenths of a point a second, a tick's worth.
-const fn regen(tenths: i32) -> Fixed {
-    Fixed::from_ratio(tenths, 10 * rules::TICKS_PER_SECOND as i32)
+/// How a unit attacks: its `AttackCapabilities`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UnitAttack {
+    /// `DOTA_UNIT_CAP_NO_ATTACK`.
+    None,
+    /// `DOTA_UNIT_CAP_MELEE_ATTACK`.
+    Melee,
+    /// `DOTA_UNIT_CAP_RANGED_ATTACK`.
+    Ranged,
 }
 
-/// An entry, its kind given by its place.
+/// How a unit moves: its `MovementCapabilities`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UnitMovement {
+    /// `DOTA_UNIT_CAP_MOVE_GROUND`.
+    Ground,
+    /// `DOTA_UNIT_CAP_MOVE_FLY`.
+    Fly,
+}
+
+/// The hull a unit moves with: its `BoundsHullName`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UnitHull {
+    /// `DOTA_HULL_SIZE_SMALL`.
+    Small,
+    /// `DOTA_HULL_SIZE_REGULAR`.
+    Regular,
+    /// `DOTA_HULL_SIZE_HERO`.
+    Hero,
+}
+
+/// One neutral unit as its script has it, in the script's own units.
+#[derive(Clone, Copy, Debug)]
+pub struct NeutralUnitData {
+    /// Its Dota key.
+    pub key: &'static str,
+    /// Whether the patch the table was read from gives the unit to camps: false for a unit the
+    /// registry retired, kept to be attached again.
+    pub offered: bool,
+    pub attack: UnitAttack,
+    pub movement: UnitMovement,
+    /// `BoundsHullName`, if the unit names one.
+    pub hull: Option<UnitHull>,
+    /// The abilities of its slots, in slot order, empty slots left out.
+    pub abilities: &'static [&'static str],
+    /// Its numeric keys.
+    pub numbers: ScriptData,
+}
+
+/// Regeneration of `rate` points a second, a tick's worth.
+const fn regen(rate: Dec) -> Fixed {
+    Fixed::from_ratio(rate.0, 1000 * rules::TICKS_PER_SECOND as i32)
+}
+
+/// The definition a unit's script gives, every number looked up by its key (the importer writes
+/// the game's default of a key a script leaves out into the row, with its reason): a unit that
+/// does not attack has no attack numbers.
+const fn unit_def(data: &NeutralUnitData) -> UnitDef {
+    let n = &data.numbers;
+    let attacks = !matches!(data.attack, UnitAttack::None);
+    let flies = matches!(data.movement, UnitMovement::Fly);
+    let (collision, bound) = if flies {
+        // A flier has no body on the ground.
+        (0, 0)
+    } else {
+        match data.hull {
+            None | Some(UnitHull::Hero) => (rules::NEUTRAL_COLLISION, rules::NEUTRAL_BOUND),
+            Some(UnitHull::Small) => (rules::RANGED_CREEP_COLLISION, rules::RANGED_CREEP_BOUND),
+            Some(UnitHull::Regular) => panic!("no collision size is known for a regular hull"),
+        }
+    };
+    let (damage, damage_spread) = if attacks {
+        let least = n.first("AttackDamageMin").int();
+        (least, n.first("AttackDamageMax").int() - least)
+    } else {
+        (0, 0)
+    };
+    UnitDef {
+        max_hp: n.first("StatusHealth").int(),
+        hp_regen: regen(n.first("StatusHealthRegen")),
+        max_mana: n.first("StatusMana").int(),
+        mana_regen: regen(n.first("StatusManaRegen")),
+        damage,
+        damage_spread,
+        attack_range: if attacks {
+            n.first("AttackRange").int()
+        } else {
+            0
+        },
+        acquisition: if attacks {
+            n.first("AttackAcquisitionRange").int()
+        } else {
+            0
+        },
+        attack_time: if attacks {
+            n.first("AttackRate").0 as u32
+        } else {
+            0
+        },
+        attack_speed: n.first("BaseAttackSpeed").int(),
+        attack_point: if attacks {
+            n.first("AttackAnimationPoint").0 as u32
+        } else {
+            0
+        },
+        attack_backswing: if attacks {
+            n.first("AttackBackswing").0 as u32
+        } else {
+            0
+        },
+        projectile_speed: if matches!(data.attack, UnitAttack::Ranged) {
+            Some(n.first("ProjectileSpeed").int())
+        } else {
+            None
+        },
+        armor: n.first("ArmorPhysical").int(),
+        magic_resist_pct: n.first("MagicalResistance").int(),
+        move_speed: n.first("MovementSpeed").int(),
+        turn_rate: turn_rate_brads(n.first("MovementTurnRate")),
+        day_vision: n.first("VisionDaytimeRange").int(),
+        night_vision: n.first("VisionNighttimeRange").int(),
+        flies,
+        collision,
+        bound,
+        ancient: n.first("IsAncient").int() == 1,
+        bounty_gold: GoldRange::new(
+            n.first("BountyGoldMin").int(),
+            n.first("BountyGoldMax").int(),
+        ),
+        bounty_xp: n.first("BountyXP").int(),
+        ..NEUTRAL_BASE
+    }
+}
+
+/// An entry, its kind given by its place and its numbers by its script.
 const fn neutral(
     kind: NeutralKind,
-    unit: &'static str,
+    data: &'static NeutralUnitData,
     abilities: &'static [NeutralAbility],
-    def: UnitDef,
 ) -> NeutralDef {
+    let unit = data.key;
+    let def = unit_def(data);
     NeutralDef {
         kind,
 
@@ -288,6 +494,7 @@ const fn neutral(
             },
         }),
         home: &JUNGLE_HOME,
+        offered: data.offered,
         def,
     }
 }
@@ -296,1466 +503,240 @@ const fn neutral(
 const NEUTRAL_ROWS: &[NeutralDef] = &[
     neutral(
         NeutralKind::Kobold,
-        "npc_dota_neutral_kobold",
+        &script::NPC_DOTA_NEUTRAL_KOBOLD,
         &[A::ProspectingAura],
-        UnitDef {
-            max_hp: 240,
-            hp_regen: regen(5),
-            max_mana: 0,
-            mana_regen: regen(10),
-            damage: 15,
-            damage_spread: 1,
-            attack_range: 100,
-            acquisition: 500,
-            attack_time: 2000,
-            attack_speed: 200,
-            attack_point: 380,
-            attack_backswing: 600,
-            projectile_speed: None,
-            armor: 0,
-            magic_resist_pct: 0,
-            move_speed: 290,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 1400,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(3, 5),
-            bounty_xp: 14,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::KoboldTunneler,
-        "npc_dota_neutral_kobold_tunneler",
-        &[A::StealWeapon],
-        UnitDef {
-            max_hp: 325,
-            hp_regen: regen(5),
-            max_mana: 0,
-            mana_regen: regen(10),
-            damage: 22,
-            damage_spread: 1,
-            attack_range: 100,
-            acquisition: 500,
-            attack_time: 2000,
-            attack_speed: 200,
-            attack_point: 380,
-            attack_backswing: 600,
-            projectile_speed: None,
-            armor: 1,
-            magic_resist_pct: 0,
-            move_speed: 270,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(12, 14),
-            bounty_xp: 17,
-            ..NEUTRAL_BASE
-        },
+        &script::NPC_DOTA_NEUTRAL_KOBOLD_TUNNELER,
+        &[A::StealWeaponCast],
     ),
     neutral(
         NeutralKind::KoboldTaskmaster,
-        "npc_dota_neutral_kobold_taskmaster",
+        &script::NPC_DOTA_NEUTRAL_KOBOLD_TASKMASTER,
         &[A::SpeedAura],
-        UnitDef {
-            max_hp: 400,
-            hp_regen: regen(5),
-            max_mana: 0,
-            mana_regen: regen(10),
-            damage: 24,
-            damage_spread: 2,
-            attack_range: 110,
-            acquisition: 500,
-            attack_time: 2000,
-            attack_speed: 200,
-            attack_point: 380,
-            attack_backswing: 600,
-            projectile_speed: None,
-            armor: 2,
-            magic_resist_pct: 0,
-            move_speed: 330,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(19, 21),
-            bounty_xp: 30,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::ForestTrollBerserker,
-        "npc_dota_neutral_forest_troll_berserker",
-        &[A::Break, A::Piercing],
-        UnitDef {
-            max_hp: 500,
-            hp_regen: regen(5),
-            max_mana: 0,
-            mana_regen: regen(10),
-            damage: 28,
-            damage_spread: 9,
-            attack_range: 500,
-            acquisition: 300,
-            attack_time: 2000,
-            attack_speed: 125,
-            attack_point: 300,
-            attack_backswing: 300,
-            projectile_speed: Some(1200),
-            armor: 1,
-            magic_resist_pct: 0,
-            move_speed: 270,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(18, 20),
-            bounty_xp: 28,
-            ..NEUTRAL_BASE
-        },
+        &script::NPC_DOTA_NEUTRAL_FOREST_TROLL_BERSERKER,
+        &[A::Piercing],
     ),
     neutral(
         NeutralKind::ForestTrollHighPriest,
-        "npc_dota_neutral_forest_troll_high_priest",
+        &script::NPC_DOTA_NEUTRAL_FOREST_TROLL_HIGH_PRIEST,
         &[A::Heal, A::HealAmplificationAura, A::Piercing],
-        UnitDef {
-            max_hp: 450,
-            hp_regen: regen(5),
-            max_mana: 500,
-            mana_regen: regen(10),
-            damage: 28,
-            damage_spread: 6,
-            attack_range: 600,
-            acquisition: 300,
-            attack_time: 2000,
-            attack_speed: 125,
-            attack_point: 300,
-            attack_backswing: 300,
-            projectile_speed: Some(900),
-            armor: 0,
-            magic_resist_pct: 0,
-            move_speed: 290,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 1400,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(18, 20),
-            bounty_xp: 28,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::GnollAssassin,
-        "npc_dota_neutral_gnoll_assassin",
+        &script::NPC_DOTA_NEUTRAL_GNOLL_ASSASSIN,
         &[A::EnvenomedWeapon, A::Piercing],
-        UnitDef {
-            max_hp: 400,
-            hp_regen: regen(5),
-            max_mana: 0,
-            mana_regen: regen(10),
-            damage: 25,
-            damage_spread: 2,
-            attack_range: 500,
-            acquisition: 800,
-            attack_time: 2000,
-            attack_speed: 125,
-            attack_point: 400,
-            attack_backswing: 300,
-            projectile_speed: Some(1500),
-            armor: 1,
-            magic_resist_pct: 0,
-            move_speed: 270,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 400,
-            night_vision: 400,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(16, 18),
-            bounty_xp: 30,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::FelBeast,
-        "npc_dota_neutral_fel_beast",
+        &script::NPC_DOTA_NEUTRAL_FEL_BEAST,
         &[A::Vex],
-        UnitDef {
-            max_hp: 400,
-            hp_regen: regen(5),
-            max_mana: 200,
-            mana_regen: regen(10),
-            damage: 14,
-            damage_spread: 1,
-            attack_range: 100,
-            acquisition: 500,
-            attack_time: 2000,
-            attack_speed: 135,
-            attack_point: 400,
-            attack_backswing: 300,
-            projectile_speed: None,
-            armor: 1,
-            magic_resist_pct: 0,
-            move_speed: 350,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(16, 18),
-            bounty_xp: 26,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::Ghost,
-        "npc_dota_neutral_ghost",
+        &script::NPC_DOTA_NEUTRAL_GHOST,
         &[A::FrostAttack, A::Piercing],
-        UnitDef {
-            max_hp: 500,
-            hp_regen: regen(5),
-            max_mana: 400,
-            mana_regen: regen(10),
-            damage: 38,
-            damage_spread: 5,
-            attack_range: 400,
-            acquisition: 300,
-            attack_time: 2000,
-            attack_speed: 165,
-            attack_point: 300,
-            attack_backswing: 300,
-            projectile_speed: Some(900),
-            armor: 2,
-            magic_resist_pct: 0,
-            move_speed: 320,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(23, 25),
-            bounty_xp: 42,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::HarpyScout,
-        "npc_dota_neutral_harpy_scout",
+        &script::NPC_DOTA_NEUTRAL_HARPY_SCOUT,
         &[A::TakeOff, A::Piercing],
-        UnitDef {
-            max_hp: 400,
-            hp_regen: regen(5),
-            max_mana: 200,
-            mana_regen: regen(10),
-            damage: 28,
-            damage_spread: 6,
-            attack_range: 300,
-            acquisition: 300,
-            attack_time: 2000,
-            attack_speed: 125,
-            attack_point: 300,
-            attack_backswing: 300,
-            projectile_speed: Some(1200),
-            armor: 1,
-            magic_resist_pct: 0,
-            move_speed: 280,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 1200,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(14, 16),
-            bounty_xp: 26,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::HarpyStorm,
-        "npc_dota_neutral_harpy_storm",
+        &script::NPC_DOTA_NEUTRAL_HARPY_STORM,
         &[A::ChainLightning, A::Piercing],
-        UnitDef {
-            max_hp: 500,
-            hp_regen: regen(5),
-            max_mana: 125,
-            mana_regen: regen(30),
-            damage: 30,
-            damage_spread: 6,
-            attack_range: 450,
-            acquisition: 300,
-            attack_time: 2000,
-            attack_speed: 125,
-            attack_point: 300,
-            attack_backswing: 300,
-            projectile_speed: Some(1200),
-            armor: 2,
-            magic_resist_pct: 0,
-            move_speed: 310,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 1800,
-            night_vision: 1800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(25, 27),
-            bounty_xp: 42,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::CentaurOutrunner,
-        "npc_dota_neutral_centaur_outrunner",
+        &script::NPC_DOTA_NEUTRAL_CENTAUR_OUTRUNNER,
         &[A::CloakAura],
-        UnitDef {
-            max_hp: 350,
-            hp_regen: regen(5),
-            max_mana: 0,
-            mana_regen: regen(10),
-            damage: 18,
-            damage_spread: 2,
-            attack_range: 100,
-            acquisition: 500,
-            attack_time: 2000,
-            attack_speed: 150,
-            attack_point: 300,
-            attack_backswing: 300,
-            projectile_speed: None,
-            armor: 1,
-            magic_resist_pct: 0,
-            move_speed: 320,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(16, 18),
-            bounty_xp: 32,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::CentaurKhan,
-        "npc_dota_neutral_centaur_khan",
+        &script::NPC_DOTA_NEUTRAL_CENTAUR_KHAN,
         &[A::WarStomp],
-        UnitDef {
-            max_hp: 1100,
-            hp_regen: regen(10),
-            max_mana: 200,
-            mana_regen: regen(10),
-            damage: 49,
-            damage_spread: 6,
-            attack_range: 100,
-            acquisition: 500,
-            attack_time: 2000,
-            attack_speed: 135,
-            attack_point: 300,
-            attack_backswing: 300,
-            projectile_speed: None,
-            armor: 4,
-            magic_resist_pct: 0,
-            move_speed: 320,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(54, 60),
-            bounty_xp: 90,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::GiantWolf,
-        "npc_dota_neutral_giant_wolf",
+        &script::NPC_DOTA_NEUTRAL_GIANT_WOLF,
         &[A::Intimidate],
-        UnitDef {
-            max_hp: 500,
-            hp_regen: regen(5),
-            max_mana: 200,
-            mana_regen: regen(10),
-            damage: 15,
-            damage_spread: 2,
-            attack_range: 90,
-            acquisition: 500,
-            attack_time: 2000,
-            attack_speed: 125,
-            attack_point: 330,
-            attack_backswing: 640,
-            projectile_speed: None,
-            armor: 1,
-            magic_resist_pct: 0,
-            move_speed: 350,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(18, 22),
-            bounty_xp: 40,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::AlphaWolf,
-        "npc_dota_neutral_alpha_wolf",
+        &script::NPC_DOTA_NEUTRAL_ALPHA_WOLF,
         &[A::CriticalStrike, A::PackleadersAura],
-        UnitDef {
-            max_hp: 600,
-            hp_regen: regen(5),
-            max_mana: 0,
-            mana_regen: regen(10),
-            damage: 27,
-            damage_spread: 2,
-            attack_range: 90,
-            acquisition: 500,
-            attack_time: 2000,
-            attack_speed: 150,
-            attack_point: 330,
-            attack_backswing: 640,
-            projectile_speed: None,
-            armor: 3,
-            magic_resist_pct: 0,
-            move_speed: 350,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(32, 34),
-            bounty_xp: 60,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::SatyrTrickster,
-        "npc_dota_neutral_satyr_trickster",
+        &script::NPC_DOTA_NEUTRAL_SATYR_TRICKSTER,
         &[A::Purge],
-        UnitDef {
-            max_hp: 300,
-            hp_regen: regen(5),
-            max_mana: 500,
-            mana_regen: regen(10),
-            damage: 10,
-            damage_spread: 2,
-            attack_range: 280,
-            acquisition: 280,
-            attack_time: 2000,
-            attack_speed: 125,
-            attack_point: 300,
-            attack_backswing: 300,
-            projectile_speed: Some(1500),
-            armor: 0,
-            magic_resist_pct: 0,
-            move_speed: 300,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(12, 14),
-            bounty_xp: 24,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::SatyrSoulstealer,
-        "npc_dota_neutral_satyr_soulstealer",
+        &script::NPC_DOTA_NEUTRAL_SATYR_SOULSTEALER,
         &[A::ManaBurn, A::ManaAura],
-        UnitDef {
-            max_hp: 600,
-            hp_regen: regen(5),
-            max_mana: 600,
-            mana_regen: regen(10),
-            damage: 21,
-            damage_spread: 2,
-            attack_range: 100,
-            acquisition: 300,
-            attack_time: 2000,
-            attack_speed: 125,
-            attack_point: 300,
-            attack_backswing: 300,
-            projectile_speed: None,
-            armor: 2,
-            magic_resist_pct: 0,
-            move_speed: 270,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(18, 22),
-            bounty_xp: 46,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::SatyrHellcaller,
-        "npc_dota_neutral_satyr_hellcaller",
+        &script::NPC_DOTA_NEUTRAL_SATYR_HELLCALLER,
         &[A::Shockwave, A::UnholyAura],
-        UnitDef {
-            max_hp: 1100,
-            hp_regen: regen(10),
-            max_mana: 400,
-            mana_regen: regen(10),
-            damage: 49,
-            damage_spread: 6,
-            attack_range: 100,
-            acquisition: 300,
-            attack_time: 2000,
-            attack_speed: 150,
-            attack_point: 300,
-            attack_backswing: 300,
-            projectile_speed: None,
-            armor: 2,
-            magic_resist_pct: 0,
-            move_speed: 290,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(60, 66),
-            bounty_xp: 90,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::OgreMauler,
-        "npc_dota_neutral_ogre_mauler",
+        &script::NPC_DOTA_NEUTRAL_OGRE_MAULER,
         &[A::OgreSmash],
-        UnitDef {
-            max_hp: 800,
-            hp_regen: regen(5),
-            max_mana: 0,
-            mana_regen: regen(10),
-            damage: 22,
-            damage_spread: 2,
-            attack_range: 100,
-            acquisition: 500,
-            attack_time: 2000,
-            attack_speed: 150,
-            attack_point: 300,
-            attack_backswing: 300,
-            projectile_speed: None,
-            armor: 1,
-            magic_resist_pct: 0,
-            move_speed: 270,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(22, 26),
-            bounty_xp: 32,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::OgreMagi,
-        "npc_dota_neutral_ogre_magi",
+        &script::NPC_DOTA_NEUTRAL_OGRE_MAGI,
         &[A::IceArmor],
-        UnitDef {
-            max_hp: 600,
-            hp_regen: regen(5),
-            max_mana: 400,
-            mana_regen: regen(10),
-            damage: 18,
-            damage_spread: 2,
-            attack_range: 100,
-            acquisition: 500,
-            attack_time: 2000,
-            attack_speed: 150,
-            attack_point: 300,
-            attack_backswing: 300,
-            projectile_speed: None,
-            armor: 0,
-            magic_resist_pct: 0,
-            move_speed: 270,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(28, 32),
-            bounty_xp: 48,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::MudGolem,
-        "npc_dota_neutral_mud_golem",
-        &[A::HurlBoulder, A::ShardSplit],
-        UnitDef {
-            max_hp: 750,
-            hp_regen: regen(5),
-            max_mana: 400,
-            mana_regen: regen(10),
-            damage: 24,
-            damage_spread: 2,
-            attack_range: 100,
-            acquisition: 500,
-            attack_time: 2000,
-            attack_speed: 150,
-            attack_point: 300,
-            attack_backswing: 300,
-            projectile_speed: None,
-            armor: 0,
-            magic_resist_pct: 30,
-            move_speed: 310,
-            turn_rate: rules::TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(19, 21),
-            bounty_xp: 32,
-            ..NEUTRAL_BASE
-        },
+        &script::NPC_DOTA_NEUTRAL_MUD_GOLEM,
+        &[A::HurlBigBoulder, A::ShardSplit],
     ),
     neutral(
         NeutralKind::MudGolemSplit,
-        "npc_dota_neutral_mud_golem_split",
+        &script::NPC_DOTA_NEUTRAL_MUD_GOLEM_SPLIT,
         &[A::HurlBoulder],
-        UnitDef {
-            max_hp: 250,
-            hp_regen: regen(5),
-            max_mana: 400,
-            mana_regen: regen(10),
-            damage: 10,
-            damage_spread: 4,
-            attack_range: 100,
-            acquisition: 500,
-            attack_time: 2000,
-            attack_speed: 150,
-            attack_point: 300,
-            attack_backswing: 300,
-            projectile_speed: None,
-            armor: 0,
-            magic_resist_pct: 33,
-            move_speed: 310,
-            turn_rate: rules::TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(6, 10),
-            bounty_xp: 18,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::PolarFurbolgChampion,
-        "npc_dota_neutral_polar_furbolg_champion",
+        &script::NPC_DOTA_NEUTRAL_POLAR_FURBOLG_CHAMPION,
         &[A::SwiftnessAura, A::DeathThroeRush],
-        UnitDef {
-            max_hp: 700,
-            hp_regen: regen(5),
-            max_mana: 0,
-            mana_regen: regen(10),
-            damage: 39,
-            damage_spread: 5,
-            attack_range: 100,
-            acquisition: 500,
-            attack_time: 2000,
-            attack_speed: 135,
-            attack_point: 300,
-            attack_backswing: 300,
-            projectile_speed: None,
-            armor: 3,
-            magic_resist_pct: 0,
-            move_speed: 320,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(30, 38),
-            bounty_xp: 66,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::PolarFurbolgUrsaWarrior,
-        "npc_dota_neutral_polar_furbolg_ursa_warrior",
+        &script::NPC_DOTA_NEUTRAL_POLAR_FURBOLG_URSA_WARRIOR,
         &[A::ThunderClap, A::DeathThroePower],
-        UnitDef {
-            max_hp: 950,
-            hp_regen: regen(10),
-            max_mana: 300,
-            mana_regen: regen(10),
-            damage: 49,
-            damage_spread: 6,
-            attack_range: 100,
-            acquisition: 500,
-            attack_time: 2000,
-            attack_speed: 135,
-            attack_point: 300,
-            attack_backswing: 300,
-            projectile_speed: None,
-            armor: 4,
-            magic_resist_pct: 0,
-            move_speed: 320,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(62, 66),
-            bounty_xp: 90,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::Wildkin,
-        "npc_dota_neutral_wildkin",
+        &script::NPC_DOTA_NEUTRAL_WILDKIN,
         &[A::Tornado],
-        UnitDef {
-            max_hp: 350,
-            hp_regen: regen(5),
-            max_mana: 200,
-            mana_regen: regen(10),
-            damage: 18,
-            damage_spread: 2,
-            attack_range: 128,
-            acquisition: 500,
-            attack_time: 2000,
-            attack_speed: 150,
-            attack_point: 300,
-            attack_backswing: 300,
-            projectile_speed: None,
-            armor: 2,
-            magic_resist_pct: 0,
-            move_speed: 300,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(16, 18),
-            bounty_xp: 26,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::EnragedWildkin,
-        "npc_dota_neutral_enraged_wildkin",
+        &script::NPC_DOTA_NEUTRAL_ENRAGED_WILDKIN,
         &[A::Hurricane, A::ToughnessAura],
-        UnitDef {
-            max_hp: 950,
-            hp_regen: regen(5),
-            max_mana: 400,
-            mana_regen: regen(10),
-            damage: 50,
-            damage_spread: 6,
-            attack_range: 128,
-            acquisition: 500,
-            attack_time: 2000,
-            attack_speed: 150,
-            attack_point: 300,
-            attack_backswing: 300,
-            projectile_speed: None,
-            armor: 4,
-            magic_resist_pct: 0,
-            move_speed: 320,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(58, 64),
-            bounty_xp: 90,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::DarkTroll,
-        "npc_dota_neutral_dark_troll",
+        &script::NPC_DOTA_NEUTRAL_DARK_TROLL,
         &[A::Ensnare, A::Piercing],
-        UnitDef {
-            max_hp: 500,
-            hp_regen: regen(5),
-            max_mana: 200,
-            mana_regen: regen(10),
-            damage: 24,
-            damage_spread: 3,
-            attack_range: 250,
-            acquisition: 250,
-            attack_time: 2000,
-            attack_speed: 150,
-            attack_point: 300,
-            attack_backswing: 300,
-            projectile_speed: Some(1200),
-            armor: 0,
-            magic_resist_pct: 0,
-            move_speed: 270,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(17, 19),
-            bounty_xp: 42,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::DarkTrollWarlord,
-        "npc_dota_neutral_dark_troll_warlord",
+        &script::NPC_DOTA_NEUTRAL_DARK_TROLL_WARLORD,
         &[A::RaiseDead],
-        UnitDef {
-            max_hp: 1100,
-            hp_regen: regen(5),
-            max_mana: 250,
-            mana_regen: regen(10),
-            damage: 40,
-            damage_spread: 5,
-            attack_range: 250,
-            acquisition: 250,
-            attack_time: 2000,
-            attack_speed: 150,
-            attack_point: 300,
-            attack_backswing: 300,
-            projectile_speed: Some(1200),
-            armor: 4,
-            magic_resist_pct: 0,
-            move_speed: 300,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(40, 46),
-            bounty_xp: 90,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::WarpineRaider,
-        "npc_dota_neutral_warpine_raider",
-        &[A::SeedShot],
-        UnitDef {
-            max_hp: 850,
-            hp_regen: regen(25),
-            max_mana: 300,
-            mana_regen: regen(10),
-            damage: 39,
-            damage_spread: 2,
-            attack_range: 100,
-            acquisition: 500,
-            attack_time: 2000,
-            attack_speed: 150,
-            attack_point: 300,
-            attack_backswing: 300,
-            projectile_speed: None,
-            armor: 6,
-            magic_resist_pct: 30,
-            move_speed: 310,
-            turn_rate: rules::TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(48, 50),
-            bounty_xp: 76,
-            ..NEUTRAL_BASE
-        },
+        &script::NPC_DOTA_NEUTRAL_WARPINE_RAIDER,
+        &[A::SnowballShot],
     ),
     neutral(
         NeutralKind::BlackDrake,
-        "npc_dota_neutral_black_drake",
+        &script::NPC_DOTA_NEUTRAL_BLACK_DRAKE,
         &[A::MagicAmplificationAura],
-        UnitDef {
-            max_hp: 950,
-            hp_regen: regen(5),
-            max_mana: 0,
-            mana_regen: regen(10),
-            damage: 20,
-            damage_spread: 2,
-            attack_range: 300,
-            acquisition: 300,
-            attack_time: 2000,
-            attack_speed: 120,
-            attack_point: 500,
-            attack_backswing: 560,
-            projectile_speed: Some(900),
-            armor: 2,
-            magic_resist_pct: 25,
-            move_speed: 350,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            ancient: true,
-            bounty_gold: GoldRange::new(37, 43),
-            bounty_xp: 95,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::BlackDragon,
-        "npc_dota_neutral_black_dragon",
-        &[A::Fireball, A::SplashAttack, A::DragonhideAura],
-        UnitDef {
-            max_hp: 2000,
-            hp_regen: regen(20),
-            max_mana: 500,
-            mana_regen: regen(10),
-            damage: 62,
-            damage_spread: 6,
-            attack_range: 300,
-            acquisition: 300,
-            attack_time: 2000,
-            attack_speed: 135,
-            attack_point: 500,
-            attack_backswing: 560,
-            projectile_speed: Some(1500),
-            armor: 4,
-            magic_resist_pct: 30,
-            move_speed: 300,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            ancient: true,
-            bounty_gold: GoldRange::new(76, 80),
-            bounty_xp: 124,
-            ..NEUTRAL_BASE
-        },
+        &script::NPC_DOTA_NEUTRAL_BLACK_DRAGON,
+        &[A::SearingSwoop, A::SplashAttack, A::DragonhideAura],
     ),
     neutral(
         NeutralKind::RockGolem,
-        "npc_dota_neutral_rock_golem",
+        &script::NPC_DOTA_NEUTRAL_ROCK_GOLEM,
         &[A::WeakeningAura],
-        UnitDef {
-            max_hp: 800,
-            hp_regen: regen(5),
-            max_mana: 400,
-            mana_regen: regen(10),
-            damage: 22,
-            damage_spread: 2,
-            attack_range: 100,
-            acquisition: 500,
-            attack_time: 2000,
-            attack_speed: 150,
-            attack_point: 300,
-            attack_backswing: 300,
-            projectile_speed: None,
-            armor: 4,
-            magic_resist_pct: 30,
-            move_speed: 270,
-            turn_rate: rules::TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            ancient: true,
-            bounty_gold: GoldRange::new(37, 43),
-            bounty_xp: 95,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::GraniteGolem,
-        "npc_dota_neutral_granite_golem",
+        &script::NPC_DOTA_NEUTRAL_GRANITE_GOLEM,
         &[A::GraniteAura],
-        UnitDef {
-            max_hp: 1500,
-            hp_regen: regen(15),
-            max_mana: 600,
-            mana_regen: regen(15),
-            damage: 80,
-            damage_spread: 4,
-            attack_range: 128,
-            acquisition: 500,
-            attack_time: 2000,
-            attack_speed: 150,
-            attack_point: 300,
-            attack_backswing: 500,
-            projectile_speed: None,
-            armor: 8,
-            magic_resist_pct: 30,
-            move_speed: 270,
-            turn_rate: rules::TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            ancient: true,
-            bounty_gold: GoldRange::new(76, 80),
-            bounty_xp: 124,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::SmallThunderLizard,
-        "npc_dota_neutral_small_thunder_lizard",
+        &script::NPC_DOTA_NEUTRAL_SMALL_THUNDER_LIZARD,
         &[A::WarDrumsAura],
-        UnitDef {
-            max_hp: 800,
-            hp_regen: regen(5),
-            max_mana: 400,
-            mana_regen: regen(10),
-            damage: 32,
-            damage_spread: 2,
-            attack_range: 300,
-            acquisition: 800,
-            attack_time: 1800,
-            attack_speed: 100,
-            attack_point: 500,
-            attack_backswing: 560,
-            projectile_speed: Some(1500),
-            armor: 3,
-            magic_resist_pct: 50,
-            move_speed: 270,
-            turn_rate: rules::TURN_RATE_BRADS,
-            day_vision: 1400,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            ancient: true,
-            bounty_gold: GoldRange::new(42, 49),
-            bounty_xp: 95,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::BigThunderLizard,
-        "npc_dota_neutral_big_thunder_lizard",
+        &script::NPC_DOTA_NEUTRAL_BIG_THUNDER_LIZARD,
         &[A::Slam, A::Frenzy],
-        UnitDef {
-            max_hp: 1700,
-            hp_regen: regen(5),
-            max_mana: 400,
-            mana_regen: regen(10),
-            damage: 60,
-            damage_spread: 5,
-            attack_range: 300,
-            acquisition: 300,
-            attack_time: 2000,
-            attack_speed: 120,
-            attack_point: 300,
-            attack_backswing: 560,
-            projectile_speed: Some(1500),
-            armor: 3,
-            magic_resist_pct: 30,
-            move_speed: 270,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 1400,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            ancient: true,
-            bounty_gold: GoldRange::new(76, 80),
-            bounty_xp: 124,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::FrostbittenGolem,
-        "npc_dota_neutral_frostbitten_golem",
+        &script::NPC_DOTA_NEUTRAL_FROSTBITTEN_GOLEM,
         &[A::TimeWarpAura],
-        UnitDef {
-            max_hp: 900,
-            hp_regen: regen(20),
-            max_mana: 0,
-            mana_regen: regen(10),
-            damage: 29,
-            damage_spread: 2,
-            attack_range: 100,
-            acquisition: 500,
-            attack_time: 2000,
-            attack_speed: 150,
-            attack_point: 300,
-            attack_backswing: 300,
-            projectile_speed: None,
-            armor: 7,
-            magic_resist_pct: 30,
-            move_speed: 300,
-            turn_rate: rules::TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            ancient: true,
-            bounty_gold: GoldRange::new(37, 43),
-            bounty_xp: 95,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::IceShaman,
-        "npc_dota_neutral_ice_shaman",
+        &script::NPC_DOTA_NEUTRAL_ICE_SHAMAN,
         &[A::IcefireBomb],
-        UnitDef {
-            max_hp: 1500,
-            hp_regen: regen(5),
-            max_mana: 400,
-            mana_regen: regen(10),
-            damage: 58,
-            damage_spread: 4,
-            attack_range: 500,
-            acquisition: 500,
-            attack_time: 2000,
-            attack_speed: 135,
-            attack_point: 700,
-            attack_backswing: 300,
-            projectile_speed: Some(1500),
-            armor: 3,
-            magic_resist_pct: 30,
-            move_speed: 290,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 1400,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            ancient: true,
-            bounty_gold: GoldRange::new(76, 80),
-            bounty_xp: 124,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::ProwlerAcolyte,
-        "npc_dota_neutral_prowler_acolyte",
+        &script::NPC_DOTA_NEUTRAL_PROWLER_ACOLYTE,
         &[A::ProwlerAura],
-        UnitDef {
-            max_hp: 750,
-            hp_regen: regen(5),
-            max_mana: 400,
-            mana_regen: regen(10),
-            damage: 33,
-            damage_spread: 5,
-            attack_range: 100,
-            acquisition: 500,
-            attack_time: 2000,
-            attack_speed: 135,
-            attack_point: 300,
-            attack_backswing: 300,
-            projectile_speed: None,
-            armor: 11,
-            magic_resist_pct: 0,
-            move_speed: 270,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            ancient: true,
-            bounty_gold: GoldRange::new(37, 43),
-            bounty_xp: 95,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::ProwlerShaman,
-        "npc_dota_neutral_prowler_shaman",
+        &script::NPC_DOTA_NEUTRAL_PROWLER_SHAMAN,
         &[A::Desecrate, A::Petrify],
-        UnitDef {
-            max_hp: 1400,
-            hp_regen: regen(5),
-            max_mana: 400,
-            mana_regen: regen(10),
-            damage: 59,
-            damage_spread: 6,
-            attack_range: 100,
-            acquisition: 500,
-            attack_time: 2000,
-            attack_speed: 135,
-            attack_point: 300,
-            attack_backswing: 300,
-            projectile_speed: None,
-            armor: 12,
-            magic_resist_pct: 0,
-            move_speed: 300,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            ancient: true,
-            bounty_gold: GoldRange::new(76, 80),
-            bounty_xp: 124,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::Tadpole,
-        "npc_dota_neutral_tadpole",
+        &script::NPC_DOTA_NEUTRAL_TADPOLE,
         &[A::RiverbornAura],
-        UnitDef {
-            max_hp: 400,
-            hp_regen: regen(5),
-            max_mana: 200,
-            mana_regen: regen(10),
-            damage: 19,
-            damage_spread: 2,
-            attack_range: 100,
-            acquisition: 800,
-            attack_time: 2000,
-            attack_speed: 125,
-            attack_point: 400,
-            attack_backswing: 300,
-            projectile_speed: None,
-            armor: 1,
-            magic_resist_pct: 0,
-            move_speed: 270,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 400,
-            night_vision: 400,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(17, 19),
-            bounty_xp: 30,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::Froglet,
-        "npc_dota_neutral_froglet",
+        &script::NPC_DOTA_NEUTRAL_FROGLET,
         &[A::ArmOfTheDeep, A::RiverbornAura],
-        UnitDef {
-            max_hp: 700,
-            hp_regen: regen(5),
-            max_mana: 300,
-            mana_regen: regen(10),
-            damage: 22,
-            damage_spread: 2,
-            attack_range: 100,
-            acquisition: 500,
-            attack_time: 2000,
-            attack_speed: 150,
-            attack_point: 300,
-            attack_backswing: 300,
-            projectile_speed: None,
-            armor: 2,
-            magic_resist_pct: 0,
-            move_speed: 290,
-            turn_rate: rules::TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(25, 29),
-            bounty_xp: 42,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::GrownFrog,
-        "npc_dota_neutral_grown_frog",
+        &script::NPC_DOTA_NEUTRAL_GROWN_FROG,
         &[A::TendrilsOfTheDeep, A::RiverbornAura],
-        UnitDef {
-            max_hp: 900,
-            hp_regen: regen(5),
-            max_mana: 350,
-            mana_regen: regen(10),
-            damage: 41,
-            damage_spread: 5,
-            attack_range: 100,
-            acquisition: 500,
-            attack_time: 2000,
-            attack_speed: 135,
-            attack_point: 300,
-            attack_backswing: 300,
-            projectile_speed: None,
-            armor: 3,
-            magic_resist_pct: 0,
-            move_speed: 300,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(37, 41),
-            bounty_xp: 55,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::AncientFrog,
-        "npc_dota_neutral_ancient_frog",
+        &script::NPC_DOTA_NEUTRAL_ANCIENT_FROG,
         &[A::CongregationsOfTheDeep, A::RiverbornAura],
-        UnitDef {
-            max_hp: 1250,
-            hp_regen: regen(20),
-            max_mana: 450,
-            mana_regen: regen(10),
-            damage: 60,
-            damage_spread: 4,
-            attack_range: 100,
-            acquisition: 500,
-            attack_time: 2000,
-            attack_speed: 150,
-            attack_point: 300,
-            attack_backswing: 300,
-            projectile_speed: None,
-            armor: 5,
-            magic_resist_pct: 30,
-            move_speed: 300,
-            turn_rate: rules::TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            ancient: true,
-            bounty_gold: GoldRange::new(53, 56),
-            bounty_xp: 104,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::FrogletMage,
-        "npc_dota_neutral_froglet_mage",
+        &script::NPC_DOTA_NEUTRAL_FROGLET_MAGE,
         &[A::WaterBubbleSmall, A::RiverbornAura],
-        UnitDef {
-            max_hp: 700,
-            hp_regen: regen(5),
-            max_mana: 300,
-            mana_regen: regen(10),
-            damage: 24,
-            damage_spread: 3,
-            attack_range: 250,
-            acquisition: 250,
-            attack_time: 2000,
-            attack_speed: 150,
-            attack_point: 300,
-            attack_backswing: 300,
-            projectile_speed: Some(1200),
-            armor: 2,
-            magic_resist_pct: 0,
-            move_speed: 290,
-            turn_rate: rules::TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(25, 29),
-            bounty_xp: 42,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::GrownFrogMage,
-        "npc_dota_neutral_grown_frog_mage",
+        &script::NPC_DOTA_NEUTRAL_GROWN_FROG_MAGE,
         &[A::WaterBubbleMedium, A::RiverbornAura],
-        UnitDef {
-            max_hp: 900,
-            hp_regen: regen(5),
-            max_mana: 350,
-            mana_regen: regen(10),
-            damage: 40,
-            damage_spread: 5,
-            attack_range: 250,
-            acquisition: 250,
-            attack_time: 2000,
-            attack_speed: 150,
-            attack_point: 300,
-            attack_backswing: 300,
-            projectile_speed: Some(1200),
-            armor: 3,
-            magic_resist_pct: 0,
-            move_speed: 300,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            bounty_gold: GoldRange::new(37, 41),
-            bounty_xp: 55,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::AncientFrogMage,
-        "npc_dota_neutral_ancient_frog_mage",
+        &script::NPC_DOTA_NEUTRAL_ANCIENT_FROG_MAGE,
         &[A::WaterBubbleLarge, A::RiverbornAura],
-        UnitDef {
-            max_hp: 1250,
-            hp_regen: regen(20),
-            max_mana: 450,
-            mana_regen: regen(10),
-            damage: 58,
-            damage_spread: 4,
-            attack_range: 500,
-            acquisition: 500,
-            attack_time: 2000,
-            attack_speed: 135,
-            attack_point: 700,
-            attack_backswing: 300,
-            projectile_speed: Some(1500),
-            armor: 5,
-            magic_resist_pct: 30,
-            move_speed: 300,
-            turn_rate: rules::TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 800,
-            collision: rules::NEUTRAL_COLLISION,
-            bound: rules::NEUTRAL_BOUND,
-            ancient: true,
-            bounty_gold: GoldRange::new(53, 56),
-            bounty_xp: 104,
-            ..NEUTRAL_BASE
-        },
     ),
     neutral(
         NeutralKind::SkeletonWarrior,
-        "npc_dota_dark_troll_warlord_skeleton_warrior",
+        &script::NPC_DOTA_DARK_TROLL_WARLORD_SKELETON_WARRIOR,
         &[A::Rally],
-        UnitDef {
-            max_hp: 250,
-            hp_regen: regen(0),
-            max_mana: 200,
-            mana_regen: regen(0),
-            damage: 11,
-            damage_spread: 2,
-            attack_range: 90,
-            acquisition: 300,
-            attack_time: 1000,
-            attack_speed: 100,
-            attack_point: 560,
-            attack_backswing: 440,
-            projectile_speed: None,
-            armor: 0,
-            magic_resist_pct: 0,
-            move_speed: 270,
-            turn_rate: rules::FAST_TURN_RATE_BRADS,
-            day_vision: 800,
-            night_vision: 600,
-            collision: rules::RANGED_CREEP_COLLISION,
-            bound: rules::RANGED_CREEP_BOUND,
-            bounty_gold: GoldRange::new(2, 4),
-            bounty_xp: 4,
-            ..NEUTRAL_BASE
-        },
     ),
     NeutralDef {
         growth: None,
         ..neutral(
             NeutralKind::WildkinTornado,
-            "npc_dota_enraged_wildkin_tornado",
+            &script::NPC_DOTA_ENRAGED_WILDKIN_TORNADO,
             &[A::Tempest],
-            UnitDef {
-                max_hp: 500,
-                hp_regen: regen(5),
-                max_mana: 0,
-                mana_regen: regen(0),
-                armor: 0,
-                magic_resist_pct: 0,
-                move_speed: 125,
-                turn_rate: rules::TURN_RATE_BRADS,
-                day_vision: 300,
-                night_vision: 300,
-                flies: true,
-                collision: 0,
-                bound: 0,
-                bounty_gold: GoldRange::new(0, 0),
-                bounty_xp: 0,
-                ..NEUTRAL_BASE
-            },
         )
     },
     NeutralDef {
@@ -1780,8 +761,74 @@ const NEUTRAL_ROWS: &[NeutralDef] = &[
             },
         }),
         home: &crate::ROSHAN_HOME,
+        offered: true,
         def: crate::ROSHAN,
     },
+    neutral(
+        NeutralKind::Radigull,
+        &script::NPC_DOTA_NEUTRAL_RADIGULL,
+        &[A::Eggstremism],
+    ),
+    neutral(
+        NeutralKind::OdobenusFootman,
+        &script::NPC_DOTA_NEUTRAL_ODOBENUS_FOOTMAN,
+        &[A::OdobenusBlight],
+    ),
+    neutral(
+        NeutralKind::OdobenusFrostmage,
+        &script::NPC_DOTA_NEUTRAL_ODOBENUS_FROSTMAGE,
+        &[A::SnowballShot],
+    ),
+    neutral(
+        NeutralKind::Eimermole,
+        &script::NPC_DOTA_NEUTRAL_EIMERMOLE,
+        &[A::MinersAura],
+    ),
+    neutral(
+        NeutralKind::EimermoleForeman,
+        &script::NPC_DOTA_NEUTRAL_EIMERMOLE_FOREMAN,
+        &[A::MinersSlam],
+    ),
+    neutral(
+        NeutralKind::OgreSeal,
+        &script::NPC_DOTA_NEUTRAL_OGRE_SEAL,
+        &[A::SealFlop],
+    ),
+    neutral(
+        NeutralKind::OgreSealPup,
+        &script::NPC_DOTA_NEUTRAL_OGRE_SEAL_PUP,
+        &[A::SealDisapprovalAura],
+    ),
+    neutral(
+        NeutralKind::KoboldTunnelerGold,
+        &script::NPC_DOTA_NEUTRAL_KOBOLD_TUNNELER_GOLD,
+        &[A::StealWeaponCast, A::GoldUpgrade],
+    ),
+    neutral(
+        NeutralKind::GnollAssassinGold,
+        &script::NPC_DOTA_NEUTRAL_GNOLL_ASSASSIN_GOLD,
+        &[A::EnvenomedWeapon, A::Piercing, A::GoldUpgrade],
+    ),
+    neutral(
+        NeutralKind::AlphaWolfGold,
+        &script::NPC_DOTA_NEUTRAL_ALPHA_WOLF_GOLD,
+        &[A::CriticalStrike, A::PackleadersAura, A::GoldUpgrade],
+    ),
+    neutral(
+        NeutralKind::MudGolemGold,
+        &script::NPC_DOTA_NEUTRAL_MUD_GOLEM_GOLD,
+        &[A::HurlBigBoulder, A::ShardSplit, A::GoldUpgrade],
+    ),
+    neutral(
+        NeutralKind::EnragedWildkinGold,
+        &script::NPC_DOTA_NEUTRAL_ENRAGED_WILDKIN_GOLD,
+        &[A::Hurricane, A::ToughnessAura, A::GoldUpgrade],
+    ),
+    neutral(
+        NeutralKind::PolarFurbolgChampionGold,
+        &script::NPC_DOTA_NEUTRAL_POLAR_FURBOLG_CHAMPION_GOLD,
+        &[A::SwiftnessAura, A::DeathThroeRush, A::GoldUpgrade],
+    ),
 ];
 
 /// How many neutral ids the protocol has ever handed out.

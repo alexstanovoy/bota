@@ -481,9 +481,7 @@ impl World {
     fn raise_bounty(&mut self, entity: Entity, def: &UnitDef, upgrades: u32) {
         let steps = i32::try_from(upgrades).expect("upgrade count fits an i32");
         if let Some(bounty) = self.bounty.get_mut(entity) {
-            bounty.gold = def
-                .bounty_gold
-                .raised(def.per_upgrade.gold_halves * steps / 2);
+            bounty.gold = bota_core::upgraded_bounty_gold(def.bounty_gold, &def.per_upgrade, steps);
             bounty.xp = def.bounty_xp + def.per_upgrade.xp * steps;
         }
     }

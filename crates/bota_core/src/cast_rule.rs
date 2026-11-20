@@ -28,6 +28,8 @@ use crate::NeutralKind;
 /// disarmed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum When {
+    /// Waits for an explicit cast order.
+    Manual,
     /// Each think, at the unit the rule picks, if it picks one.
     Think(CastRule),
     /// A `chance_pct` chance as a neutral of `kind` of its camp dies, at

@@ -20,6 +20,8 @@ impl World {
     /// neutral order the spell it wants.
     pub fn tick_neutral_spells(&mut self) {
         self.tick_chains();
+        self.tick_pulsers();
+        self.tick_bouncers();
         self.tick_pushes();
         self.tick_purges();
         self.tick_journey_contacts();
@@ -28,9 +30,19 @@ impl World {
             if self.neutral.get(caster).is_none() {
                 continue;
             }
+            if self
+                .neutral_cast_wait
+                .get(caster)
+                .is_some_and(|&due| self.tick >= due)
+            {
+                self.neutral_cast_wait.remove(caster);
+            }
             if let Some((slot, target)) = self.wanted_cast(caster) {
                 let slot = AbilitySlot(slot as u8);
                 let id = self.ability_in(caster, slot);
+                if !self.follows_through(caster, id) {
+                    continue;
+                }
                 if self.migrating(caster) {
                     self.note_journey_stop(caster, id);
                 }
@@ -51,6 +63,25 @@ impl World {
             }
         }
         self.recycle_entity_snapshot(entities);
+    }
+
+    /// This simulation rolls once before issuing a cast and uses the cooldown
+    /// to delay the caster's next probabilistic attempt after a miss.
+    fn follows_through(&mut self, caster: Entity, id: bota_proto::AbilityId) -> bool {
+        let Some(Spell::Cast {
+            chance: Some(chance),
+            ..
+        }) = NeutralAbility::of(id).map(|ability| *ability.spell())
+        else {
+            return true;
+        };
+        if self.rng.global(Purpose::NeutralCast).below(100) as i32 >= chance.pct {
+            let wait = bota_core::ticks_of_ms(chance.wait_ms);
+            self.neutral_cast_wait
+                .insert(caster, self.tick.saturating_add(wait));
+            return false;
+        }
+        true
     }
 
     /// Whether a neutral may begin a spell at all: awake and not walking
@@ -98,6 +129,16 @@ impl World {
                 continue;
             };
             let def = &ability.entry().def;
+            let hesitating = matches!(
+                ability.spell(),
+                Spell::Cast {
+                    chance: Some(_),
+                    ..
+                }
+            ) && self.neutral_cast_wait.contains(caster);
+            if hesitating {
+                continue;
+            }
             let journey = self.journey_can_cast(caster, ability);
             let enabled = if self.migrating(caster) {
                 journey

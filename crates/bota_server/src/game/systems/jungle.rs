@@ -49,8 +49,11 @@ impl World {
     fn draw_roster(&mut self, index: u8, camp: &CampDef) -> Option<&'static Roster> {
         let at = usize::from(index);
         let last = self.camp_last.get(at).copied().unwrap_or(u8::MAX);
-        let fresh: Vec<(u8, &'static Roster)> =
-            rosters_of(camp).filter(|(id, _)| *id != last).collect();
+        let mut fresh: Vec<_> = rosters_of(camp).collect();
+        // A camp with only one choice can repeat it after a clear.
+        if fresh.len() > 1 {
+            fresh.retain(|(id, _)| *id != last);
+        }
         if fresh.is_empty() {
             return None;
         }

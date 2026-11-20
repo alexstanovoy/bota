@@ -742,6 +742,9 @@ pub const fn spell_effect(ability: NeutralAbility) -> Option<EffectId> {
             | Act::Enrage { effect, .. } => Some(effect),
             Act::Bubble { .. } => Some(WATER_BUBBLE_EFFECT),
             Act::Purge { .. } => Some(crate::PURGE_EFFECT),
+            Act::Pulses { effect, .. }
+            | Act::Leap { effect, .. }
+            | Act::Ricochet { effect, .. } => Some(effect),
             _ => None,
         },
         _ => None,
@@ -786,6 +789,13 @@ pub const fn spell_buff(ability: NeutralAbility) -> Option<Buff> {
         Spell::Storm { buff, .. }
         | Spell::Strike(Strike::Lay { buff, .. })
         | Spell::Throe(Throe::Rouse { buff, .. }) => Some(buff),
+        Spell::Cast {
+            act:
+                Act::Pulses { slow: buff, .. }
+                | Act::Leap { slow: buff, .. }
+                | Act::Ricochet { slow: buff, .. },
+            ..
+        } => Some(buff),
         Spell::Throe(Throe::Split { slow_pct, .. }) => {
             Some(Buff::of(crate::Stat::MovePct, [-slow_pct; 4]))
         }

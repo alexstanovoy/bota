@@ -5,7 +5,7 @@ use bota_proto::Vec2;
 /// The size class of a neutral camp: which rosters it draws from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum CampKind {
-    /// Three creeps, five in the kobold camp. Six rosters.
+    /// Three creeps, four in the Kobold camp. Six rosters.
     Small,
     /// Two to four creeps. Five rosters.
     Medium,

@@ -27,6 +27,11 @@ pub struct Growth {
     /// Half points of gold added to both ends of the bounty, so an odd
     /// number is half a gold a step; a part gold left over is not paid.
     pub gold_halves: i32,
+    /// Whether the gold goes to one end of the bounty a step, the greatest end first and then the
+    /// least in turn, rather than to both (Dota 7.42: "now gold bounty upgrade alternates between
+    /// +1 min gold bounty and +1 max bounty"): then `gold_halves` is two of the gold each step adds
+    /// to its end.
+    pub gold_alternates: bool,
     /// Experience added to the bounty.
     pub xp: i32,
     /// World units a second added to its pace.
@@ -171,6 +176,25 @@ pub struct UnitDef {
     pub innate: &'static [ModifierKind],
 }
 
+/// The gold a unit's fall pays after `steps` upgrade intervals: its `base` raised by what its
+/// `growth` adds each step. The one place that says how an upgrade adds gold: to both ends of the
+/// range, or (a neutral, Dota 7.42: "Now gold bounty upgrade alternates between +1 min gold bounty
+/// and +1 max bounty") to the greatest end and the least in turn, the greatest first: at upgrade
+/// level `L` the least end holds `L / 2` times the gold of a step and the greatest `(L + 1) / 2`
+/// times, so level one raises the greatest end by 1, level two both, level three the greatest by
+/// 2 and the least by 1.
+pub const fn upgraded_bounty_gold(base: GoldRange, growth: &Growth, steps: i32) -> GoldRange {
+    let gold = growth.gold_halves / 2;
+    if growth.gold_alternates {
+        GoldRange::new(
+            base.min + gold * (steps / 2),
+            base.max + gold * ((steps + 1) / 2),
+        )
+    } else {
+        base.raised(growth.gold_halves * steps / 2)
+    }
+}
+
 /// No gain at all.
 pub(crate) const NO_GROWTH: Growth = Growth {
     attributes: Attributes::ZERO,
@@ -180,6 +204,7 @@ pub(crate) const NO_GROWTH: Growth = Growth {
     armor_halves: 0,
     attack_speed: 0,
     gold_halves: 0,
+    gold_alternates: false,
     xp: 0,
     move_speed: 0,
     team_gold: 0,

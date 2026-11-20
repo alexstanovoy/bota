@@ -2,13 +2,97 @@
 
 use bota_core::{
     CAMPS, COURIER, CampDef, CampKind, MELEE_CREEP, NeutralAbility, NeutralKind, OBSERVER_WARD,
-    SENTRY_WARD, SIEGE_CREEP, UnitDef, map_of, rules,
+    ROSTERS, SENTRY_WARD, SIEGE_CREEP, UnitDef, map_of, rules,
 };
 
 use crate::game::{Def, Entity, World};
 use bota_proto::{DamageKind, EffectId, Fixed, ItemId, MapId, Order, Target, Team, UnitKind, Vec2};
 
 use super::support::*;
+
+#[test]
+fn no_camp_roster_contains_or_spawns_a_gold_variant() {
+    let ordinary = |kind: NeutralKind| {
+        !kind
+            .neutral()
+            .abilities
+            .contains(&NeutralAbility::GoldUpgrade)
+    };
+    for roster in &ROSTERS {
+        assert!(roster.creeps.iter().copied().all(ordinary), "{roster:?}");
+    }
+    for camp in CAMPS.iter().filter(|camp| camp.flooded) {
+        for evolution in 0..=u32::from(camp.evolutions) * bota_core::FLOODED_CREEPS as u32 {
+            assert!(
+                bota_core::flooded_creeps(camp, evolution)
+                    .into_iter()
+                    .all(ordinary)
+            );
+        }
+    }
+    for map in &bota_core::MAPS {
+        if map.camps.is_empty() {
+            continue;
+        }
+        for seed in 0..8 {
+            let mut world = World::on_map(map);
+            world.rng = crate::game::MatchRng::new(&[seed; 32], 0);
+            world.fill_camps_now();
+            let spawned: Vec<_> = world
+                .entities
+                .iter()
+                .filter(|&unit| {
+                    world
+                        .camp_home
+                        .get(unit)
+                        .is_some_and(|home| home.camp.is_some())
+                })
+                .filter_map(|unit| world.neutral.get(unit).copied())
+                .collect();
+            assert!(!spawned.is_empty(), "map {:?}, seed {seed}", map.id);
+            assert!(
+                spawned
+                    .into_iter()
+                    .all(|kind| ordinary(kind) && kind.neutral().offered)
+            );
+        }
+    }
+}
+
+#[test]
+fn a_camp_with_one_roster_refills_with_it_after_clearing() {
+    static CAMP: CampDef = CampDef {
+        kind: CampKind::Small,
+        rosters: 1,
+        flooded: false,
+        ..CAMPS[0]
+    };
+    static MAP: bota_core::MapDef = bota_core::MapDef {
+        camps: &[CAMP],
+        ..bota_core::MAPS[0]
+    };
+    let mut world = World::on_map(&MAP);
+    let creeps = |world: &World| {
+        world
+            .entities
+            .iter()
+            .filter(|&unit| {
+                world
+                    .camp_home
+                    .get(unit)
+                    .is_some_and(|home| home.camp == Some(0))
+            })
+            .collect::<Vec<_>>()
+    };
+    world.fill_camps_now();
+    let first = creeps(&world);
+    assert_eq!(first.len(), 4);
+    for unit in first {
+        world.despawn(unit);
+    }
+    world.fill_camps_now();
+    assert_eq!(creeps(&world).len(), 4);
+}
 
 #[test]
 fn camps_fill_on_the_minute_and_stay_full() {
@@ -357,8 +441,8 @@ fn a_neutral_slots_only_its_own_abilities_and_grows_with_the_clock_unseen() {
             .iter()
             .map(|slot| slot.id)
             .collect::<Vec<_>>(),
-        [NeutralAbility::Break.id(), NeutralAbility::Piercing.id()],
-        "its slots are its own"
+        [NeutralAbility::Piercing.id()],
+        "its slots are its own: Dota 7.42 removed Break from the Hill Troll Berserker"
     );
     run(&mut world, 2);
     let after = shown(&world, None, troll);
@@ -421,13 +505,16 @@ fn a_pull_holds_for_any_strike_moment_and_any_recovery() {
     for recovery in recoveries {
         let by = waiting_by_the_camp(recovery);
         for reach in [1100, 1500, 1900, 2300] {
-            let pulled = pull(&by, reach, true);
             let all = Pulled {
                 fought: true,
                 leashed: true,
                 dragged: true,
             };
-            assert_eq!(pulled, all, "struck at {reach} with {recovery:?}");
+            assert_eq!(
+                pull(&by, reach, true),
+                all,
+                "struck at {reach} with {recovery:?}"
+            );
         }
     }
 }
@@ -440,6 +527,51 @@ fn a_wave_nobody_pulls_walks_on_past_the_camp() {
     let pulled = pull(&by, PULL_REACH, false);
     assert!(!pulled.fought, "the wave leaves the camp be");
     assert!(!pulled.dragged, "and never sets foot in it");
+}
+
+/// Simulator fixture for comparing attack range before and after 7.42.
+const BERSERKER_RANGE_BEFORE_742: i32 = 500;
+
+/// In this simulation, changing the attack range from 500 to 450 shortens a pull. In a camp of two
+/// Berserkers and a Kobold Taskmaster, a wave struck from far away (1900 and more) no longer
+/// pulls at all: the neutrals lose the hero before the wave reaches them, and nothing is fought,
+/// leashed or dragged (never half a pull). Struck from 1500 or less it pulls whole. The range is
+/// the cause: the same camp with the old 500 pulls whole from every reach.
+#[test]
+fn berserkers_of_range_450_lose_a_pull_struck_from_1900_and_more_and_range_500_keeps_it() {
+    let none = Pulled {
+        fought: false,
+        leashed: false,
+        dragged: false,
+    };
+    let all = Pulled {
+        fought: true,
+        leashed: true,
+        dragged: true,
+    };
+    let short = waiting_by_the_camp_of(Recovery::OWN, &HILL_TROLLS_AND_KOBOLD, None);
+    let old = waiting_by_the_camp_of(
+        Recovery::OWN,
+        &HILL_TROLLS_AND_KOBOLD,
+        Some(BERSERKER_RANGE_BEFORE_742),
+    );
+    for reach in [1100, 1500] {
+        assert_eq!(
+            pull(&short, reach, true),
+            all,
+            "range 450, struck at {reach}"
+        );
+    }
+    for reach in [1900, 2300] {
+        assert_eq!(
+            pull(&short, reach, true),
+            none,
+            "range 450, struck at {reach}"
+        );
+    }
+    for reach in [1100, 1500, 1900, 2300] {
+        assert_eq!(pull(&old, reach, true), all, "range 500, struck at {reach}");
+    }
 }
 
 /// What a scripted pull came to.
@@ -510,9 +642,56 @@ struct ByTheCamp {
     paced: Paced,
 }
 
+/// The roster the safe lane small camp drew in these tests before Dota 7.42's camp table: the
+/// Hill Troll camp. A pull test pins its camp, so that what the table gives it never decides.
+const HILL_TROLLS: [NeutralKind; 3] = [
+    NeutralKind::ForestTrollBerserker,
+    NeutralKind::ForestTrollBerserker,
+    NeutralKind::ForestTrollHighPriest,
+];
+
+/// The roster of 7.42's Hill Troll and Kobold camp.
+const HILL_TROLLS_AND_KOBOLD: [NeutralKind; 3] = [
+    NeutralKind::ForestTrollBerserker,
+    NeutralKind::ForestTrollBerserker,
+    NeutralKind::KoboldTaskmaster,
+];
+
 fn waiting_by_the_camp(recovery: Recovery) -> ByTheCamp {
+    waiting_by_the_camp_of(recovery, &HILL_TROLLS, None)
+}
+
+/// [`waiting_by_the_camp`] with the camp standing `roster` from the start (a camp with a creep in
+/// its box is not filled again), its Berserkers attacking from `berserker_range` if given.
+fn waiting_by_the_camp_of(
+    recovery: Recovery,
+    roster: &[NeutralKind],
+    berserker_range: Option<i32>,
+) -> ByTheCamp {
+    assert!(
+        ROSTERS.iter().any(|r| r.creeps == roster),
+        "a pinned roster is one of the table's"
+    );
     let (mut world, hero) = a_full_map_hero();
-    let (_, camp) = safe_lane_small_camp();
+    let (index, camp) = safe_lane_small_camp();
+    for (slot, kind) in roster.iter().enumerate() {
+        let across = (slot as i32 - (roster.len() as i32 - 1) / 2) * rules::CAMP_SPAWN_SPACING;
+        let beast = world.spawn_neutral(
+            *kind,
+            camp.pos + Vec2::from_ints(across, 0),
+            u8::try_from(index).expect("a camp number"),
+            0,
+        );
+        if let (Some(range), NeutralKind::ForestTrollBerserker) = (berserker_range, *kind) {
+            let Def(def) = world.def.get(beast).copied().expect("a def");
+            let copy: &'static UnitDef = Box::leak(Box::new(UnitDef {
+                attack_range: range,
+                ..*def
+            }));
+            world.def.insert(beast, Def(copy));
+        }
+    }
+    world.settle();
     let wait = Vec2::from_ints(camp.pos.x.to_int(), camp.spawn_box.min.y.to_int() - 250);
     seat_order(
         &mut world,
@@ -817,6 +996,41 @@ fn a_blow_on_a_neutral_led_far_off_leaves_its_stack_at_home() {
         assert!(
             !ai.awake && world.target_of(*beast).is_none(),
             "the stack at home sleeps on"
+        );
+    }
+}
+
+/// Dota 7.42: "XP bounty upgrade decreased from 5 to 4 per cycle".
+#[test]
+fn a_neutral_upgrade_adds_four_experience() {
+    assert_eq!(rules::NEUTRAL_UPGRADE_XP, 4);
+    let mut world = World::new();
+    let at = Vec2::from_ints(5000, 5000);
+    let fresh = world.spawn_neutral(NeutralKind::Kobold, at, 0, 0);
+    let grown = world.spawn_neutral(NeutralKind::Kobold, at, 0, 3);
+    let xp = |unit| world.bounty.get(unit).expect("a bounty").xp;
+    assert_eq!(xp(grown) - xp(fresh), 3 * 4);
+}
+
+/// Dota 7.42: "Gold bounty no longer increases by 1 per cycle. Now gold bounty upgrade
+/// alternates between +1 min gold bounty and +1 max bounty": the greatest end rises first, one
+/// end for each upgrade level (every 450 s from the horn, 30 at most): at level L the least end
+/// holds L / 2 times `increase_gold` and the greatest (L + 1) / 2 times.
+#[test]
+fn a_neutral_upgrade_raises_the_greatest_and_the_least_bounty_in_turn() {
+    let mut world = World::new();
+    let at = Vec2::from_ints(5000, 5000);
+    let bounty = |world: &mut World, upgrades| {
+        let unit = world.spawn_neutral(NeutralKind::KoboldTunneler, at, 0, upgrades);
+        world.bounty.get(unit).expect("a bounty").gold
+    };
+    let base = bounty(&mut world, 0);
+    for (upgrades, min, max) in [(1, 0, 1), (2, 1, 1), (3, 1, 2), (4, 2, 2)] {
+        let raised = bounty(&mut world, upgrades);
+        assert_eq!(
+            (raised.min - base.min, raised.max - base.max),
+            (min, max),
+            "after {upgrades} upgrades"
         );
     }
 }

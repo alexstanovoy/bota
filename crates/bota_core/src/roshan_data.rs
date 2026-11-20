@@ -103,6 +103,7 @@ pub const ROSHAN_SLAM: ScriptData = ScriptData {
         ("damage", &[Dec(70000)]),
         ("damage_growth", &[Dec(10000)]),
         ("damage_bonus_creeps", &[Dec(100000)]),
+        ("AbilityCastBackswing", &[Dec(570)]),
     ],
 };
 pub const ROSHAN_REVENGEROAR: ScriptData = ScriptData {
@@ -117,6 +118,7 @@ pub const ROSHAN_REVENGEROAR: ScriptData = ScriptData {
         ("damage_growth", &[Dec(10000)]),
         ("disarm_duration", &[Dec(2000)]),
         ("windup_time", &[Dec(500)]),
+        ("AbilityCastBackswing", &[Dec(0)]),
     ],
 };
 pub const ROSHAN_GRAB: ScriptData = ScriptData {
@@ -140,5 +142,6 @@ pub const ROSHAN_GRAB: ScriptData = ScriptData {
         ("knockback_height", &[Dec(100000)]),
         ("stun_duration", &[Dec(1000)]),
         ("max_interrupt_count", &[Dec(5000)]),
+        ("AbilityCastBackswing", &[Dec(530)]),
     ],
 };

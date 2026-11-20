@@ -4,7 +4,9 @@
     reason = "finite observation projections do not change simulation state"
 )]
 
-use bota_core::{Act, Buff, Dec, NeutralAbility, Spell, Stat, Strike, Throe, at_level, rules};
+use bota_core::{
+    Act, Afflicts, Buff, Dec, NeutralAbility, Spell, Stat, Strike, Throe, at_level, rules,
+};
 use bota_proto::{AbilityId, DamageKind, EffectId, UnitKind, UnitView};
 
 /// How an ability contributes damage to an observation-based estimate.
@@ -247,6 +249,7 @@ fn cast_damage(
         Act::Chain { damage, .. } | Act::Spikes { damage, .. } => {
             hit(f64::from(at_level(&damage, level)), DamageKind::Magical)
         }
+        Act::Boulder { damage, kind, .. } => hit(f64::from(at_level(&damage, level)), kind),
         Act::Smash {
             damage,
             current_pct,
@@ -256,6 +259,11 @@ fn cast_damage(
                 + f64::from(target.hp.max(0)) * f64::from(current_pct) / 100.0,
             DamageKind::Magical,
         ),
+        Act::Pulses { damage, .. } => hit(f64::from(at_level(&damage, level)), DamageKind::Magical),
+        Act::Leap { damage, .. } => hit(f64::from(damage), DamageKind::Magical),
+        Act::Ricochet { damage, .. } => {
+            hit(f64::from(at_level(&damage, level)), DamageKind::Magical)
+        }
         Act::Roar(spec) => {
             if seconds * f64::from(rules::TICKS_PER_SECOND) <= f64::from(spec.windup) {
                 None
@@ -306,6 +314,8 @@ pub fn ability_base_damage(id: AbilityId, level: u8) -> i32 {
                     Act::Stomp { damage, .. }
                     | Act::Chain { damage, .. }
                     | Act::Smash { damage, .. }
+                    | Act::Pulses { damage, .. }
+                    | Act::Ricochet { damage, .. }
                     | Act::Spikes { damage, .. },
                 ..
             } => at_level(&damage, level),
@@ -550,6 +560,7 @@ fn act_value(act: Act, key: &str, level: u8) -> Option<Dec> {
             length,
             width,
             damage,
+            afflicts,
             ms,
         } => match key {
             "lines" => Some(integer(i32::from(lines))),
@@ -557,7 +568,16 @@ fn act_value(act: Act, key: &str, level: u8) -> Option<Dec> {
             "length" => Some(integer(length)),
             "width" => Some(integer(width)),
             "damage" => Some(integer(at_level(&damage, level))),
-            "duration" => Some(Dec(ms)),
+            "duration" => Some(Dec(at_level(&ms, level))),
+            "break_duration" if afflicts == Afflicts::Break => Some(Dec(at_level(&ms, level))),
+            _ => None,
+        },
+        Act::Boulder {
+            radius, damage, ms, ..
+        } => match key {
+            "impact_radius" => Some(integer(radius)),
+            "base_damage" => Some(integer(at_level(&damage, level))),
+            "stun_duration" => Some(Dec(at_level(&ms, level))),
             _ => None,
         },
         Act::Bubble {
@@ -577,12 +597,67 @@ fn act_value(act: Act, key: &str, level: u8) -> Option<Dec> {
             "speed" => Some(integer(speed)),
             _ => None,
         },
-        Act::Purge { start_pct, ms } => match key {
+        Act::Purge { start_pct, ms, .. } => match key {
             "slow_amount" => Some(integer(start_pct)),
             "duration" => Some(Dec(ms)),
             _ => None,
         },
         Act::Tornado { life_ms, .. } => (key == "duration").then_some(Dec(life_ms)),
+        Act::Pulses {
+            radius,
+            damage,
+            count,
+            interval_ms,
+            slow,
+            slow_ms,
+            ..
+        } => match key {
+            "radius" => Some(integer(radius)),
+            "damage" => Some(integer(at_level(&damage, level))),
+            "pulse_count" => Some(integer(i32::from(count))),
+            "pulse_interval" => Some(Dec(interval_ms)),
+            "slow_pct" => Some(integer(-slow.get(Stat::MovePct, level))),
+            "slow_duration" => Some(Dec(slow_ms)),
+            _ => None,
+        },
+        Act::Ricochet {
+            damage,
+            bounces,
+            range,
+            delay_ms,
+            slow,
+            slow_ms,
+            ..
+        } => match key {
+            "damage" => Some(integer(at_level(&damage, level))),
+            "bounces" => Some(integer(at_level(&bounces, level))),
+            "bounce_range" => Some(integer(range)),
+            "bounce_delay" => Some(Dec(delay_ms)),
+            "slow" => Some(integer(-slow.get(Stat::MovePct, level))),
+            "duration" => Some(Dec(slow_ms)),
+            _ => None,
+        },
+        Act::Leap {
+            distance,
+            speed,
+            acceleration,
+            radius,
+            damage,
+            leaps,
+            slow,
+            slow_ms,
+            ..
+        } => match key {
+            "leap_distance" => Some(integer(distance)),
+            "leap_speed" => Some(integer(speed)),
+            "leap_acceleration" => Some(integer(acceleration)),
+            "radius" => Some(integer(radius)),
+            "flop_damage" => Some(integer(damage)),
+            "max_bounces" => Some(integer(i32::from(leaps))),
+            "slow" => Some(integer(slow.get(Stat::MovePct, level))),
+            "slow_duration" => Some(Dec(slow_ms)),
+            _ => None,
+        },
         Act::Roar(spec) => match key {
             "radius" => Some(integer(spec.radius)),
             "damage" => Some(integer(spec.damage)),

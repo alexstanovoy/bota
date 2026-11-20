@@ -96,7 +96,7 @@ tests = [{ crate = "bota_radovid", env = { BOTA_SERVER_BIN = "{target_dir}/relea
 name = "import_items"
 about = "the item and hero importer: its own checks, and that the committed item and hero tables are what a Dota 2 install gives"
 # the files it reads: the item table it writes and checks, and the ids it registers items under
-also_paths = ["crates/bota_core/src/data/items.rs", "crates/bota_core/src/roshan_data.rs", "crates/bota_core/src/placement_data.rs", "crates/bota_core/src/heroes_data.rs", "crates/bota_core/src/neutral_cast_points.rs", "crates/bota_core/src/neutral_item_data.rs", "crates/bota_proto/registry/ids.txt"]
+also_paths = ["crates/bota_core/src/data/items.rs", "crates/bota_core/src/roshan_data.rs", "crates/bota_core/src/placement_data.rs", "crates/bota_core/src/heroes_data.rs", "crates/bota_core/src/neutral_data.rs", "crates/bota_core/src/wave_data.rs", "crates/bota_core/src/neutral_item_data.rs", "crates/bota_proto/registry/ids.txt"]
 tests = [{ crate = "import_items", args = ["--include-ignored"] }]
 
 [[group]]
@@ -544,12 +544,15 @@ paths = [
     "crates/bota_server/src/game/systems/cast_rule.rs",
     "crates/bota_server/src/game/systems/spell.rs",
     "crates/bota_server/src/game/systems/spell_call.rs",
+    "crates/bota_server/src/game/systems/spell_ricochet.rs",
     "crates/bota_server/src/game/systems/spell_strike.rs",
     "crates/bota_server/src/game/systems/spell_tick.rs",
     "crates/bota_server/src/game/systems/strike.rs",
     "crates/bota_server/src/game/systems/throe.rs",
     "crates/bota_server/src/game/systems/bubble.rs",
+    "crates/bota_server/src/game/components/bouncer.rs",
     "crates/bota_server/src/game/components/chain.rs",
+    "crates/bota_server/src/game/components/pulser.rs",
     "crates/bota_server/src/game/tests/jungle.rs",
     "crates/bota_server/src/game/tests/neutral_casts.rs",
     "crates/bota_server/src/game/tests/neutral_passives.rs",

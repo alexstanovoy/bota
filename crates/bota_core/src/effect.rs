@@ -303,6 +303,12 @@ const EFFECT_ROWS: &[EffectDef] = &[
         dispellable: true,
         ..buff(126, "modifier_item_crellas_crozier_movespeed_buff")
     },
+    debuff(127, "modifier_odobenus_blight_debuff"),
+    debuff(128, "modifier_eimermole_miners"),
+    debuff(129, "modifier_ogre_seal_pup_disapproval"),
+    debuff(130, "modifier_eimermole_miners_slam_slow"),
+    debuff(131, "modifier_warpine_raider_seed_shot_slow"),
+    debuff(132, "modifier_ogre_seal_flop_slow"),
 ];
 
 /// How many effect ids the protocol has ever handed out, retired ones

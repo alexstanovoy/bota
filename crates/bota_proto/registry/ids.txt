@@ -386,6 +386,19 @@ neutral 45 live npc_dota_dark_troll_warlord_skeleton_warrior
 neutral 46 live npc_dota_enraged_wildkin_tornado
 
 neutral 47 live npc_dota_roshan
+neutral 48 live npc_dota_neutral_radigull
+neutral 49 live npc_dota_neutral_odobenus_footman
+neutral 50 live npc_dota_neutral_odobenus_frostmage
+neutral 51 live npc_dota_neutral_eimermole
+neutral 52 live npc_dota_neutral_eimermole_foreman
+neutral 53 live npc_dota_neutral_ogre_seal
+neutral 54 live npc_dota_neutral_ogre_seal_pup
+neutral 55 live npc_dota_neutral_kobold_tunneler_gold
+neutral 56 live npc_dota_neutral_gnoll_assassin_gold
+neutral 57 live npc_dota_neutral_alpha_wolf_gold
+neutral 58 live npc_dota_neutral_mud_golem_gold
+neutral 59 live npc_dota_neutral_enraged_wildkin_gold
+neutral 60 live npc_dota_neutral_polar_furbolg_champion_gold
 
 effect 81 live modifier_aegis_regen
 
@@ -417,6 +430,18 @@ effect 97 live modifier_roshan_moving_knockback_timeout
 effect 98 live modifier_ghost_state
 
 ability 87 live twin_gate_portal_warp
+ability 88 live mud_golem_hurl_big_boulder
+ability 89 retired bota_kobold_disarm_passive
+ability 90 live radigull_eggstremism
+ability 91 live odobenus_blight
+ability 92 live eimermole_miners_aura
+ability 93 live eimermole_miners_slam
+ability 94 live ogre_seal_flop
+ability 95 live ogre_seal_pup_disapproval_aura
+ability 96 live neutral_gold_upgrade_ability
+ability 97 live bota_kobold_steal_weapon
+ability 98 live bota_odobenus_snowball_shot
+ability 99 live bota_black_dragon_searing_swoop
 effect 99 live modifier_twin_gate_fx
 effect 100 live modifier_pudge_meat_hook_followthrough
 
@@ -447,3 +472,9 @@ effect 123 live modifier_item_crellas_crozier_debuff
 effect 124 live modifier_item_crellas_crozier_active
 effect 125 live modifier_item_crellas_crozier_movespeed_debuff
 effect 126 live modifier_item_crellas_crozier_movespeed_buff
+effect 127 live modifier_odobenus_blight_debuff
+effect 128 live modifier_eimermole_miners
+effect 129 live modifier_ogre_seal_pup_disapproval
+effect 130 live modifier_eimermole_miners_slam_slow
+effect 131 live modifier_warpine_raider_seed_shot_slow
+effect 132 live modifier_ogre_seal_flop_slow

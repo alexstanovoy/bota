@@ -57,10 +57,17 @@ impl World {
             Act::Enrage { ms, .. } => self.wear(cast, caster, ms, 0),
             Act::Smash { .. } => self.smash(cast, act, target),
             Act::Spikes { .. } => self.spikes(cast, act, target),
+            Act::Boulder { .. } => self.boulder(cast, act, target),
             Act::Bubble { .. } => self.bubble(cast, act, target),
             Act::Push { .. } => self.push_away(cast, act, target),
             Act::Purge { .. } => self.purge(cast, act, target),
             Act::Tornado { .. } => self.tornado(cast, act, target),
+            Act::Pulses { .. } => self.pulses(cast, act),
+            Act::Ricochet { .. } => self.ricochet(cast, act, target),
+            Act::Leap { leaps, .. } => {
+                assert!(leaps > 0, "a leaping spell leaps at least once");
+                self.start_leap(cast.caster, cast.ability, cast.level, leaps - 1)
+            }
         };
         if went && let Some(shared) = shared {
             self.hold_others(caster, shared);
@@ -172,7 +179,7 @@ impl World {
     /// Takes the buffs a basic dispel takes off the target, and slows it,
     /// the slow wearing off in [`World::tick_purges`].
     fn purge(&mut self, cast: Cast, act: Act, target: Target) -> bool {
-        let Act::Purge { start_pct, ms } = act else {
+        let Act::Purge { start_pct, ms, .. } = act else {
             return false;
         };
         let Some(on) = self.foe_aimed_at(cast, target) else {

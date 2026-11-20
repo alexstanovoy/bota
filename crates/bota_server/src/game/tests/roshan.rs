@@ -2586,6 +2586,7 @@ fn migration_simultaneous_landings_keep_every_victim_still_in_both_tick_orders()
                             kind: DamageKind::Pure,
                             stun: 30,
                             damage_amp_bp: 10000,
+                            leap: None,
                         }),
                     },
                 },

@@ -902,6 +902,7 @@ fn raised(kind: &UnitDef, levels: i32, steps: i32, night: bool) -> Stats {
         armor_halves: g.armor_halves * levels + per.armor_halves * steps,
         attack_speed: g.attack_speed * levels + per.attack_speed * steps,
         gold_halves: g.gold_halves * levels + per.gold_halves * steps,
+        gold_alternates: g.gold_alternates || per.gold_alternates,
         xp: g.xp * levels + per.xp * steps,
         move_speed: g.move_speed * levels + per.move_speed * steps,
         team_gold: g.team_gold * levels + per.team_gold * steps,
