@@ -16,6 +16,8 @@ const FIRST_HUNDRED_MISSES: u64 = 724;
 const FIRST_HUNDRED_HITS: u64 = 724;
 /// The least fuel per tick for the ticks 2 to 6 of the additions script.
 const STEADY_HUNDRED_ADDITIONS: u64 = 207;
+const STEADY_EMPTY_THINK: u64 = 13;
+const STEADY_HUNDRED_READS: u64 = 674;
 
 const EMPTY: &[u8] = b"function Think() end";
 const ADDITIONS: &[u8] = b"function Think() local n = 0 for i = 1, 100 do n = n + i end end";
@@ -133,5 +135,17 @@ fn the_later_ticks_of_a_hundred_additions_need_exactly_their_pinned_fuel_with_an
             "ticks 2 to 6 must not all finish with {} fuel (measured={measured}): {short:?}",
             STEADY_HUNDRED_ADDITIONS - 1
         );
+    }
+}
+
+#[test]
+fn the_later_tick_window_of_empty_and_lookup_scripts_needs_its_exact_pinned_budget() {
+    for (label,source,exact) in [("empty Think",EMPTY,STEADY_EMPTY_THINK),("100 undefined reads",MISSES,STEADY_HUNDRED_READS),("100 defined reads",HITS,STEADY_HUNDRED_READS)] {
+        for measured in [false,true] {
+            let enough=verdicts(measured,exact,6,source);
+            assert!(enough[1..].iter().all(|&ok|ok),"{label}: ticks2..6 with{exact}, measured={measured}: {enough:?}");
+            let short=verdicts(measured,exact-1,6,source);
+            assert!(short[1..].iter().any(|&ok|!ok),"{label}: the complete later-tick window needs at least{exact}, measured={measured}: {short:?}");
+        }
     }
 }

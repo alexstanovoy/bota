@@ -504,15 +504,20 @@ Fuel and the catalogue. Installing the API leaves about 16.5 MB live in the inte
 instruction, so the collector's first threshold (one megabyte) would still be pending when the first `Think` starts
 and that `Think` would start a whole collection and pay for tracing the catalogue. `LuaTeam::new` therefore ends its
 setup with one collection run by the host, outside any script's fuel (`Lua::collect`), and no script is billed for
-the host's setup. Measured minimum fuel per tick (measurement on or off alike), first `Think` and ticks 2 to 6:
-an empty `Think` 16 and 13; a loop of 100 additions 221 and 207; 100 reads of an undefined or of a defined global,
-then one controller move request, 724 for the first `Think`. The move request includes
-the bounded controller price; the old direct-order price no longer applies. Before the setup collection the first `Think` needed 284, 723, 1096 and 1095, and
-before the constants were published 284, 596, 969 and 967. With the collection the numbers are identical for the
-185-name catalogue of before 4c-1 and for today's 437 names, so a published name costs a script no fuel, on the first
-tick or any later one. The default budget is 2,000,000 per tick.
-`tests/fixed_script_fuel.rs` pins the first-`Think` numbers and the additions' later ticks exactly: a change there means
-the collector's schedule or a price changed, and must be re-pinned together with this paragraph.
+the host's setup. Minimum fuel per tick is identical with measurement enabled or disabled:
+
+| Fixed script | First `Think` | Ticks 2–6 |
+| --- | ---: | ---: |
+| Empty `Think` | 16 | 13 |
+| 100 additions | 221 | 207 |
+| 100 undefined global reads, then a controller move request | 724 | 674 |
+| 100 defined global reads, then a controller move request | 724 | 674 |
+
+The move requests include the bounded controller price. `tests/fixed_script_fuel.rs` pins each minimum and its
+one-less failure, with measurement enabled and disabled. A collector schedule or price change requires updating
+these pins and this table together. The later column is the minimum fixed per-tick limit that completes every
+tick in the 2–6 window of this repeated-script fixture; the first tick may exhaust at that limit. The default budget
+is 2,000,000 per tick.
 
 Only when summary measurement is requested, `undefined_api_reads` retains up to 128 distinct
 API-looking names (64 ASCII identifier bytes each), with saturating counts and one overflow counter.
