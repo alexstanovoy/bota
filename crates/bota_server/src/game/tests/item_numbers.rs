@@ -1029,10 +1029,9 @@ fn raze_from(
 
 /// A Voodoo Mask bought through the shop heals its carrier for 15% of what a Shadowraze takes off
 /// an enemy hero, a fifth of that off a creep (Liquipedia, *Voodoo Mask*: 15%, 3% against creeps),
-/// nothing off an illusion; a second Voodoo Mask adds nothing (one source), and without one a
-/// raze heals nothing.
+/// nothing off an illusion. A second Voodoo Mask adds the same share again.
 #[test]
-fn a_voodoo_mask_heals_fifteen_percent_of_a_raze_on_a_hero_and_a_fifth_of_that_on_a_creep() {
+fn each_voodoo_mask_adds_fifteen_percent_of_raze_damage_against_a_hero() {
     let foe =
         |world: &mut World, at| world.spawn_hero(Team::Dire, at, SlotId(1), HeroId::SHADOW_FIEND);
     let creep = |world: &mut World, at| world.spawn_unit(&bota_core::MELEE_CREEP, Team::Dire, at);
@@ -1042,11 +1041,10 @@ fn a_voodoo_mask_heals_fifteen_percent_of_a_raze_on_a_hero_and_a_fifth_of_that_o
         within_a_hundredth(healed, share(1500)),
         "{healed} of {dealt}"
     );
-    let (twice, _) = raze_of_a_buyer(&[ItemId::VOODOO_MASK, ItemId::VOODOO_MASK], foe);
+    let (twice, healed_twice) = raze_of_a_buyer(&[ItemId::VOODOO_MASK, ItemId::VOODOO_MASK], foe);
     assert_eq!(twice, dealt);
-    let (_, healed_twice) = raze_of_a_buyer(&[ItemId::VOODOO_MASK, ItemId::VOODOO_MASK], foe);
     assert!(
-        within_a_hundredth(healed_twice, share(1500)),
+        within_a_hundredth(healed_twice, share(3000)),
         "two masks: {healed_twice}"
     );
     let (dealt, healed) = raze_of_a_buyer(&[ItemId::VOODOO_MASK], creep);

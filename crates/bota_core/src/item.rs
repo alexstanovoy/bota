@@ -1041,9 +1041,6 @@ pub const fn resist_both(first_bp: i32, second_bp: i32) -> i32 {
 /// fastest, the two added up.
 pub fn carried_bonus(items: impl Iterator<Item = CarriedItem>, ranged: bool) -> Carried {
     let mut total = Carried::default();
-    // The items whose spell lifesteal is counted, each once; past an
-    // inventory's worth, no more are.
-    let mut spell_lifesteal_of = [None; bota_proto::INVENTORY_SLOTS];
     let mut lineages = [Lineages::NONE; STACKING_STATS.len()];
     for stack in items {
         let Some(def) = item_def(stack.id) else {
@@ -1077,19 +1074,13 @@ pub fn carried_bonus(items: impl Iterator<Item = CarriedItem>, ranged: bool) -> 
         total.magic_resist_bp = resist_both(total.magic_resist_bp, carried.magic_resist_bp);
         total.max_hp_regen_bp += carried.max_hp_regen_bp;
         total.lifesteal_pct += carried.lifesteal_pct;
+        total.spell_lifesteal_pct += carried.spell_lifesteal_pct;
         if let Some(block) = carried.damage_block
             && total
                 .damage_block
                 .is_none_or(|best| block.amount > best.amount)
         {
             total.damage_block = Some(block);
-        }
-        if carried.spell_lifesteal_pct > 0
-            && !spell_lifesteal_of.contains(&Some(stack.id))
-            && let Some(free) = spell_lifesteal_of.iter_mut().find(|seen| seen.is_none())
-        {
-            *free = Some(stack.id);
-            total.spell_lifesteal_pct += carried.spell_lifesteal_pct;
         }
         for (stat, best) in STACKING_STATS.iter().zip(&mut lineages) {
             best.add(stat.source(stack.id, ranged), (stat.get)(carried));

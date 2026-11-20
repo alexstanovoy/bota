@@ -861,8 +861,6 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
         },
         ..from(&ITEM_LIFESTEAL)
     },
-    // Voodoo Mask: also Liquipedia's *Spell Lifesteal* and *Voodoo Mask* (several of one source do
-    // not stack).
     ItemDef {
         carried: Carried {
             spell_lifesteal_pct: int(&ITEM_VOODOO_MASK, "spell_lifesteal"),
@@ -933,10 +931,10 @@ pub(crate) static ITEM_ROWS: &[ItemDef] = &[
             slow_pct: -int(&ITEM_ORB_OF_FROST, "slow_melee"),
             ranged_slow_pct: -int(&ITEM_ORB_OF_FROST, "slow_ranged"),
             restoration_cut_pct: int(&ITEM_ORB_OF_FROST, "heal_reduction"),
-            // Liquipedia, Orb of Frost: it does not affect "Buildings", "Ward-type units",
-            // "Couriers"; Dota 7.41e: "Frost no longer applies when attacking allies".
+            // Frost affects enemy units and excludes buildings, wards and couriers.
             affects: Affects::EnemyUnits,
-            pierces_immunity: pierces_immunity(&ITEM_ORB_OF_FROST),
+            // 7.42 makes the passive pierce. Its item script leaves spell immunity unspecified.
+            pierces_immunity: true,
         }),
         ..from(&ITEM_ORB_OF_FROST)
     },

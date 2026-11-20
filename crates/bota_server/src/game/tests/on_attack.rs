@@ -744,8 +744,7 @@ fn frost_on_a_sange_carrier_leaves_the_difference_of_its_cut_and_amplification()
 }
 
 /// Frost lands on enemy units alone (Liquipedia, Orb of Frost: not "Buildings", "Ward-type units",
-/// "Couriers"; Dota 7.41e: "Frost no longer applies when attacking allies"), and spell immunity
-/// keeps it off (no `SpellImmunityType`).
+/// "Couriers"; Dota 7.41e: "Frost no longer applies when attacking allies").
 #[test]
 fn an_orb_of_frost_lands_on_enemy_units_alone() {
     let marks: [(&str, Put); 4] = [
@@ -773,6 +772,22 @@ fn an_orb_of_frost_lands_on_enemy_units_alone() {
         world.step();
         assert_eq!(laid_on(&world, mark, ItemId::ORB_OF_FROST).0, 0, "{case}");
     }
+}
+
+#[test]
+fn frost_applies_through_debuff_immunity() {
+    let (world, _, mark, _) = first_landing(&[ItemId::ORB_OF_FROST], |world, at| {
+        let foe = foe_hero(world, at);
+        put_on(
+            world,
+            foe,
+            ModifierKind::SpellImmunity,
+            10 * rules::TICKS_PER_SECOND,
+        );
+        foe
+    });
+    assert!(world.stats.get(mark).unwrap().spell_immune);
+    assert_eq!(laid_on(&world, mark, ItemId::ORB_OF_FROST).0, 1);
 }
 
 /// A basic dispel takes Frost off (Liquipedia, Orb of Frost: "Dispellable by any Dispel

@@ -94,7 +94,7 @@ fn adding_roshan_items_keeps_the_preexisting_catalogue_prefix_identical() {
         // Dota 7.42's numbers of items in it (the Wraith Band's attack speed, the Null
         // Talisman's mana, the Phase Boots' speeds and damage, the Blood Grenade's restock, ...).
         // Poison Attack's hero-only target rule also belongs to this prefix.
-        digest: 0x9fee_2f6b_c972_af35,
+        digest: 0x8477_890c_171c_6c6a,
     };
     assert_eq!(
         crate::Catalogue::first(previous.items)
