@@ -5,7 +5,7 @@ use std::sync::Arc;
 use bota_core::{Catalogue, CellGrid, cell_tier, rules};
 use bota_proto::{
     Fixed, ItemId, MapId, MatchInfo, ObjectiveSet, Pick, RuneSet, ShopEntry, ShopZoneView, SlotId,
-    Team, TickMode, Vec2,
+    Team, TickMode, Vec2, WorldView,
 };
 
 use crate::limits::{
@@ -125,6 +125,11 @@ impl MatchStatic {
             .binary_search_by_key(&slot, |pick| pick.slot)
             .ok()
             .map(|index| &self.roster[index])
+    }
+
+    /// Hero creation adds a seat to the scoreboard of a cheat match without a pick.
+    pub(crate) fn is_created_seat(&self, view: &WorldView, slot: SlotId) -> bool {
+        self.metadata.cheats && self.pick(slot).is_none() && view.player(slot).is_some()
     }
 
     /// A bounded query over this map's public tree positions. Cuts are supplied from a seat's view.

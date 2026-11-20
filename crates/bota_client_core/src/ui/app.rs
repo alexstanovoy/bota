@@ -1176,8 +1176,8 @@ impl App {
     /// from the initial roster. These are the seats every player may control.
     pub fn created_seat(&self, slot: SlotId) -> bool {
         self.statics()
-            .is_some_and(|statics| statics.metadata().cheats && statics.pick(slot).is_none())
-            && self.player(slot).is_some()
+            .zip(self.view())
+            .is_some_and(|(statics, view)| statics.is_created_seat(view, slot))
     }
 
     /// The hero under the player's control and selected, or the player's hero when there is

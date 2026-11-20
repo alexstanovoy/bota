@@ -2,8 +2,8 @@
 
 use bota_core::rules;
 use bota_proto::{
-    EntityId, EventKind, HeroId, LobbySlot, Pick, PlayerView, ProjectileModel, StatusFlags,
-    StockView, Team, UnitKind, WorldView,
+    EntityId, EventKind, HeroId, LobbySlot, ProjectileModel, StatusFlags, StockView, Team,
+    UnitKind, WorldView,
 };
 
 use crate::limits::{
@@ -37,11 +37,7 @@ pub(crate) fn reshaped(expect: &Expect<'_>, view: &WorldView) -> Result<(), Sess
     snapshot_limits(view)?;
     lairs(expect, view)?;
     skipped_ticks(expect, view)?;
-    units(
-        expect.statics.roster(),
-        expect.statics.metadata().cheats,
-        view,
-    )?;
+    units(expect.statics, view)?;
     aggro(view)
 }
 
@@ -65,21 +61,13 @@ pub(crate) fn snapshot(expect: &Expect<'_>, view: &WorldView) -> Result<(), Sess
     withheld(view)?;
     skipped_ticks(expect, view)?;
     snapshot_positions(expect.statics.metadata().terrain_cells, view)?;
-    units(
-        expect.statics.roster(),
-        expect.statics.metadata().cheats,
-        view,
-    )?;
+    units(expect.statics, view)?;
     aggro(view)?;
     casts(view)?;
     effects(view)?;
     projectiles(view)?;
     dynamic_handles(view)?;
-    players(
-        expect.statics.roster(),
-        expect.statics.metadata().cheats,
-        view,
-    )?;
+    players(expect.statics, view)?;
     felled_trees(expect.statics.trees().len(), view)?;
     match expect.owner {
         Some(owner) => own_state(owner, expect.hero, view),
@@ -330,7 +318,7 @@ fn snapshot_limits(view: &WorldView) -> Result<(), SessionError> {
 
 /// Units sorted strictly by id, bounded, and owned by nobody or a seat of
 /// the roster: what a client remembers is kept per seat.
-fn units(roster: &[Pick], cheats: bool, view: &WorldView) -> Result<(), SessionError> {
+fn units(statics: &MatchStatic, view: &WorldView) -> Result<(), SessionError> {
     for (index, unit) in view.units.iter().enumerate() {
         if index > 0 {
             if view.units[index - 1].id == unit.id {
@@ -395,13 +383,9 @@ fn units(roster: &[Pick], cheats: bool, view: &WorldView) -> Result<(), SessionE
                 return Err(SessionError::ForcedOutOfRange(unit.id));
             }
         }
-        // A hero a cheat created has a seat of its own, told among the players.
-        let created = |slot| cheats && view.player(slot).is_some();
         if let Some(slot) = unit.owner
-            && roster
-                .binary_search_by_key(&slot, |pick| pick.slot)
-                .is_err()
-            && !created(slot)
+            && statics.pick(slot).is_none()
+            && !statics.is_created_seat(view, slot)
         {
             return Err(SessionError::UnknownUnitOwner {
                 unit: unit.id,
@@ -541,7 +525,7 @@ fn aggro(view: &WorldView) -> Result<(), SessionError> {
     Ok(())
 }
 
-fn players(roster: &[Pick], cheats: bool, view: &WorldView) -> Result<(), SessionError> {
+fn players(statics: &MatchStatic, view: &WorldView) -> Result<(), SessionError> {
     for (index, player) in view.players.iter().enumerate() {
         if index > 0 {
             if view.players[index - 1].slot == player.slot {
@@ -574,20 +558,20 @@ fn players(roster: &[Pick], cheats: bool, view: &WorldView) -> Result<(), Sessio
     if !one_each {
         return Err(SessionError::InvalidTeleports);
     }
-    roster_rows(roster, cheats, &view.players)
+    roster_rows(statics, view)
 }
 
 /// Every pick of the roster has its row, as picked; a row of a seat the
 /// roster lacks only in a match with cheats on, where `-createhero` gives a
 /// created hero a seat of its own.
-fn roster_rows(roster: &[Pick], cheats: bool, players: &[PlayerView]) -> Result<(), SessionError> {
-    for player in players {
-        let index = match roster.binary_search_by_key(&player.slot, |pick| pick.slot) {
-            Ok(index) => index,
-            Err(_) if cheats => continue,
-            Err(_) => return Err(SessionError::UnknownRosterPlayer(player.slot.0)),
+fn roster_rows(statics: &MatchStatic, view: &WorldView) -> Result<(), SessionError> {
+    for player in &view.players {
+        let Some(pick) = statics.pick(player.slot) else {
+            if statics.is_created_seat(view, player.slot) {
+                continue;
+            }
+            return Err(SessionError::UnknownRosterPlayer(player.slot.0));
         };
-        let pick = &roster[index];
         if player.team != pick.team {
             return Err(SessionError::WrongRosterTeam {
                 slot: player.slot.0,
@@ -603,11 +587,8 @@ fn roster_rows(roster: &[Pick], cheats: bool, players: &[PlayerView]) -> Result<
             });
         }
     }
-    for pick in roster {
-        if players
-            .binary_search_by_key(&pick.slot, |player| player.slot)
-            .is_err()
-        {
+    for pick in statics.roster() {
+        if view.player(pick.slot).is_none() {
             return Err(SessionError::MissingRosterPlayer(pick.slot.0));
         }
     }
