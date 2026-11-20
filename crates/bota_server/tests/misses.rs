@@ -197,13 +197,13 @@ fn record(told: &mut Told, tick: u32, blows: Vec<Blow>, target: Option<&UnitView
 
 /// A whole-map spectator's count of the misses at a hero, read on a thread of its own until the
 /// match ends.
-fn watch(address: String) -> thread::JoinHandle<usize> {
+fn watch(address: &str) -> thread::JoinHandle<usize> {
+    let mut link = Link::connect(address, Duration::from_secs(10)).expect("connected");
+    greet(&mut link, Role::Spectator, "watcher", None).expect("welcomed before the match");
     thread::spawn(move || {
-        let mut link = Link::connect(&address, Duration::from_secs(10)).expect("connected");
-        greet(&mut link, Role::Spectator, "watcher", None).expect("welcomed");
         let mut heroes = Vec::new();
         let mut misses = 0;
-        while let Ok(Some(msg)) = link.recv() {
+        while let Some(msg) = link.recv().expect("the spectator stream") {
             match msg {
                 ServerMsg::Snapshot { view } => {
                     heroes = view
@@ -212,15 +212,16 @@ fn watch(address: String) -> thread::JoinHandle<usize> {
                         .filter(|unit| unit.kind == UnitKind::Hero)
                         .map(|unit| unit.id)
                         .collect();
+                    // The spectator doesn't pace lockstep. If the writer folds ticks into
+                    // a later snapshot, their events travel inside that snapshot.
+                    misses += view
+                        .skipped_ticks
+                        .iter()
+                        .map(|tick| count_misses(&tick.events, &heroes))
+                        .sum::<usize>();
                 }
                 ServerMsg::Events { events, .. } => {
-                    misses += events
-                        .iter()
-                        .filter(|event| {
-                            matches!(event, EventKind::Missed { source: Some(_), target }
-                                if heroes.contains(target))
-                        })
-                        .count();
+                    misses += count_misses(&events, &heroes);
                 }
                 ServerMsg::MatchOver { .. } => break,
                 _ => {}
@@ -228,6 +229,15 @@ fn watch(address: String) -> thread::JoinHandle<usize> {
         }
         misses
     })
+}
+
+fn count_misses(events: &[EventKind], heroes: &[EntityId]) -> usize {
+    events
+        .iter()
+        .filter(|event| {
+            matches!(event, EventKind::Missed { source: Some(_), target } if heroes.contains(target))
+        })
+        .count()
 }
 
 /// The misses at a hero the replay's fogless stream tells of.
@@ -251,13 +261,7 @@ fn replay_misses(path: &Path) -> usize {
                     .collect();
             }
             ReplayRecord::Msg(ServerMsg::Events { events, .. }) => {
-                misses += events
-                    .iter()
-                    .filter(|event| {
-                        matches!(event, EventKind::Missed { source: Some(_), target }
-                            if heroes.contains(target))
-                    })
-                    .count();
+                misses += count_misses(&events, &heroes);
             }
             _ => {}
         }
@@ -341,7 +345,7 @@ fn play(scene: &Scene) -> Played {
     let address = listener.local_addr().expect("bound").to_string();
     let options = opts(replay.clone());
     let server = thread::spawn(move || run(listener, options));
-    let spectator = watch(address.clone());
+    let spectator = watch(&address);
     let mut attacker = Player::join(&address, "attacker");
     let mut target = Player::join(&address, "target");
     attacker.pending = attacker_setup(scene);
