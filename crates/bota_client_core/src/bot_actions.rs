@@ -352,7 +352,6 @@ impl BotActions {
                 else {unit.items.get(usize::from(slot.0)).and_then(Option::as_ref)};
             if item.is_none_or(|item|item.id!=expected || item.mute_left>0) {return Some(ItemActionEnd::Failed);}
         }
-        if view.tick()>current.started_at && current.cast_observed && unit.cast.is_none() && unit.channel.is_none() {return Some(ItemActionEnd::Failed);}
         None
     }
     fn observed_item_ending(view: &impl BotActionView, source: EntityId, current: RunningBotAction) -> Option<ItemActionEnd> {
@@ -424,10 +423,8 @@ impl BotActions {
                 if view.tick() <= current.started_at || !current.cast_observed {
                     return false;
                 }
-                // No cast phase yet means unknown, not inactive: the body may be walking
-                // into range. Never-started/instant casts require a separate observed ending.
-                // The stream exposes spell cast/channel identity. Item cast identity and
-                // out-of-range accepted casts may not expose enough information to determine completion.
+                // A never-started spell may be walking into range; an absent cast phase
+                // alone does not prove an ending.
                 match effect {
                     BotActionEffect::Ability(ability) => {
                         unit.cast.is_none_or(|cast| cast.ability != Some(ability))

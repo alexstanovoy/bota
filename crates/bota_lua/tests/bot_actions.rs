@@ -814,3 +814,20 @@ fn item_controller_received_applications_complete_without_locally_numbering_the_
     let next=lua.think(&sessions[0]).unwrap();assert!(next.failures.is_empty());
     assert_eq!(next.bots[0].orders,vec![IssuedOrder::hero(Order::Move {target:Target::Pos(goal)})],"observation-only embeddings retain successful applications too");
 }
+
+#[test]
+fn item_controller_an_unrelated_spell_ending_does_not_fail_a_pending_item_request() {
+    use bota_proto::{ItemId,AbilitySlot,Target};
+    let (mut local,mut sessions)=support::local_with_cheats(&[Team::Radiant,Team::Dire],bota_core::MAP2_ID);
+    step(&mut local,&mut sessions,&[IssuedOrder::hero(Order::Cheat {cheat:Cheat::Item {item:ItemId::MANGO}}),IssuedOrder::hero(Order::Learn {slot:AbilitySlot(0)})]);
+    step(&mut local,&mut sessions,&[IssuedOrder::hero(Order::Cast {slot:AbilitySlot(0),target:Target::None})]);
+    assert!(sessions[0].own_hero().unwrap().cast.is_some(),"a real earlier spell is still winding up");
+    let mut lua=host(b"local done=false function Think() if not done then local bot=GetBot();bot:Action_UseAbility(bot:GetItemInSlot(0));bot:ActionQueue_MoveToLocation(bot:GetLocation()+Vector(256,0,0));done=true end end");
+    let pending=lua.think(&sessions[0]).unwrap();assert!(pending.failures.is_empty());assert!(matches!(pending.bots[0].orders[0].order,Order::Use {..}));
+    for _ in 0..30 {
+        // Hold the item request while the earlier spell completes normally.
+        step(&mut local,&mut sessions,&[]);let turn=lua.think(&sessions[0]).unwrap();assert!(turn.failures.is_empty());
+        assert!(turn.bots[0].orders.is_empty(),"an unrelated cast ending is not a failed item request");
+    }
+    assert!(sessions[0].own_hero().unwrap().cast.is_none());
+}

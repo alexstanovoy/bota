@@ -652,7 +652,7 @@ Refusals are retained separately and matched to the issued request's sequence be
 controller reads them. A fact older than the current entry cannot finish it.
 
 An item entry fails on its observed refusal, a missing or changed slot, backpack mute,
-stun, a dead/missing target, or an observed cast ending without application. Every item entry
+stun, or a dead/missing target. An unrelated cast ending is not an item outcome. Every item entry
 also has a five-second simulation-tick bound from when it starts, covering missing replies
 and replaced local request records. Failure advances to the next queued entry; with no tail
 it issues Stop to cancel pending body work. Damage from an item does not prove a new use.
