@@ -91,6 +91,7 @@ pub const ROSHAN_DAY_PIT: Vec2 = Vec2::from_ints(6022, 11611);
 /// "roshan_location_1" (2859.76, -2764.77) [ENT:187040].
 pub const ROSHAN_NIGHT_PIT: Vec2 = Vec2::from_ints(12076, 6451);
 
+/// Further falls can shorten either end of the respawn window, down to three minutes for this bound.
 const ROSHAN_LATE_BOUND_FLOOR_SECONDS: u32 = 3 * 60;
 
 /// Present from match setup; walking begins at 15:00. 7.41 switched pit preferences.
