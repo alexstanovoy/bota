@@ -246,7 +246,7 @@ fn cast_damage(
             }),
             DamageKind::Magical,
         ),
-        Act::Chain { damage, .. } | Act::Spikes { damage, .. } => {
+        Act::Chain { damage, .. } | Act::Spikes { damage, .. } | Act::Shockwave { damage, .. } => {
             hit(f64::from(at_level(&damage, level)), DamageKind::Magical)
         }
         Act::Boulder { damage, kind, .. } => hit(f64::from(at_level(&damage, level)), kind),
@@ -570,6 +570,20 @@ fn act_value(act: Act, key: &str, level: u8) -> Option<Dec> {
             "damage" => Some(integer(at_level(&damage, level))),
             "duration" => Some(Dec(at_level(&ms, level))),
             "break_duration" if afflicts == Afflicts::Break => Some(Dec(at_level(&ms, level))),
+            _ => None,
+        },
+        Act::Shockwave {
+            distance,
+            speed,
+            start_radius,
+            end_radius,
+            damage,
+        } => match key {
+            "distance" => Some(integer(distance)),
+            "speed" => Some(integer(speed)),
+            "radius_start" => Some(integer(start_radius)),
+            "radius_end" => Some(integer(end_radius)),
+            "damage" => Some(integer(at_level(&damage, level))),
             _ => None,
         },
         Act::Boulder {

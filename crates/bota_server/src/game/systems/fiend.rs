@@ -272,7 +272,7 @@ impl World {
     /// area spells strike, seen or not, and the ability reaches for spell
     /// immunity. As in Dota, an area hits whatever stands in it, in the fog or
     /// invisible, but never a building or a ward.
-    fn burns(&self, (from, with): (Entity, AbilityId), other: Entity) -> bool {
+    pub(super) fn burns(&self, (from, with): (Entity, AbilityId), other: Entity) -> bool {
         self.hostile_unseen(from, other)
             && self.spell_reaches(with, other)
             && self

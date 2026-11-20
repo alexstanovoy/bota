@@ -577,6 +577,14 @@ pub enum Act {
         afflicts: Afflicts,
         ms: Lv,
     },
+    /// A widening wave that damages each enemy once as it travels.
+    Shockwave {
+        distance: i32,
+        speed: i32,
+        start_radius: i32,
+        end_radius: i32,
+        damage: Lv,
+    },
     /// A big boulder that lands at the spot aimed at: every enemy within `radius` of it takes
     /// `damage` of `kind` and is stunned for `ms`. Flight time increases up to maximum range.
     Boulder {
@@ -1504,7 +1512,18 @@ pub const NEUTRAL_ABILITIES: &[NeutralAbilityDef] = &[
             D,
             N::Shockwave,
             cast_of!(D, Aim::Point, true),
-            Spell::Uncast,
+            Spell::Cast {
+                act: Act::Shockwave {
+                    distance: D.int("distance"),
+                    speed: D.int("speed"),
+                    start_radius: D.int("radius_start"),
+                    end_radius: D.int("radius_end"),
+                    damage: D.lv("AbilityDamage"),
+                },
+                when: When::Think(CastRule::on_held(&[Mark::InCastRange])),
+                shared: None,
+                chance: D.chance(),
+            },
         )
     ),
     with!(

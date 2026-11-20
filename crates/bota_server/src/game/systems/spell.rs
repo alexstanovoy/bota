@@ -57,6 +57,7 @@ impl World {
             Act::Enrage { ms, .. } => self.wear(cast, caster, ms, 0),
             Act::Smash { .. } => self.smash(cast, act, target),
             Act::Spikes { .. } => self.spikes(cast, act, target),
+            Act::Shockwave { .. } => self.start_shockwave(cast, act, target),
             Act::Boulder { .. } => self.boulder(cast, act, target),
             Act::Bubble { .. } => self.bubble(cast, act, target),
             Act::Push { .. } => self.push_away(cast, act, target),

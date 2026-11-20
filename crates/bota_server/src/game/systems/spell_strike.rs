@@ -2,12 +2,13 @@
 
 use bota_core::{
     Act, Afflicts, ModifierKind, NeutralAbility, Spell, at_level, facing_towards, isqrt64,
-    point_ahead, point_along, rules, segment_distance_squared, ticks_of_ms,
+    move_towards, per_tick, point_ahead, point_along, rules, segment_distance_squared, ticks_of_ms,
 };
 use bota_proto::{Aim, Angle, DamageKind, Fixed, Inflictor, Target, Team, Vec2};
 
 use crate::game::{
-    BoulderFlight, Chain, Entity, HitEffect, Modifier, Projectile, Pulser, Visibility, World,
+    BoulderFlight, Chain, Entity, HitEffect, Modifier, Projectile, Pulser, Shockwave, Visibility,
+    World,
 };
 
 use super::spell::Cast;
@@ -492,5 +493,96 @@ impl World {
                 cast.inflictor(),
             );
         }
+    }
+
+    pub(super) fn start_shockwave(&mut self, cast: Cast, act: Act, target: Target) -> bool {
+        let (
+            Act::Shockwave {
+                distance,
+                speed,
+                start_radius,
+                end_radius,
+                damage,
+            },
+            Target::Pos(aim),
+            Some(caster),
+        ) = (act, target, self.transform.get(cast.caster).copied())
+        else {
+            return false;
+        };
+        let facing = if caster.pos == aim {
+            caster.facing
+        } else {
+            facing_towards(caster.pos, aim)
+        };
+        let wave = self.spawn_mark(cast.ability.id(), cast.caster, caster.pos, 0);
+        self.transform.get_mut(wave).expect("a placed wave").facing = facing;
+        self.visibility.insert(wave, Visibility::NONE);
+        let distance = rules::units(distance);
+        self.shockwave.insert(
+            wave,
+            Shockwave {
+                aim: point_ahead(caster.pos, facing, distance),
+                distance,
+                speed: rules::units(speed),
+                travelled: Fixed::ZERO,
+                start_radius: self.widened_of(cast.caster, start_radius),
+                end_radius: self.widened_of(cast.caster, end_radius),
+                damage: at_level(&damage, cast.level),
+                damage_amp_bp: self.outgoing_spell_amp_bp(Some(cast.caster), DamageKind::Magical),
+                struck: Vec::new(),
+            },
+        );
+        true
+    }
+
+    pub(crate) fn tick_shockwaves(&mut self) {
+        if self.shockwave.is_empty() {
+            return;
+        }
+        let entities = self.take_entity_snapshot();
+        for marker in entities.iter().copied() {
+            let Some(mut wave) = self.shockwave.remove(marker) else {
+                continue;
+            };
+            let mark = self
+                .mark
+                .get(marker)
+                .copied()
+                .expect("the wave has a spell source");
+            let at = self.pos(marker).expect("a placed wave");
+            let step = per_tick(wave.speed);
+            let next = move_towards(at, wave.aim, step);
+            self.transform.get_mut(marker).expect("a placed wave").pos = next;
+            wave.travelled = (wave.travelled + step).min(wave.distance);
+            let width = wave.start_radius
+                + (wave.end_radius - wave.start_radius) * (wave.travelled / wave.distance);
+            for target in entities.iter().copied() {
+                if wave.struck.contains(&target) || !self.burns((marker, mark.ability), target) {
+                    continue;
+                }
+                let hull = self.hull.get(target).map_or(Fixed::ZERO, |hull| hull.bound);
+                if self.pos(target).is_some_and(|pos| {
+                    segment_distance_squared(pos, at, next) <= (width + hull).squared_raw()
+                }) {
+                    self.push_hit_with_amp(
+                        Some(mark.owner),
+                        target,
+                        wave.damage,
+                        DamageKind::Magical,
+                        wave.damage_amp_bp,
+                        Some(Inflictor::Ability(mark.ability)),
+                    );
+                    wave.struck.push(target);
+                }
+            }
+            if wave.travelled < wave.distance {
+                self.shockwave.insert(marker, wave);
+            } else {
+                self.mark.remove(marker);
+                self.discard(marker);
+            }
+        }
+        self.recycle_entity_snapshot(entities);
     }
 }

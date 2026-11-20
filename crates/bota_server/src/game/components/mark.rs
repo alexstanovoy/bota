@@ -1,4 +1,4 @@
-use bota_proto::{AbilityId, Vec2};
+use bota_proto::{AbilityId, Fixed, Vec2};
 
 use crate::engine::Entity;
 use crate::engine::state_hash;
@@ -30,4 +30,30 @@ state_hash!(BoulderFlight {
     launched,
     ticks,
     level
+});
+
+/// Shockwave's travelled distance and the units it has already crossed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Shockwave {
+    pub aim: Vec2,
+    pub distance: Fixed,
+    pub speed: Fixed,
+    pub travelled: Fixed,
+    pub start_radius: Fixed,
+    pub end_radius: Fixed,
+    pub damage: i32,
+    pub damage_amp_bp: i32,
+    pub struck: Vec<Entity>,
+}
+
+state_hash!(Shockwave {
+    aim,
+    distance,
+    speed,
+    travelled,
+    start_radius,
+    end_radius,
+    damage,
+    damage_amp_bp,
+    struck
 });

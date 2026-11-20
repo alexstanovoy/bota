@@ -28,7 +28,8 @@ fn dump() -> String {
 
 /// The digest of the neutral definitions, including retained abilities.
 // Hurl Big Boulder adds its script-sourced 800–1200 ms flight bounds.
-const PINNED: u64 = 0xe41d_41c8_1fdb_5751;
+// The Satyr Tormenter's Shockwave now travels and damages targets along its widening path.
+const PINNED: u64 = 0xc96e_816b_e9b4_7fa2;
 
 #[test]
 fn the_neutral_definitions_keep_their_reviewed_values() {

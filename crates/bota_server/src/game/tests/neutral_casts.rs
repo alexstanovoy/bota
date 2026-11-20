@@ -1346,3 +1346,93 @@ fn a_controlled_big_boulder_hits_on_tick_thirty_at_half_cast_range() {
     assert!(carries(&world, target, ModifierKind::Stunned));
     assert!(world.boulder.is_empty());
 }
+
+#[test]
+fn a_controlled_shockwave_travels_1100_units_and_hits_a_hero_once() {
+    use bota_proto::{AbilitySlot, Order, Target};
+
+    let (mut world, _) = match_hero();
+    let satyr = world.spawn_neutral(NeutralKind::SatyrHellcaller, CAMP, 1, 0);
+    world.set_team(satyr, Team::Radiant);
+    world.owner.insert(satyr, SlotId(0));
+    world.neutral_ai.remove(satyr);
+    let near = world.spawn_hero(
+        Team::Dire,
+        CAMP + Vec2::from_ints(700, 0),
+        SlotId(1),
+        HeroId::SHADOW_FIEND,
+    );
+    let far = world.spawn_hero(
+        Team::Dire,
+        CAMP + Vec2::from_ints(1350, 0),
+        SlotId(2),
+        HeroId::SHADOW_FIEND,
+    );
+    for hero in [near, far] {
+        world.set_order(hero, UnitOrder::Stand);
+    }
+    world.settle();
+    let ability = NeutralAbility::Shockwave;
+    let slot = world
+        .abilities
+        .get(satyr)
+        .expect("the satyr has abilities")
+        .slots
+        .iter()
+        .position(|state| state.id == ability.id())
+        .expect("the satyr has Shockwave");
+    advance_validated(
+        &mut world,
+        Some(satyr),
+        Order::Cast {
+            slot: AbilitySlot(slot as u8),
+            target: Target::Pos(CAMP + Vec2::from_ints(400, 0)),
+        },
+    );
+    assert!(until_cast(&mut world, satyr, ability, ticks_of_ms(650)));
+    let inflictor = Some(Inflictor::Ability(ability.id()));
+    let mut hits = Vec::new();
+    for elapsed in 1..=37 {
+        for event in world.step() {
+            if let EventKind::Damaged {
+                target: hit,
+                amount,
+                kind: DamageKind::Magical,
+                inflictor: from,
+                ..
+            } = event.kind()
+                && from == inflictor
+            {
+                hits.push((hit, amount));
+            }
+        }
+        let flies = world
+            .view_full()
+            .projectiles
+            .iter()
+            .any(|shot| shot.inflictor == inflictor);
+        assert_eq!(flies, elapsed < 37, "flight tick {elapsed}");
+    }
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].0, wire_id(near));
+    assert!(
+        (78..=82).contains(&hits[0].1),
+        "110 magical damage after resistance: {:?}",
+        hits
+    );
+}
+
+#[test]
+fn a_wild_satyr_tormenter_can_cast_shockwave_on_the_hero_it_fights() {
+    let mut world = day();
+    let satyr = world.spawn_neutral(NeutralKind::SatyrHellcaller, CAMP, 1, 0);
+    let hero = bystander(&mut world, CAMP + Vec2::from_ints(350, 0));
+    world.settle();
+    rouse(&mut world, satyr, hero);
+    assert!(until_cast(
+        &mut world,
+        satyr,
+        NeutralAbility::Shockwave,
+        60 * rules::TICKS_PER_SECOND
+    ));
+}

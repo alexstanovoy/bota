@@ -236,6 +236,7 @@ world_tables! {
         /// The next eligible attempt for a neutral that let a cast opportunity pass.
         pub neutral_cast_wait: u32;
         pub boulder: crate::game::BoulderFlight;
+        pub shockwave: crate::game::Shockwave;
     }
 
     derived {
@@ -831,6 +832,7 @@ impl World {
         self.tick_rune_regeneration();
         self.tick_hooks();
         self.tick_requiem_lines();
+        self.tick_shockwaves();
         self.tick_grenades();
         self.tick_boulders();
         self.tick_area_waves();
