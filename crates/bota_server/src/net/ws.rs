@@ -9,6 +9,7 @@
 //! behind a reverse proxy every peer counts as the proxy's address in the
 //! bounds per source.
 
+use std::collections::HashMap;
 use std::future::Future;
 use std::io;
 use std::net::{IpAddr, Shutdown, TcpStream as StdTcpStream};
@@ -17,7 +18,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc as std_mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use bota_proto::{LEN_PREFIX, MAX_CLIENT_PAYLOAD_LEN, MAX_PAYLOAD_LEN, PlayerId};
 use futures_util::future::{Either, select};
@@ -49,6 +50,11 @@ const HANDSHAKE_DEADLINE: Duration = Duration::from_secs(10);
 const CLOSE_GRACE: Duration = Duration::from_secs(1);
 /// Handshakes do not consume the adoption slots used by the TCP listener.
 const MAX_HANDSHAKES: usize = 64;
+
+/// Bound source tracking even when each upgrade comes from a different IP.
+const MAX_LOG_SOURCES: usize = 64;
+const PEER_LOG_LINES: u8 = 4;
+const LOG_WINDOW: Duration = Duration::from_secs(1);
 
 /// Frames read ahead of a connection's reader thread.
 const INBOUND_FRAMES: usize = 16;
@@ -170,9 +176,24 @@ async fn accept_all(
     let handshakes = Arc::new(Semaphore::new(MAX_HANDSHAKES));
     let sources = super::Places::default();
     let server_gone = Arc::new(AtomicBool::new(false));
-    let logs = Arc::new(Mutex::new((Instant::now(), 0)));
+    let logs = Arc::new(Mutex::new(LogWindow::default()));
+    let mut log_tick =
+        tokio::time::interval_at(tokio::time::Instant::now() + LOG_WINDOW, LOG_WINDOW);
+    log_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     while !server_gone.load(Ordering::Relaxed) {
-        let (tcp, peer) = match listener.accept().await {
+        let accepted = match select(
+            std::pin::pin!(log_tick.tick()),
+            std::pin::pin!(listener.accept()),
+        )
+        .await
+        {
+            Either::Left(_) => {
+                report_suppressed(&logs, |line| eprintln!("{line}"));
+                continue;
+            }
+            Either::Right((accepted, _)) => accepted,
+        };
+        let (tcp, peer) = match accepted {
             Ok(accepted) => accepted,
             Err(_) => {
                 tokio::time::sleep(ACCEPT_RETRY).await;
@@ -311,7 +332,11 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send + 'static> WsStream<S> {
             runtime,
             logs,
         } = self;
-        let log = SocketLog { id, budget: logs };
+        let log = Arc::new(SocketLog::new(
+            id,
+            socket.peer_addr().ok().map(|peer| peer.ip()),
+            logs,
+        ));
         let (sink_socket, task_socket) = (socket.try_clone()?, socket.try_clone()?);
         let (inbound, frames) = mpsc::channel(INBOUND_FRAMES);
         let (outbound, queued) = mpsc::channel(1);
@@ -344,36 +369,182 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send + 'static> WsStream<S> {
     }
 }
 
-type LogBudget = Arc<Mutex<(Instant, u8)>>;
+type LogBudget = Arc<Mutex<LogWindow>>;
 
-#[derive(Clone)]
+#[derive(Default)]
+struct LogWindow {
+    from_peer: HashMap<Option<IpAddr>, u8>,
+    suppressed: u64,
+}
+
+impl LogWindow {
+    fn admit_peer_end(&mut self, source: Option<IpAddr>) -> bool {
+        if self.from_peer.len() >= MAX_LOG_SOURCES && !self.from_peer.contains_key(&source) {
+            return false;
+        }
+        let used = self.from_peer.entry(source).or_default();
+        if *used >= PEER_LOG_LINES {
+            return false;
+        }
+        *used += 1;
+        true
+    }
+}
+
+fn report_suppressed(logs: &LogBudget, emit: impl FnOnce(std::fmt::Arguments<'_>)) {
+    let suppressed = logs.lock().map_or(0, |mut window| {
+        window.from_peer.clear();
+        std::mem::take(&mut window.suppressed)
+    });
+    if suppressed != 0 {
+        emit(format_args!(
+            "bota_server: suppressed {suppressed} game WebSocket transport log lines"
+        ));
+    }
+}
+
+enum LogEnd {
+    Peer,
+    Failure,
+}
+
 struct SocketLog {
     id: PlayerId,
+    source: Option<IpAddr>,
     budget: LogBudget,
+    failure_reported: AtomicBool,
 }
 
 impl SocketLog {
-    fn ended(&self, reason: std::fmt::Arguments<'_>) {
-        let allowed = if let Ok(mut budget) = self.budget.lock() {
-            if budget.0.elapsed() >= Duration::from_secs(1) {
-                *budget = (Instant::now(), 0);
-            }
-            if budget.1 >= 16 {
-                false
-            } else {
-                budget.1 += 1;
-                true
-            }
-        } else {
-            false
-        };
-        if allowed {
-            eprintln!(
-                "bota_server: game WebSocket connection {} {reason}",
-                self.id.0
-            );
+    fn new(id: PlayerId, source: Option<IpAddr>, budget: LogBudget) -> Self {
+        Self {
+            id,
+            source,
+            budget,
+            failure_reported: AtomicBool::new(false),
         }
     }
+
+    fn ended(&self, end: LogEnd, reason: std::fmt::Arguments<'_>) {
+        self.emit_end(end, reason, |line| eprintln!("{line}"));
+    }
+
+    fn emit_end(
+        &self,
+        end: LogEnd,
+        reason: std::fmt::Arguments<'_>,
+        emit: impl FnOnce(std::fmt::Arguments<'_>),
+    ) {
+        // Read and write can both fail as a connection dies. Its first
+        // server-side diagnosis has its own slot, even on a noisy shared IP.
+        let failure = match end {
+            LogEnd::Failure => !self.failure_reported.swap(true, Ordering::Relaxed),
+            LogEnd::Peer => false,
+        };
+        let allowed = failure
+            || self.budget.lock().is_ok_and(|mut budget| {
+                if matches!(end, LogEnd::Peer) && budget.admit_peer_end(self.source) {
+                    true
+                } else {
+                    budget.suppressed = budget.suppressed.saturating_add(1);
+                    false
+                }
+            });
+        if allowed {
+            emit(format_args!(
+                "bota_server: game WebSocket connection {} {reason}",
+                self.id.0
+            ));
+        }
+    }
+}
+
+#[test]
+fn noisy_websocket_closes_do_not_hide_another_connections_idle_reason() {
+    let budget = Arc::new(Mutex::new(LogWindow::default()));
+    let source = Some(IpAddr::from([127, 0, 0, 1]));
+    let mut noise = 0;
+    for id in 1..=16 {
+        let log = SocketLog::new(PlayerId(id), source, Arc::clone(&budget));
+        log.emit_end(LogEnd::Peer, format_args!("closed by its peer"), |_| {
+            noise += 1
+        });
+    }
+    assert_eq!(noise, usize::from(PEER_LOG_LINES));
+
+    // The player shares an IP with the peer churning through connections.
+    let honest = SocketLog::new(PlayerId(17), source, Arc::clone(&budget));
+    let mut lines = Vec::new();
+    honest.emit_end(
+        LogEnd::Failure,
+        format_args!("closed after going idle"),
+        |line| lines.push(line.to_string()),
+    );
+    honest.emit_end(LogEnd::Failure, format_args!("write also failed"), |line| {
+        lines.push(line.to_string())
+    });
+    assert_eq!(
+        lines,
+        ["bota_server: game WebSocket connection 17 closed after going idle"]
+    );
+
+    let elsewhere = SocketLog::new(
+        PlayerId(18),
+        Some(IpAddr::from([127, 0, 0, 2])),
+        Arc::clone(&budget),
+    );
+    elsewhere.emit_end(LogEnd::Peer, format_args!("closed by its peer"), |line| {
+        lines.push(line.to_string())
+    });
+    assert_eq!(
+        lines.last().unwrap(),
+        "bota_server: game WebSocket connection 18 closed by its peer"
+    );
+
+    let mut summary = None;
+    report_suppressed(&budget, |line| summary = Some(line.to_string()));
+    let suppressed = 16 - PEER_LOG_LINES + 1;
+    assert_eq!(
+        summary.unwrap(),
+        format!("bota_server: suppressed {suppressed} game WebSocket transport log lines")
+    );
+}
+
+#[test]
+fn websocket_log_window_reports_suppression_and_bounds_source_tracking() {
+    let budget = Arc::new(Mutex::new(LogWindow::default()));
+    for index in 0..MAX_LOG_SOURCES {
+        let mut window = budget.lock().unwrap();
+        assert!(window.admit_peer_end(Some(IpAddr::from([
+            127,
+            0,
+            0,
+            u8::try_from(index).unwrap()
+        ]))));
+    }
+    let extra = SocketLog::new(
+        PlayerId(100),
+        Some(IpAddr::from([127, 0, 0, 255])),
+        Arc::clone(&budget),
+    );
+    extra.emit_end(LogEnd::Peer, format_args!("closed by its peer"), |_| {
+        panic!("source table is full")
+    });
+    assert_eq!(budget.lock().unwrap().from_peer.len(), MAX_LOG_SOURCES);
+
+    let mut summaries = Vec::new();
+    report_suppressed(&budget, |line| summaries.push(line.to_string()));
+    report_suppressed(&budget, |line| summaries.push(line.to_string()));
+    assert_eq!(
+        summaries,
+        ["bota_server: suppressed 1 game WebSocket transport log lines"]
+    );
+
+    let mut allowed = false;
+    extra.emit_end(LogEnd::Peer, format_args!("closed by its peer"), |_| {
+        allowed = true
+    });
+    assert!(allowed, "the new window admits the source");
 }
 
 /// What a connection's reader thread is handed: a frame, or why no more come.
@@ -386,16 +557,17 @@ async fn read_side<S>(
     inbound: mpsc::Sender<Inbound>,
     outbound: mpsc::Sender<Outbound>,
     idle_timeout: Option<Duration>,
-    log: SocketLog,
+    log: Arc<SocketLog>,
 ) where
     S: AsyncRead + AsyncWrite + Unpin,
 {
     loop {
         let read = match within(idle_timeout, stream.next()).await {
             None => {
-                log.ended(format_args!(
-                    "closed after {idle_timeout:?} without inbound traffic"
-                ));
+                log.ended(
+                    LogEnd::Failure,
+                    format_args!("closed after {idle_timeout:?} without inbound traffic"),
+                );
                 let (sent, received) = oneshot::channel();
                 if matches!(
                     within(Some(CLOSE_GRACE), outbound.send(Outbound::Idle(sent))).await,
@@ -430,11 +602,11 @@ fn frame_of(
             return Err(ReadEnd::Breach(Breach::Oversized { len: size }));
         }
         Some(Err(error)) => {
-            log.ended(format_args!("read failed: {error}"));
+            log.ended(LogEnd::Peer, format_args!("read failed: {error}"));
             return Err(ReadEnd::Gone);
         }
         None => {
-            log.ended(format_args!("ended without a close frame"));
+            log.ended(LogEnd::Peer, format_args!("ended without a close frame"));
             return Err(ReadEnd::Gone);
         }
     };
@@ -446,7 +618,10 @@ fn frame_of(
         Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => Ok(None),
         Message::Close(frame) => {
             let code = frame.as_ref().map(|frame| u16::from(frame.code));
-            log.ended(format_args!("closed by its peer, status {code:?}"));
+            log.ended(
+                LogEnd::Peer,
+                format_args!("closed by its peer, status {code:?}"),
+            );
             Err(ReadEnd::Gone)
         }
     }
@@ -481,7 +656,7 @@ async fn write_side<S>(
     idle_timeout: Option<Duration>,
     socket: StdTcpStream,
     done: std_mpsc::Sender<()>,
-    log: SocketLog,
+    log: Arc<SocketLog>,
 ) where
     S: AsyncRead + AsyncWrite + Unpin,
 {
@@ -555,11 +730,14 @@ where
     match within(deadline, sink.send(message)).await {
         Some(Ok(())) => true,
         Some(Err(error)) => {
-            log.ended(format_args!("write failed: {error}"));
+            log.ended(LogEnd::Failure, format_args!("write failed: {error}"));
             false
         }
         None => {
-            log.ended(format_args!("write timed out after {deadline:?}"));
+            log.ended(
+                LogEnd::Failure,
+                format_args!("write timed out after {deadline:?}"),
+            );
             false
         }
     }
@@ -654,7 +832,7 @@ fn a_websocket_writer_ends_after_the_socket_is_aborted_without_an_idle_timer() {
             ws,
             socket,
             runtime: Handle::current(),
-            logs: Arc::new(Mutex::new((Instant::now(), 0))),
+            logs: Arc::new(Mutex::new(LogWindow::default())),
         }
         .spawn_tasks(PlayerId(1), None)
         .expect("transport tasks")

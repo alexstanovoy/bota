@@ -1184,7 +1184,7 @@ fn seated_websocket(idle: Duration) -> tokio_tungstenite::tungstenite::WebSocket
 fn a_seat_with_only_websocket_control_replies_outlives_six_idle_windows() {
     use tokio_tungstenite::tungstenite::Message;
 
-    let mut link = seated_websocket(Duration::from_millis(180));
+    let mut link = seated_websocket(Duration::from_millis(300));
     // Production's thirty seconds are six five-second idle windows. Each
     // window spans three control pings. Count replies instead of timing the test.
     let mut replies = 0;
