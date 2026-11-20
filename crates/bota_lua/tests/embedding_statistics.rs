@@ -319,3 +319,34 @@ fn native_fallback_work_is_measured_as_host_work_without_changing_orders() {
             .any(|entry| entry.name == "other" && entry.calls > 0)
     );
 }
+
+#[test]
+fn item_refusal_reproduces_the_live_controller_queue_in_an_offline_refeed() {
+    use bota_client_core::{ClientSession,MatchStatic};
+    use bota_proto::{ServerMsg,Order,RejectReason};
+    let source=br#"local frame=0 function Think() frame=frame+1;local bot=GetBot();if frame==1 then bot:ActionImmediate_PurchaseItem('item_magic_stick') elseif frame==2 then bot:Action_UseAbility(bot:GetItemInSlot(0));bot:ActionQueue_MoveToLocation(bot:GetLocation()+Vector(256,0,0)) elseif frame==3 then assert(bot:GetCurrentActionType()==BOT_ACTION_TYPE_MOVE_TO,'refusal must advance the item queue') end end"#;
+    let make_modules=|| {let mut bank=ModuleBank::new(SCRIPT_LIMITS);bank.insert("bots/bot_nevermore",source).unwrap();bank};
+    let (mut local,opening)=support::opening(&[Team::Radiant,Team::Dire]);
+    let ServerMsg::MatchStart {info}=&opening[0][0] else {panic!("match start")};
+    let mut session=ClientSession::seat(MatchStatic::new(info).unwrap(),SlotId(0),Some(HeroId::SHADOW_FIEND),Default::default()).unwrap();
+    support::fold(&mut session,opening[0].iter().skip(1).cloned());
+    let mut bytes=Vec::new();frame(&mut bytes,ReplayRecord::Header(ReplayHeader::new(bota_core::WIRE_FINGERPRINT)));
+    for message in &opening[0] {frame(&mut bytes,ReplayRecord::Msg(message.clone()));}
+    let mut host=LuaTeam::new(Team::Radiant,&[BotSeat {slot:SlotId(0),hero:HeroId::SHADOW_FIEND}],SCRIPT_LIMITS,keys()).unwrap();
+    host.set_modules(make_modules()).unwrap();host.load_pack().unwrap();
+    let mut live=Vec::new();let mut refusals=0;
+    for _ in 0..4 {
+        let turn=host.think(&session).unwrap();assert!(turn.failures.is_empty(),"{:?}",turn.failures);
+        live.push((session.current().unwrap().tick,turn.bots[0].orders.clone()));
+        let outgoing:Vec<_>=turn.bots[0].orders.iter().map(|&issued|session.issue(issued).unwrap()).collect();
+        let streams=local.step(&[&outgoing,&[]]).unwrap();
+        refusals+=streams[0].iter().filter(|message|matches!(message,ServerMsg::OrderRejected {reason:RejectReason::NoCharges,..})).count();
+        for message in &streams[0] {frame(&mut bytes,ReplayRecord::Msg(message.clone()));}
+        support::fold(&mut session,streams[0].clone());
+    }
+    let turn=host.think(&session).unwrap();assert!(turn.failures.is_empty());live.push((session.current().unwrap().tick,turn.bots[0].orders.clone()));
+    assert_eq!(refusals,1);assert!(matches!(live[1].1[0].order,Order::Use {..}));assert!(matches!(live[2].1[0].order,Order::Move {..}));
+    let mut offline=Vec::new();let result=refeed(ReplayPlayer::from_reader(Cursor::new(bytes)),SlotId(0),make_modules(),keys(),bota_lua::native::HeroSelection::Fixed,|tick,turn|offline.push((tick,turn.bots[0].orders.clone()))).unwrap();
+    assert_eq!(offline,live,"the same numbered requests must give the same refusal transition");
+    assert_eq!(result.statistics.script_failures,0);
+}

@@ -145,6 +145,10 @@ impl Refeed {
                 .map(|bot| bot.orders.len() as u64)
                 .sum::<u64>(),
         );
+        // Keep the same local request ledger and predictions as the live sender.
+        for issued in turn.bots.iter().flat_map(|bot| &bot.orders) {
+            session.issue(*issued).map_err(failed)?;
+        }
         orders(tick, &turn);
         session.end_turn();
         Ok(())
