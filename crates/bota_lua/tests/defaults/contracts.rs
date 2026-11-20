@@ -18,35 +18,26 @@ fn assert_order_limit(turn: &bota_lua::TeamTurn) {
 #[test]
 fn takeover_and_mode_plus_native_defaults_enforce_the_same_64_order_cap() {
     let (_, sessions) = support::local(&[Team::Radiant, Team::Dire]);
-    for n in [64, 70] {
-        let source = format!(
-            "function Think() local b=GetBot() for i=1,{n} do b:ActionImmediate_SwapItems(0,0) end end"
-        );
-        let turn = team(&[("bot_nevermore", &source)])
-            .think(&sessions[0])
-            .expect("takeover");
-        if n == 64 {
-            assert!(turn.failures.is_empty());
-            assert_eq!(turn.bots[0].orders.len(), 64);
-        } else {
-            assert_order_limit(&turn);
-        }
+    for immediate in [63,64] {
+        let source=format!("function Think() local b=GetBot();for i=1,{immediate} do b:ActionImmediate_SwapItems(0,0) end b:Action_MoveDirectly(b:GetLocation()+Vector(128,0,0)) end");
+        let turn=team(&[("bot_nevermore",&source)]).think(&sessions[0]).expect("takeover");
+        if immediate==63 {
+            assert!(turn.failures.is_empty(),"{:?}",turn.failures);
+            assert_eq!(turn.bots[0].orders.len(),64);
+            assert!(matches!(turn.bots[0].orders[63].order,Order::Move {..}));
+        } else {assert_order_limit(&turn);assert!(turn.bots[0].orders.iter().all(|issued|matches!(issued.order,Order::Swap {..})));}
     }
-    for n in [62, 63] {
-        let source = format!(
-            "function GetDesire() return .99 end function Think() local b=GetBot() for i=1,{n} do b:ActionImmediate_SwapItems(0,0) end end"
-        );
-        let turn = team(&[("mode_laning_generic", &source)])
-            .think(&sessions[0])
-            .expect("mode");
-        if n == 62 {
-            assert!(turn.failures.is_empty(), "{:?}", turn.failures);
-            assert_eq!(turn.bots[0].orders.len(), 64);
-            assert!(matches!(turn.bots[0].orders[62].order, Order::Learn { .. }));
-            assert!(matches!(turn.bots[0].orders[63].order, Order::Buy { .. }));
-        } else {
-            assert_order_limit(&turn);
-        }
+    for immediate in [61,62] {
+        let source=format!("function GetDesire() return .99 end function Think() local b=GetBot();for i=1,{immediate} do b:ActionImmediate_SwapItems(0,0) end end");
+        // Minion callbacks run after the native auxiliary hooks filled their slots.
+        let turn=team(&[("mode_laning_generic",&source),("bot_nevermore","function MinionThink(unit) local b=GetBot();b:Action_MoveDirectly(b:GetLocation()+Vector(128,0,0)) end")]).think(&sessions[0]).expect("mode");
+        assert_eq!(turn.bots[0].orders.len(),64);
+        assert!(matches!(turn.bots[0].orders[immediate].order,Order::Learn {..}));
+        assert!(matches!(turn.bots[0].orders[immediate+1].order,Order::Buy {..}));
+        if immediate==61 {
+            assert!(turn.failures.is_empty(),"{:?}",turn.failures);
+            assert!(matches!(turn.bots[0].orders[63].order,Order::Move {..}));
+        } else {assert_order_limit(&turn);}
     }
 }
 
