@@ -1080,7 +1080,8 @@ fn scepter_equipment_or_blessing_makes_requiems_souls_fly_faster() {
             .expect("the requiem let a soul fly");
         assert_eq!(
             soul.speed,
-            Fixed::from_int(rules::REQUIEM_LINE_SPEED * 130 / 100)
+            Fixed::from_int(rules::REQUIEM_SCEPTER_LINE_SPEED)
         );
+        const { assert!(rules::REQUIEM_SCEPTER_LINE_SPEED > rules::REQUIEM_LINE_SPEED) };
     }
 }

@@ -585,15 +585,7 @@ impl World {
         }
     }
 
-    /// Buys an item for a seat that can afford it.
-    ///
-    /// Mergeable charges fill a compatible stack before taking an empty slot.
-    /// A base-shop purchase goes to the hero's bag at either base shop, and
-    /// to the stash when that bag is full. A normally respawning hero also
-    /// receives base purchases in its inventory; a living hero elsewhere buys
-    /// into the stash. Secret-shop parts
-    /// instead need a living hero or courier in that shop's trigger zone.
-    /// [`bota_core::place_shop_purchase`] is the same rule a client asks.
+    /// Whether the seat already holds the upgrade the item grants, so that buying it again is refused.
     pub(crate) fn upgrade_purchase_restricted(
         &self,
         seat: &crate::game::Seat,
@@ -604,6 +596,7 @@ impl World {
             .is_some_and(|grant| grant.upgrade.held(seat.upgrades))
     }
 
+    /// The upgrades of the seat whose hero this is; none for any other unit.
     pub(crate) fn upgrades_of(&self, hero: Entity) -> bota_proto::HeroUpgrades {
         self.seats
             .iter()
@@ -611,6 +604,7 @@ impl World {
             .map_or_else(bota_proto::HeroUpgrades::default, |seat| seat.upgrades)
     }
 
+    /// Whether the hero has a Scepter effect: the consumed blessing, or the item in an active slot.
     pub(crate) fn has_scepter(&self, hero: Entity) -> bool {
         self.upgrades_of(hero).scepter_blessing
             || self.inventory.get(hero).is_some_and(|bag| {
@@ -622,6 +616,7 @@ impl World {
             })
     }
 
+    /// Grants the upgrade to the hero's seat; false when the hero has no seat or the seat already holds it.
     pub(crate) fn grant_upgrade_on(
         &mut self,
         hero: Entity,
@@ -633,6 +628,15 @@ impl World {
             .is_some_and(|seat| upgrade.grant(&mut seat.upgrades))
     }
 
+    /// Buys an item for a seat that can afford it.
+    ///
+    /// Mergeable charges fill a compatible stack before taking an empty slot.
+    /// A base-shop purchase goes to the hero's bag at either base shop, and
+    /// to the stash when that bag is full. A normally respawning hero also
+    /// receives base purchases in its inventory; a living hero elsewhere buys
+    /// into the stash. Secret-shop parts
+    /// instead need a living hero or courier in that shop's trigger zone.
+    /// [`bota_core::place_shop_purchase`] is the same rule a client asks.
     pub fn buy(&mut self, slot: SlotId, item: ItemId, events: &mut Vec<Event>) -> bool {
         let Some(index) = self.seats.iter().position(|s| s.slot == slot) else {
             return false;

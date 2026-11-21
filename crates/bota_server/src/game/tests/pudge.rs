@@ -2015,7 +2015,10 @@ fn a_purchased_shard_is_consumed_and_extends_pudges_hook() {
         .iter()
         .find_map(|id| world.hook.get(id))
         .expect("hook");
-    assert_eq!(hook.aim, from + Vec2::from_ints(rules::HOOK_RANGE + 100, 0));
+    assert_eq!(
+        hook.aim,
+        from + Vec2::from_ints(rules::HOOK_RANGE + rules::HOOK_SHARD_RANGE, 0)
+    );
     assert!(
         !world
             .inventory
@@ -2037,7 +2040,13 @@ fn a_shard_shelf_opens_on_its_first_stock_tick() {
         .iter_mut()
         .filter(|shelf| shelf.item == shard)
     {
-        assert_eq!(shelf.restock_left, 990 * rules::TICKS_PER_SECOND);
+        assert_eq!(
+            shelf.restock_left,
+            bota_core::item_def(shard)
+                .and_then(|def| def.stock)
+                .expect("a stocked Shard")
+                .opens_ticks
+        );
         assert_eq!(shelf.left, 0);
         shelf.restock_left = 2;
         shelves += 1;
@@ -2122,7 +2131,7 @@ fn consumed_upgrades_survive_death_and_are_private_in_fog() {
             .find(|ability| ability.id == AbilityId::MEAT_HOOK)
             .unwrap()
             .range,
-        rules::HOOK_RANGE + 100
+        rules::HOOK_RANGE + rules::HOOK_SHARD_RANGE
     );
 }
 
@@ -2285,7 +2294,7 @@ fn a_visible_enemy_cannot_read_the_upgrade_flag_or_effective_hook_range() {
     assert!(ally.players[0].upgrades.unwrap().shard);
     assert_eq!(
         range(ally.unit(wire_id(pudge)).unwrap()),
-        rules::HOOK_RANGE + 100
+        rules::HOOK_RANGE + rules::HOOK_SHARD_RANGE
     );
 }
 

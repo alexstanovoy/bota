@@ -106,6 +106,7 @@ impl<P: HeldItem> Shelf<'_, P> {
 /// Where one bought part goes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Berth {
+    /// Nowhere: the part is consumed at once for the upgrade it grants.
     Consumed,
     /// The hero's bag, by slot number.
     Bag(usize),
