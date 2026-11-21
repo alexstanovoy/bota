@@ -15,9 +15,8 @@ lockstep, no reproducible matches, no fair view of the map. bota gives you that:
 - **Built for bots.** Lockstep mode waits for slow bots, a whole match can run inside your own program with no
   sockets, and a bot is a normal client in a few lines of Rust.
 - **Dota's numbers.** Heroes, creeps, towers, items and timings follow Dota 2, with the sources named next to the
-  tables. The move from 7.41f to 7.42 is under way: the items' and the heroes' script numbers, Shadow Fiend's
-  abilities, the attributes, the buildings', Roshan's and the shrine's rewards and the Glyph are 7.42's; the map,
-  the neutral camps, experience and passive gold, hero kill bounties and waves are still 7.41f's.
+  tables, and each generated table names the game build it was read from. While a new patch is being moved in,
+  some tables are a patch ahead of others.
 
 ## What you can play today
 
