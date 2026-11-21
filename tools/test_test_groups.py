@@ -51,7 +51,8 @@ class Routing(unittest.TestCase):
         self.assertEqual(groups_of(f"{SERVER}/game/world.rs"), expected)
 
     def test_a_proto_change_runs_everything_built_on_it(self):
-        self.assertEqual(groups_of("crates/bota_proto/src/lib.rs"), set(ROUTER.names) - {"import_items", "tooling"})
+        # The importers are crates of their own that read the game files and link no bota crate.
+        self.assertEqual(groups_of("crates/bota_proto/src/lib.rs"), set(ROUTER.names) - {"import_items", "import_map", "tooling"})
 
     def test_the_item_ids_run_the_importer(self):
         self.assertIn("import_items", groups_of("crates/bota_proto/registry/ids.txt"))
