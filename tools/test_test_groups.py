@@ -1,6 +1,8 @@
 """tools/test_groups.py's routing, selection and guards, on this repository's own groups (tools/test_groups.toml)."""
 
+import dataclasses
 import io
+import shutil
 from contextlib import redirect_stderr, redirect_stdout
 from unittest.mock import patch
 import os
@@ -309,6 +311,133 @@ class Proofs(unittest.TestCase):
         })
         problems = test_groups.check_negated_features(CRATES, GROUPS, [f"{SERVER}/net/{n}.rs" for n in "abcd"])
         self.assertEqual([p.split(":")[0] for p in problems], [f"{SERVER}/net/a.rs", f"{SERVER}/net/b.rs"])
+
+
+class SourceItems(unittest.TestCase):
+    """What the source listing reads as a test, and what it does not."""
+
+    def names(self, text):
+        return [("::".join((*inline, name)), cfgs) for inline, name, cfgs in test_groups.items_of(test_groups.tokens_of(text)).tests]
+
+    def expanded(self, definition, invocation):
+        body = test_groups.items_of(test_groups.tokens_of(definition)).macros
+        (name, bodies), = body.items()
+        (_, _, _, tokens), = test_groups.items_of(test_groups.tokens_of(invocation)).invocations
+        return [("::".join((*inline, test)), cfgs) for inline, test, cfgs in test_groups.items_of(test_groups.expand(bodies, tokens)).tests]
+
+    def test_a_test_in_an_inline_module_carries_the_modules_name_and_cfg(self):
+        text = '#[cfg(test)]\nmod tests {\n    #[test]\n    #[ignore = "slow"]\n    fn slow() {}\n}\n'
+        self.assertEqual(self.names(text), [("tests::slow", (("test",),))])
+
+    def test_strings_comments_and_raw_strings_hold_no_tests(self):
+        text = ('const A: &str = "#[test] fn in_a_string() {}";\n/* #[test] fn in_a /* nested */ comment() {} */\n'
+                'const B: &str = r#"\n#[test] fn in_a_raw_string() {}"#;\nconst C: char = \'"\';\n#[test]\nfn real() {}\n')
+        self.assertEqual(self.names(text), [("real", ())])
+
+    def test_a_test_attribute_inside_a_function_an_impl_or_a_macro_definition_is_no_test(self):
+        text = ("fn outer() {\n    #[test]\n    fn inner() {}\n}\nimpl X {\n    #[test]\n    fn method() {}\n}\n"
+                "macro_rules! m { () => { #[test] fn written() {} }; }\n#[test]\nfn top() {}\n")
+        self.assertEqual(self.names(text), [("top", ())])
+
+    def test_cfg_predicates_are_three_valued(self):
+        def fact(key, value):
+            return {"unix": True, "windows": False, "feature": value == "on"}.get(key)
+        tokens = test_groups.tokens_of
+        self.assertIs(test_groups.cfg_holds((tuple(tokens('all(windows, mystery)')),), fact), False)
+        self.assertIs(test_groups.cfg_holds((tuple(tokens('any(unix, mystery)')),), fact), True)
+        self.assertIsNone(test_groups.cfg_holds((tuple(tokens('not(mystery)')),), fact))
+        self.assertIs(test_groups.cfg_holds((tuple(tokens('all(unix, not(feature = "off"))')),), fact), True)
+
+    def test_a_macro_writes_a_test_per_name_in_every_module_its_rule_writes(self):
+        definition = ("macro_rules! over_every_wire {\n    ($($test:ident),* $(,)?) => {\n        mod over_tcp { $(#[test] fn $test() {})* }\n"
+                      '        #[cfg(feature = "websocket")]\n        mod over_ws { $(#[test] fn $test() {})* }\n    };\n}\n')
+        found = self.expanded(definition, "over_every_wire!(first, second,);")
+        self.assertEqual(found, [("over_tcp::first", ()), ("over_tcp::second", ()), ("over_ws::first", (("feature", "=", '"websocket"'),)),
+                                 ("over_ws::second", (("feature", "=", '"websocket"'),))])
+
+    def test_a_macro_matches_attributes_visibilities_types_and_expressions(self):
+        definition = ("macro_rules! tables {\n    (state { $($(#[$m:meta])* $v:vis $name:ident : $ty:ty = $init:expr;)* }) => {\n"
+                      "        #[cfg(test)] mod fingerprint { $(#[test] fn $name() { let _: $ty = $init; })* }\n    };\n}\n")
+        invocation = ("tables! { state { #[doc = \"a\"] pub(crate) pairs: Vec<(u8, u8)> = Vec::new(); "
+                      "map: HashMap<u8, Option<u8>> = HashMap::<u8, Option<u8>>::new(); } }")
+        self.assertEqual(self.expanded(definition, invocation), [("fingerprint::pairs", (("test",),)), ("fingerprint::map", (("test",),))])
+
+    def test_a_macro_no_rule_of_which_matches_is_not_expanded(self):
+        definition = "macro_rules! only_idents { ($($test:ident),*) => { $(#[test] fn $test() {})* }; }\n"
+        with self.assertRaisesRegex(test_groups.Unexpandable, "no rule matches"):
+            self.expanded(definition, "only_idents!(1, 2);")
+
+
+class SourceListing(unittest.TestCase):
+    """`check --no-build`'s listing of this repository read from its source, with files added or changed in memory."""
+
+    def listing(self, crate, overlay=None, crates=CRATES):
+        overlay = overlay or {}
+        read = lambda path: overlay[path] if path in overlay else test_groups.read_source(path)  # noqa: E731
+        builds = sorted((b for b in test_groups.builds_to_list(crates, GROUPS, ROUTER, {crate}, None) if b.crate == crate), key=str)
+        return test_groups.list_source(crates, builds, read, set(test_groups.files()) | set(overlay))
+
+    def with_target(self, crate, name, required=()):
+        target = {"kind": ["test"], "name": name, "src_path": str(test_groups.ROOT / CRATES[crate].directory / f"tests/{name}.rs"),
+                  "test": True, "doctest": False, "required-features": list(required)}
+        return {**CRATES, crate: dataclasses.replace(CRATES[crate], targets=[*CRATES[crate].targets, target])}
+
+    def test_the_tests_a_wire_macro_writes_are_read(self):
+        listings, _, unexpanded = self.listing("bota_server")
+        tests = listings[test_groups.plain_build(CRATES["bota_server"])].tests
+        self.assertEqual(unexpanded, [])
+        self.assertIn("net::tests::reserved::over_wss::a_seat_key_admits_only_so_many_spectators_at_once", tests["lib"])
+        self.assertIn("over_tcp::a_half_open_connection_is_released_and_its_client_comes_back", tests["test:bad_links"])
+        self.assertIn("game::world::fingerprint::every_part_of_the_world_moves_the_fingerprint", tests["lib"])
+
+    def test_a_new_test_module_is_in_no_group(self):
+        lib = f"{SERVER}/lib.rs"
+        overlay = {lib: test_groups.read_source(lib) + "\n#[cfg(test)]\nmod fresh_tests;\n", f"{SERVER}/fresh_tests.rs": "#[test]\nfn added() {}\n"}
+        problems = test_groups.assess(GROUPS, ROUTER, self.listing("bota_server", overlay)[0])
+        self.assertEqual([p.split(" (")[0] for p in problems], ["bota_server lib fresh_tests::added: in no group"])
+
+    def test_a_new_test_target_is_in_no_group(self):
+        overlay = {"crates/bota_server/tests/fresh.rs": "#[test]\nfn added() {}\n"}
+        problems = test_groups.assess(GROUPS, ROUTER, self.listing("bota_server", overlay, self.with_target("bota_server", "fresh"))[0])
+        self.assertEqual([p.split(" (")[0] for p in problems], ["bota_server test:fresh added: in no group"])
+
+    def test_a_target_with_required_features_is_read_only_in_the_builds_that_have_them(self):
+        overlay = {"crates/bota_server/tests/fresh.rs": "#[test]\nfn added() {}\n"}
+        listings, _, _ = self.listing("bota_server", overlay, self.with_target("bota_server", "fresh", ["phase-profile"]))
+        holding = sorted(b.features for b, listed in listings.items() if "test:fresh" in listed.tests)
+        self.assertEqual(holding, [("phase-profile", "websocket")])
+
+    def test_a_test_gated_on_a_feature_is_read_only_in_the_builds_that_have_it(self):
+        lib = "crates/bota_server/src/lib.rs"
+        overlay = {lib: test_groups.read_source(lib) + '\n#[cfg(all(test, feature = "phase-profile"))]\n#[test]\nfn timed() {}\n'}
+        listings, _, _ = self.listing("bota_server", overlay)
+        self.assertEqual(sorted(b.features for b, listed in listings.items() if "timed" in listed.tests["lib"]), [("phase-profile", "websocket")])
+
+    def test_the_files_a_feature_compiles_in_are_that_builds_alone(self):
+        listings, _, _ = self.listing("bota_server")
+        plain = listings[test_groups.plain_build(CRATES["bota_server"])].sources
+        profiled = next(listed.sources for build, listed in listings.items() if "phase-profile" in build.features)
+        self.assertEqual(sorted(profiled - plain), [f"{SERVER}/profile/record.rs", f"{SERVER}/profile/tests.rs"])
+
+    def test_a_test_behind_a_cfg_it_cannot_evaluate_is_counted_not_placed(self):
+        lib = "crates/bota_core/src/lib.rs"
+        listings, unknown, _ = self.listing("bota_core", {lib: test_groups.read_source(lib) + "\n#[cfg(bota_custom)]\n#[test]\nfn custom() {}\n"})
+        self.assertEqual(unknown, {("bota_core", "lib", "custom")})
+        self.assertNotIn("custom", next(iter(listings.values())).tests["lib"])
+
+    def test_the_source_check_of_this_repository_passes_and_builds_nothing(self):
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        log = Path(scratch.name) / "cargo.log"
+        (Path(scratch.name) / "cargo").write_text(
+            f'#!/bin/sh\nprintf "%s\\n" "$*" >> "{log}"\n[ "$1" = metadata ] && exec "{shutil.which("cargo")}" "$@"\n'
+            'echo "cargo $1: this check must build nothing" >&2\nexit 97\n')
+        (Path(scratch.name) / "cargo").chmod(0o755)
+        done = subprocess.run([sys.executable, "-B", str(test_groups.ROOT / "tools/test_groups.py"), "check", "--no-build", "--all"],
+                              env=os.environ | {"PATH": f"{scratch.name}{os.pathsep}{os.environ['PATH']}"}, capture_output=True, text=True)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertRegex(done.stdout, r"test-groups: ok \(source level, nothing built\): \d+ tests in \d+ groups, every file routed; 0 tests ")
+        self.assertEqual([c for c in log.read_text().splitlines() if not c.startswith("metadata ")], [])
 
 
 class Running(unittest.TestCase):

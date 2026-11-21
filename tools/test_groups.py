@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """The test groups of this repository (tools/test_groups.toml): which tests a change runs, and the proof that none is left out.
 
-    tools/test_groups.py check [--base REV | --all]   every test in exactly one group, every file routed, at most 30 groups
+    tools/test_groups.py check [--base REV | --all] [--no-build]
+                                                      every test in exactly one group, every file routed, at most 30 groups
     tools/test_groups.py plan [--base REV | --all]    the groups and crates the change since the merge-base with REV affects
     tools/test_groups.py run [--record FILE] [--cpus N] GROUP...
                                                       the groups' tests and commands side by side, their threads within
@@ -17,6 +18,12 @@ the listing built directly, side by side and the longest of the last run first (
 checks that each ran exactly as many tests as its groups select, so this selection and libtest's own cannot drift apart.
 `plan` prints four lines: `groups NAME...`, `crates NAME...` (the crates to lint), `fuzz 0|1` (whether the fuzz targets are to be compiled: a crate they build on or the fuzz crate itself
 changed) and `scope` (what a stamp of the check names besides the tree).
+
+`check --no-build` builds nothing: it reads the `#[test]` functions of every test target of every crate from the source (the
+module tree from the target's root file, the tests the repository's own `macro_rules!` macros write expanded, each test
+placed in the builds whose features, required features and cfgs compile it in) and checks all of the above that needs no
+binary. Doc tests, tests behind a cfg it cannot evaluate (counted in its summary) and the files rustc actually built are the
+full check's: it is the quick check while working, and the full one stays the merge check.
 """
 
 import argparse
@@ -24,6 +31,7 @@ import hashlib
 import json
 import math
 import os
+import posixpath
 import re
 import shutil
 import signal
@@ -130,6 +138,8 @@ class Crate:
     launchers: set[str] = field(default_factory=set)  # direct, declared: crates whose tests run this one's binary
     harnessless: set[str] = field(default_factory=set)  # test targets with `harness = false`
     benches: set[str] = field(default_factory=set)
+    targets: list[dict] = field(default_factory=list)  # as cargo metadata gives them
+    profiles: dict = field(default_factory=dict)  # the [profile] table its builds use (its workspace's)
 
 
 @dataclass
@@ -140,6 +150,7 @@ class Listed:
     roots: dict[str, Path]
     executables: dict[str, Path] = field(default_factory=dict)
     sources: set[str] = field(default_factory=set)  # the crate's files its test binaries are built from (rustc's dep-info)
+    unread_doc: bool = False  # read from the source: the doc tests it may hold are not among `tests`
 
 
 def git(*args: str) -> str:
@@ -180,8 +191,8 @@ def load_crates(config: dict) -> dict[str, Crate]:
     workspace = metadata(None)
     for name, settings in config["crate"].items():
         manifest = settings.get("manifest")
-        packages = metadata(manifest)["packages"] if manifest else workspace["packages"]
-        package = next((p for p in packages if p["name"] == name), None)
+        meta = metadata(manifest) if manifest else workspace
+        package = next((p for p in meta["packages"] if p["name"] == name), None)
         if package is None:
             raise Failure(f"test_groups.toml: crate {name} is no package of the repository")
         table = package["features"]
@@ -202,6 +213,8 @@ def load_crates(config: dict) -> dict[str, Crate]:
             launchers=set(settings.get("dependents", [])),
             harnessless={t["name"] for t in manifest_toml.get("test", []) if t.get("harness") is False},
             benches={t["name"] for t in package["targets"] if "bench" in t["kind"]},
+            targets=package["targets"],
+            profiles=tomllib.loads((Path(meta["workspace_root"]) / "Cargo.toml").read_text()).get("profile", {}),
         )
     members = {p["name"]: p for p in workspace["packages"]}
     for name, package in members.items():
@@ -492,6 +505,626 @@ def tests_of(listing: str) -> list[str]:
     return [line[: -len(": test")] for line in listing.splitlines() if line.endswith(": test")]
 
 
+# ---------------------------------------------------------------------------------------------------------------- source
+
+TOKEN = re.compile(r"""
+      \s+ | //[^\n]*
+    | (?P<block>/\*)
+    | (?P<raw>[bc]?r(?P<hashes>\#*)")
+    | (?P<string>[bc]?"(?:\\.|[^"\\])*")
+    | (?P<char>b?'(?:\\u\{[^}]*\}|\\.|[^'\\])')
+    | (?P<lifetime>'[A-Za-z_]\w*)
+    | (?P<token>[A-Za-z_]\w*|\d\w*|.)
+""", re.VERBOSE | re.DOTALL)
+IDENTIFIER = re.compile(r"[A-Za-z_]\w*")
+COMMENT_MARK = re.compile(r"/\*|\*/")
+BRACKETS = {"(": ")", "[": "]", "{": "}"}
+# cfg keys that rustc's print of the host does not settle: debug assertions and overflow checks are the profile's, CPU features
+# the flags'
+FLAG_KEYS = ("debug_assertions", "overflow_checks", "target_feature")
+FALSE_KEYS = ("doc", "doctest", "miri")  # never set in a test build
+# How deep a macro's expansion may invoke test-writing macros again: one that invokes itself would never end.
+MACRO_DEPTH = 8
+
+
+def tokens_of(text: str) -> list[str]:
+    """The tokens of a Rust source: comments dropped, string and character literals kept whole (so neither a `#[test]` in a
+    string nor a quote in a character literal is read as code)."""
+    found = []
+    position = 0
+    while position < len(text):
+        match = TOKEN.match(text, position)
+        if match.group("block"):
+            position = comment_end(text, match.end())
+        elif match.group("raw"):
+            close = text.find('"' + match.group("hashes"), match.end())
+            position = len(text) if close < 0 else close + 1 + len(match.group("hashes"))
+            found.append(text[match.start():position])
+        else:
+            position = match.end()
+            if match.lastgroup:
+                found.append(match.group())
+    return found
+
+
+def comment_end(text: str, position: int) -> int:
+    """Where a block comment opened before `position` ends: Rust's block comments nest."""
+    depth = 1
+    while depth:
+        found = COMMENT_MARK.search(text, position)
+        if found is None:
+            return len(text)
+        depth += 1 if found.group() == "/*" else -1
+        position = found.end()
+    return position
+
+
+def closing(tokens: list[str], start: int) -> int:
+    """The index of the bracket that closes the one at `start` (the end of the tokens when none does)."""
+    depth = 0
+    for index in range(start, len(tokens)):
+        depth += {"[": 1, "(": 1, "{": 1, "]": -1, ")": -1, "}": -1}.get(tokens[index], 0)
+        if depth == 0:
+            return index
+    return len(tokens)
+
+
+@dataclass
+class SourceItems:
+    """What one file (or one macro expansion) holds for the test listing: its `#![cfg]`, its `#[test]` functions, its
+    out-of-line modules, the macros it defines and the macros it invokes where items go; each with the inline modules around
+    it and the cfgs written on it and on them (a cfg is the tokens inside `cfg(...)`)."""
+
+    cfgs: list[tuple[str, ...]] = field(default_factory=list)
+    tests: list[tuple[tuple[str, ...], str, tuple]] = field(default_factory=list)
+    modules: list[tuple[tuple[str, ...], str, str | None, tuple]] = field(default_factory=list)  # inline, name, #[path], cfgs
+    macros: dict[str, list[tuple[str, ...]]] = field(default_factory=dict)  # name -> the bodies of its `macro_rules!`
+    invocations: list[tuple[tuple[str, ...], tuple, str, tuple[str, ...]]] = field(default_factory=list)  # inline, cfgs, name, input
+
+
+def placed(scopes: list[tuple[str, list]], attributes: list[list[str]]) -> tuple[tuple[str, ...], tuple]:
+    """The inline modules an item is in, and every cfg on them and on it."""
+    own = (tuple(a[2:-1]) for a in attributes if a[:2] == ["cfg", "("])
+    return tuple(name for name, _ in scopes), (*(c for _, cfgs in scopes for c in cfgs), *own)
+
+
+def macro_at(tokens: list[str], index: int) -> tuple[str, int, int] | None:
+    """A `NAME!(...)` or `macro_rules! NAME {...}` at `index`: the macro's name and where its brackets open and close."""
+    token = tokens[index]
+    name, start = (tokens[index + 2] if index + 2 < len(tokens) else "", index + 3) if token == "macro_rules" else (token, index + 2)
+    if not IDENTIFIER.fullmatch(token) or not IDENTIFIER.fullmatch(name) or start >= len(tokens) or tokens[start] not in BRACKETS:
+        return None
+    return name, start, closing(tokens, start)
+
+
+def items_of(tokens: list[str]) -> SourceItems:
+    """The tests, modules and macros of a source, read from its tokens. Only items of modules count: a `#[test]` in a function
+    body, an impl or a macro's definition is no test libtest lists (an invocation of the macro may write one)."""
+    items = SourceItems()
+    scopes: list[tuple[str, list] | None] = []  # each open brace: an inline module (its name and cfgs), or None
+    attributes: list[list[str]] = []
+    index = 0
+    while index < len(tokens):
+        token, ahead = tokens[index], tokens[index + 1 : index + 3]
+        in_module = None not in scopes
+        if token == "#" and (ahead[:1] == ["["] or ahead == ["!", "["]):
+            inner = ahead[0] == "!"
+            end = closing(tokens, index + 1 + inner)
+            body = tokens[index + 2 + inner : end]
+            if inner and body[:2] == ["cfg", "("] and in_module:
+                (scopes[-1][1] if scopes else items.cfgs).append(tuple(body[2:-1]))
+            elif not inner:
+                attributes.append(body)
+            index = end + 1
+            continue
+        macro = macro_at(tokens, index) if in_module and ahead[:1] == ["!"] else None
+        if macro is not None:
+            name, start, end = macro
+            if token == "macro_rules":
+                items.macros.setdefault(name, []).append(tuple(tokens[start + 1 : end]))
+            else:
+                items.invocations.append((*placed(scopes, attributes), name, tuple(tokens[start + 1 : end])))
+            attributes = []
+            index = end + 1
+            continue
+        if token in ("mod", "fn") and in_module and ahead and IDENTIFIER.fullmatch(ahead[0]):
+            inline, cfgs = placed(scopes, attributes)
+            if token == "fn" and ["test"] in attributes:
+                items.tests.append((inline, ahead[0], cfgs))
+            elif token == "mod" and ahead[1:] == [";"]:
+                path = next((a[2][1:-1] for a in attributes if len(a) == 3 and a[:2] == ["path", "="]), None)
+                items.modules.append((inline, ahead[0], path, cfgs))
+            elif token == "mod" and ahead[1:] == ["{"]:
+                scopes.append((ahead[0], [tuple(a[2:-1]) for a in attributes if a[:2] == ["cfg", "("]]))
+                index += 1
+            attributes = []
+            index += 2
+            continue
+        if token == "{":
+            scopes.append(None)
+        elif token == "}" and scopes:
+            scopes.pop()
+        if token in ("{", "}", ";"):
+            attributes = []
+        index += 1
+    return items
+
+
+class Unexpandable(Exception):
+    """A macro invocation the source listing cannot expand (no rule of the macro matches, as this reader matches them)."""
+
+
+@dataclass
+class Bracketed:
+    """A bracketed token tree: its opening bracket and what it holds."""
+
+    open: str
+    items: list
+
+
+def trees_of(tokens: tuple[str, ...]) -> list:
+    """The token trees of balanced tokens: brackets become `Bracketed`s."""
+    root: list = []
+    stack = [root]
+    for token in tokens:
+        if token in BRACKETS:
+            group = Bracketed(token, [])
+            stack[-1].append(group)
+            stack.append(group.items)
+        elif token in (")", "]", "}") and len(stack) > 1:
+            stack.pop()
+        else:
+            stack[-1].append(token)
+    return root
+
+
+def flatten(trees: list) -> list[str]:
+    """The tokens of token trees, brackets restored."""
+    found: list[str] = []
+    stack = [iter(trees)]
+    closes: list[str] = []
+    while stack:
+        tree = next(stack[-1], None)
+        if tree is None:
+            stack.pop()
+            if closes:
+                found.append(closes.pop())
+        elif isinstance(tree, Bracketed):
+            found.append(tree.open)
+            closes.append(BRACKETS[tree.open])
+            stack.append(iter(tree.items))
+        else:
+            found.append(tree)
+    return found
+
+
+def pattern_of(trees: list, matcher: bool) -> list[tuple]:
+    """A macro rule's matcher (`$name:kind` fragments) or transcriber (`$name` variables) as elements: ("lit", token),
+    ("group", bracket, elements), ("frag", name, kind), ("var", name), ("rep", elements, separator, operator). Its depth is
+    the rule's own bracket depth."""
+    elements: list[tuple] = []
+    index = 0
+    while index < len(trees):
+        tree, after = trees[index], trees[index + 1 : index + 4]
+        if tree == "$" and after and isinstance(after[0], Bracketed) and after[0].open == "(":
+            separator = after[1] if len(after) > 1 and isinstance(after[1], str) and after[1] not in ("*", "+", "?") else None
+            operator = after[1 + (separator is not None)] if len(after) > 1 + (separator is not None) else None
+            if operator not in ("*", "+", "?"):
+                raise Unexpandable("a repetition without *, + or ?")
+            elements.append(("rep", pattern_of(after[0].items, matcher), separator, operator))
+            index += 3 + (separator is not None)
+        elif tree == "$" and after and isinstance(after[0], str) and IDENTIFIER.fullmatch(after[0]) and after[0] != "crate":
+            if matcher and after[1:2] == [":"] and len(after) > 2 and isinstance(after[2], str):
+                elements.append(("frag", after[0], after[2]))
+                index += 4
+            else:
+                elements.append(("var", after[0]))
+                index += 2
+        elif isinstance(tree, Bracketed):
+            elements.append(("group", tree.open, pattern_of(tree.items, matcher)))
+            index += 1
+        else:
+            elements.append(("lit", tree))
+            index += 1
+    return elements
+
+
+def rules_of(body: tuple[str, ...]) -> list[tuple[list[tuple], list[tuple]]]:
+    """The rules of a `macro_rules!` body: (matcher, transcriber) pairs."""
+    trees = trees_of(body)
+    rules = []
+    index = 0
+    while index < len(trees):
+        shape = trees[index : index + 4]
+        if len(shape) < 4 or not isinstance(shape[0], Bracketed) or shape[1:3] != ["=", ">"] or not isinstance(shape[3], Bracketed):
+            raise Unexpandable("a rule that is not (matcher) => {transcriber}")
+        rules.append((pattern_of(trees[index].items, True), pattern_of(trees[index + 3].items, False)))
+        index += 4 + (trees[index + 4 : index + 5] == [";"])
+    return rules
+
+
+def firsts(elements: list[tuple], start: int, follow: frozenset) -> frozenset:
+    """The tokens that can begin what comes from `elements[start]` on (`follow` when that may be nothing); "" for anything."""
+    found: set[str] = set()
+    for element in elements[start:]:
+        if element[0] in ("lit", "group"):
+            return frozenset(found | {element[1]})
+        if element[0] == "frag" and element[2] == "vis":  # it may be nothing
+            found.add("pub")
+        elif element[0] in ("frag", "var"):
+            return frozenset(found | {""})
+        else:
+            found |= firsts(element[1], 0, frozenset())
+            if element[3] == "+":
+                return frozenset(found)
+    return frozenset(found | follow)
+
+
+def take_fragment(kind: str, trees: list, position: int, stop: frozenset) -> int | None:
+    """Where the fragment `kind` at `position` ends; None when it cannot start there. Expressions, types and the like run
+    to the next token that may follow them (outside `<...>` for types and paths), as Rust's follow sets allow."""
+    tree = trees[position] if position < len(trees) else None
+    if kind == "vis":
+        if tree != "pub":
+            return position
+        after = trees[position + 1] if position + 1 < len(trees) else None
+        scoped = isinstance(after, Bracketed) and after.open == "(" and after.items[:1] in (["crate"], ["self"], ["super"], ["in"])
+        return position + 1 + scoped
+    if tree is None:
+        return None
+    if kind == "tt":
+        return position + 1
+    if kind == "ident":
+        return position + 1 if isinstance(tree, str) and IDENTIFIER.fullmatch(tree) and tree != "_" else None
+    if kind == "lifetime":
+        return position + 1 if isinstance(tree, str) and tree.startswith("'") else None
+    if kind == "literal":
+        signed = tree == "-" and position + 1 < len(trees)
+        value = trees[position + signed] if signed else tree
+        literal = isinstance(value, str) and (value[0] in "\"'0123456789" or value in ("true", "false") or value[:2] in ('b"', "b'", 'r"', "r#", 'c"'))
+        return position + 1 + signed if literal else None
+    if kind == "block":
+        return position + 1 if isinstance(tree, Bracketed) and tree.open == "{" else None
+    angles = 0
+    end = position
+    while end < len(trees):
+        tree = trees[end]
+        if isinstance(tree, str) and angles == 0 and tree in stop and end > position:
+            break
+        if kind in ("ty", "path") or (kind == "expr" and end and trees[end - 1] == ":"):
+            angles += tree == "<"
+        if tree == ">" and angles and trees[end - 1] != "-":
+            angles -= 1
+        end += 1
+        if "" in stop:
+            break
+    return end if end > position else None
+
+
+def match_rule(elements: list[tuple], trees: list, position: int, follow: frozenset) -> tuple[dict, int] | None:
+    """Matches `elements` against `trees` from `position`: the bindings (a fragment's trees, or a list per repetition) and
+    where the match ends; None when it does not match. Greedy, as a macro without ambiguity is matched."""
+    bindings: dict = {}
+    for index, element in enumerate(elements):
+        kind = element[0]
+        if kind == "lit":
+            if position >= len(trees) or trees[position] != element[1]:
+                return None
+            position += 1
+        elif kind == "group":
+            tree = trees[position] if position < len(trees) else None
+            if not isinstance(tree, Bracketed) or tree.open != element[1]:
+                return None
+            inner = match_rule(element[2], tree.items, 0, frozenset())
+            if inner is None or inner[1] != len(tree.items):
+                return None
+            bindings |= inner[0]
+            position += 1
+        elif kind == "frag":
+            end = take_fragment(element[2], trees, position, firsts(elements, index + 1, follow))
+            if end is None:
+                return None
+            bindings[element[1]] = trees[position:end]
+            position = end
+        else:
+            found = match_repetition(element, trees, position, firsts(elements, index + 1, follow))
+            if found is None:
+                return None
+            bindings |= found[0]
+            position = found[1]
+    return bindings, position
+
+
+def match_repetition(element: tuple, trees: list, position: int, follow: frozenset) -> tuple[dict, int] | None:
+    """`$( ... ) sep op` from `position`: each variable inside bound to the list of its bindings, one per round."""
+    _, body, separator, operator = element
+    inner_follow = follow | ({separator} if separator else firsts(body, 0, frozenset()))
+    rounds: list[dict] = []
+    while position < len(trees) and not (operator == "?" and rounds):
+        start = position
+        if rounds and separator is not None:
+            if trees[position] != separator:
+                break
+            position += 1
+        found = match_rule(body, trees, position, inner_follow)
+        if found is None or found[1] == position:
+            position = start
+            break
+        rounds.append(found[0])
+        position = found[1]
+    if operator == "+" and not rounds:
+        return None
+    return {name: Rounds(r[name] for r in rounds if name in r) for name in variables(body)}, position
+
+
+class Rounds(list):
+    """The bindings of a variable inside a repetition, one per round (a fragment's binding is a plain list of trees)."""
+
+
+def variables(elements: list[tuple]) -> set[str]:
+    found = set()
+    for element in elements:
+        if element[0] in ("frag", "var"):
+            found.add(element[1])
+        elif element[0] == "group":
+            found |= variables(element[2])
+        elif element[0] == "rep":
+            found |= variables(element[1])
+    return found
+
+
+def transcribe(elements: list[tuple], bindings: dict) -> list:
+    """The token trees a transcriber writes with `bindings`."""
+    out: list = []
+    for element in elements:
+        if element[0] == "lit":
+            out.append(element[1])
+        elif element[0] == "group":
+            out.append(Bracketed(element[1], transcribe(element[2], bindings)))
+        elif element[0] == "var":
+            bound = bindings.get(element[1])
+            if bound is None or isinstance(bound, Rounds):
+                raise Unexpandable(f"${element[1]} is not bound outside a repetition")
+            out += bound
+        else:
+            _, body, separator, _ = element
+            repeated = [n for n in variables(body) if isinstance(bindings.get(n), Rounds)]
+            counts = {len(bindings[n]) for n in repeated}
+            if len(counts) != 1:
+                raise Unexpandable("a repetition whose variables repeat a different number of times, or not at all")
+            for round_ in range(counts.pop()):
+                if round_ and separator:
+                    out.append(separator)
+                out += transcribe(body, bindings | {n: bindings[n][round_] for n in repeated})
+    return out
+
+
+def expand(bodies: list[tuple[str, ...]], tokens: tuple[str, ...]) -> list[str]:
+    """The tokens a `macro_rules!` macro writes for its input: its first rule that matches."""
+    if len(set(bodies)) != 1:
+        raise Unexpandable("the macro is defined more than once")
+    trees = trees_of(tokens)
+    for matcher, transcriber in rules_of(bodies[0]):
+        found = match_rule(matcher, trees, 0, frozenset())
+        if found is not None and found[1] == len(trees):
+            return flatten(transcribe(transcriber, found[0]))
+    raise Unexpandable("no rule matches")
+
+
+def writes_tests(bodies: list[tuple[str, ...]]) -> bool:
+    """Whether a macro's definition holds a `#[test]` (only such a macro is expanded)."""
+    return any(body[i : i + 4] == ("#", "[", "test", "]") for body in bodies for i in range(len(body)))
+
+
+def cfg_value(tokens: tuple[str, ...], start: int, fact) -> tuple[bool | None, int]:
+    """The value of the cfg predicate at `start` and the index after it; None: it cannot be told. `all`, `any` and `not` are
+    three-valued, so `all(unix, something_unknown)` is still known false off unix."""
+    name, after = tokens[start], tokens[start + 1 : start + 2]
+    if after == ("=",):
+        return fact(name, tokens[start + 2].strip('"')), start + 3
+    if after != ("(",):
+        return fact(name, None), start + 1
+    values, index = [], start + 2
+    while tokens[index] != ")":
+        value, index = cfg_value(tokens, index, fact)
+        values.append(value)
+        if tokens[index] == ",":
+            index += 1
+    if name == "not" and len(values) == 1:
+        return (None if values[0] is None else not values[0]), index + 1
+    if name == "all":
+        return (False if False in values else None if None in values else True), index + 1
+    if name == "any":
+        return (True if True in values else None if None in values else False), index + 1
+    return None, index + 1
+
+
+def cfg_holds(cfgs: tuple, fact) -> bool | None:
+    """Whether every cfg holds; None when one cannot be told and none is false."""
+    values = []
+    for cfg in cfgs:
+        try:
+            value, end = cfg_value(cfg, 0, fact)
+        except IndexError:  # a cfg this reader does not understand
+            value, end = None, len(cfg)
+        values.append(value if end == len(cfg) else None)
+    return False if False in values else None if None in values else True
+
+
+def host_cfg() -> set[tuple[str, str | None]]:
+    """The cfgs of a native build for this machine, as rustc prints them (nothing is compiled), less the ones flags change."""
+    done = subprocess.run([os.environ.get("RUSTC", "rustc"), "--print", "cfg"], cwd=ROOT, capture_output=True, text=True)
+    if done.returncode != 0:
+        raise Failure(f"rustc --print cfg failed, so which cfgs a native build has is unknown: {done.stderr[-500:]}")
+    found = set()
+    for line in done.stdout.splitlines():
+        key, _, value = line.partition("=")
+        if key not in FLAG_KEYS:
+            found.add((key, value.strip('"') if value else None))
+    return found
+
+
+def profile_debug_assertions(profiles: dict, profile: str) -> bool | None:
+    """Whether a profile has debug assertions in this repository's crates (its `inherits` chain followed)."""
+    for _ in range(len(profiles) + 1):
+        entry = profiles.get(profile, {})
+        if "debug-assertions" in entry:
+            return bool(entry["debug-assertions"])
+        if "inherits" not in entry:
+            return {"dev": True, "test": True, "release": False, "bench": False}.get(profile)
+        profile = entry["inherits"]
+    return None
+
+
+def enabled_features(table: dict[str, list[str]], requested: tuple[str, ...]) -> set[str]:
+    """The features of a crate a build turns on: the ones asked for, `default`, and every one they turn on (a `dep/feature`
+    entry turns on the optional dependency's own feature, a `dep?/feature` entry does not)."""
+    todo = [*requested, "default"]
+    found: set[str] = set()
+    while todo:  # each feature is taken once
+        feature = todo.pop()
+        if feature in found or feature not in table:
+            continue
+        found.add(feature)
+        for value in table[feature]:
+            head = value.split("/", 1)[0]
+            if not value.startswith("dep:") and not head.endswith("?"):
+                todo.append(head)
+    return found
+
+
+def module_file(file: str, as_mod_rs: bool, inline: tuple[str, ...], name: str, path: str | None, available: set[str]) -> tuple[str, bool] | None:
+    """The file of `mod name;` declared in `file` (inside the inline modules `inline`), and whether its own modules sit beside
+    it (a mod.rs or a `#[path]` file); None when no such file exists."""
+    directory = posixpath.dirname(file)
+    base = posixpath.join(directory if as_mod_rs else posixpath.join(directory, Path(file).stem), *inline)
+    if path:
+        candidates = [(posixpath.normpath(posixpath.join(base if inline else directory, path)), True)]
+    else:
+        candidates = [(posixpath.join(base, name + ".rs"), False), (posixpath.join(base, name, "mod.rs"), True)]
+    return next(((c, mod_rs) for c, mod_rs in candidates if c in available), None)
+
+
+@dataclass
+class SourceTarget:
+    """What a test target's source declares: its tests (libtest name, every cfg above it), the files of its module tree
+    (each with the cfgs that compile it in), and the invocations of test-writing macros that could not be expanded."""
+
+    tests: list[tuple[str, tuple]]
+    files: list[tuple[str, tuple]]
+    unexpanded: list[str]
+
+
+def source_target(root: str, read, available: set[str], parsed: dict[str, SourceItems]) -> SourceTarget:
+    """Walks the modules of the crate at `root` from its root file, then expands the test-writing macros its files define
+    where its files invoke them."""
+    reached = {root}
+    files: list[tuple[str, tuple, tuple[str, ...]]] = []  # file, its cfgs, its module path
+    todo = [(root, True, (), ())]
+    while todo:
+        file, as_mod_rs, path, cfgs = todo.pop()
+        if file not in parsed:
+            parsed[file] = items_of(tokens_of(read(file)))
+        items = parsed[file]
+        cfgs = (*cfgs, *items.cfgs)
+        files.append((file, cfgs, path))
+        for inline, name, attribute, own in items.modules:
+            child = module_file(file, as_mod_rs, inline, name, attribute, available)
+            if child is not None and child[0] not in reached:  # a file is one module, as rustc's dep-info names it once
+                reached.add(child[0])
+                todo.append((*child, (*path, *inline, name), (*cfgs, *own)))
+    macros: dict[str, list[tuple[str, ...]]] = {}
+    for file, _, _ in files:
+        for name, bodies in parsed[file].macros.items():
+            macros.setdefault(name, []).extend(bodies)
+    found = SourceTarget([], [(file, cfgs) for file, cfgs, _ in files], [])
+    for file, cfgs, path in files:
+        work = [(parsed[file], path, cfgs, 0)]  # what a file or an expansion holds, its module path, its cfgs, its depth
+        while work:
+            items, module, above, depth = work.pop()
+            found.tests += [("::".join((*module, *inline, name)), (*above, *own)) for inline, name, own in items.tests]
+            for inline, own, name, tokens in items.invocations:
+                if name not in macros or not writes_tests(macros[name]):
+                    continue
+                try:
+                    if depth >= MACRO_DEPTH:
+                        raise Unexpandable(f"expansions nest deeper than {MACRO_DEPTH}")
+                    expanded = items_of(expand(macros[name], tokens))
+                except (Unexpandable, RecursionError) as error:
+                    found.unexpanded.append(f"{file}: {name}!: {error}")
+                    continue
+                work.append((expanded, (*module, *inline), (*above, *own), depth + 1))
+    return found
+
+
+def list_source(crates: dict[str, Crate], builds: list[Build], read, available: set[str]) -> tuple[dict[Build, Listed], set, list[str]]:
+    """What `list_build` lists, read from the source: per build, the tests of every test target it compiles (required
+    features met) that their cfgs compile in, and the files their module trees compile. Also the tests behind a cfg that
+    cannot be told without building (crate, target, name), and the test-writing macro invocations that could not be expanded."""
+    host = host_cfg()
+    host_keys = {key for key, _ in host}
+    parsed: dict[str, SourceItems] = {}
+    sources: dict[tuple[str, str], SourceTarget] = {}
+    listings: dict[Build, Listed] = {}
+    unknown: set[tuple[str, str, str]] = set()
+    for build in builds:
+        if build.profile == UNITTEST:
+            listings[build] = list_unittest(build.crate)
+            continue
+        crate = crates[build.crate]
+        enabled = enabled_features(crate.feature_table, build.features)
+        debug = profile_debug_assertions(crate.profiles, build.profile)
+
+        def fact(key: str, value: str | None, enabled: set[str] = enabled, debug: bool | None = debug) -> bool | None:
+            if key in ("test", "feature", "debug_assertions"):
+                return {"test": value is None, "feature": value in enabled, "debug_assertions": debug}[key]
+            if key in host_keys or key in ("unix", "windows"):
+                return (key, value) in host
+            return False if key in FALSE_KEYS else None
+
+        listed = Listed({}, {}, unread_doc=any(target_name(t) == "lib" and t.get("doctest") for t in crate.targets))
+        for target in crate.targets:
+            root = Path(target["src_path"])
+            if not target.get("test", True) or not set(target.get("required-features") or []) <= enabled or not root.is_relative_to(ROOT):
+                continue
+            name = target_name(target)
+            if name.startswith("test:") and target["name"] in crate.harnessless:
+                raise Failure(f"{build.crate}: test target {target['name']} has `harness = false`; it cannot be listed, so no group can hold it")
+            source = sources.get((crate.name, name))
+            if source is None:
+                source = sources[(crate.name, name)] = source_target(str(root.relative_to(ROOT)), read, available, parsed)
+            tests = listed.tests[name] = []
+            for test, cfgs in source.tests:
+                holds = cfg_holds(cfgs, fact)
+                if holds is None:
+                    unknown.add((crate.name, name, test))
+                elif holds and test not in tests:
+                    tests.append(test)
+            listed.roots[name] = root
+            listed.sources |= {file for file, cfgs in source.files if cfg_holds(cfgs, fact) is not False}
+        listings[build] = listed
+    return listings, unknown, sorted({u for s in sources.values() for u in s.unexpanded})
+
+
+def read_source(path: str) -> str:
+    """A file of the tree as the source listing reads it (a file git knows but the tree lacks holds nothing)."""
+    file = ROOT / path
+    return file.read_text(errors="replace") if file.is_file() else ""
+
+
+def check_source(crates: dict[str, Crate], groups: list[Group], router: Router) -> tuple[list[str], int, int, list[str]]:
+    """`check --no-build`: the checks of `check` on the tests the source declares, in every build the groups use. Reading
+    costs no build, so every crate is read whatever changed. Its problems, the tests it read, how many tests sit behind a cfg
+    it cannot tell, and the macro invocations it could not expand."""
+    every_file = files()
+    problems = check_routing(crates, groups, router, every_file)
+    builds = sorted(builds_to_list(crates, groups, router, set(crates), None), key=str)
+    listings, unknown, unexpanded = list_source(crates, builds, read_source, set(every_file))
+    problems += assess(groups, router, listings) + check_feature_files(crates, groups, router, listings)
+    read = {(build.crate, target, name) for build, listed in listings.items() for target, names in listed.tests.items() for name in names}
+    return problems, len(read), len(unknown), unexpanded
+
+
 def selects(selector: Selector, target: str, name: str) -> bool:
     """libtest's own rule: a test runs when its name contains any of the filters."""
     if selector.target is not None and selector.target != target:
@@ -517,13 +1150,7 @@ def test_file(listed: Listed, target: str, name: str) -> Path:
 
 def check(crates: dict[str, Crate], groups: list[Group], router: Router, paths: list[str] | None) -> list[str]:
     """The checks of the module header; `paths` None: everything, else the change's paths."""
-    problems = check_names(groups, router)
-    every_file = files()
-    problems += check_patterns(groups, router, every_file)
-    problems += [f"{path}: no group and no route names it (tools/test_groups.toml)" for path in every_file if router.route(path) is None]
-    problems += check_harnesses(crates, groups, every_file)
-    problems += check_markers(router, every_file)
-    problems += check_negated_features(crates, groups, every_file)
+    problems = check_routing(crates, groups, router, files())
     scope = set(crates) if paths is None else set()
     for path in paths or []:
         routed = router.route(path)
@@ -534,6 +1161,16 @@ def check(crates: dict[str, Crate], groups: list[Group], router: Router, paths: 
         if crate is not None:
             scope |= router.above(crate.name)
     return problems + check_tests(crates, groups, router, scope, paths)
+
+
+def check_routing(crates: dict[str, Crate], groups: list[Group], router: Router, every_file: list[str]) -> list[str]:
+    """The checks that need no test listing: names, patterns, every file routed, harnesses, test markers, negated features."""
+    problems = check_names(groups, router)
+    problems += check_patterns(groups, router, every_file)
+    problems += [f"{path}: no group and no route names it (tools/test_groups.toml)" for path in every_file if router.route(path) is None]
+    problems += check_harnesses(crates, groups, every_file)
+    problems += check_markers(router, every_file)
+    return problems + check_negated_features(crates, groups, every_file)
 
 
 # What a test is written with, in Rust and in Python: a file holding one must run some group.
@@ -716,6 +1353,8 @@ def assess(groups: list[Group], router: Router, listings: dict[Build, Listed]) -
         for group in groups:
             for selector in (s for s in group.selectors if s.build == build):
                 hits = [(t, n) for t, names in listed.tests.items() for n in names if selects(selector, t, n)]
+                if not hits and listed.unread_doc and selector.target in (None, "doc"):
+                    continue  # it may select doc tests, which only rustdoc lists
                 problems += unused_filters(group, selector, hits)
                 for target, name in hits:
                     owners[(build.crate, target, name)].add(group.name)
@@ -1120,6 +1759,20 @@ def problem_of(log: Path, status: int, expected: int | None) -> str | None:
     return None
 
 
+def report_source(problems: list[str], tests: int, unknown: int, unexpanded: list[str], groups: int) -> int:
+    """`check --no-build`'s verdict, saying what it could not see."""
+    for problem in problems:
+        print(f"test-groups: {problem}")
+    for invocation in unexpanded:
+        print(f"test-groups: not expanded, so its tests were not checked: {invocation}")
+    if problems:
+        print(f"test-groups: FAILED (source level, nothing built): {groups} groups (at most {MAX_GROUPS})")
+        return 1
+    print(f"test-groups: ok (source level, nothing built): {tests} tests in {groups} groups, every file routed; {unknown} tests "
+          "behind a cfg this cannot evaluate were not checked; the listing of the built binaries is the merge check's")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="action", required=True)
@@ -1127,6 +1780,8 @@ def main() -> int:
         each = sub.add_parser(action)
         each.add_argument("--base", default=None, help="compare with the merge-base with this revision (default origin/main)")
         each.add_argument("--all", action="store_true", help="everything, whatever changed")
+        if action == "check":
+            each.add_argument("--no-build", action="store_true", help="read the tests from the source instead of the built test binaries: builds nothing")
     running = sub.add_parser("run")
     running.add_argument("--record", type=Path, help="write the names of the groups that failed here")
     running.add_argument("--cpus", default=os.environ.get("TEST_GROUPS_CPUS"),
@@ -1148,6 +1803,8 @@ def main() -> int:
         if options.action == "plan":
             print("\n".join(plan_report(router, merge_base, paths)))
             return 0
+        if options.no_build:
+            return report_source(*check_source(crates, groups, router), len(groups))
         problems = check(crates, groups, router, paths)
         for problem in problems:
             print(f"test-groups: {problem}")
