@@ -700,7 +700,7 @@ const PINS: [Pinned; 7] = [
             (7500, 0x458e_9a97_976e_db2b, 0xf868_266e_a740_d546),
             (9000, 0x4cee_043d_524e_f7b2, 0xbac1_cba2_7437_bc2b),
         ],
-        last: 0xdfdc_2566_cea1_a322,
+        last: 0xcd30_ccde_5522_3c9c,
     },
     Pinned {
         map: MapId(2),
@@ -714,7 +714,7 @@ const PINS: [Pinned; 7] = [
             (7500, 0x2b2f_2025_f22a_3f6d, 0x7e1c_7c35_98f4_f267),
             (9000, 0x2f28_9173_e524_921b, 0x55b1_b8cb_f27e_aaa8),
         ],
-        last: 0x5da2_d1d0_3fb7_d58a,
+        last: 0x1fed_1b20_d9b2_d7ad,
     },
     Pinned {
         map: MapId(2),
@@ -730,6 +730,6 @@ const PINS: [Pinned; 7] = [
             (10500, 0x4ba4_1cef_23c0_c3a8, 0xe82c_2acb_fb7b_484c),
             (12000, 0x87ba_df42_36be_a89f, 0x79bb_b114_6940_7f07),
         ],
-        last: 0x6945_9241_0046_26b5,
+        last: 0xb0cd_7360_420a_47a7,
     },
 ];
