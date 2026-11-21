@@ -1756,7 +1756,7 @@ fn radiance_from_an_illusion_uses_its_imported_burn_and_yields_to_a_real_carrier
 }
 
 #[test]
-fn illusion_attacks_and_existing_pierces_keep_their_captured_damage_share() {
+fn illusion_attacks_keep_their_share_while_a_pierce_rider_deals_the_items_illusion_value() {
     use bota_proto::{DamageKind, RuneKind, RuneSet, Target, UnitKind};
     let mut game = Match::with_options(true, RuneSet::of(RuneKind::Illusion));
     give(&mut game, 0, "item_monkey_king_bar");
@@ -1841,13 +1841,17 @@ fn illusion_attacks_and_existing_pierces_keep_their_captured_damage_share() {
             bota_core::magic_resist_bp(target.magic_resist),
         )
     };
+    // 7.42 gives the bar its own pierce damage for illusions, which is explicit spell damage
+    // and so takes no attack share on top (the carrier has no spell amplification here).
     assert_eq!(
         magical,
-        Some(mitigated(
-            source("item_monkey_king_bar", "bonus_chance_damage").int(),
-            DamageKind::Magical
+        Some(bota_core::mitigate(
+            source("item_monkey_king_bar", "bonus_chance_damage_illu").int(),
+            DamageKind::Magical,
+            target.armor,
+            bota_core::magic_resist_bp(target.magic_resist),
         )),
-        "the pre-existing rider path keeps its captured share"
+        "the pierce rider deals the item's illusion value, unscaled by the attack share"
     );
     assert!(
         !physical.is_empty(),
