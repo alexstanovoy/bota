@@ -48,6 +48,9 @@ const HANDSHAKE_DEADLINE: Duration = Duration::from_secs(10);
 /// Give the writer time to send the reason before disconnect handling can
 /// discard its connection, even if a game frame is already queued.
 const CLOSE_GRACE: Duration = Duration::from_secs(1);
+/// How long the reader waits for the writer to take the idle notice while a game frame is in
+/// the way. A writer that is not stuck frees its slot much sooner.
+const IDLE_HANDOFF: Duration = Duration::from_millis(20);
 /// Handshakes do not consume the adoption slots used by the TCP listener.
 const MAX_HANDSHAKES: usize = 64;
 
@@ -568,13 +571,7 @@ async fn read_side<S>(
                     LogEnd::Failure,
                     format_args!("closed after {idle_timeout:?} without inbound traffic"),
                 );
-                let (sent, received) = oneshot::channel();
-                if matches!(
-                    within(Some(CLOSE_GRACE), outbound.send(Outbound::Idle(sent))).await,
-                    Some(Ok(()))
-                ) {
-                    let _ = within(Some(CLOSE_GRACE), received).await;
-                }
+                announce_idle(&outbound).await;
                 Err(ReadEnd::Gone)
             }
             Some(next) => match frame_of(next, &log) {
@@ -587,6 +584,21 @@ async fn read_side<S>(
         if inbound.send(read).await.is_err() || last {
             return;
         }
+    }
+}
+
+/// Tells the writer that the peer went idle and waits until the reason is sent, so the
+/// disconnect that follows cannot discard it. Only a writer that takes the message at once is
+/// waited for: one stuck on a line that takes nothing (a half-open connection) could not deliver
+/// the reason anyway, and waiting would hold the seat past the idle timeout the peer's own
+/// redial is timed against.
+async fn announce_idle(outbound: &mpsc::Sender<Outbound>) {
+    let (sent, received) = oneshot::channel();
+    if matches!(
+        within(Some(IDLE_HANDOFF), outbound.send(Outbound::Idle(sent))).await,
+        Some(Ok(()))
+    ) {
+        let _ = within(Some(CLOSE_GRACE), received).await;
     }
 }
 
