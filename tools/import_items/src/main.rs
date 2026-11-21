@@ -55,10 +55,17 @@ fn heroes_path() -> PathBuf {
     repo().join("crates/bota_core/src/heroes_data.rs")
 }
 
-/// The client build the committed tables were read from, as their `Read from` line names it:
-/// the install the checks hold them to. A run on another build writes that build's name;
-/// update this with the tables.
-const TABLES_BUILD: &str = "client 6983 (Nov 18 2026)";
+/// The client build the committed tables were read from: the `Read from` line of the item table,
+/// which every other table names too (a test holds them to it). A run on another build writes
+/// that build's name into all of them, so a patch move edits no constant.
+fn tables_build() -> Result<String, String> {
+    let path = table_path();
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("{path:?}: {e}"))?;
+    text.lines()
+        .find_map(|line| line.strip_prefix(emit::BUILD_LINE))
+        .map(|named| named.trim_end_matches('.').to_owned())
+        .ok_or_else(|| format!("{path:?} names no build it was read from"))
+}
 
 /// The heroes whose numbers bota reads from the install. A hero not named here keeps its
 /// numbers in its own module until it moves over.
@@ -161,15 +168,16 @@ fn run() -> Result<(), String> {
     let game = install::game_dir(args.dota.as_deref())?;
     let build = install::build(&game.join("steam.inf"))?;
     println!("import_items: reading {} ({build})", game.display());
-    if build != TABLES_BUILD {
+    let committed_build = tables_build()?;
+    if build != committed_build {
         if args.check {
             return Err(format!(
-                "the committed tables were read from {TABLES_BUILD}; the install at {} is {build}",
+                "the committed tables were read from {committed_build}; the install at {} is {build}",
                 game.display()
             ));
         }
         println!(
-            "import_items: the tables were read from {TABLES_BUILD}; set TABLES_BUILD to {build:?}"
+            "import_items: the tables were read from {committed_build}; re-reading them from {build}"
         );
     }
     let creeps = rustfmt(&creeps::table(args.dota.as_deref())?)?;
@@ -301,21 +309,21 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     /// Fails, naming both builds and the install, unless the install the checks read is the
-    /// build the committed tables were read from ([`TABLES_BUILD`](crate::TABLES_BUILD)).
+    /// build the committed tables were read from ([`tables_build`](crate::tables_build)).
     fn assert_the_install_is_the_tables_build() {
         let game =
             crate::install::game_dir(crate::pinned_install().as_deref()).expect("an install");
         let build = crate::install::build(&game.join("steam.inf")).expect("its build");
+        let tables = crate::tables_build().expect("the tables' build");
         assert_eq!(
             build,
-            crate::TABLES_BUILD,
-            "the committed tables were read from {}; the install at {} is {build}",
-            crate::TABLES_BUILD,
+            tables,
+            "the committed tables were read from {tables}; the install at {} is {build}",
             game.display()
         );
     }
 
-    /// Every committed table names the build [`TABLES_BUILD`](crate::TABLES_BUILD) says.
+    /// Every committed table names the same build as the item table ([`tables_build`](crate::tables_build)).
     #[test]
     fn every_committed_table_names_the_build_it_was_read_from() {
         for file in [
@@ -331,7 +339,11 @@ mod tests {
                 .lines()
                 .find_map(|line| line.strip_prefix(crate::emit::BUILD_LINE))
                 .expect("its build line");
-            assert_eq!(named, format!("{}.", crate::TABLES_BUILD), "{file}");
+            assert_eq!(
+                named,
+                format!("{}.", crate::tables_build().expect("the tables' build")),
+                "{file}"
+            );
         }
     }
 
