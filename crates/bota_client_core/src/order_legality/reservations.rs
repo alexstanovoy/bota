@@ -5,7 +5,7 @@
 
 use bota_core::Spends;
 use bota_core::rules::MAX_QUEUED_ORDERS;
-use bota_proto::{AbilityId, ItemSlot, ItemView, Order, UnitView};
+use bota_proto::{AbilityId, ItemId, ItemSlot, ItemView, Order, UnitView};
 
 use super::mana_affordability;
 use super::pseudo_queue::OwedOrders;
@@ -17,6 +17,40 @@ enum Spent {
     Item(ItemSlot),
 }
 
+/// The cooldown an item use ahead starts when it goes off, as the server starts it: a use of an
+/// item that waits by its stacks puts every stack waiting as it does on cooldown (identical items,
+/// and items naming the same shared cooldown); one whose wait its user owes holds back only the
+/// stacks whose wait is owed alike.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct AheadWait {
+    slot: ItemSlot,
+    waits_as: ItemId,
+    owed_by_user: bool,
+}
+
+impl AheadWait {
+    fn of(unit: &UnitView, slot: ItemSlot) -> Option<Self> {
+        Self::starting(slot, item_in(unit, slot)?)
+    }
+
+    /// The wait a use of `item` from `slot` starts; none for an item without a cooldown.
+    fn starting(slot: ItemSlot, item: &ItemView) -> Option<Self> {
+        let def = bota_core::item_def(item.id).filter(|def| def.cooldown > 0)?;
+        Some(Self {
+            slot,
+            waits_as: waits_as(item.id),
+            owed_by_user: def.shared_wait,
+        })
+    }
+
+    /// Whether this use, once off, holds back the stack of `def` in `slot`.
+    fn holds_back(&self, slot: ItemSlot, item: &ItemView, def: &bota_core::ItemDef) -> bool {
+        self.slot != slot
+            && self.waits_as == waits_as(item.id)
+            && (!self.owed_by_user || def.shared_wait)
+    }
+}
+
 /// What a body owes, as one snapshot of it and the seat's orders tell it.
 pub struct Reservations {
     /// Whether the body stands in a cast point: an order to the body given now waits for it.
@@ -24,6 +58,8 @@ pub struct Reservations {
     /// The casts a cast given now waits behind: the one in hand, then those waiting, unless a
     /// move or the like waits, which the new cast replaces.
     ahead: [Option<Spent>; MAX_QUEUED_ORDERS + 1],
+    /// The cooldown each item use among them starts when it goes off, by the slot it uses.
+    ahead_waits: [Option<AheadWait>; MAX_QUEUED_ORDERS + 1],
     /// The mana those spend.
     ahead_mana: i64,
     /// Whether the queue of casts is full: a cast given now is refused.
@@ -72,9 +108,14 @@ impl Reservations {
         if casting && owed.casts_waiting() {
             ahead_mana += waiting_mana;
         }
+        let ahead_waits = ahead.map(|spent| match spent {
+            Some(Spent::Item(slot)) => AheadWait::of(unit, slot),
+            _ => None,
+        });
         Self {
             casting,
             ahead,
+            ahead_waits,
             ahead_mana,
             queue_full: casting && owed.casts_waiting() && owed.len() >= MAX_QUEUED_ORDERS,
             owed_mana,
@@ -96,7 +137,8 @@ impl Reservations {
     }
 
     /// Whether the item in `slot` (ready by the view) may be used when its turn comes: as
-    /// [`Self::allows_cast`], and the uses of it ahead leave it, off cooldown, with a charge;
+    /// [`Self::allows_cast`], and the uses of it ahead leave it, off cooldown, with a charge (a use
+    /// ahead of any stack that waits as it puts it on cooldown);
     /// one that wants mana missing waits only behind a cast that spends mana, which leaves
     /// more missing than the cast point regenerates.
     pub fn allows_use(&self, mana: i32, slot: ItemSlot, item: &ItemView) -> bool {
@@ -111,16 +153,22 @@ impl Reservations {
             .iter()
             .filter(|&&spent| spent == Some(Spent::Item(slot)))
             .count();
-        let lasts = uses_ahead == 0
-            || (def.cooldown == 0
-                && !def.shared_wait
-                && match def.spends {
-                    Spends::Nothing => true,
-                    Spends::One => item
-                        .charges
-                        .is_none_or(|charges| usize::from(charges) > uses_ahead),
-                    Spends::All => false,
-                });
+        let held_back = self
+            .ahead_waits
+            .iter()
+            .flatten()
+            .any(|wait| wait.holds_back(slot, item, def));
+        let lasts = !held_back
+            && (uses_ahead == 0
+                || (def.cooldown == 0
+                    && !def.shared_wait
+                    && match def.spends {
+                        Spends::Nothing => true,
+                        Spends::One => item
+                            .charges
+                            .is_none_or(|charges| usize::from(charges) > uses_ahead),
+                        Spends::All => false,
+                    }));
         !self.queue_full
             && lasts
             && affords_reserved(mana, self.ahead_mana, item.mana_cost)
@@ -181,6 +229,14 @@ pub fn item_in(unit: &UnitView, slot: ItemSlot) -> Option<&ItemView> {
     }
 }
 
+/// The cooldown an item waits on: its own, or the one it shares by name (Dota's
+/// `AbilitySharedCooldown`), as the server keys it.
+fn waits_as(id: ItemId) -> ItemId {
+    bota_core::item_def(id)
+        .and_then(|def| def.wait_key)
+        .unwrap_or(id)
+}
+
 /// Whether one use of the item leaves nothing of it in its slot.
 fn use_empties(item: &ItemView) -> bool {
     bota_core::item_def(item.id).is_some_and(|def| {
@@ -218,4 +274,80 @@ fn affords_reserved(mana: i32, reserved: i64, cost: i32) -> bool {
     i32::try_from(remaining)
         .ok()
         .is_some_and(|mana| mana_affordability(mana, cost).is_legal())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AheadWait;
+    use bota_proto::{ItemId, ItemSlot, ItemView, SlotId};
+
+    fn a_stack(id: ItemId) -> ItemView {
+        ItemView {
+            id,
+            charges: Some(1),
+            cooldown_left: 0,
+            mute_left: 0,
+            mode: None,
+            mana_cost: 0,
+            range: 0,
+            aim: None,
+            for_sale: false,
+            owner: SlotId(0),
+            selling: Some(false),
+            dispenser: None,
+            locked: Some(false),
+            disassembly: None,
+            rune: None,
+            expires_in: None,
+            level: 1,
+        }
+    }
+
+    // Only the Blood Grenade has a cast point today, so only its uses stand in hand; the rule
+    // still answers every pair as the server would once a use of the first went off.
+    fn held_back(first: ItemId, second: ItemId) -> bool {
+        let def = bota_core::item_def(second).expect("second");
+        AheadWait::starting(ItemSlot(1), &a_stack(first))
+            .is_some_and(|wait| wait.holds_back(ItemSlot(0), &a_stack(second), def))
+    }
+
+    #[test]
+    fn a_use_ahead_without_a_cooldown_holds_back_no_other_stack() {
+        assert_eq!(
+            bota_core::item_def(ItemId::HEALING_SALVE).map(|def| def.cooldown),
+            Some(0)
+        );
+        assert!(!held_back(ItemId::HEALING_SALVE, ItemId::HEALING_SALVE));
+    }
+
+    #[test]
+    fn a_use_ahead_holds_back_identical_stacks_and_items_naming_its_shared_cooldown() {
+        assert!(held_back(ItemId::BLOOD_GRENADE, ItemId::BLOOD_GRENADE));
+        assert_eq!(
+            bota_core::item_def(ItemId::MAGIC_WAND).and_then(|def| def.wait_key),
+            Some(ItemId::MAGIC_STICK)
+        );
+        assert!(held_back(ItemId::MAGIC_STICK, ItemId::MAGIC_WAND));
+        assert!(held_back(ItemId::MAGIC_WAND, ItemId::MAGIC_STICK));
+        assert!(!held_back(ItemId::MAGIC_STICK, ItemId::HEALING_SALVE));
+    }
+
+    #[test]
+    fn a_wait_its_user_owes_holds_back_only_stacks_whose_wait_is_owed_alike() {
+        let scroll = bota_core::item_def(ItemId::TOWN_PORTAL_SCROLL).expect("scroll");
+        assert!(scroll.shared_wait && scroll.cooldown > 0);
+        assert!(held_back(
+            ItemId::TOWN_PORTAL_SCROLL,
+            ItemId::TOWN_PORTAL_SCROLL
+        ));
+        // An owed wait under the grenade's key: a stack that waits by its own cooldown stays ready.
+        let owed = AheadWait {
+            slot: ItemSlot(1),
+            waits_as: ItemId::BLOOD_GRENADE,
+            owed_by_user: true,
+        };
+        let grenade = bota_core::item_def(ItemId::BLOOD_GRENADE).expect("grenade");
+        assert!(!grenade.shared_wait);
+        assert!(!owed.holds_back(ItemSlot(0), &a_stack(ItemId::BLOOD_GRENADE), grenade));
+    }
 }

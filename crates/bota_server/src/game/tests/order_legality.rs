@@ -1876,3 +1876,75 @@ fn order_legality_refuses_panel_cheats_on_own_dead_hero_with_hero_dead() {
         );
     }
 }
+
+#[test]
+fn a_use_waiting_behind_an_identical_items_cast_point_is_not_reserved_off_cooldown() {
+    use bota_client_core::order_legality::Reservations;
+    use bota_client_core::order_legality::pseudo_queue::PseudoQueue;
+    use bota_client_core::{ControlledUnit, IssuedOrder};
+    let (mut local, hero) = base(HeroId::SHADOW_FIEND);
+    let tick = local.tick();
+    let bag = local.world_mut().inventory.get_mut(hero).expect("bag");
+    for slot in [0, 1] {
+        bag.slots[slot] = crate::game::ItemStack::bought(ItemId::BLOOD_GRENADE, SlotId(0), tick);
+    }
+    let at = local.world().transform.get(hero).expect("hero").pos + Vec2::from_ints(300, 0);
+    let throw = |slot| Order::Use {
+        slot: ItemSlot(slot),
+        target: Target::Pos(at),
+    };
+    let hero_view = |view: &WorldView| {
+        view.units
+            .iter()
+            .find(|unit| Some(unit.id) == view.players[0].unit)
+            .expect("hero")
+            .clone()
+    };
+    let mut ledger = PseudoQueue::default();
+    let view = snapshot(&mut local);
+    ledger.give(
+        300,
+        IssuedOrder::hero(throw(1)),
+        view.tick,
+        &hero_view(&view),
+    );
+    let stream = send(&mut local, throw(1), 300);
+    assert!(
+        !stream
+            .iter()
+            .any(|msg| matches!(msg, ServerMsg::OrderRejected { .. })),
+        "the first grenade is thrown"
+    );
+    let view = snapshot(&mut local);
+    let body = hero_view(&view);
+    ledger.observe(Some(&body), None);
+    assert!(body.cast.is_some(), "the throw stands in its cast point");
+    let other = body.items[0].as_ref().expect("the other grenade");
+    assert_eq!(
+        other.cooldown_left, 0,
+        "the other stack shows no cooldown yet"
+    );
+    let owing = Reservations::of(&body, ledger.owed(ControlledUnit::Hero));
+    let reserved = owing.allows_use(body.mana, ItemSlot(0), other);
+    let mut stream = send(&mut local, throw(0), 301);
+    let mut refusal = None;
+    for _ in 0..64 {
+        refusal = stream.iter().find_map(|msg| match msg {
+            ServerMsg::OrderRejected { seq: 301, reason } => Some(*reason),
+            _ => None,
+        });
+        if refusal.is_some() {
+            break;
+        }
+        stream = local.step(&[&[], &[]]).expect("cast completes").remove(0);
+    }
+    assert_eq!(
+        refusal,
+        Some(bota_proto::RejectReason::OnCooldown),
+        "identical items share the cooldown the throw ahead starts"
+    );
+    assert!(
+        !reserved,
+        "a use waiting behind an identical item's cast cannot be reserved off cooldown"
+    );
+}
