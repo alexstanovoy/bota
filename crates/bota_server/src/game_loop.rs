@@ -1805,6 +1805,7 @@ impl Server {
         let replay_truncated = replay.finish();
         let end = with_truncated(end, replay_truncated);
         // The service hears of the end now, its replay closed whole, whatever the players do next.
+        let decided_at = self.outside.elapsed();
         self.outside.tell(&end);
         // A fallen Ancient (a match decided in the world, not given away) is shown to its end by
         // every client: the world stands as it fell, and each player is let go when its client
@@ -1817,18 +1818,18 @@ impl Server {
                 ..
             }
         ) {
-            self.linger();
+            self.linger(decided_at);
         }
         self.close_all();
         Ok(end)
     }
 
     /// Keeps the connections of a match that is over until each has left, at most the outside's
-    /// linger from now, or until the service asks the server to stop. What the network says is
-    /// heard (a peer that leaves is let go), but nothing the peers say changes anything any more,
-    /// and a newcomer is turned away.
-    fn linger(&mut self) {
-        let until = self.outside.elapsed().saturating_add(self.outside.linger());
+    /// linger from the decision (`decided_at`, on the outside's clock), or until the service asks
+    /// the server to stop. What the network says is heard (a peer that leaves is let go), but
+    /// nothing the peers say changes anything any more, and a newcomer is turned away.
+    fn linger(&mut self, decided_at: Duration) {
+        let until = decided_at.saturating_add(self.outside.linger());
         while self.watched(until) {
             self.drop_strangers();
             let now = Instant::now();

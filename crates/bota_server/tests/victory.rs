@@ -7,7 +7,7 @@ use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use bota_client_core::{ClientSession, IssuedOrder, Link, Transport, UnpackedReplay};
 use bota_proto::{
@@ -21,6 +21,9 @@ use bota_server::spectators::Spectators;
 
 /// How long a test waits for the server to speak or end. It guards against a hang only.
 const WAIT: Duration = Duration::from_secs(300);
+
+/// What a test waits for a connection to answer or end: real time, generous for a loaded machine.
+const LINK_WAIT: Duration = Duration::from_secs(30);
 
 /// A linger no test lets run out by itself: its clock is moved by hand.
 const LINGER: Duration = Duration::from_secs(60);
@@ -146,7 +149,7 @@ fn solo_mid_ended_by(decider: Decider) -> (Vec<ReplayRecord>, MatchEnd) {
     let server = thread::spawn(move || run_with(listener, options, Outside::default()));
     let outcome = Link::play(&address, "decider", HeroId::SHADOW_FIEND, deciding(decider))
         .expect("the match is played to its end");
-    let end = server.join().expect("the server ends").expect("it ran");
+    let end = ended(server).expect("it ran");
     let winner = match decider {
         Decider::Tower => Team::Radiant,
         Decider::TwoDeaths => Team::Dire,
@@ -261,6 +264,20 @@ fn decided_and_lingering() -> Lingering {
     }
 }
 
+/// The server thread's result, once it has ended: waited for a bounded time, so a server that does not end fails
+/// the test with what it was waited for instead of hanging it.
+fn ended<T>(server: thread::JoinHandle<T>) -> T {
+    let deadline = Instant::now() + LINK_WAIT;
+    while !server.is_finished() {
+        assert!(
+            Instant::now() < deadline,
+            "the server did not end within {LINK_WAIT:?}"
+        );
+        thread::sleep(Duration::from_millis(10));
+    }
+    server.join().expect("the server ends")
+}
+
 /// Whether the connection still answers: its probe is echoed. The server's side answers it on
 /// the connection's own thread, so only an open connection does.
 fn answers(link: &mut Link) -> bool {
@@ -268,13 +285,15 @@ fn answers(link: &mut Link) -> bool {
     if link.send(&ClientMsg::Probe { id: PROBE }).is_err() {
         return false;
     }
-    loop {
+    let deadline = Instant::now() + LINK_WAIT;
+    while Instant::now() < deadline {
         match link.recv() {
             Ok(Some(ServerMsg::Echo { id })) if id == PROBE => return true,
             Ok(Some(_)) => {}
             Ok(None) | Err(_) => return false,
         }
     }
+    false
 }
 
 #[test]
@@ -302,7 +321,7 @@ fn the_service_is_told_the_result_at_the_decision_while_the_player_is_still_kept
     );
     assert!(!server.is_finished(), "the server lingers");
     drop(link);
-    let returned = server.join().expect("the server ends").expect("it ran");
+    let returned = ended(server).expect("it ran");
     assert_eq!(
         returned, end,
         "the last player leaving ends the linger, the end as told"
@@ -321,14 +340,21 @@ fn a_player_who_never_leaves_is_let_go_cleanly_at_the_linger_bound() {
     assert!(answers(&mut link), "kept within the linger");
     clock.set(LINGER);
     // The server hangs up: the stream ends cleanly, nothing is reset.
+    let deadline = Instant::now() + LINK_WAIT;
     loop {
+        assert!(
+            Instant::now() < deadline,
+            "the server did not end the stream within {LINK_WAIT:?} of the clock reaching the linger bound"
+        );
         match link.recv() {
             Ok(Some(_)) => {}
             Ok(None) => break,
-            Err(error) => panic!("the connection is closed, not broken: {error}"),
+            Err(error) => panic!(
+                "waiting for the server to hang up at the linger bound, the connection broke or timed out instead of ending: {error}"
+            ),
         }
     }
-    server.join().expect("the server ends").expect("it ran");
+    ended(server).expect("it ran");
 }
 
 #[test]
@@ -349,7 +375,7 @@ fn a_request_to_stop_ends_the_linger() {
         .expect("the match is played to its end");
     assert!(answers(&mut link), "kept within the linger");
     stop.store(true, std::sync::atomic::Ordering::Relaxed);
-    let end = server.join().expect("the server ends").expect("it ran");
+    let end = ended(server).expect("it ran");
     assert!(
         matches!(
             end,
