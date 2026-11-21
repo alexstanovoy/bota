@@ -43,3 +43,9 @@ required-features = ["simulation"]
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+# its tests build the client core and the server with the features their own test builds use (one build of each)
+bota_client_core = { workspace = true, features = ["ui", "websocket"] }
+bota_server = { workspace = true, features = ["default", "websocket"] }
+bota_dev_features.workspace = true

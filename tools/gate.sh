@@ -7,7 +7,8 @@
 # What a change affects is tools/test_groups.py's plan (the groups and routes are tools/test_groups.toml): the test groups
 # its files run, and the crates to lint (the changed ones and every crate building on them). A step the change cannot affect
 # is named with the reason; none is left out quietly.
-# Steps: ignored-audit (every #[ignore]d test has a step that runs it), test-groups (every test in exactly one group, every
+# Steps: ignored-audit (every #[ignore]d test has a step that runs it), feature-forks (every test build resolves each
+# dependency with the same features), test-groups (every test in exactly one group, every
 # file routed, at most 30 groups), fuzz-check and fuzz-check-NAME (the fuzz targets of every fuzz crate compile: fuzz/ and crates/*/fuzz/), clippy,
 # clippy-radovid, clippy-lua, clippy-ui, wasm, wasm-lua, wasm-radovid, wasm-web, test (the groups: their tests in profile test-release, bota_proto as the product builds it,
 # bota_radovid's end-to-end tests against the release bota_server, the dummy bench's digest checks, the item importer's
@@ -120,6 +121,7 @@ run_steps() { # the lines of lint_steps or wasm_steps (tools/steps.sh) on stdin:
 }
 
 step ignored-audit tools/ignored_audit.sh
+step feature-forks python3 tools/feature_forks.py
 # shellcheck disable=SC2086
 step test-groups python3 tools/test_groups.py check $selection
 run_steps < <(fuzz_steps "$fuzz")

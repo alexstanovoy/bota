@@ -43,6 +43,7 @@ tokio-tungstenite = { version = "0.30.0", default-features = false, features = [
 zstd = { version = "0.14.3", default-features = false }
 
 [dev-dependencies]
+bota_dev_features.workspace = true
 bota_replay = { workspace = true }
 bota_client_core = { workspace = true, features = ["ui"] }
 criterion = { workspace = true }

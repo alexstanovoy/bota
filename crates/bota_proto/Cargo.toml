@@ -15,6 +15,7 @@ postcard = { version = "1.1", default-features = false, features = ["alloc"] }
 miniz_oxide = { version = "0.9.1", default-features = false, features = ["with-alloc"] }
 
 [dev-dependencies]
+bota_dev_features.workspace = true
 serde-reflection = "=0.6.0"
 
 [lints]

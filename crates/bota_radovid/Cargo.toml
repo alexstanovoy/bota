@@ -37,6 +37,8 @@ name = "matchmaking"
 required-features = ["e2e"]
 
 [dev-dependencies]
+bota_client_core = { workspace = true, features = ["ui"] }   # as the client core's own test build has it
+bota_dev_features.workspace = true
 bota_core = { workspace = true }
 
 [lints]

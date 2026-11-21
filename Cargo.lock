@@ -189,6 +189,7 @@ name = "bota_client_core"
 version = "0.1.0"
 dependencies = [
  "bota_core",
+ "bota_dev_features",
  "bota_proto",
  "bota_replay",
  "getrandom 0.4.3",
@@ -205,6 +206,7 @@ dependencies = [
 name = "bota_core"
 version = "0.1.0"
 dependencies = [
+ "bota_dev_features",
  "bota_proto",
  "prettyplease",
  "proc-macro2",
@@ -215,11 +217,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "bota_dev_features"
+version = "0.1.0"
+dependencies = [
+ "bitflags",
+ "cc",
+ "clap",
+ "clap_builder",
+ "digest",
+ "foldhash",
+ "futures-util",
+ "getrandom 0.4.3",
+ "libc",
+ "miniz_oxide 0.9.1",
+ "once_cell",
+ "rustix",
+ "sha2",
+ "simd-adler32",
+ "socket2",
+ "syn 2.0.119",
+ "syn 3.0.3",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-rustls",
+ "tokio-tungstenite",
+ "tungstenite",
+ "zerocopy",
+]
+
+[[package]]
 name = "bota_gym"
 version = "0.1.0"
 dependencies = [
  "bota_client_core",
  "bota_core",
+ "bota_dev_features",
  "bota_proto",
  "bota_replay",
  "bota_server",
@@ -232,6 +264,7 @@ version = "0.1.0"
 dependencies = [
  "bota_client_core",
  "bota_core",
+ "bota_dev_features",
  "bota_proto",
  "bota_server",
  "getrandom 0.4.3",
@@ -246,6 +279,7 @@ dependencies = [
 name = "bota_proto"
 version = "0.1.0"
 dependencies = [
+ "bota_dev_features",
  "miniz_oxide 0.9.1",
  "postcard",
  "serde",
@@ -258,6 +292,7 @@ version = "0.1.0"
 dependencies = [
  "bota_client_core",
  "bota_core",
+ "bota_dev_features",
  "bota_proto",
  "js-sys",
  "radovid",
@@ -270,6 +305,7 @@ name = "bota_replay"
 version = "0.1.0"
 dependencies = [
  "bota_core",
+ "bota_dev_features",
  "bota_proto",
  "radovid_proto",
  "serde",
@@ -282,6 +318,7 @@ version = "0.1.0"
 dependencies = [
  "bota_client_core",
  "bota_core",
+ "bota_dev_features",
  "bota_proto",
  "bota_replay",
  "clap",

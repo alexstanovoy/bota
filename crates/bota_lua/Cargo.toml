@@ -21,7 +21,9 @@ getrandom = { workspace = true, optional = true }
 heatel = { workspace = true, optional = true }
 
 [dev-dependencies]
-bota_server.workspace = true
+bota_dev_features.workspace = true
+bota_server = { workspace = true, features = ["default", "websocket"] }   # its tests build the server as its other test builds do
+bota_client_core = { workspace = true, features = ["websocket"] }
 
 [features]
 default = []

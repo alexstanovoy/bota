@@ -8,6 +8,8 @@
 # affects is tools/test_groups.py's plan, the same as the gate's):
 #   clippy       the crates with a changed file and every crate of the repository that depends on them (the bot-script host,
 #                crates/bota_lua, with all its features too)
+#   feature-forks  every test build resolves each dependency with the same features (tools/feature_forks.py; reads Cargo's
+#                graph, builds nothing)
 #   test-groups  every test in exactly one group and every file routed (the gate's check)
 #   fuzz-check   the fuzz targets of every fuzz crate (fuzz/, crates/*/fuzz/) compile (compile only, as in the gate), when a
 #                crate they build on or they changed
@@ -57,6 +59,7 @@ echo "precheck: crates ${crates:-none}; groups ${groups:-none}; fuzz targets $([
 
 run_steps < <(lint_steps "$crates") || exit 1
 # shellcheck disable=SC2086
+step feature-forks python3 tools/feature_forks.py || exit 1
 step test-groups python3 tools/test_groups.py check $selection || exit 1
 run_steps < <(fuzz_steps "$fuzz") || exit 1
 

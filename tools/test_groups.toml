@@ -33,6 +33,10 @@ wasm_only_features = ["web"]
 
 [crate.bota_gym]
 
+# Development-only feature set of every crate's test builds (crates/bota_dev_features/Cargo.toml): no tests; a change to it
+# runs every group, since every crate builds its tests with it.
+[crate.bota_dev_features]
+
 [crate.bota_server]
 routed = true
 # bota_radovid's end-to-end tests launch the release bota_server.
@@ -113,7 +117,7 @@ tests = [{ crate = "import_map", args = ["--include-ignored"] }]
 [[group]]
 name = "tooling"
 about = "the gate's own machinery: test groups, routing, stamps and the gate and precheck flow (Python unittest)"
-paths = ["tools/test_*.py", "tools/bot_api_census.py", "tools/bot_api_reference.tsv"]
+paths = ["tools/test_*.py", "tools/bot_api_census.py", "tools/bot_api_reference.tsv", "tools/feature_forks.py"]
 also_paths = ["crates/bota_core/build.rs", "crates/bota_core/rules_source.rs"]
 tests = [{ unittest = "tools" }]
 

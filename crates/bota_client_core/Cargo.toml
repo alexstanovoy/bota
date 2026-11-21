@@ -36,3 +36,6 @@ web = ["ui", "dep:js-sys", "dep:wasm-bindgen", "dep:web-sys"]
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+bota_dev_features.workspace = true

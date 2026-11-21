@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/bota_client_core",
     "crates/bota_core",
+    "crates/bota_dev_features",
     "crates/bota_gym",
     "crates/bota_lua",
     "crates/bota_proto",
@@ -47,6 +48,7 @@ bota_replay = { path = "crates/bota_replay" }
 radovid_proto = { path = "../radovid/crates/radovid_proto", default-features = false }
 bota_server = { path = "crates/bota_server", default-features = false }
 criterion = { version = "=0.8.2", default-features = false }
+bota_dev_features = { path = "crates/bota_dev_features" }
 
 [workspace.lints.clippy]
 float_arithmetic = "deny"

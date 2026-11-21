@@ -1,0 +1,59 @@
+[package]
+name = "bota_dev_features"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Development-only: one feature set of third-party dependencies for every test build of this workspace."
+
+# Why this crate exists: Cargo resolves the features of a dependency per invocation, so `cargo test -p A` and `cargo test -p B`
+# compile shared dependencies (and everything above them) with different features, i.e. twice. Every crate of the workspace has
+# this crate as a DEV-dependency, which enables the union of the third-party features its test builds use; test invocations then agree and
+# each dependency is compiled once. Production builds (`cargo build`, `cargo build --release`) never see dev-dependencies, so the
+# features of a shipped binary stay exactly what its own manifest enables. The lists below are the union over the test
+# invocations of this workspace (one per test group and the whole-workspace test run); a version bump that changes them shows
+# up as a feature fork again.
+
+# Nothing here is used by code: the dependencies exist for their features, so `cargo machete --fix` must keep them.
+[package.metadata.cargo-machete]
+ignored = ["bitflags", "cc", "clap", "clap_builder", "digest", "foldhash", "futures-util", "getrandom", "libc", "miniz_oxide", "once_cell", "rustix", "sha2", "simd-adler32", "socket2", "syn_2", "syn_3", "thiserror", "tokio", "tokio-rustls", "tokio-tungstenite", "tungstenite", "zerocopy"]
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+test = false
+doctest = false
+
+[dependencies]
+bitflags = { version = "=2.13.2", default-features = false, features = ["std"] }
+clap = { version = "=4.6.7", default-features = false, features = ["color", "default", "derive", "env", "error-context", "help", "std", "suggestions", "usage"] }
+clap_builder = { version = "=4.6.7", default-features = false, features = ["color", "env", "error-context", "help", "std", "suggestions", "usage"] }
+digest = { version = "=0.11.3", default-features = false, features = ["alloc", "block-api", "mac", "oid"] }
+foldhash = { version = "=0.2.0", default-features = false, features = ["default", "std"] }
+futures-util = { version = "=0.3.34", default-features = false, features = ["alloc", "async-await", "async-await-macro", "default", "futures-macro", "futures-sink", "sink", "slab", "std"] }
+getrandom = { version = "=0.4.3", default-features = false, features = ["std", "sys_rng"] }
+libc = { version = "=0.2.189", default-features = false, features = ["std"] }
+miniz_oxide = { version = "=0.9.1", default-features = false, features = ["default", "simd", "simd-adler32", "with-alloc"] }
+once_cell = { version = "=1.21.4", default-features = false, features = ["alloc", "default", "race", "std"] }
+rustix = { version = "=1.1.6", default-features = false, features = ["alloc", "fs", "process", "std", "thread", "time"] }
+sha2 = { version = "=0.11.1", default-features = false, features = ["alloc", "default", "oid"] }
+socket2 = { version = "=0.6.5", default-features = false, features = ["all"] }
+syn_2 = { package = "syn", version = "=2.0.119", default-features = false, features = ["clone-impls", "derive", "full", "parsing", "printing", "proc-macro", "visit-mut"] }
+syn_3 = { package = "syn", version = "=3.0.3", default-features = false, features = ["clone-impls", "derive", "full", "parsing", "printing", "proc-macro"] }
+thiserror = { version = "=2.0.20", default-features = false, features = ["std"] }
+tokio = { version = "=1.53.3", default-features = false, features = ["bytes", "fs", "io-util", "libc", "macros", "mio", "net", "process", "rt", "rt-multi-thread", "signal", "signal-hook-registry", "socket2", "sync", "time", "tokio-macros"] }
+tokio-rustls = { version = "=0.26.6", default-features = false, features = ["ring", "tls12"] }
+tokio-tungstenite = { version = "=0.30.0", default-features = false, features = ["connect", "default", "handshake", "stream"] }
+zerocopy = { version = "=0.8.56", default-features = false, features = ["derive", "simd", "zerocopy-derive"] }
+simd-adler32 = { version = "=0.3.10", default-features = false, features = ["const-generics", "default", "std"] }
+tungstenite = { version = "=0.30.0", default-features = false, features = ["__rustls-tls", "data-encoding", "default", "handshake", "http", "httparse", "rustls", "rustls-pki-types", "rustls-tls-webpki-roots", "sha1", "webpki-roots"] }
+
+# Procedural macros and build scripts are compiled for the host with features of their own: what they share, for that side.
+[build-dependencies]
+syn_2 = { package = "syn", version = "=2.0.119", default-features = false, features = ["clone-impls", "derive", "full", "parsing", "printing", "proc-macro", "visit-mut"] }
+syn_3 = { package = "syn", version = "=3.0.3", default-features = false, features = ["clone-impls", "derive", "full", "parsing", "printing", "proc-macro"] }
+cc = { version = "=1.4.6", default-features = false, features = ["parallel"] }
+digest = { version = "=0.11.3", default-features = false, features = ["alloc", "block-api", "mac", "oid"] }
+sha2 = { version = "=0.11.1", default-features = false, features = ["alloc", "default", "oid"] }
