@@ -1,16 +1,15 @@
-//! A digest of the neutral kind and ability definitions for the current patch.
+//! The neutral kind and ability definitions for the current patch, against their reviewed copy.
+//!
+//! The copy is `neutral_table.txt` beside this file: one definition after another as text, so a change shows in review
+//! as the rows it changed, and two changes to different neutrals merge as text. After a reviewed change, re-record it:
+//! `BOTA_RECORD_NEUTRAL_TABLE=1 cargo test --profile test-release -p bota_core --test neutral_table`.
 
 use bota_core::{NEUTRAL_ABILITIES, NEUTRALS};
 
-/// FNV-1a of the dump, 64 bits.
-fn digest(text: &str) -> u64 {
-    text.bytes().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
-        (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
-    })
-}
+const REVIEWED: &str = include_str!("neutral_table.txt");
 
 /// The dump: each kind (and the raw regeneration of its health and mana), then each ability.
-/// `offered`, a field the generated table added, is left out so that the digest stays comparable with the hand-written table's.
+/// `offered`, a field the generated table added, is left out so that the copy stays comparable with the hand-written table's.
 fn dump() -> String {
     let mut out = String::new();
     for neutral in NEUTRALS.iter() {
@@ -26,17 +25,36 @@ fn dump() -> String {
     out.replace("    offered: true,\n", "")
 }
 
-/// The digest of the neutral definitions, including retained abilities.
-// Hurl Big Boulder adds its script-sourced 800–1200 ms flight bounds.
-// The Satyr Tormenter's Shockwave now travels and damages targets along its widening path.
-const PINNED: u64 = 0xc96e_816b_e9b4_7fa2;
+/// The first line where `now` leaves `reviewed`, with a few lines of each around it.
+fn first_difference(reviewed: &str, now: &str) -> String {
+    let (old, new): (Vec<&str>, Vec<&str>) = (reviewed.lines().collect(), now.lines().collect());
+    let at = old
+        .iter()
+        .zip(&new)
+        .position(|(a, b)| a != b)
+        .unwrap_or(old.len().min(new.len()));
+    let around = |lines: &[&str]| lines[at.saturating_sub(3)..(at + 4).min(lines.len())].join("\n");
+    format!(
+        "line {}:\n--- reviewed\n{}\n+++ now\n{}",
+        at + 1,
+        around(&old),
+        around(&new)
+    )
+}
 
 #[test]
 fn the_neutral_definitions_keep_their_reviewed_values() {
-    assert_eq!(
-        digest(&dump()),
-        PINNED,
-        "a neutral definition changed: verify the intended changes before updating the digest"
+    let now = dump();
+    if std::env::var_os("BOTA_RECORD_NEUTRAL_TABLE").is_some() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/neutral_table.txt");
+        std::fs::write(path, &now).expect("the reviewed copy is writable");
+        return;
+    }
+    assert!(
+        now == REVIEWED,
+        "a neutral definition changed: verify the intended changes, then re-record tests/neutral_table.txt \
+         (BOTA_RECORD_NEUTRAL_TABLE=1, see the top of this file); {}",
+        first_difference(REVIEWED, &now)
     );
 }
 
