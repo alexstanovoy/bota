@@ -4,8 +4,8 @@
 
 use bota_core::rules;
 use bota_proto::{
-    Cheat, CreepSide, Fixed, HeroId, ItemId, MapId, Order, RejectReason, SlotId, Team, UnitKind,
-    Vec2,
+    Cheat, CreepSide, Fixed, HeroId, ItemId, MapId, Order, RejectReason, SlotId, Target, Team,
+    UnitKind, Vec2,
 };
 
 use crate::game::tests::support::{self, an_empty_spot, run, seat_order};
@@ -79,6 +79,9 @@ fn every_command(at: Vec2) -> Vec<Cheat> {
         Cheat::ResetHero,
         Cheat::TimeOfDay { night: false },
         Cheat::CreateCreeps { enemy: true, at },
+        Cheat::Destroy {
+            target: Target::None,
+        },
     ]
 }
 
@@ -117,7 +120,8 @@ fn a_dead_hero_cheats_too_except_where_it_takes_a_body() {
     fell(&mut world);
     for cheat in every_command(at) {
         let wanted = match cheat {
-            Cheat::Teleport { .. } => Err(RejectReason::HeroDead),
+            // Destroy is felled by the seat's hero, which a dead seat has not.
+            Cheat::Teleport { .. } | Cheat::Destroy { .. } => Err(RejectReason::HeroDead),
             _ => Ok(()),
         };
         let order = Order::Cheat { cheat };

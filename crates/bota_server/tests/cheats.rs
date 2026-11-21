@@ -344,6 +344,13 @@ fn steps() -> Vec<Step> {
             asked: Button(Cheat::ResetHero),
             holds: |v| me(v).level == 1 && me(v).gold == Some(bota_core::rules::STARTING_GOLD),
         },
+        // Nothing aimed means the addressed unit: the hero itself falls.
+        Step {
+            asked: Button(Cheat::Destroy {
+                target: bota_proto::Target::None,
+            }),
+            holds: |v| me(v).respawn_left > 0,
+        },
     ]
 }
 
