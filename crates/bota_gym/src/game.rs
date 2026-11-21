@@ -511,6 +511,12 @@ impl<'a> Truth<'a> {
         self.local.handle_of(seat, entity)
     }
 
+    /// The world entity a seat's client names by `handle`, while that name still holds: the
+    /// inverse of [`Self::handle_of`], for training-side diagnosis of what a seat's order named.
+    pub fn entity_named(self, seat: usize, handle: bota_proto::EntityId) -> Option<Entity> {
+        self.local.entity_named(seat, handle)
+    }
+
     /// The live scoreboard of every seat, the other side's gold and damage included: hidden
     /// from a player until `MatchOver`.
     pub fn stats(self) -> MatchStats {
@@ -650,6 +656,51 @@ mod tests {
 
     fn tick_of(game: &mut Game<Privileged>) -> Vec<ServerMsg> {
         game.step(&[None, None]).expect("a tick").remove(0)
+    }
+
+    #[test]
+    fn a_seats_handles_name_the_entities_the_truth_gives_them() {
+        let picks = vec![
+            bota_proto::Pick {
+                slot: bota_proto::SlotId(0),
+                team: Team::Radiant,
+                hero: bota_proto::HeroId::SHADOW_FIEND,
+            },
+            bota_proto::Pick {
+                slot: bota_proto::SlotId(1),
+                team: Team::Dire,
+                hero: bota_proto::HeroId::PUDGE,
+            },
+        ];
+        let spec = MatchSpec::new(bota_core::MAP2_ID, picks, 5, 1_000);
+        let (mut game, _) = Game::<Privileged>::new(&spec).expect("a game");
+        let tick = tick_of(&mut game);
+        let view = tick
+            .iter()
+            .find_map(|message| match message {
+                ServerMsg::Snapshot { view } => Some(view),
+                _ => None,
+            })
+            .expect("a snapshot");
+        assert!(!view.units.is_empty());
+        let truth = game.truth();
+        for unit in &view.units {
+            let entity = truth.entity_named(0, unit.id).expect("a named unit stands");
+            assert_eq!(truth.handle_of(0, entity), Some(unit.id));
+        }
+        let hero = truth.hero_of(0).expect("a hero");
+        let name = truth.handle_of(0, hero).expect("the seat knows its hero");
+        assert_eq!(truth.entity_named(0, name), Some(hero));
+        let nobody = bota_proto::EntityId {
+            idx: u32::MAX,
+            generation: name.generation,
+        };
+        assert_eq!(
+            truth.entity_named(0, nobody),
+            None,
+            "a name never given names nothing"
+        );
+        assert_eq!(truth.entity_named(2, name), None, "no such seat");
     }
 
     #[test]

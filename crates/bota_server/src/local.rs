@@ -237,6 +237,17 @@ impl LocalMatch {
         self.handles.name_of(team, crate::game::wire_id(entity))
     }
 
+    /// The entity a seat's connection names by `handle`, while that name
+    /// still holds: the inverse of [`Self::handle_of`].
+    pub fn entity_named(&self, seat: usize, handle: bota_proto::EntityId) -> Option<Entity> {
+        let team = *self.teams.get(seat)?;
+        let order = bota_proto::Order::Move {
+            target: bota_proto::Target::None,
+        };
+        let (named, _) = self.handles.heard(team, Some(handle), order);
+        self.world.of_wire(named?)
+    }
+
     /// Each seat's snapshot of the current tick with no events, as after a
     /// scenario rearranged the world.
     pub fn restate(&mut self) -> Vec<Vec<ServerMsg>> {
