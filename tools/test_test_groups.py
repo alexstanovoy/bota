@@ -147,7 +147,15 @@ class Partition(unittest.TestCase):
     def test_a_test_in_no_group_fails(self):
         groups = [self.group("game_movement", "game::tests::movement::")]
         problems = self.assess(groups, "game::tests::movement::a_walk", "game::tests::new_system::a_rule")
-        self.assertEqual(problems, ["bota_server lib game::tests::new_system::a_rule: in 0 groups [], must be in exactly one"])
+        self.assertEqual(problems, [f"bota_server lib game::tests::new_system::a_rule: in no group (no group's `paths` name its file "
+                                    f"{SERVER}/game/tests/mod.rs: put the file in one group's `paths` and the test in that group's filters)"])
+
+    def test_a_test_in_no_group_is_told_where_it_goes(self):
+        problems = self.assess([self.group("game_movement", "game::tests::movement::a_walk")], "game::tests::movement::a_walk",
+                               "game::tests::movement::a_run")
+        self.assertEqual(problems, [f"bota_server lib game::tests::movement::a_run: in no group (its file {SERVER}/game/tests/movement.rs "
+                                    "is in the `paths` of group game_movement: add 'game::tests::movement::' to that group's filters "
+                                    "for bota_server lib)"])
 
     def test_a_test_whose_file_does_not_run_its_group_fails(self):
         problems = self.assess([self.group("game_lanes", "game::tests::movement::")], "game::tests::movement::a_walk")
@@ -161,6 +169,38 @@ class Partition(unittest.TestCase):
         entry = {"name": "loose", "tests": [{"crate": "bota_server", "filters": ["net::"]}]}
         with self.assertRaisesRegex(test_groups.Failure, "filters bota_server without a target"):
             test_groups.load_group(entry, CRATES)
+
+
+class Placement(unittest.TestCase):
+    """A test in no group is told where it goes: the group that owns its file, and the filter that takes it."""
+
+    def setUp(self):
+        groups = [test_groups.Group("menu", ["src/menu/**"], [], [], []), test_groups.Group("hud", ["src/hud.rs", "src/menu/shared.rs"], [], [], [])]
+        self.router = test_groups.Router({}, groups, [])
+        self.owners = {("ui", "lib", "menu::tests::old"): {"menu"}, ("ui", "lib", "hud::tests::bar"): {"hud"}}
+
+    def test_the_owner_of_the_file_and_the_tests_module_are_named(self):
+        hint = test_groups.placement(self.router, self.owners, ("ui", "lib", "menu::pages::tests::new"), "src/menu/pages.rs")
+        self.assertEqual(hint, "its file src/menu/pages.rs is in the `paths` of group menu: add 'menu::pages::tests::' to that "
+                               "group's filters for ui lib")
+
+    def test_a_module_that_would_take_another_groups_test_gives_the_full_name(self):
+        owners = {**self.owners, ("ui", "lib", "menu::tests::kept_by_hud"): {"hud"}}
+        hint = test_groups.placement(self.router, owners, ("ui", "lib", "menu::tests::new"), "src/menu/mod.rs")
+        self.assertIn("add 'menu::tests::new' to that group's filters", hint)
+
+    def test_a_file_no_group_owns_says_so(self):
+        hint = test_groups.placement(self.router, self.owners, ("ui", "lib", "glyph::tests::new"), "src/glyph.rs")
+        self.assertEqual(hint, "no group's `paths` name its file src/glyph.rs: put the file in one group's `paths` and the test in "
+                               "that group's filters")
+
+    def test_a_file_two_groups_own_names_both(self):
+        hint = test_groups.placement(self.router, self.owners, ("ui", "lib", "menu::shared::tests::t"), "src/menu/shared.rs")
+        self.assertIn("the groups hud, menu all name its file src/menu/shared.rs", hint)
+
+    def test_the_target_is_part_of_the_selector_named(self):
+        hint = test_groups.placement(self.router, self.owners, ("ui", "test:port_lease", "leases::t"), "src/menu/x.rs")
+        self.assertIn("for ui test:port_lease", hint)
 
 
 class FeatureBuilds(unittest.TestCase):

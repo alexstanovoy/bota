@@ -300,15 +300,15 @@ class Router:
         inside = [c for c in self.crates.values() if path.startswith(c.directory + "/")]
         return max(inside, key=lambda c: len(c.directory), default=None)
 
+    def owners(self, path: str) -> set[str]:
+        """The groups whose `paths` name the file."""
+        return {name for patterns, name in self.owned if any(p.match(path) for p in patterns)}
+
     def route(self, path: str) -> tuple[set[str], bool] | None:
         """The groups a change to `path` runs and whether it runs everything; None when nothing names the file."""
-        groups: set[str] = set()
-        named = False
+        groups = self.owners(path)
+        named = bool(groups)
         everything = False
-        for patterns, name in self.owned:
-            if any(p.match(path) for p in patterns):
-                groups.add(name)
-                named = True
         for patterns, targets in self.routes:
             if any(p.match(path) for p in patterns):
                 named = True
@@ -721,14 +721,31 @@ def assess(groups: list[Group], router: Router, listings: dict[Build, Listed]) -
                     owners[(build.crate, target, name)].add(group.name)
     for key, names in sorted(owners.items()):
         crate, target, name = key
-        if len(names) != 1:
+        if len(names) > 1:
             problems.append(f"{crate} {target} {name}: in {len(names)} groups {sorted(names)}, must be in exactly one")
             continue
         path = str(files_of[key].relative_to(ROOT))
+        if not names:
+            problems.append(f"{crate} {target} {name}: in no group ({placement(router, owners, key, path)})")
+            continue
         routed = router.route(path)
         if routed is None or names.isdisjoint(routed[0]):
             problems.append(f"{path}: holds {name} of group {next(iter(names))}, but a change to it does not run that group")
     return problems
+
+
+def placement(router: Router, owners: dict[tuple[str, str, str], set[str]], key: tuple[str, str, str], path: str) -> str:
+    """Where a test in no group goes: the group whose `paths` name its file, and the filter that takes it (its module, when
+    no test of another group's would come along; else its full name). Said with the error, so the fix is one edit."""
+    crate, target, name = key
+    groups = sorted(router.owners(path))
+    if len(groups) != 1:
+        where = f"the groups {', '.join(groups)} all name" if groups else "no group's `paths` name"
+        return f"{where} its file {path}: put the file in one group's `paths` and the test in that group's filters"
+    module = name.rsplit("::", 1)[0] + "::" if "::" in name else name
+    taken = any(module in other and who and groups[0] not in who for (c, t, other), who in owners.items() if (c, t) == (crate, target))
+    filter_ = name if taken else module
+    return f"its file {path} is in the `paths` of group {groups[0]}: add {filter_!r} to that group's filters for {crate} {target}"
 
 
 def unused_filters(group: Group, selector: Selector, hits: list[tuple[str, str]]) -> list[str]:
