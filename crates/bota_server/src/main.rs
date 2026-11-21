@@ -129,7 +129,7 @@ struct Args {
     /// counted from the decision, which the result line is printed at: each leaves when its client
     /// is done showing the end, and the server exits when the last has left, at this bound, or
     /// when asked to stop, whichever comes first. The default
-    /// covers the client's ending (up to 13.6 s) with a margin; 0 closes every connection at the
+    /// covers the client's ending (up to 10 s) with a margin; 0 closes every connection at the
     /// end, as any other end does.
     #[arg(long, default_value_t = DEFAULT_END_LINGER.as_secs(), value_parser = clap::value_parser!(u64).range(0..=MAX_END_LINGER.as_secs()))]
     end_linger_secs: u64,
